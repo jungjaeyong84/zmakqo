@@ -151,6 +151,51 @@ function hasContextLineageHashMatch({ cloudbuildContext = null, deployDecision =
   return !!(contextHash && deployHash && contextHash === deployHash);
 }
 
+function resolvePathOrNull(value) {
+  const text = trimOrNull(value);
+  return text ? path.resolve(text) : null;
+}
+
+function hasContextArtifactDirCoherence({
+  artifactDir = null,
+  expectedPositionCycleId = null,
+  preflight = null,
+  runtimeManifest = null,
+  deployDecision = null,
+  cloudbuildContext = null,
+} = {}) {
+  const artifactPath = resolvePathOrNull(artifactDir);
+  const contextArtifactPath = resolvePathOrNull(cloudbuildContext && cloudbuildContext.artifact_dir);
+  const contextResolvedPath = resolvePathOrNull(cloudbuildContext && cloudbuildContext.resolved_artifact_dir);
+  const expectedCycleId = trimOrNull(expectedPositionCycleId);
+  const preflightCycleId = trimOrNull(preflight && preflight.position_cycle_id);
+  const manifestCycleId = trimOrNull(
+    runtimeManifest
+    && runtimeManifest.snapshot_meta
+    && runtimeManifest.snapshot_meta.selector_meta
+    && runtimeManifest.snapshot_meta.selector_meta.position_cycle_id
+  );
+  const deployCycleId = trimOrNull(deployDecision && deployDecision.position_cycle_id);
+  const contextCycleId = trimOrNull(cloudbuildContext && cloudbuildContext.position_cycle_id);
+  return !!(
+    artifactPath &&
+    contextArtifactPath &&
+    contextResolvedPath &&
+    expectedCycleId &&
+    preflightCycleId &&
+    manifestCycleId &&
+    deployCycleId &&
+    contextCycleId &&
+    artifactPath === contextArtifactPath &&
+    artifactPath === contextResolvedPath &&
+    artifactPath.includes(expectedCycleId) &&
+    preflightCycleId === expectedCycleId &&
+    manifestCycleId === expectedCycleId &&
+    deployCycleId === expectedCycleId &&
+    contextCycleId === expectedCycleId
+  );
+}
+
 function normalizeWarnings(warnings) {
   return (Array.isArray(warnings) ? warnings : [])
     .map((value) => trimOrNull(value))
@@ -387,6 +432,31 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
       : "artifact dir does not contain expected cycle id",
     file: artifactDir,
     field: "path",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_01A",
+    label: "cloudbuild context resolved artifact dir matches selected cycle",
+    status: hasContextArtifactDirCoherence({
+      artifactDir,
+      expectedPositionCycleId,
+      preflight,
+      runtimeManifest,
+      deployDecision,
+      cloudbuildContext,
+    }) ? "PASS" : "FAIL",
+    reason: hasContextArtifactDirCoherence({
+      artifactDir,
+      expectedPositionCycleId,
+      preflight,
+      runtimeManifest,
+      deployDecision,
+      cloudbuildContext,
+    })
+      ? "context artifact dir and selected cycle are coherent"
+      : "context artifact dir, resolved dir, or selected cycle is inconsistent",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "artifact_dir,resolved_artifact_dir,position_cycle_id",
   }));
 
   checks.push(buildCheck({
@@ -810,6 +880,8 @@ if (require.main === module) {
       hasCandidateSelectionContract,
       hasConsistentLineageContract,
       hasContextLineageHashMatch,
+      resolvePathOrNull,
+      hasContextArtifactDirCoherence,
       normalizeWarnings,
       normalizeArray,
       hasConsistentContextSubmitTrace,

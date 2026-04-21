@@ -248,6 +248,9 @@ function seedRunbookArtifacts(dir, cycleId) {
     bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
   });
   writeJson(path.join(dir, "promotion-cloudbuild-context.json"), {
+    position_cycle_id: cycleId,
+    artifact_dir: dir,
+    resolved_artifact_dir: dir,
     lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
     final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
     recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",

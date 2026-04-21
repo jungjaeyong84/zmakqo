@@ -229,6 +229,64 @@ function buildProductionCutoverAuditFixture() {
   };
 }
 
+function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, contextPatch = {} } = {}) {
+  writeJson(dir, "promotion-preflight.json", {
+    ok: true,
+    position_cycle_id: cycleId,
+    lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+  });
+  writeJson(dir, "promotion-canary-flow.json", {
+    ok: true,
+    stage: "PIPELINE_PASS",
+    position_cycle_id: cycleId,
+  });
+  writeJson(dir, "promotion-runtime-manifest.json", {
+    snapshot_meta: {
+      selector_meta: {
+        position_cycle_id: cycleId,
+        lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+      },
+      lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+    },
+  });
+  writeJson(dir, "unified-promotion-report.json", {
+    position_cycle_id: cycleId,
+  });
+  writeJson(dir, "promotion-deploy-decision.json", {
+    approved: true,
+    position_cycle_id: cycleId,
+    entry_boundary_audit: buildEntryBoundaryAuditFixture(),
+    fill_sync_canonical_boundary_audit: buildFillSyncCanonicalBoundaryAuditFixture(),
+    production_cutover_audit: buildProductionCutoverAuditFixture(),
+    bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
+    ...deployDecisionPatch,
+  });
+  writeJson(dir, "promotion-cloudbuild-context.json", {
+    position_cycle_id: cycleId,
+    artifact_dir: dir,
+    resolved_artifact_dir: dir,
+    lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+    final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
+    recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
+    recommended_next_action_reason: "deploy decision approved with no blocking families",
+    recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+    submit_trace: buildWarningSubmitTrace([]),
+    deploy_decision_summary: {
+      warning_summary: {
+        warning_n: 0,
+        top_warnings: [],
+        has_live_readiness_warning: false,
+        has_repair_firestore_canary_streak_warning: false,
+        has_production_entry_route_canary_streak_warning: false,
+      },
+      blocker_summary: {
+        blocker_n: 0,
+      },
+    },
+    ...contextPatch,
+  });
+}
+
 (async function runbookCheckPassesForCoherentArtifactSet() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-pass-"));
   try {
@@ -280,6 +338,9 @@ function buildProductionCutoverAuditFixture() {
       },
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -307,7 +368,35 @@ function buildProductionCutoverAuditFixture() {
     assert.strictEqual(result.review.ok, true);
     assert.strictEqual(result.review.fail_n, 0);
     assert.strictEqual(result.review.skip_n, 0);
+    const artifactDirCheck = result.review.checks.find((row) => row.id === "CHK_01A");
+    assert.ok(artifactDirCheck);
+    assert.strictEqual(artifactDirCheck.status, "PASS");
     assert.ok(fs.existsSync(path.join(dir, "promotion-runbook-review.json")));
+  } finally {
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(async function runbookCheckFailsWhenResolvedArtifactDirDrifts() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-dir-drift-"));
+  try {
+    const cycleId = "PCY__RUNBOOK__DIR_DRIFT";
+    const dir = path.join(root, cycleId);
+    fs.mkdirSync(dir, { recursive: true });
+    seedMinimalRunbookArtifacts(dir, cycleId, {
+      contextPatch: {
+        resolved_artifact_dir: path.join(root, "PCY__OTHER__DIR"),
+      },
+    });
+    const result = runbookCheck.runCanaryRunbookCheck({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
+    });
+    assert.strictEqual(result.review.ok, false);
+    const artifactDirCheck = result.review.checks.find((row) => row.id === "CHK_01A");
+    assert.ok(artifactDirCheck);
+    assert.strictEqual(artifactDirCheck.status, "FAIL");
+    assert.strictEqual(artifactDirCheck.field, "artifact_dir,resolved_artifact_dir,position_cycle_id");
   } finally {
     try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
@@ -351,6 +440,9 @@ function buildProductionCutoverAuditFixture() {
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=1`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -419,6 +511,9 @@ function buildProductionCutoverAuditFixture() {
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -512,6 +607,9 @@ function buildProductionCutoverAuditFixture() {
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -782,6 +880,9 @@ function buildProductionCutoverAuditFixture() {
       },
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -866,6 +967,9 @@ function buildProductionCutoverAuditFixture() {
       },
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -936,6 +1040,9 @@ function buildProductionCutoverAuditFixture() {
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -1018,6 +1125,9 @@ function buildProductionCutoverAuditFixture() {
       },
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -1096,6 +1206,9 @@ function buildProductionCutoverAuditFixture() {
       bounded_runtime_summary: bounded,
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -1166,6 +1279,9 @@ function buildProductionCutoverAuditFixture() {
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
+      position_cycle_id: cycleId,
+      artifact_dir: dir,
+      resolved_artifact_dir: dir,
       lineage_contract_hash: "lineage-hash-mismatch",
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",

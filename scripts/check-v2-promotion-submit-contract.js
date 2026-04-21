@@ -12,6 +12,7 @@ const SHARED_ALERT_PREVIEW_MODULE_PATH = "/Users/jeongjaeyong/Projects/donbeolja
 const FILES = Object.freeze({
   artifactContract: path.resolve(__dirname, "..", "docs", "DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md"),
   runbook: path.resolve(__dirname, "..", "docs", "DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md"),
+  runbookChecker: path.resolve(__dirname, "check-v2-canary-runbook.js"),
   cloudbuildWrapper: path.resolve(__dirname, "run-v2-promotion-cloudbuild.js"),
   submitWrapper: path.resolve(__dirname, "submit-v2-promotion-cloudbuild.js"),
   submitTrace: path.resolve(__dirname, "lib", "v2-promotion-submit-trace.js"),
@@ -279,6 +280,7 @@ function buildDeployWarningAlertPreviewFixtureResult() {
 function evaluateSubmitContract() {
   const artifactContractText = readText(FILES.artifactContract);
   const runbookText = readText(FILES.runbook);
+  const runbookCheckerText = readText(FILES.runbookChecker);
   const cloudbuildWrapperText = readText(FILES.cloudbuildWrapper);
   const submitWrapperText = readText(FILES.submitWrapper);
   const submitTraceText = readText(FILES.submitTrace);
@@ -840,6 +842,21 @@ function evaluateSubmitContract() {
         ? "submit wrapper maps resolved artifact dir coherence to SUBMIT_CHK_01A and runbook 1/5/9"
         : "submit wrapper must verify resolved artifact dir coherence and map SUBMIT_CHK_01A to runbook 1/5/9",
       file: FILES.submitWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_36",
+      label: "runbook verifier checks resolved artifact dir coherence before submit",
+      ok: runbookCheckerText.includes("CHK_01A")
+        && runbookCheckerText.includes("hasContextArtifactDirCoherence")
+        && runbookText.includes("| 1A | `SUBMIT_CHK_01A`")
+        && runbookText.includes("automated verifier `CHK_01A`"),
+      reason: runbookCheckerText.includes("CHK_01A")
+        && runbookCheckerText.includes("hasContextArtifactDirCoherence")
+        && runbookText.includes("| 1A | `SUBMIT_CHK_01A`")
+        && runbookText.includes("automated verifier `CHK_01A`")
+        ? "runbook verifier enforces resolved artifact dir coherence before submit"
+        : "runbook verifier must enforce resolved artifact dir coherence with CHK_01A",
+      file: FILES.runbookChecker,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

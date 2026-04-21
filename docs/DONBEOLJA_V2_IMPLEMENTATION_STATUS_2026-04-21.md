@@ -1734,3 +1734,25 @@ V1 약점 재발 방지:
 1. V1에서는 selector, deploy decision, context, submit wrapper가 서로 다른 artifact/cycle 축을 보더라도 마지막 제출 경로에서 명시적으로 드러나지 않을 수 있었다
 2. 이번 단계는 최종 submit wrapper가 runbook PASS에만 의존하지 않고, artifact dir와 selected cycle coherence를 자체 검증하게 만든다
 3. 따라서 V2에서는 auto-select finalize 이후 staging dir와 final dir가 섞이거나, 사람이 오래된 artifact dir를 재사용하는 provenance drift를 마지막 제출 전에 차단한다
+
+## 2026-04-22 Runbook Resolved Artifact Dir Coherence
+
+추가 증거:
+
+1. `scripts/check-v2-canary-runbook.js`
+2. `scripts/check-v2-promotion-submit-contract.js`
+3. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+4. `src/tests/check-v2-canary-runbook.test.js`
+
+판정:
+
+1. automated runbook verifier는 이제 `CHK_01A` 로 `promotion-cloudbuild-context.json.artifact_dir`, `resolved_artifact_dir`, `position_cycle_id` 를 현재 최종 artifact dir와 expected cycle에 맞춰 검증한다
+2. 같은 체크는 `promotion-preflight.json.position_cycle_id`, `promotion-runtime-manifest.json.snapshot_meta.selector_meta.position_cycle_id`, `promotion-deploy-decision.json.position_cycle_id` 도 같은 cycle인지 확인한다
+3. runbook 단계에서 `resolved_artifact_dir` 가 다른 cycle/dir를 가리키면 submit wrapper까지 가지 않고 `promotion-runbook-review.json` 에 `CHK_01A=FAIL` 로 남는다
+4. submit contract는 runbook verifier와 runbook 문서가 `CHK_01A` 를 모두 참조하지 않으면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 runbook이 PASS처럼 보였지만 최종 submit wrapper가 다른 artifact 축을 보는 식의 운영 drift가 늦게 드러날 수 있었다
+2. 이번 단계는 같은 provenance 조건을 runbook review와 submit wrapper 양쪽에서 중복 검증하게 만들어, 사람 승인 전에 먼저 깨진 축을 보여준다
+3. 따라서 V2에서는 final dir/staging dir 혼선이 한 단계 늦게 발견되는 구조를 줄이고, artifact dir 폐기 후 preflight 재실행이라는 대응을 더 빨리 유도한다
