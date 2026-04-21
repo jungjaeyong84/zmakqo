@@ -4,6 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { hasLineageContract, contractsMatch } = require("./lib/v2-promotion-lineage-contract");
+const submitTrace = require("./lib/v2-promotion-submit-trace");
 const deployDecisionCheck = require("./check-v2-promotion-deploy-decision");
 
 const OUTPUT_FILENAME = "promotion-runbook-review.json";
@@ -153,6 +154,86 @@ function normalizeWarnings(warnings) {
   return (Array.isArray(warnings) ? warnings : [])
     .map((value) => trimOrNull(value))
     .filter(Boolean);
+}
+
+function normalizeArray(values) {
+  return (Array.isArray(values) ? values : [])
+    .map((value) => trimOrNull(value))
+    .filter(Boolean);
+}
+
+function arraysEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function buildExpectedContextBlockerFamilies(blockerSummary) {
+  const row = blockerSummary && typeof blockerSummary === "object" ? blockerSummary : null;
+  if (!row) return [];
+  const families = [];
+  if (row.has_provenance_blocker === true) families.push("PROVENANCE");
+  if (row.has_candidate_selection_blocker === true) families.push("CANDIDATE_SELECTION");
+  if (row.has_bounded_runtime_blocker === true) families.push("BOUNDED_RUNTIME");
+  if (row.has_entry_boundary_blocker === true) families.push("ENTRY_BOUNDARY");
+  if (row.has_production_cutover_blocker === true) families.push("PRODUCTION_CUTOVER");
+  if (row.has_watchdog_blocker === true) families.push("WATCHDOG");
+  if (Number(row.blocker_n || 0) > 0 && families.length === 0) families.push("UNCLASSIFIED");
+  return families;
+}
+
+function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
+  const context = cloudbuildContext && typeof cloudbuildContext === "object" ? cloudbuildContext : null;
+  const trace = context && context.submit_trace && typeof context.submit_trace === "object"
+    ? context.submit_trace
+    : null;
+  const deploySummary = context && context.deploy_decision_summary && typeof context.deploy_decision_summary === "object"
+    ? context.deploy_decision_summary
+    : null;
+  const blockerSummary = deploySummary && deploySummary.blocker_summary && typeof deploySummary.blocker_summary === "object"
+    ? deploySummary.blocker_summary
+    : null;
+  if (!context || !trace || !deploySummary || !blockerSummary) return false;
+
+  const expectedRelevantSubmitChecks = ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"];
+  const expectedRelevantRunbook = submitTrace.collectRunbookChecklist(expectedRelevantSubmitChecks);
+  const failedSubmitChecks = [];
+  const actionOk = trimOrNull(context.recommended_next_action) === "PROCEED_WITH_SUBMIT_WRAPPER";
+  const blockerOk = Number(blockerSummary.blocker_n) === 0;
+  const lineageOk = !!trimOrNull(context.lineage_contract_hash);
+  if (!actionOk) failedSubmitChecks.push("SUBMIT_CHK_06");
+  if (!blockerOk) failedSubmitChecks.push("SUBMIT_CHK_07");
+  if (!lineageOk) failedSubmitChecks.push("SUBMIT_CHK_08");
+
+  const expectedFailedRunbook = submitTrace.collectRunbookChecklist(failedSubmitChecks);
+  const expectedFamilies = buildExpectedContextBlockerFamilies(blockerSummary);
+  const expectedPrimaryFamily = expectedFamilies[0] || (failedSubmitChecks.includes("SUBMIT_CHK_08") ? "PROVENANCE" : null);
+  const checks = Array.isArray(trace.checks) ? trace.checks : [];
+  const checksById = new Map(checks.map((row) => [trimOrNull(row && row.id), row]));
+  const expectedOkById = new Map([
+    ["SUBMIT_CHK_06", actionOk],
+    ["SUBMIT_CHK_07", blockerOk],
+    ["SUBMIT_CHK_08", lineageOk],
+  ]);
+
+  const checksMatch = expectedRelevantSubmitChecks.every((id) => {
+    const row = checksById.get(id);
+    return !!(
+      row &&
+      row.ok === expectedOkById.get(id) &&
+      arraysEqual(normalizeArray(row.runbook_checklist), submitTrace.getRunbookChecklistForSubmitCheck(id))
+    );
+  });
+
+  return (
+    arraysEqual(normalizeArray(trace.relevant_submit_check_ids), expectedRelevantSubmitChecks) &&
+    arraysEqual(normalizeArray(trace.relevant_runbook_checklist), expectedRelevantRunbook) &&
+    arraysEqual(normalizeArray(trace.failed_submit_check_ids), failedSubmitChecks) &&
+    arraysEqual(normalizeArray(trace.failed_runbook_checklist), expectedFailedRunbook) &&
+    arraysEqual(normalizeArray(trace.blocker_families), expectedFamilies) &&
+    (trimOrNull(trace.primary_blocker_family) || null) === expectedPrimaryFamily &&
+    trimOrNull(trace.recommended_next_action_reason_code) === trimOrNull(context.recommended_next_action_reason_code) &&
+    checks.length === expectedRelevantSubmitChecks.length &&
+    checksMatch
+  );
 }
 
 function collectExpectedWarningRunbookChecklist({
@@ -573,6 +654,17 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
     field: "deploy_decision_summary.warning_summary,submit_trace.deploy_warning_summary,submit_trace.deploy_warning_runbook_checklist,final_status_line",
   }));
 
+  checks.push(buildCheck({
+    id: "CHK_13C",
+    label: "cloudbuild submit trace maps context blockers to submit checks",
+    status: hasConsistentContextSubmitTrace({ cloudbuildContext }) ? "PASS" : "FAIL",
+    reason: hasConsistentContextSubmitTrace({ cloudbuildContext })
+      ? "cloudbuild submit trace maps context checks, runbook refs, blocker family, and reason code consistently"
+      : "cloudbuild submit trace does not match context submit checks, runbook refs, blocker family, or reason code",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "submit_trace.relevant_submit_check_ids,submit_trace.failed_submit_check_ids,submit_trace.failed_runbook_checklist,submit_trace.blocker_families,submit_trace.recommended_next_action_reason_code",
+  }));
+
   const deployMode = String(deployDecision && deployDecision.mode || "").trim().toUpperCase();
   if (deployMode === "LIVE" || artifacts.liveCutoverReadiness) {
     checks.push(buildCheck({
@@ -718,6 +810,8 @@ if (require.main === module) {
       hasConsistentLineageContract,
       hasContextLineageHashMatch,
       normalizeWarnings,
+      normalizeArray,
+      hasConsistentContextSubmitTrace,
       hasConsistentWarningSummary,
       collectExpectedWarningRunbookChecklist,
       hasLiveCutoverReadinessPlan,

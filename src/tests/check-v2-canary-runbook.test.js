@@ -36,9 +36,39 @@ function buildWarningSubmitTrace(warnings = []) {
   if (summary.has_repair_firestore_canary_streak_warning) refs.push("19");
   if (summary.has_production_entry_route_canary_streak_warning) refs.push("26");
   return {
+    relevant_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"],
+    relevant_runbook_checklist: ["11", "13", "16", "17"],
+    failed_submit_check_ids: [],
+    failed_runbook_checklist: [],
+    blocker_families: [],
+    primary_blocker_family: null,
     deploy_warning_attention_required: rowsLength(warnings) > 0,
     deploy_warning_summary: summary,
     deploy_warning_runbook_checklist: refs,
+    recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+    checks: [
+      {
+        id: "SUBMIT_CHK_06",
+        ok: true,
+        runbook_checklist: ["11"],
+        fields: ["recommended_next_action"],
+        reason: "cloudbuild context recommends submit wrapper",
+      },
+      {
+        id: "SUBMIT_CHK_07",
+        ok: true,
+        runbook_checklist: ["13"],
+        fields: ["deploy_decision_summary.blocker_summary.blocker_n"],
+        reason: "cloudbuild blocker count is zero",
+      },
+      {
+        id: "SUBMIT_CHK_08",
+        ok: true,
+        runbook_checklist: ["16", "17"],
+        fields: ["lineage_contract_hash", "deploy_decision_summary.lineage_contract_hash"],
+        reason: "cloudbuild lineage hash present for bounded provenance trace",
+      },
+    ],
   };
 }
 
@@ -247,6 +277,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
@@ -317,6 +348,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=1`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
@@ -384,6 +416,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       production_cutover_readiness_file: path.join(dir, "v2_production_cutover_readiness_latest.json"),
       production_cutover_readiness_summary: {
@@ -476,6 +509,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
@@ -606,6 +640,83 @@ function buildProductionCutoverAuditFixture() {
   }), true);
 })();
 
+(function contextSubmitTraceHelperAcceptsMatchingContextChecks() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
+    cloudbuildContext: {
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      submit_trace: buildWarningSubmitTrace([]),
+      deploy_decision_summary: {
+        blocker_summary: {
+          blocker_n: 0,
+        },
+      },
+    },
+  }), true);
+})();
+
+(function contextSubmitTraceHelperRejectsFailedSubmitCheckDrift() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
+    cloudbuildContext: {
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      submit_trace: {
+        ...buildWarningSubmitTrace([]),
+        failed_submit_check_ids: ["SUBMIT_CHK_06"],
+        failed_runbook_checklist: ["11"],
+      },
+      deploy_decision_summary: {
+        blocker_summary: {
+          blocker_n: 0,
+        },
+      },
+    },
+  }), false);
+})();
+
+(function contextSubmitTraceHelperRejectsBlockerFamilyDrift() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
+    cloudbuildContext: {
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      recommended_next_action: "FIX_V2_PROMOTION_PROVENANCE_AND_RERUN",
+      recommended_next_action_reason_code: "PROVENANCE_BLOCKER",
+      submit_trace: {
+        ...buildWarningSubmitTrace([]),
+        failed_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07"],
+        failed_runbook_checklist: ["11", "13"],
+        blocker_families: [],
+        primary_blocker_family: null,
+        recommended_next_action_reason_code: "PROVENANCE_BLOCKER",
+        checks: [
+          {
+            id: "SUBMIT_CHK_06",
+            ok: false,
+            runbook_checklist: ["11"],
+          },
+          {
+            id: "SUBMIT_CHK_07",
+            ok: false,
+            runbook_checklist: ["13"],
+          },
+          {
+            id: "SUBMIT_CHK_08",
+            ok: true,
+            runbook_checklist: ["16", "17"],
+          },
+        ],
+      },
+      deploy_decision_summary: {
+        blocker_summary: {
+          blocker_n: 1,
+          has_provenance_blocker: true,
+        },
+      },
+    },
+  }), false);
+})();
+
 (function warningSummaryHelperRejectsMissingStreakClassifiers() {
   assert.strictEqual(runbookCheck.__test.hasConsistentWarningSummary({
     deployDecision: {
@@ -668,6 +779,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
@@ -737,6 +849,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
@@ -818,6 +931,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
@@ -895,6 +1009,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
@@ -964,6 +1079,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {

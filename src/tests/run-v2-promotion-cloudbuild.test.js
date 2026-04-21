@@ -246,7 +246,14 @@ function seedRunbookArtifacts(dir, cycleId) {
     final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
     recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
     recommended_next_action_reason: "deploy decision approved with no blocking families",
+    recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
     submit_trace: {
+      relevant_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"],
+      relevant_runbook_checklist: ["11", "13", "16", "17"],
+      failed_submit_check_ids: [],
+      failed_runbook_checklist: [],
+      blocker_families: [],
+      primary_blocker_family: null,
       deploy_warning_attention_required: false,
       deploy_warning_summary: {
         warning_n: 0,
@@ -256,6 +263,30 @@ function seedRunbookArtifacts(dir, cycleId) {
         has_production_entry_route_canary_streak_warning: false,
       },
       deploy_warning_runbook_checklist: [],
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      checks: [
+        {
+          id: "SUBMIT_CHK_06",
+          ok: true,
+          runbook_checklist: ["11"],
+          fields: ["recommended_next_action"],
+          reason: "cloudbuild context recommends submit wrapper",
+        },
+        {
+          id: "SUBMIT_CHK_07",
+          ok: true,
+          runbook_checklist: ["13"],
+          fields: ["deploy_decision_summary.blocker_summary.blocker_n"],
+          reason: "cloudbuild blocker count is zero",
+        },
+        {
+          id: "SUBMIT_CHK_08",
+          ok: true,
+          runbook_checklist: ["16", "17"],
+          fields: ["lineage_contract_hash", "deploy_decision_summary.lineage_contract_hash"],
+          reason: "cloudbuild lineage hash present for bounded provenance trace",
+        },
+      ],
     },
     deploy_decision_summary: {
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,

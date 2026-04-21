@@ -1343,3 +1343,23 @@ V1 약점 재발 방지:
 5. submit request 생성 전에도 context artifact만 보고 warning 계열과 runbook 번호를 확인할 수 있어, 중간 단계 artifact의 관측성 공백을 줄인다
 6. 같은 context 안의 summary와 trace가 서로 다르면 runbook review가 실패하므로, 중복 요약 필드 간 drift를 조기에 차단한다
 7. 따라서 “최종 알림은 떴지만 정확히 어떤 계열 문제인지 모르는” V1식 모호한 운영 상태를 줄인다
+
+## 2026-04-22 Cloudbuild Context Submit Trace Contract
+
+추가 증거:
+
+1. `scripts/check-v2-canary-runbook.js`
+2. `src/tests/check-v2-canary-runbook.test.js`
+3. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. `promotion-cloudbuild-context.json.submit_trace` 는 이제 warning trace뿐 아니라 context submit 차단 핵심축인 `SUBMIT_CHK_06`, `SUBMIT_CHK_07`, `SUBMIT_CHK_08` 을 runbook review에서 직접 검증한다
+2. `CHK_13C` 는 relevant submit checks, failed submit checks, failed runbook checklist, blocker families, primary blocker family, reason code, checks 배열이 context와 일치하지 않으면 실패한다
+3. 따라서 submit wrapper 단계까지 가지 않아도 context artifact만으로 “무엇이 깨졌는가 / 어느 SUBMIT_CHK인가 / runbook 몇 번인가 / 어느 계열인가”를 복원할 수 있어야 한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 마지막 제출 전 context와 submit wrapper가 서로 다른 기준으로 blocker를 해석할 수 있었다
+2. 이번 단계는 context-level trace를 runbook checker가 fail-closed로 검증하므로, 문서상 trace-back이 실제 artifact와 어긋나는 상태를 조기에 차단한다
+3. warning trace와 blocker trace를 분리 검증해, “경고는 맞지만 실제 submit 차단 원인은 다른데도 통과하는” 운영 drift를 줄인다
