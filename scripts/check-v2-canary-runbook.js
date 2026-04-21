@@ -165,9 +165,6 @@ function hasConsistentWarningSummary({ cloudbuildContext = null, deployDecision 
     && typeof cloudbuildContext.deploy_decision_summary.warning_summary === "object"
     ? cloudbuildContext.deploy_decision_summary.warning_summary
     : null;
-  if (warnings.length === 0) {
-    return finalStatusLine.includes("warnings=0");
-  }
   if (!summary) return false;
   const topWarnings = normalizeWarnings(summary.top_warnings);
   const expectedTopWarnings = warnings.slice(0, 3);

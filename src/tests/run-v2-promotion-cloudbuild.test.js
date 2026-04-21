@@ -248,6 +248,13 @@ function seedRunbookArtifacts(dir, cycleId) {
     recommended_next_action_reason: "deploy decision approved with no blocking families",
     deploy_decision_summary: {
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      warning_summary: {
+        warning_n: 0,
+        top_warnings: [],
+        has_live_readiness_warning: false,
+        has_repair_firestore_canary_streak_warning: false,
+        has_production_entry_route_canary_streak_warning: false,
+      },
       blocker_summary: {
         blocker_n: 0,
       },

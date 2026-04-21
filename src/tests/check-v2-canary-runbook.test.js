@@ -219,6 +219,13 @@ function buildProductionCutoverAuditFixture() {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
         blocker_summary: {
           blocker_n: 0,
         },
@@ -360,6 +367,13 @@ function buildProductionCutoverAuditFixture() {
         blocker_n: 0,
       },
       deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
         blocker_summary: {
           blocker_n: 0,
         },
@@ -431,6 +445,13 @@ function buildProductionCutoverAuditFixture() {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
         blocker_summary: {
           blocker_n: 0,
         },
@@ -468,6 +489,43 @@ function buildProductionCutoverAuditFixture() {
       },
     },
   }), true);
+})();
+
+(function warningSummaryHelperAcceptsNoWarningClassifierContract() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentWarningSummary({
+    deployDecision: {
+      warnings: [],
+    },
+    cloudbuildContext: {
+      final_status_line: "APPROVE_DEPLOY ; warnings=0",
+      deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
+      },
+    },
+  }), true);
+})();
+
+(function warningSummaryHelperRejectsMissingNoWarningClassifiers() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentWarningSummary({
+    deployDecision: {
+      warnings: [],
+    },
+    cloudbuildContext: {
+      final_status_line: "APPROVE_DEPLOY ; warnings=0",
+      deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+        },
+      },
+    },
+  }), false);
 })();
 
 (function warningSummaryHelperAcceptsProductionRouteStreakClassifier() {
@@ -552,6 +610,13 @@ function buildProductionCutoverAuditFixture() {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
         blocker_summary: {
           blocker_n: 0,
         },
@@ -613,6 +678,13 @@ function buildProductionCutoverAuditFixture() {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
         blocker_summary: {
           blocker_n: 0,
         },
@@ -686,6 +758,13 @@ function buildProductionCutoverAuditFixture() {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
         blocker_summary: {
           blocker_n: 0,
         },
@@ -755,6 +834,13 @@ function buildProductionCutoverAuditFixture() {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
         blocker_summary: {
           blocker_n: 0,
         },
@@ -816,6 +902,13 @@ function buildProductionCutoverAuditFixture() {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
         blocker_summary: {
           blocker_n: 0,
         },
