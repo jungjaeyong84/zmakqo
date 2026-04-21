@@ -64,6 +64,10 @@ function resolveLatestArtifactPath(...names) {
 const ARTIFACT_SPECS = Object.freeze([
   { name: "analytics_local_cache_refresh", filePath: path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json"), maxAgeHours: 4, severity: "WARN" },
   { name: "openclaw_hourly_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_hourly_cycle_latest.json"), maxAgeHours: 2, severity: "FAIL" },
+  { name: "v2_repair_queue_canary", filePath: path.join(OPS_DAILY_DIR, "v2_repair_queue_canary_latest.json"), maxAgeHours: 0.25, severity: "FAIL" },
+  { name: "v2_repair_queue_operational_canary", filePath: path.join(OPS_DAILY_DIR, "v2_repair_queue_operational_canary_latest.json"), maxAgeHours: 0.25, severity: "FAIL" },
+  { name: "v2_repair_queue_canary_preflight", filePath: path.join(OPS_DAILY_DIR, "v2_repair_queue_canary_preflight_latest.json"), maxAgeHours: 0.25, severity: "FAIL" },
+  { name: "v2_repair_queue_service", filePath: path.join(OPS_DAILY_DIR, "v2_repair_queue_service_latest.json"), maxAgeHours: 0.25, severity: "FAIL" },
   { name: "openclaw_daily_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_daily_cycle_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   { name: "objective_retrospective", filePath: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   // Objective supervisor/stage autopilot now run inside daily cycle; freshness should follow daily cadence.
@@ -80,6 +84,7 @@ const ARTIFACT_SPECS = Object.freeze([
 const AUTOMATION_SEVERITY_BY_LABEL = Object.freeze({
   "com.jeongjaeyong.donbeolja.objectiveretrospective": "FAIL",
   "com.jeongjaeyong.donbeolja.objectivesupervisor": "FAIL",
+  "com.jeongjaeyong.donbeolja.v2repairqueue": "FAIL",
   "com.jeongjaeyong.donbeolja.rollbackmonitor": "FAIL",
   "com.jeongjaeyong.donbeolja.stageautopilot": "FAIL",
   "com.jeongjaeyong.donbeolja.signaldataintegrity": "FAIL",

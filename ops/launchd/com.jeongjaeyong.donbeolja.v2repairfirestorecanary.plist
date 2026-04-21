@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.jeongjaeyong.donbeolja.v2repairfirestorecanary</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/bin/zsh</string>
+      <string>/Users/jeongjaeyong/Projects/donbeolja/ops/launchd/run_v2_repair_queue_firestore_canary_collector.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/jeongjaeyong/Projects/donbeolja</string>
+
+    <key>StartInterval</key>
+    <integer>7200</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/jeongjaeyong/Projects/donbeolja/ops/launchd/v2_repair_firestore_canary.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/jeongjaeyong/Projects/donbeolja/ops/launchd/v2_repair_firestore_canary.err.log</string>
+  </dict>
+</plist>

@@ -42,6 +42,7 @@ const {
   sideToPositionDir,
 } = require("../services/webhookReverseException");
 const { evaluateOpenClawExecutionAuthority } = require("../services/openclawExecutionAuthority");
+const { buildV2ProductionCutoverGuard } = require("../v2/productionCutoverGuard");
 
 const ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY = path.join(ROOT, "ops", "daily");
@@ -1004,6 +1005,31 @@ function createWebhookRoutes() {
           ...envelope,
         }).catch(e => console.warn("[WEBHOOK_LEDGER_OUTCOME_FAIL]", e?.message || e));
       };
+      const cutoverGuard = buildV2ProductionCutoverGuard(process.env);
+      if (cutoverGuard.allowed !== true) {
+        emitWebhookTrace(traceOn, {
+          decision: "DROP",
+          reason: cutoverGuard.reason,
+          event: "V2_CUTOVER_GUARD_BLOCK",
+          cutover_guard: cutoverGuard.context,
+        });
+        return finalize({
+          httpStatus: cutoverGuard.httpStatus || 409,
+          body: {
+            ok: false,
+            dropped: true,
+            reason: cutoverGuard.reason,
+            event: "V2_CUTOVER_GUARD_BLOCK",
+          },
+          decision: "DROP",
+          reason: cutoverGuard.reason,
+          context: {
+            source: "WEBHOOK",
+            event: "V2_CUTOVER_GUARD_BLOCK",
+            cutoverGuard: cutoverGuard.context,
+          },
+        });
+      }
       if (WEBHOOK_JITTER_MS > 0) {
         const waitMs = Math.floor(Math.random() * (WEBHOOK_JITTER_MS + 1));
         if (waitMs > 0) await sleep(waitMs);
@@ -1076,12 +1102,16 @@ function createWebhookRoutes() {
           symbol,
           tf: tfRaw || null,
           signalTf: tfRaw || null,
+          signalId: p.signal_id || null,
+          signalDocId: p.signal_id || (p.features && p.features.signal_doc_id) || null,
           intent: String(p.intent || p.event || "").toUpperCase() || null,
           event: String(p.event || p.signal_event || "").toUpperCase() || null,
           side: String(p.side || p.direction || "").toUpperCase() || null,
           qtyPct: Number(p.qty_pct != null ? p.qty_pct : p.qtyPct) || null,
           requestedQtyPct: Number(p.qty_pct != null ? p.qty_pct : p.qtyPct) || null,
           features: (p.features && typeof p.features === "object") ? p.features : null,
+          sourceOrigin: "WEBHOOK",
+          barCloseMs: Number.isFinite(Number(barCloseMs)) ? Number(barCloseMs) : null,
           nowMs: Date.now(),
         };
         // Fire-and-forget agent evaluation. Timeout ensures webhook

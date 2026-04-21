@@ -59,6 +59,7 @@ const {
   isSimplifiedExitV2Active,
   resolveSimplifiedExitV2FlagFromSnapshot,
 } = require("./simplifiedExitV2");
+const { writeOpenClawShadowTrailActivation } = require("../v2/openclawShadowExitWriter");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const BINANCE_TICK_EXIT_AUDIT_PATH = path.join(REPO_ROOT, "ops", "runtime", "binance_tick_exit_audit.jsonl");
@@ -734,6 +735,53 @@ function buildTickTrailObservationDocUpdate(trailPatch, updatedAt = null) {
 
 function buildTickTrailReconcileRunId(symbol, atMs = Date.now()) {
   return `RUN__TRAIL_RECONCILE__BINANCEFUT__${String(symbol || "").toUpperCase()}__${Number(atMs)}`;
+}
+
+async function maybeWriteV2ShadowTrailActivation({
+  symbol,
+  position = null,
+  side = null,
+  nativeRefresh = null,
+  runnerExit = null,
+  observedAtMs = null,
+} = {}) {
+  const pos = position && typeof position === "object" ? position : null;
+  const meta = pos && pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  if (!pos) return { ok: true, written: false, skipped: true, reason: "V2_SHADOW_TRAIL_NO_POSITION" };
+  if (meta.tp_p1_done !== true || meta.trail_active !== true) {
+    return { ok: true, written: false, skipped: true, reason: "V2_SHADOW_TRAIL_STAGE_NOT_READY" };
+  }
+  if (!nativeRefresh || nativeRefresh.ok !== true) {
+    return { ok: true, written: false, skipped: true, reason: "V2_SHADOW_TRAIL_NATIVE_REFRESH_NOT_OK" };
+  }
+  if (!runnerExit || String(runnerExit.stopSource || "").trim().toUpperCase() !== "TRAIL") {
+    return { ok: true, written: false, skipped: true, reason: "V2_SHADOW_TRAIL_STOP_SOURCE_NOT_TRAIL" };
+  }
+  const entryEventId = meta.entry_event_id ? String(meta.entry_event_id) : null;
+  const sourceOrderId = nativeRefresh.stop_order_id ? String(nativeRefresh.stop_order_id) : null;
+  const stopPrice = Number(nativeRefresh.stop_price);
+  if (!entryEventId || !sourceOrderId || !(Number.isFinite(stopPrice) && stopPrice > 0)) {
+    return { ok: false, written: false, skipped: false, reason: "V2_SHADOW_TRAIL_NATIVE_REFRESH_CONTEXT_INCOMPLETE" };
+  }
+  try {
+    return await writeOpenClawShadowTrailActivation({
+      symbol,
+      entryEventId,
+      positionSide: side,
+      sourceOrderId,
+      nextStopPrice: Number(runnerExit.stopPrice),
+      nativeStopPrice: stopPrice,
+      nativeRefreshStatus: "OK",
+      observedAtMs,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      written: false,
+      skipped: false,
+      reason: error && error.message ? error.message : String(error),
+    };
+  }
 }
 
 async function syncTickExitTrailObservation({
@@ -2808,6 +2856,21 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                   native_stop_price: Number.isFinite(_obsNativeStopPrice) ? _obsNativeStopPrice : null,
                 },
               }).catch(() => null);
+              const _shadowTrailWrite = await maybeWriteV2ShadowTrailActivation({
+                symbol,
+                position: pos,
+                side: _tSide,
+                nativeRefresh: _nativeRefresh,
+                runnerExit: _runnerExit,
+                observedAtMs: _obsWriteAtMs,
+              });
+              if (_shadowTrailWrite && _shadowTrailWrite.ok !== true) {
+                structuredLog("tick_exit_v2_shadow_trail_activation_fail", {
+                  exchange: "BINANCEFUT",
+                  symbol: String(symbol).toUpperCase(),
+                  reason: _shadowTrailWrite.reason || "UNKNOWN",
+                }, "warn");
+              }
             } catch (_trailObsErr) {
               structuredLog("tick_exit_trail_observation_write_error", {
                 exchange: "BINANCEFUT",

@@ -98,15 +98,27 @@ const cli = require("../services/claudeCliClient");
   const prevMode = process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
   try {
     delete process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
-    assert.strictEqual(narrative.providerMode ? narrative.providerMode() : "CLI", "CLI",
-      "narrative reasoner defaults to CLI provider");
+    // As of 2026-04-20 the default is CODEX_CLI_FIRST: Codex CLI → Claude CLI
+    // fallback. The Claude CLI is the fallback provider, not the primary.
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST",
+      "narrative reasoner defaults to CODEX_CLI_FIRST (Codex CLI then Claude CLI)");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI", "CLI"],
+      "default sequence runs Codex CLI first, Claude CLI on fallback");
+
+    // Explicit Claude-only mode for operators who need to avoid Codex.
+    process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CLI";
+    assert.strictEqual(narrative.providerMode(), "CLI");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CLI"]);
+
+    // Legacy OpenAI-HTTP Codex path still reachable.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_FIRST";
     assert.strictEqual(narrative.providerMode(), "CODEX_FIRST");
     assert.deepStrictEqual(narrative.resolveProviderSequence(), ["OPENAI_CODEX", "CLI"]);
+
+    // AUTO → CODEX_CLI_FIRST (new default) so auto-tune operators get the
+    // CLI-only stack without plaintext keys.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "AUTO";
-    assert.strictEqual(narrative.providerMode(), "CODEX_FIRST");
-  } catch (_) {
-    // providerMode may not be exported; fall back to env probe
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST");
   } finally {
     if (prevMode === undefined) delete process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
     else process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = prevMode;

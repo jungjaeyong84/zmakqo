@@ -1,0 +1,692 @@
+#!/usr/bin/env node
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const { hasLineageContract, contractsMatch } = require("./lib/v2-promotion-lineage-contract");
+const deployDecisionCheck = require("./check-v2-promotion-deploy-decision");
+
+const OUTPUT_FILENAME = "promotion-runbook-review.json";
+
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function resolveArtifactDir(env = process.env) {
+  const artifactDir = trimOrNull(env.V2_PROMOTION_ARTIFACT_DIR);
+  if (!artifactDir) throw new Error("V2_PROMOTION_ARTIFACT_DIR_REQUIRED");
+  return path.resolve(artifactDir);
+}
+
+function resolveExpectedPositionCycleId(env = process.env) {
+  const cycleId = trimOrNull(env.V2_PROMOTION_EXPECT_POSITION_CYCLE_ID)
+    || trimOrNull(env.V2_PROMOTION_SELECT_POSITION_CYCLE_ID);
+  if (!cycleId) throw new Error("V2_PROMOTION_EXPECT_POSITION_CYCLE_ID_REQUIRED");
+  return cycleId;
+}
+
+function readJsonFile(filePath) {
+  return JSON.parse(fs.readFileSync(path.resolve(filePath), "utf8"));
+}
+
+function readRequiredArtifact(artifactDir, filename) {
+  const filePath = path.join(artifactDir, filename);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`V2_CANARY_RUNBOOK_ARTIFACT_REQUIRED:${filename}`);
+  }
+  return Object.freeze({
+    filePath,
+    payload: readJsonFile(filePath),
+  });
+}
+
+function readOptionalArtifact(artifactDir, filename) {
+  const filePath = path.join(artifactDir, filename);
+  if (!fs.existsSync(filePath)) return null;
+  return Object.freeze({
+    filePath,
+    payload: readJsonFile(filePath),
+  });
+}
+
+function buildCheck({ id, label, status, reason, file = null, field = null }) {
+  return Object.freeze({
+    id,
+    label,
+    status,
+    reason: trimOrNull(reason),
+    file: trimOrNull(file),
+    field: trimOrNull(field),
+  });
+}
+
+function hasBoundedRuntimeSummary(summary) {
+  const row = summary && typeof summary === "object" ? summary : null;
+  return !!(
+    row &&
+    row.selector_query_budget &&
+    row.collector_query_budget &&
+    Number.isFinite(Number(row.exporter_snapshot_size_bytes)) &&
+    row.manifest_counts
+  );
+}
+
+function hasEvidenceSnapshotCoverage(summary) {
+  const row = summary && typeof summary === "object" ? summary : null;
+  const evidence = row && typeof row.evidence_snapshot_summary === "object"
+    ? row.evidence_snapshot_summary
+    : null;
+  return !!(
+    evidence &&
+    evidence.ok === true &&
+    Number(evidence.missing_transition_evidence_n) === 0 &&
+    Number(evidence.missing_protection_runtime_evidence_n) === 0 &&
+    Number.isFinite(Number(evidence.transition_n)) &&
+    Number.isFinite(Number(evidence.transition_evidence_n)) &&
+    Number.isFinite(Number(evidence.protection_runtime_n)) &&
+    Number.isFinite(Number(evidence.protection_runtime_evidence_n))
+  );
+}
+
+function hasRuntimeChainAudit(summary) {
+  return deployDecisionCheck.__test.hasRuntimeChainAuditCoverage(summary);
+}
+
+function hasEntryBoundaryAudit(summary) {
+  return deployDecisionCheck.__test.hasEntryBoundaryAudit(summary);
+}
+
+function hasFillSyncCanonicalBoundaryAudit(summary) {
+  return deployDecisionCheck.__test.hasFillSyncCanonicalBoundaryAudit(summary);
+}
+
+function hasProductionCutoverAudit(summary) {
+  return deployDecisionCheck.__test.hasProductionCutoverAudit(summary);
+}
+
+function hasCandidateSelectionContract(summary) {
+  const row = summary && typeof summary === "object" ? summary : null;
+  const contract = row && typeof row.selection_contract === "object" ? row.selection_contract : null;
+  return !!(
+    contract &&
+    contract.ok === true &&
+    contract.scan_limit_respected === true &&
+    contract.recent_window_enforced === true &&
+    contract.selected_candidate_present === true &&
+    contract.selected_preflight_ok === true &&
+    contract.selected_cycle_matches_preflight === true &&
+    contract.selected_cycle_matches_collector_env === true &&
+    contract.selected_snapshot_counts_exact === true
+  );
+}
+
+function hasConsistentLineageContract({ preflight = null, runtimeManifest = null, deployDecision = null } = {}) {
+  const preflightLineage = preflight && typeof preflight.lineage_contract === "object" ? preflight.lineage_contract : null;
+  const manifestLineage = runtimeManifest && runtimeManifest.snapshot_meta && typeof runtimeManifest.snapshot_meta === "object"
+    && runtimeManifest.snapshot_meta.lineage_contract && typeof runtimeManifest.snapshot_meta.lineage_contract === "object"
+    ? runtimeManifest.snapshot_meta.lineage_contract
+    : null;
+  const deployLineage = deployDecision && deployDecision.bounded_runtime_summary && typeof deployDecision.bounded_runtime_summary === "object"
+    && deployDecision.bounded_runtime_summary.lineage_contract && typeof deployDecision.bounded_runtime_summary.lineage_contract === "object"
+    ? deployDecision.bounded_runtime_summary.lineage_contract
+    : null;
+  return hasLineageContract(preflightLineage)
+    && hasLineageContract(manifestLineage)
+    && hasLineageContract(deployLineage)
+    && contractsMatch(preflightLineage, manifestLineage)
+    && contractsMatch(manifestLineage, deployLineage);
+}
+
+function hasContextLineageHashMatch({ cloudbuildContext = null, deployDecision = null } = {}) {
+  const contextHash = trimOrNull(cloudbuildContext && cloudbuildContext.lineage_contract_hash);
+  const deployHash = trimOrNull(
+    deployDecision
+    && deployDecision.bounded_runtime_summary
+    && deployDecision.bounded_runtime_summary.lineage_contract
+    && deployDecision.bounded_runtime_summary.lineage_contract.hash
+  );
+  return !!(contextHash && deployHash && contextHash === deployHash);
+}
+
+function normalizeWarnings(warnings) {
+  return (Array.isArray(warnings) ? warnings : [])
+    .map((value) => trimOrNull(value))
+    .filter(Boolean);
+}
+
+function hasConsistentWarningSummary({ cloudbuildContext = null, deployDecision = null } = {}) {
+  const warnings = normalizeWarnings(deployDecision && deployDecision.warnings);
+  const finalStatusLine = trimOrNull(cloudbuildContext && cloudbuildContext.final_status_line) || "";
+  const summary = cloudbuildContext
+    && cloudbuildContext.deploy_decision_summary
+    && typeof cloudbuildContext.deploy_decision_summary === "object"
+    && cloudbuildContext.deploy_decision_summary.warning_summary
+    && typeof cloudbuildContext.deploy_decision_summary.warning_summary === "object"
+    ? cloudbuildContext.deploy_decision_summary.warning_summary
+    : null;
+  if (warnings.length === 0) {
+    return finalStatusLine.includes("warnings=0");
+  }
+  if (!summary) return false;
+  const topWarnings = normalizeWarnings(summary.top_warnings);
+  const expectedTopWarnings = warnings.slice(0, 3);
+  return (
+    Number(summary.warning_n) === warnings.length &&
+    JSON.stringify(topWarnings) === JSON.stringify(expectedTopWarnings) &&
+    finalStatusLine.includes(`warnings=${warnings.length}`) &&
+    expectedTopWarnings.every((warning) => finalStatusLine.includes(warning))
+  );
+}
+
+function hasLiveCutoverReadinessPlan(readiness) {
+  const row = readiness && typeof readiness === "object" ? readiness : null;
+  const envChanges = Array.isArray(row && row.required_env_changes) ? row.required_env_changes : [];
+  const envPlan = new Set(envChanges.map((entry) => `${trimOrNull(entry && entry.name)}=${trimOrNull(entry && entry.value)}`));
+  const runbookChecklist = Array.isArray(row && row.runbook_checklist) ? row.runbook_checklist : [];
+  const submitCheckIds = Array.isArray(row && row.submit_check_ids) ? row.submit_check_ids : [];
+  return !!(
+    row &&
+    row.ok === true &&
+    trimOrNull(row.reason) === "V2_REPAIR_FIRESTORE_CANARY_READY_FOR_LIVE_PREFLIGHT" &&
+    row.auto_apply === false &&
+    row.mutates_environment === false &&
+    runbookChecklist.includes("19") &&
+    submitCheckIds.includes("SUBMIT_CHK_11") &&
+    envPlan.has("DONBEOLJA_V2_REPAIR_LIVE_ENABLE_REQUESTED=1") &&
+    envPlan.has("DONBEOLJA_V2_REPAIR_OPERATIONAL_CANARY_REQUIRED=1") &&
+    envPlan.has("DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_REQUIRED=1") &&
+    envPlan.has("DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED=1")
+  );
+}
+
+function hasProductionCutoverReadinessPlan({ readiness = null, cloudbuildContext = null } = {}) {
+  const artifact = readiness && typeof readiness === "object" ? readiness : null;
+  const contextSummary = cloudbuildContext && typeof cloudbuildContext === "object"
+    && cloudbuildContext.production_cutover_readiness_summary
+    && typeof cloudbuildContext.production_cutover_readiness_summary === "object"
+    ? cloudbuildContext.production_cutover_readiness_summary
+    : null;
+  const summary = artifact || contextSummary;
+  const guard = summary && typeof summary.guard === "object" ? summary.guard : null;
+  const compactLegacyBlocked = contextSummary && contextSummary.legacy_webhook_blocked === true;
+  const fullLegacyBlocked = guard && guard.allowed === false && trimOrNull(guard.reason) === "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED";
+  return !!(
+    summary &&
+    summary.ok === true &&
+    trimOrNull(summary.reason) === "V2_PRODUCTION_CUTOVER_READINESS_PASS" &&
+    Number(summary.fail_n || summary.blocker_n || 0) === 0 &&
+    (compactLegacyBlocked || fullLegacyBlocked)
+  );
+}
+
+function hasSchedulerTrafficCutoverReadinessPlan({ readiness = null, cloudbuildContext = null } = {}) {
+  const artifact = readiness && typeof readiness === "object" ? readiness : null;
+  const contextSummary = cloudbuildContext && typeof cloudbuildContext === "object"
+    && cloudbuildContext.scheduler_traffic_cutover_readiness_summary
+    && typeof cloudbuildContext.scheduler_traffic_cutover_readiness_summary === "object"
+    ? cloudbuildContext.scheduler_traffic_cutover_readiness_summary
+    : null;
+  const summary = artifact || contextSummary;
+  const cloudRunServices = Array.isArray(summary && summary.cloud_run_services) ? summary.cloud_run_services : [];
+  return !!(
+    summary &&
+    summary.ok === true &&
+    trimOrNull(summary.reason) === "V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS" &&
+    Number(summary.fail_n || summary.blocker_n || 0) === 0 &&
+    trimOrNull(summary.scheduler_sot) === "OPENCLAW_CRON" &&
+    Array.isArray(summary.missing_openclaw_job_ids) &&
+    summary.missing_openclaw_job_ids.length === 0 &&
+    Number(summary.active_legacy_scheduler_job_n || 0) === 0 &&
+    cloudRunServices.length >= 2 &&
+    cloudRunServices.every((service) => (
+      trimOrNull(service && service.scheduler_autostart) === "0" &&
+      trimOrNull(service && service.scheduler_cutover_mode) === "OPENCLAW_CRON" &&
+      Number(service && service.traffic_percent) === 100 &&
+      service.latest_revision_ready === true
+    ))
+  );
+}
+
+function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts }) {
+  const checks = [];
+  const preflight = artifacts.preflight.payload;
+  const canaryFlow = artifacts.canaryFlow.payload;
+  const runtimeManifest = artifacts.runtimeManifest.payload;
+  const unifiedReport = artifacts.unifiedReport.payload;
+  const deployDecision = artifacts.deployDecision.payload;
+  const cloudbuildContext = artifacts.cloudbuildContext.payload;
+  const liveCutoverReadiness = artifacts.liveCutoverReadiness && artifacts.liveCutoverReadiness.payload;
+  const productionCutoverReadiness = artifacts.productionCutoverReadiness && artifacts.productionCutoverReadiness.payload;
+  const schedulerTrafficCutoverReadiness = artifacts.schedulerTrafficCutoverReadiness && artifacts.schedulerTrafficCutoverReadiness.payload;
+
+  checks.push(buildCheck({
+    id: "CHK_01",
+    label: "artifact dir contains expected position cycle id",
+    status: artifactDir.includes(expectedPositionCycleId) ? "PASS" : "FAIL",
+    reason: artifactDir.includes(expectedPositionCycleId)
+      ? "artifact dir is bounded by expected cycle id"
+      : "artifact dir does not contain expected cycle id",
+    file: artifactDir,
+    field: "path",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_03",
+    label: "preflight passed",
+    status: preflight && preflight.ok === true ? "PASS" : "FAIL",
+    reason: preflight && preflight.ok === true ? "preflight ok=true" : "preflight ok must be true",
+    file: artifacts.preflight.filePath,
+    field: "ok",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_04",
+    label: "canary flow passed",
+    status: canaryFlow && canaryFlow.ok === true && canaryFlow.stage === "PIPELINE_PASS" ? "PASS" : "FAIL",
+    reason: canaryFlow && canaryFlow.ok === true && canaryFlow.stage === "PIPELINE_PASS"
+      ? "canary flow reached pipeline pass"
+      : "canary flow must have ok=true and stage=PIPELINE_PASS",
+    file: artifacts.canaryFlow.filePath,
+    field: "ok,stage",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_05",
+    label: "runtime manifest selector cycle matches expected",
+    status: trimOrNull(runtimeManifest && runtimeManifest.snapshot_meta && runtimeManifest.snapshot_meta.selector_meta && runtimeManifest.snapshot_meta.selector_meta.position_cycle_id) === expectedPositionCycleId
+      ? "PASS"
+      : "FAIL",
+    reason: trimOrNull(runtimeManifest && runtimeManifest.snapshot_meta && runtimeManifest.snapshot_meta.selector_meta && runtimeManifest.snapshot_meta.selector_meta.position_cycle_id) === expectedPositionCycleId
+      ? "runtime manifest selector cycle matches"
+      : "runtime manifest selector cycle mismatch",
+    file: artifacts.runtimeManifest.filePath,
+    field: "snapshot_meta.selector_meta.position_cycle_id",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_06",
+    label: "unified report cycle matches expected",
+    status: trimOrNull(unifiedReport && unifiedReport.position_cycle_id) === expectedPositionCycleId ? "PASS" : "FAIL",
+    reason: trimOrNull(unifiedReport && unifiedReport.position_cycle_id) === expectedPositionCycleId
+      ? "unified report cycle matches"
+      : "unified report cycle mismatch",
+    file: artifacts.unifiedReport.filePath,
+    field: "position_cycle_id",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_07",
+    label: "deploy decision approved",
+    status: deployDecision && deployDecision.approved === true ? "PASS" : "FAIL",
+    reason: deployDecision && deployDecision.approved === true ? "deploy decision approved" : "deploy decision must be approved",
+    file: artifacts.deployDecision.filePath,
+    field: "approved",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_08",
+    label: "bounded runtime summary complete",
+    status: hasBoundedRuntimeSummary(deployDecision && deployDecision.bounded_runtime_summary) ? "PASS" : "FAIL",
+    reason: hasBoundedRuntimeSummary(deployDecision && deployDecision.bounded_runtime_summary)
+      ? "bounded runtime summary contains required evidence"
+      : "bounded runtime summary is incomplete",
+    file: artifacts.deployDecision.filePath,
+    field: "bounded_runtime_summary",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_14",
+    label: "evidence snapshot coverage complete",
+    status: hasEvidenceSnapshotCoverage(deployDecision && deployDecision.bounded_runtime_summary) ? "PASS" : "FAIL",
+    reason: hasEvidenceSnapshotCoverage(deployDecision && deployDecision.bounded_runtime_summary)
+      ? "evidence snapshot coverage is complete"
+      : "evidence snapshot coverage is incomplete",
+    file: artifacts.deployDecision.filePath,
+    field: "bounded_runtime_summary.evidence_snapshot_summary",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_26",
+    label: "runtime chain audit complete",
+    status: hasRuntimeChainAudit(deployDecision && deployDecision.bounded_runtime_summary) ? "PASS" : "FAIL",
+    reason: hasRuntimeChainAudit(deployDecision && deployDecision.bounded_runtime_summary)
+      ? "runtime chain audit passed"
+      : "runtime chain audit is missing or failed",
+    file: artifacts.deployDecision.filePath,
+    field: "bounded_runtime_summary.runtime_chain_audit_summary",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_21",
+    label: "V2 entry boundary audit complete",
+    status: hasEntryBoundaryAudit(deployDecision && deployDecision.entry_boundary_audit) ? "PASS" : "FAIL",
+    reason: hasEntryBoundaryAudit(deployDecision && deployDecision.entry_boundary_audit)
+      ? "V2 entry boundary audit passed"
+      : "V2 entry boundary audit is missing or failed",
+    file: artifacts.deployDecision.filePath,
+    field: "entry_boundary_audit",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_25",
+    label: "V2 fill sync canonical boundary audit complete",
+    status: hasFillSyncCanonicalBoundaryAudit(deployDecision && deployDecision.fill_sync_canonical_boundary_audit) ? "PASS" : "FAIL",
+    reason: hasFillSyncCanonicalBoundaryAudit(deployDecision && deployDecision.fill_sync_canonical_boundary_audit)
+      ? "V2 fill sync canonical boundary audit passed"
+      : "V2 fill sync canonical boundary audit is missing or failed",
+    file: artifacts.deployDecision.filePath,
+    field: "fill_sync_canonical_boundary_audit",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_22",
+    label: "V2 production cutover audit complete",
+    status: hasProductionCutoverAudit(deployDecision && deployDecision.production_cutover_audit) ? "PASS" : "FAIL",
+    reason: hasProductionCutoverAudit(deployDecision && deployDecision.production_cutover_audit)
+      ? "V2 production cutover audit passed"
+      : "V2 production cutover audit is missing or failed",
+    file: artifacts.deployDecision.filePath,
+    field: "production_cutover_audit",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_18",
+    label: "OpenClaw execution audit ledger write complete",
+    status: deployDecisionCheck.__test.hasOpenClawExecutionAuditLedgerWrite(deployDecision && deployDecision.bounded_runtime_summary) ? "PASS" : "FAIL",
+    reason: deployDecisionCheck.__test.hasOpenClawExecutionAuditLedgerWrite(deployDecision && deployDecision.bounded_runtime_summary)
+      ? "OpenClaw execution audit ledger write evidence is complete"
+      : "OpenClaw execution audit ledger write evidence is missing or skipped",
+    file: artifacts.deployDecision.filePath,
+    field: "bounded_runtime_summary.openclaw_execution_audit_ledger_write",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_16",
+    label: "lineage contract matches across preflight manifest and deploy decision",
+    status: hasConsistentLineageContract({
+      preflight,
+      runtimeManifest,
+      deployDecision,
+    }) ? "PASS" : "FAIL",
+    reason: hasConsistentLineageContract({
+      preflight,
+      runtimeManifest,
+      deployDecision,
+    })
+      ? "lineage contract matches across bounded artifacts"
+      : "lineage contract is missing or mismatched across bounded artifacts",
+    file: artifacts.deployDecision.filePath,
+    field: "lineage_contract.hash",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_17",
+    label: "cloudbuild context lineage hash matches deploy decision",
+    status: hasContextLineageHashMatch({
+      cloudbuildContext,
+      deployDecision,
+    }) ? "PASS" : "FAIL",
+    reason: hasContextLineageHashMatch({
+      cloudbuildContext,
+      deployDecision,
+    })
+      ? "cloudbuild context lineage hash matches deploy decision"
+      : "cloudbuild context lineage hash is missing or mismatched",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "lineage_contract_hash",
+  }));
+
+  const candidateSummary = deployDecision && deployDecision.candidate_selection_summary;
+  if (candidateSummary && typeof candidateSummary === "object") {
+    const candidateCycleId = trimOrNull(candidateSummary.selected_position_cycle_id);
+    const deployCycleId = trimOrNull(deployDecision && deployDecision.position_cycle_id);
+    checks.push(buildCheck({
+      id: "CHK_09",
+      label: "candidate selection cycle matches deploy cycle",
+      status: candidateCycleId && deployCycleId && candidateCycleId === deployCycleId ? "PASS" : "FAIL",
+      reason: candidateCycleId && deployCycleId && candidateCycleId === deployCycleId
+        ? "candidate selection cycle matches deploy cycle"
+        : "candidate selection cycle mismatch",
+      file: artifacts.deployDecision.filePath,
+      field: "candidate_selection_summary.selected_position_cycle_id,position_cycle_id",
+    }));
+    checks.push(buildCheck({
+      id: "CHK_15",
+      label: "candidate selection contract complete",
+      status: hasCandidateSelectionContract(candidateSummary) ? "PASS" : "FAIL",
+      reason: hasCandidateSelectionContract(candidateSummary)
+        ? "candidate selection contract is complete"
+        : "candidate selection contract is incomplete",
+      file: artifacts.deployDecision.filePath,
+      field: "candidate_selection_summary.selection_contract",
+    }));
+  } else {
+    checks.push(buildCheck({
+      id: "CHK_09",
+      label: "candidate selection cycle matches deploy cycle",
+      status: "SKIP",
+      reason: "explicit cycle path has no candidate selection summary",
+      file: artifacts.deployDecision.filePath,
+      field: "candidate_selection_summary",
+    }));
+    checks.push(buildCheck({
+      id: "CHK_15",
+      label: "candidate selection contract complete",
+      status: "SKIP",
+      reason: "explicit cycle path has no candidate selection summary",
+      file: artifacts.deployDecision.filePath,
+      field: "candidate_selection_summary.selection_contract",
+    }));
+  }
+
+  const finalStatusLine = trimOrNull(cloudbuildContext && cloudbuildContext.final_status_line);
+  checks.push(buildCheck({
+    id: "CHK_10",
+    label: "cloudbuild final status line approved",
+    status: finalStatusLine && finalStatusLine.startsWith("APPROVE_DEPLOY") ? "PASS" : "FAIL",
+    reason: finalStatusLine && finalStatusLine.startsWith("APPROVE_DEPLOY")
+      ? "final status line shows approve deploy"
+      : "final status line must start with APPROVE_DEPLOY",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "final_status_line",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_11",
+    label: "cloudbuild recommended next action proceeds",
+    status: trimOrNull(cloudbuildContext && cloudbuildContext.recommended_next_action) === "PROCEED_WITH_SUBMIT_WRAPPER" ? "PASS" : "FAIL",
+    reason: trimOrNull(cloudbuildContext && cloudbuildContext.recommended_next_action) === "PROCEED_WITH_SUBMIT_WRAPPER"
+      ? "recommended next action matches submit path"
+      : "recommended next action must be PROCEED_WITH_SUBMIT_WRAPPER",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "recommended_next_action",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_12",
+    label: "cloudbuild recommended next action reason consistent",
+    status: trimOrNull(cloudbuildContext && cloudbuildContext.recommended_next_action_reason) === "deploy decision approved with no blocking families"
+      ? "PASS"
+      : "FAIL",
+    reason: trimOrNull(cloudbuildContext && cloudbuildContext.recommended_next_action_reason) === "deploy decision approved with no blocking families"
+      ? "recommended next action reason matches approved state"
+      : "recommended next action reason must match approved state",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "recommended_next_action_reason",
+  }));
+
+  const blockerN = Number(cloudbuildContext && cloudbuildContext.deploy_decision_summary && cloudbuildContext.deploy_decision_summary.blocker_summary && cloudbuildContext.deploy_decision_summary.blocker_summary.blocker_n);
+  checks.push(buildCheck({
+    id: "CHK_13",
+    label: "cloudbuild blocker count is zero",
+    status: blockerN === 0 ? "PASS" : "FAIL",
+    reason: blockerN === 0 ? "cloudbuild blocker count is zero" : "cloudbuild blocker count must be zero",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "deploy_decision_summary.blocker_summary.blocker_n",
+  }));
+
+  checks.push(buildCheck({
+    id: "CHK_13B",
+    label: "cloudbuild warning summary matches deploy decision warnings",
+    status: hasConsistentWarningSummary({ cloudbuildContext, deployDecision }) ? "PASS" : "FAIL",
+    reason: hasConsistentWarningSummary({ cloudbuildContext, deployDecision })
+      ? "cloudbuild warning summary matches deploy decision warnings"
+      : "cloudbuild warning summary or final status line is inconsistent with deploy decision warnings",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "deploy_decision_summary.warning_summary,final_status_line",
+  }));
+
+  const deployMode = String(deployDecision && deployDecision.mode || "").trim().toUpperCase();
+  if (deployMode === "LIVE" || artifacts.liveCutoverReadiness) {
+    checks.push(buildCheck({
+      id: "CHK_20",
+      label: "LIVE repair cutover readiness plan is explicit and non-mutating",
+      status: hasLiveCutoverReadinessPlan(liveCutoverReadiness) ? "PASS" : "FAIL",
+      reason: hasLiveCutoverReadinessPlan(liveCutoverReadiness)
+        ? "LIVE repair cutover readiness plan is explicit and does not mutate environment"
+        : "LIVE repair cutover readiness artifact is missing, not ready, or mutates environment",
+      file: artifacts.liveCutoverReadiness ? artifacts.liveCutoverReadiness.filePath : path.join(artifactDir, "v2_repair_live_cutover_readiness_latest.json"),
+      field: "reason,auto_apply,mutates_environment,required_env_changes",
+    }));
+  }
+
+  if (deployMode === "LIVE" || artifacts.productionCutoverReadiness) {
+    checks.push(buildCheck({
+      id: "CHK_23",
+      label: "LIVE production cutover readiness blocks legacy webhook",
+      status: hasProductionCutoverReadinessPlan({ readiness: productionCutoverReadiness, cloudbuildContext }) ? "PASS" : "FAIL",
+      reason: hasProductionCutoverReadinessPlan({ readiness: productionCutoverReadiness, cloudbuildContext })
+        ? "LIVE production cutover readiness proves legacy webhook is blocked"
+        : "LIVE production cutover readiness is missing, failed, or does not block legacy webhook",
+      file: artifacts.productionCutoverReadiness ? artifacts.productionCutoverReadiness.filePath : path.join(artifactDir, "v2_production_cutover_readiness_latest.json"),
+      field: "reason,guard.reason,production_cutover_readiness_summary.legacy_webhook_blocked",
+    }));
+  }
+
+  if (deployMode === "LIVE" || artifacts.schedulerTrafficCutoverReadiness) {
+    checks.push(buildCheck({
+      id: "CHK_24",
+      label: "LIVE scheduler traffic cutover uses OpenClaw cron only",
+      status: hasSchedulerTrafficCutoverReadinessPlan({ readiness: schedulerTrafficCutoverReadiness, cloudbuildContext }) ? "PASS" : "FAIL",
+      reason: hasSchedulerTrafficCutoverReadinessPlan({ readiness: schedulerTrafficCutoverReadiness, cloudbuildContext })
+        ? "LIVE scheduler traffic cutover proves OpenClaw cron ownership and ready Cloud Run traffic"
+        : "LIVE scheduler traffic cutover readiness is missing, failed, or still has legacy/autostart traffic risk",
+      file: artifacts.schedulerTrafficCutoverReadiness ? artifacts.schedulerTrafficCutoverReadiness.filePath : path.join(artifactDir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
+      field: "reason,scheduler_sot,missing_openclaw_job_ids,active_legacy_scheduler_jobs,cloud_run_services",
+    }));
+  }
+
+  const failCount = checks.filter((row) => row.status === "FAIL").length;
+  const skipCount = checks.filter((row) => row.status === "SKIP").length;
+  const passCount = checks.filter((row) => row.status === "PASS").length;
+  return Object.freeze({
+    ok: failCount === 0,
+    overall_status: failCount === 0 ? "PASS" : "FAIL",
+    artifact_dir: artifactDir,
+    expected_position_cycle_id: expectedPositionCycleId,
+    check_n: checks.length,
+    pass_n: passCount,
+    fail_n: failCount,
+    skip_n: skipCount,
+    checks,
+  });
+}
+
+function writeReviewArtifact(artifactDir, payload) {
+  const outputFile = path.join(artifactDir, OUTPUT_FILENAME);
+  fs.writeFileSync(outputFile, JSON.stringify(payload, null, 2), "utf8");
+  return outputFile;
+}
+
+function runCanaryRunbookCheck(env = process.env) {
+  const artifactDir = resolveArtifactDir(env);
+  const expectedPositionCycleId = resolveExpectedPositionCycleId(env);
+  const artifacts = Object.freeze({
+    preflight: readRequiredArtifact(artifactDir, "promotion-preflight.json"),
+    canaryFlow: readRequiredArtifact(artifactDir, "promotion-canary-flow.json"),
+    runtimeManifest: readRequiredArtifact(artifactDir, "promotion-runtime-manifest.json"),
+    unifiedReport: readRequiredArtifact(artifactDir, "unified-promotion-report.json"),
+    deployDecision: readRequiredArtifact(artifactDir, "promotion-deploy-decision.json"),
+    cloudbuildContext: readRequiredArtifact(artifactDir, "promotion-cloudbuild-context.json"),
+    liveCutoverReadiness: readOptionalArtifact(artifactDir, "v2_repair_live_cutover_readiness_latest.json"),
+    productionCutoverReadiness: readOptionalArtifact(artifactDir, "v2_production_cutover_readiness_latest.json"),
+    schedulerTrafficCutoverReadiness: readOptionalArtifact(artifactDir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
+  });
+  const review = evaluateRunbookReview({
+    artifactDir,
+    expectedPositionCycleId,
+    artifacts,
+  });
+  const outputFile = writeReviewArtifact(artifactDir, review);
+  return Object.freeze({
+    outputFile,
+    review,
+  });
+}
+
+async function main(env = process.env) {
+  let result = null;
+  try {
+    result = runCanaryRunbookCheck(env);
+  } catch (error) {
+    console.error(JSON.stringify({
+      ok: false,
+      reason: "V2_CANARY_RUNBOOK_CHECK_THROWN",
+      error: {
+        message: error && error.message ? error.message : String(error),
+      },
+    }));
+    process.exit(1);
+  }
+
+  const payload = {
+    ok: result.review.ok === true,
+    reason: result.review.ok === true
+      ? "V2_CANARY_RUNBOOK_CHECK_PASS"
+      : "V2_CANARY_RUNBOOK_CHECK_BLOCKED",
+    artifact_dir: result.review.artifact_dir,
+    output_file: result.outputFile,
+    expected_position_cycle_id: result.review.expected_position_cycle_id,
+    fail_n: result.review.fail_n,
+    skip_n: result.review.skip_n,
+  };
+  if (result.review.ok !== true) {
+    console.error(JSON.stringify(payload));
+    process.exit(1);
+  }
+  console.log(JSON.stringify(payload));
+  return result;
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error("CHECK_V2_CANARY_RUNBOOK_FAIL", error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  });
+} else {
+  module.exports = {
+    main,
+    runCanaryRunbookCheck,
+    __test: {
+      OUTPUT_FILENAME,
+      trimOrNull,
+      resolveArtifactDir,
+      resolveExpectedPositionCycleId,
+      hasBoundedRuntimeSummary,
+      hasEvidenceSnapshotCoverage,
+      hasEntryBoundaryAudit,
+      hasFillSyncCanonicalBoundaryAudit,
+      hasProductionCutoverAudit,
+      hasCandidateSelectionContract,
+      hasConsistentLineageContract,
+      hasContextLineageHashMatch,
+      normalizeWarnings,
+      hasConsistentWarningSummary,
+      hasLiveCutoverReadinessPlan,
+      hasProductionCutoverReadinessPlan,
+      hasSchedulerTrafficCutoverReadinessPlan,
+      evaluateRunbookReview,
+    },
+  };
+}

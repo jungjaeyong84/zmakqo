@@ -18,6 +18,9 @@ const FLAG_KEYS = [
   "OPENCLAW_NARRATIVE_ENABLED",
   "OPENCLAW_ML_GATE_ENABLED",
   "OPENCLAW_EVIDENCE_LEDGER_FIRESTORE",
+  "DONBEOLJA_V2_ENABLED",
+  "DONBEOLJA_V2_DRY_RUN",
+  "DONBEOLJA_V2_SHADOW_SIGNAL_WRITE_ENABLED",
 ];
 
 function envSnapshot(keys) {
@@ -265,6 +268,134 @@ async function run() {
     }
   }
 
+  // -------- shadow mode: V2 shadow writer is invoked, result unchanged -
+  {
+    evidenceLedger.__test.resetLedgerForTest();
+    const prev = envSnapshot(FLAG_KEYS);
+    const authorityPath = require.resolve("../services/openclawExecutionAuthority");
+    const writerPath = require.resolve("../v2/openclawShadowWriter");
+    const savedAuthority = require.cache[authorityPath];
+    const savedWriter = require.cache[writerPath];
+    const writerCalls = [];
+    try {
+      process.env.OPENCLAW_AGENT_SHADOW_ENABLED = "1";
+      process.env.DONBEOLJA_V2_ENABLED = "1";
+      process.env.DONBEOLJA_V2_DRY_RUN = "0";
+      process.env.DONBEOLJA_V2_SHADOW_SIGNAL_WRITE_ENABLED = "1";
+      require.cache[authorityPath] = {
+        ...savedAuthority,
+        exports: {
+          evaluateOpenClawExecutionAuthority: async () => ({
+            ok: true,
+            reason: "OPENCLAW_EXECUTOR_OK",
+            qtyPctFinal: 0.5,
+            featuresPatch: {},
+            authority: {
+              entryBudgetGuard: {
+                applicable: true,
+                ok: true,
+                reason: "ENTRY_BUDGET_GUARD_OK",
+              },
+            },
+          }),
+        },
+      };
+      require.cache[writerPath] = {
+        ...(savedWriter || {}),
+        exports: {
+          writeOpenClawShadowDecision: async (payload) => {
+            writerCalls.push(payload);
+            return { ok: true, written: true, reason: "V2_SHADOW_SIGNAL_WRITE_OK" };
+          },
+        },
+      };
+      delete require.cache[require.resolve("../services/openclawDecisionAgent")];
+      const fresh = require("../services/openclawDecisionAgent");
+      const result = await fresh.decideOnSignal({
+        exchange: "BINANCEFUT",
+        symbol: "ETHUSDT",
+        intent: "ENTRY",
+        side: "BUY",
+        qtyPct: 0.5,
+        signalTf: "15m",
+        features: {},
+        stage: "TEST",
+      });
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.qtyPctFinal, 0.5);
+      assert.strictEqual(result._agent_shadow, true);
+      assert.strictEqual(writerCalls.length, 1);
+      assert.strictEqual(writerCalls[0].input.symbol, "ETHUSDT");
+      assert.strictEqual(writerCalls[0].ruleResult.reason, "OPENCLAW_EXECUTOR_OK");
+    } finally {
+      if (savedAuthority === undefined) delete require.cache[authorityPath];
+      else require.cache[authorityPath] = savedAuthority;
+      if (savedWriter === undefined) delete require.cache[writerPath];
+      else require.cache[writerPath] = savedWriter;
+      delete require.cache[require.resolve("../services/openclawDecisionAgent")];
+      envRestore(prev);
+      evidenceLedger.__test.resetLedgerForTest();
+    }
+  }
+
+  // -------- shadow writer failure never breaks agent return ----------
+  {
+    evidenceLedger.__test.resetLedgerForTest();
+    const prev = envSnapshot(FLAG_KEYS);
+    const authorityPath = require.resolve("../services/openclawExecutionAuthority");
+    const writerPath = require.resolve("../v2/openclawShadowWriter");
+    const savedAuthority = require.cache[authorityPath];
+    const savedWriter = require.cache[writerPath];
+    try {
+      process.env.OPENCLAW_AGENT_SHADOW_ENABLED = "1";
+      process.env.DONBEOLJA_V2_ENABLED = "1";
+      process.env.DONBEOLJA_V2_DRY_RUN = "0";
+      process.env.DONBEOLJA_V2_SHADOW_SIGNAL_WRITE_ENABLED = "1";
+      require.cache[authorityPath] = {
+        ...savedAuthority,
+        exports: {
+          evaluateOpenClawExecutionAuthority: async () => ({
+            ok: true,
+            reason: "OPENCLAW_EXECUTOR_OK",
+            qtyPctFinal: 0.5,
+            featuresPatch: {},
+          }),
+        },
+      };
+      require.cache[writerPath] = {
+        ...(savedWriter || {}),
+        exports: {
+          writeOpenClawShadowDecision: async () => {
+            throw new Error("V2_SHADOW_WRITE_TEST_FAIL");
+          },
+        },
+      };
+      delete require.cache[require.resolve("../services/openclawDecisionAgent")];
+      const fresh = require("../services/openclawDecisionAgent");
+      const result = await fresh.decideOnSignal({
+        exchange: "BINANCEFUT",
+        symbol: "BNBUSDT",
+        intent: "ENTRY",
+        side: "BUY",
+        qtyPct: 0.5,
+        signalTf: "15m",
+        features: {},
+        stage: "TEST",
+      });
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.qtyPctFinal, 0.5);
+      assert.strictEqual(result._agent_shadow, true);
+    } finally {
+      if (savedAuthority === undefined) delete require.cache[authorityPath];
+      else require.cache[authorityPath] = savedAuthority;
+      if (savedWriter === undefined) delete require.cache[writerPath];
+      else require.cache[writerPath] = savedWriter;
+      delete require.cache[require.resolve("../services/openclawDecisionAgent")];
+      envRestore(prev);
+      evidenceLedger.__test.resetLedgerForTest();
+    }
+  }
+
   // -------- clampScale bounds ---------------------------------------
   {
     const min = agent.__test.SCALE_MIN;
@@ -272,6 +403,103 @@ async function run() {
     assert.strictEqual(agent.clampScale(0.0001), min);
     assert.strictEqual(agent.clampScale(5), max);
     assert.strictEqual(agent.clampScale(NaN), 1);
+  }
+
+  // -------- Narrative reasoner: Codex CLI → Claude CLI fallback ----
+  // As of 2026-04-20, the default narrative provider mode is
+  // CODEX_CLI_FIRST. This test pins the happy-path AND the fallback
+  // path, because the whole point of the new default is: when Codex
+  // CLI is exhausted, openclaw must keep reasoning via Claude CLI
+  // without the operator intervening.
+  {
+    const prev = envSnapshot([
+      ...FLAG_KEYS,
+      "OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED",
+      "OPENCLAW_NARRATIVE_PROVIDER_MODE",
+    ]);
+    const codexPath = require.resolve("../services/codexCliClient");
+    const claudePath = require.resolve("../services/claudeCliClient");
+    const reasonerPath = require.resolve("../services/openclawNarrativeReasoner");
+    const savedCodex = require.cache[codexPath];
+    const savedClaude = require.cache[claudePath];
+    const savedReasoner = require.cache[reasonerPath];
+    let codexCalls = 0;
+    let claudeCalls = 0;
+    try {
+      // Inject fakes BEFORE the reasoner is re-required so its lazy
+      // resolvers pick up the fakes.
+      require.cache[codexPath] = {
+        ...(savedCodex || {}),
+        exports: {
+          callCodexCli: async () => {
+            codexCalls += 1;
+            return {
+              ok: false,
+              reason: "CODEX_CLI_USAGE_EXHAUSTED",
+              stderr_tail: "you have exceeded your usage limit",
+              duration_ms: 12,
+              bin: "codex",
+              model: "gpt-5.2-codex",
+            };
+          },
+        },
+      };
+      require.cache[claudePath] = {
+        ...(savedClaude || {}),
+        exports: {
+          callClaudeCli: async () => {
+            claudeCalls += 1;
+            return {
+              ok: true,
+              parsed: {
+                accept: true,
+                scale: 0.8,
+                confidence: 0.7,
+                reason: "FALLBACK_FROM_CODEX",
+              },
+              duration_ms: 34,
+              bin: "claude",
+              model: "sonnet",
+              cost_usd: 0.001,
+            };
+          },
+        },
+      };
+      delete require.cache[reasonerPath];
+
+      process.env.OPENCLAW_NARRATIVE_ENABLED = "1";
+      process.env.OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED = "1";
+      delete process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE; // default path
+
+      const fresh = require("../services/openclawNarrativeReasoner");
+
+      // Sanity: default sequence is Codex CLI → Claude CLI.
+      assert.strictEqual(fresh.providerMode(), "CODEX_CLI_FIRST");
+      assert.deepStrictEqual(fresh.resolveProviderSequence(), ["CODEX_CLI", "CLI"]);
+
+      const result = await fresh.reasonAboutSignal({
+        exchange: "BINANCEFUT",
+        symbol: "BTCUSDT",
+        side: "LONG",
+        qtyPct: 0.5,
+      });
+
+      assert.strictEqual(codexCalls, 1, "Codex CLI must be invoked first");
+      assert.strictEqual(claudeCalls, 1, "Claude CLI must run as fallback when Codex is exhausted");
+      assert.strictEqual(result.disabled, false);
+      assert.strictEqual(result.live_failed, false, "fallback success must mark live_failed=false");
+      assert.strictEqual(result.response.accept, true);
+      assert.strictEqual(result.response.reason, "FALLBACK_FROM_CODEX",
+        "clampResponse must forward the Claude-CLI-produced reason verbatim");
+    } finally {
+      if (savedCodex === undefined) delete require.cache[codexPath];
+      else require.cache[codexPath] = savedCodex;
+      if (savedClaude === undefined) delete require.cache[claudePath];
+      else require.cache[claudePath] = savedClaude;
+      if (savedReasoner === undefined) delete require.cache[reasonerPath];
+      else require.cache[reasonerPath] = savedReasoner;
+      envRestore(prev);
+    }
   }
 
   console.log("OPENCLAW_DECISION_AGENT_TEST_OK");
