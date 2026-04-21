@@ -155,6 +155,21 @@ function normalizeWarnings(warnings) {
     .filter(Boolean);
 }
 
+function collectExpectedWarningRunbookChecklist({
+  hasRepairFirestoreCanaryStreakWarning = false,
+  hasProductionEntryRouteCanaryStreakWarning = false,
+  hasLiveReadinessWarning = false,
+} = {}) {
+  const refs = new Set();
+  if (hasRepairFirestoreCanaryStreakWarning) refs.add("19");
+  if (hasProductionEntryRouteCanaryStreakWarning) refs.add("26");
+  if (hasLiveReadinessWarning && refs.size === 0) {
+    refs.add("19");
+    refs.add("26");
+  }
+  return Object.freeze(Array.from(refs).sort((a, b) => Number(a) - Number(b)));
+}
+
 function hasConsistentWarningSummary({ cloudbuildContext = null, deployDecision = null } = {}) {
   const warnings = normalizeWarnings(deployDecision && deployDecision.warnings);
   const finalStatusLine = trimOrNull(cloudbuildContext && cloudbuildContext.final_status_line) || "";
@@ -165,18 +180,36 @@ function hasConsistentWarningSummary({ cloudbuildContext = null, deployDecision 
     && typeof cloudbuildContext.deploy_decision_summary.warning_summary === "object"
     ? cloudbuildContext.deploy_decision_summary.warning_summary
     : null;
+  const submitTrace = cloudbuildContext
+    && cloudbuildContext.submit_trace
+    && typeof cloudbuildContext.submit_trace === "object"
+    ? cloudbuildContext.submit_trace
+    : null;
   if (!summary) return false;
+  if (!submitTrace) return false;
   const topWarnings = normalizeWarnings(summary.top_warnings);
   const expectedTopWarnings = warnings.slice(0, 3);
   const expectedRepairFirestoreCanaryStreakWarning = warnings.some((warning) => warning.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"));
   const expectedProductionEntryRouteCanaryStreakWarning = warnings.some((warning) => warning.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
   const expectedLiveReadinessWarning = expectedRepairFirestoreCanaryStreakWarning || expectedProductionEntryRouteCanaryStreakWarning;
+  const expectedRunbookChecklist = collectExpectedWarningRunbookChecklist({
+    hasRepairFirestoreCanaryStreakWarning: expectedRepairFirestoreCanaryStreakWarning,
+    hasProductionEntryRouteCanaryStreakWarning: expectedProductionEntryRouteCanaryStreakWarning,
+    hasLiveReadinessWarning: expectedLiveReadinessWarning,
+  });
+  const submitTraceWarningSummary = submitTrace.deploy_warning_summary;
+  const submitTraceRunbookChecklist = Array.isArray(submitTrace.deploy_warning_runbook_checklist)
+    ? submitTrace.deploy_warning_runbook_checklist.map((value) => trimOrNull(value)).filter(Boolean).sort((a, b) => Number(a) - Number(b))
+    : [];
   return (
     Number(summary.warning_n) === warnings.length &&
     JSON.stringify(topWarnings) === JSON.stringify(expectedTopWarnings) &&
     summary.has_live_readiness_warning === expectedLiveReadinessWarning &&
     summary.has_repair_firestore_canary_streak_warning === expectedRepairFirestoreCanaryStreakWarning &&
     summary.has_production_entry_route_canary_streak_warning === expectedProductionEntryRouteCanaryStreakWarning &&
+    submitTrace.deploy_warning_attention_required === (warnings.length > 0) &&
+    JSON.stringify(submitTraceWarningSummary) === JSON.stringify(summary) &&
+    JSON.stringify(submitTraceRunbookChecklist) === JSON.stringify(expectedRunbookChecklist) &&
     finalStatusLine.includes(`warnings=${warnings.length}`) &&
     expectedTopWarnings.every((warning) => finalStatusLine.includes(warning))
   );
@@ -531,13 +564,13 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
 
   checks.push(buildCheck({
     id: "CHK_13B",
-    label: "cloudbuild warning summary matches deploy decision warnings",
+    label: "cloudbuild warning summary and trace match deploy decision warnings",
     status: hasConsistentWarningSummary({ cloudbuildContext, deployDecision }) ? "PASS" : "FAIL",
     reason: hasConsistentWarningSummary({ cloudbuildContext, deployDecision })
-      ? "cloudbuild warning summary matches deploy decision warnings and streak classifiers"
-      : "cloudbuild warning summary, streak classifiers, or final status line is inconsistent with deploy decision warnings",
+      ? "cloudbuild warning summary and submit trace match deploy decision warnings and streak classifiers"
+      : "cloudbuild warning summary, submit trace, streak classifiers, or final status line is inconsistent with deploy decision warnings",
     file: artifacts.cloudbuildContext.filePath,
-    field: "deploy_decision_summary.warning_summary,final_status_line",
+    field: "deploy_decision_summary.warning_summary,submit_trace.deploy_warning_summary,submit_trace.deploy_warning_runbook_checklist,final_status_line",
   }));
 
   const deployMode = String(deployDecision && deployDecision.mode || "").trim().toUpperCase();
@@ -686,6 +719,7 @@ if (require.main === module) {
       hasContextLineageHashMatch,
       normalizeWarnings,
       hasConsistentWarningSummary,
+      collectExpectedWarningRunbookChecklist,
       hasLiveCutoverReadinessPlan,
       hasProductionCutoverReadinessPlan,
       hasSchedulerTrafficCutoverReadinessPlan,

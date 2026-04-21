@@ -17,6 +17,35 @@ function writeJson(dir, filename, payload) {
   fs.writeFileSync(path.join(dir, filename), JSON.stringify(payload, null, 2), "utf8");
 }
 
+function buildWarningSummary(warnings = []) {
+  const rows = Array.isArray(warnings) ? warnings : [];
+  const hasRepairFirestoreCanaryStreakWarning = rows.some((value) => String(value).includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"));
+  const hasProductionEntryRouteCanaryStreakWarning = rows.some((value) => String(value).includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
+  return {
+    warning_n: rows.length,
+    top_warnings: rows.slice(0, 3),
+    has_live_readiness_warning: hasRepairFirestoreCanaryStreakWarning || hasProductionEntryRouteCanaryStreakWarning,
+    has_repair_firestore_canary_streak_warning: hasRepairFirestoreCanaryStreakWarning,
+    has_production_entry_route_canary_streak_warning: hasProductionEntryRouteCanaryStreakWarning,
+  };
+}
+
+function buildWarningSubmitTrace(warnings = []) {
+  const summary = buildWarningSummary(warnings);
+  const refs = [];
+  if (summary.has_repair_firestore_canary_streak_warning) refs.push("19");
+  if (summary.has_production_entry_route_canary_streak_warning) refs.push("26");
+  return {
+    deploy_warning_attention_required: rowsLength(warnings) > 0,
+    deploy_warning_summary: summary,
+    deploy_warning_runbook_checklist: refs,
+  };
+}
+
+function rowsLength(rows) {
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
 function buildBoundedRuntimeSummaryFixture() {
   return {
     selector_query_budget: { query_limit: 25 },
@@ -218,6 +247,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
@@ -287,6 +317,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=1`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
@@ -353,6 +384,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       production_cutover_readiness_file: path.join(dir, "v2_production_cutover_readiness_latest.json"),
       production_cutover_readiness_summary: {
         ok: true,
@@ -444,6 +476,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
@@ -478,6 +511,7 @@ function buildProductionCutoverAuditFixture() {
     },
     cloudbuildContext: {
       final_status_line: "APPROVE_DEPLOY ; warnings=1 ; warn=DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY",
+      submit_trace: buildWarningSubmitTrace(["DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 1,
@@ -498,6 +532,7 @@ function buildProductionCutoverAuditFixture() {
     },
     cloudbuildContext: {
       final_status_line: "APPROVE_DEPLOY ; warnings=0",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
@@ -518,10 +553,32 @@ function buildProductionCutoverAuditFixture() {
     },
     cloudbuildContext: {
       final_status_line: "APPROVE_DEPLOY ; warnings=0",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
           top_warnings: [],
+        },
+      },
+    },
+  }), false);
+})();
+
+(function warningSummaryHelperRejectsSubmitTraceWarningDrift() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentWarningSummary({
+    deployDecision: {
+      warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+    },
+    cloudbuildContext: {
+      final_status_line: "APPROVE_DEPLOY ; warnings=1 ; warn=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY",
+      submit_trace: buildWarningSubmitTrace(["DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"]),
+      deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 1,
+          top_warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+          has_live_readiness_warning: true,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: true,
         },
       },
     },
@@ -535,6 +592,7 @@ function buildProductionCutoverAuditFixture() {
     },
     cloudbuildContext: {
       final_status_line: "APPROVE_DEPLOY ; warnings=1 ; warn=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY",
+      submit_trace: buildWarningSubmitTrace(["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 1,
@@ -555,6 +613,7 @@ function buildProductionCutoverAuditFixture() {
     },
     cloudbuildContext: {
       final_status_line: "APPROVE_DEPLOY ; warnings=1 ; warn=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY",
+      submit_trace: buildWarningSubmitTrace(["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 1,
@@ -609,6 +668,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
@@ -677,6 +737,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
@@ -757,6 +818,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
@@ -833,6 +895,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,
@@ -901,6 +964,7 @@ function buildProductionCutoverAuditFixture() {
       final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
+      submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
         warning_summary: {
           warning_n: 0,

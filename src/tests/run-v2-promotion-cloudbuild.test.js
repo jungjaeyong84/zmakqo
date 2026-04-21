@@ -246,6 +246,17 @@ function seedRunbookArtifacts(dir, cycleId) {
     final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
     recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
     recommended_next_action_reason: "deploy decision approved with no blocking families",
+    submit_trace: {
+      deploy_warning_attention_required: false,
+      deploy_warning_summary: {
+        warning_n: 0,
+        top_warnings: [],
+        has_live_readiness_warning: false,
+        has_repair_firestore_canary_streak_warning: false,
+        has_production_entry_route_canary_streak_warning: false,
+      },
+      deploy_warning_runbook_checklist: [],
+    },
     deploy_decision_summary: {
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       warning_summary: {
