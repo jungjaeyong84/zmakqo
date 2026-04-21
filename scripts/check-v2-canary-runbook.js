@@ -116,6 +116,7 @@ function hasCandidateSelectionContract(summary) {
     contract.recent_window_enforced === true &&
     contract.selected_candidate_present === true &&
     contract.selected_preflight_ok === true &&
+    contract.selected_runtime_chain_ok === true &&
     contract.selected_cycle_matches_preflight === true &&
     contract.selected_cycle_matches_collector_env === true &&
     contract.selected_snapshot_counts_exact === true

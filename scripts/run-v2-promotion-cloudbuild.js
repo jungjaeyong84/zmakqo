@@ -522,6 +522,7 @@ function buildDeployDecisionSummary(deployDecision) {
         recent_window_enforced: candidateSelectionSummary.selection_contract.recent_window_enforced === true,
         selected_candidate_present: candidateSelectionSummary.selection_contract.selected_candidate_present === true,
         selected_preflight_ok: candidateSelectionSummary.selection_contract.selected_preflight_ok === true,
+        selected_runtime_chain_ok: candidateSelectionSummary.selection_contract.selected_runtime_chain_ok === true,
         selected_cycle_matches_preflight: candidateSelectionSummary.selection_contract.selected_cycle_matches_preflight === true,
         selected_cycle_matches_collector_env: candidateSelectionSummary.selection_contract.selected_cycle_matches_collector_env === true,
         selected_snapshot_counts_exact: candidateSelectionSummary.selection_contract.selected_snapshot_counts_exact === true,

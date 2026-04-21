@@ -696,16 +696,17 @@ V1의 약점은 같은 cycle처럼 보여도 selector 재실행으로 linked doc
 즉, auto-select가 끼어 있는 승격에서 “선택한 cycle” 과 “승인한 cycle” 이 다르면 마지막 승인 단계에서 즉시 차단돼야 한다.
 
 동시에 `candidate_selection_summary.selection_contract` 도 필수다.
-최소 요구는 아래 여덟 개가 모두 `true` 인 것이다.
+최소 요구는 아래 아홉 개가 모두 `true` 인 것이다.
 
 1. `ok`
 2. `scan_limit_respected`
 3. `recent_window_enforced`
 4. `selected_candidate_present`
 5. `selected_preflight_ok`
-6. `selected_cycle_matches_preflight`
-7. `selected_cycle_matches_collector_env`
-8. `selected_snapshot_counts_exact`
+6. `selected_runtime_chain_ok`
+7. `selected_cycle_matches_preflight`
+8. `selected_cycle_matches_collector_env`
+9. `selected_snapshot_counts_exact`
 
 즉, auto-select artifact가 있더라도 selection contract가 비어 있거나 하나라도 false면 deploy decision은 마지막 승인선에서 fail-closed여야 한다.
 
@@ -1025,9 +1026,10 @@ preflight는 아래를 dry-run으로 확인한다.
 2. `recent_window_enforced`
 3. `selected_candidate_present`
 4. `selected_preflight_ok`
-5. `selected_cycle_matches_preflight`
-6. `selected_cycle_matches_collector_env`
-7. `selected_snapshot_counts_exact`
+5. `selected_runtime_chain_ok`
+6. `selected_cycle_matches_preflight`
+7. `selected_cycle_matches_collector_env`
+8. `selected_snapshot_counts_exact`
 
 `selection_status=READY` 이더라도 위 계약이 하나라도 false면 그 선택은 신뢰 가능한 canary 후보로 보면 안 된다.
 

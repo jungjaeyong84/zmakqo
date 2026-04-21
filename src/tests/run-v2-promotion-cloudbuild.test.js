@@ -505,6 +505,7 @@ function seedRunbookArtifacts(dir, cycleId) {
   assert.strictEqual(summary.bounded_runtime_summary.alert_retry_summary.latest_failed.last_reason_family, "TRANSPORT");
   assert.strictEqual(summary.candidate_selection_summary.selected_position_cycle_id, "PCY__READ__01");
   assert.strictEqual(summary.candidate_selection_summary.selection_contract.ok, true);
+  assert.strictEqual(summary.candidate_selection_summary.selection_contract.selected_runtime_chain_ok, true);
   assert.strictEqual(summary.blocker_summary.blocker_n, 0);
 })();
 
@@ -752,6 +753,7 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(summary.bounded_runtime_summary.production_entry_route_canary_streak.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
     assert.strictEqual(summary.bounded_runtime_summary.production_entry_route_canary_streak.history_source, "FIRESTORE");
     assert.strictEqual(summary.candidate_selection_summary.selection_contract.ok, true);
+    assert.strictEqual(summary.candidate_selection_summary.selection_contract.selected_runtime_chain_ok, true);
     assert.strictEqual(summary.blocker_summary.blocker_n, 0);
     const statusLine = cloudbuild.__test.buildStatusLine(summary);
     assert.ok(statusLine.includes("APPROVE_DEPLOY"));

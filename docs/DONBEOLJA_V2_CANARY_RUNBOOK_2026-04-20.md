@@ -68,7 +68,7 @@ npm run check:v2-canary-runbook
    submit trace-back: `SUBMIT_CHK_04`
 14A. `promotion-deploy-decision.json.bounded_runtime_summary.runtime_chain_audit_summary` 가 존재하고 `ok=true`, `check_n > 0`, `fail_n=0` 인가
     submit trace-back: `SUBMIT_CHK_04B`
-15. `promotion-deploy-decision.json.candidate_selection_summary.selection_contract` 가 존재하고 모든 계약 플래그가 `true` 인가
+15. `promotion-deploy-decision.json.candidate_selection_summary.selection_contract` 가 존재하고 `selected_runtime_chain_ok` 를 포함한 모든 계약 플래그가 `true` 인가
    submit trace-back: `SUBMIT_CHK_09`
 16. `promotion-preflight.json.lineage_contract.hash`, `promotion-runtime-manifest.json.snapshot_meta.lineage_contract.hash`, `promotion-deploy-decision.json.bounded_runtime_summary.lineage_contract.hash` 가 모두 같은가
    submit trace-back: `SUBMIT_CHK_08`
@@ -98,7 +98,7 @@ npm run check:v2-canary-runbook
 | 13C | `SUBMIT_CHK_06`, `SUBMIT_CHK_07`, `SUBMIT_CHK_08` | `promotion-cloudbuild-context.json` | `submit_trace.relevant_submit_check_ids`, `submit_trace.failed_submit_check_ids`, `submit_trace.failed_runbook_checklist`, `submit_trace.blocker_families`, `submit_trace.primary_blocker_family`, `submit_trace.recommended_next_action_reason_code`, `submit_trace.checks[]` | context 기준 submit 차단 상태가 trace에 그대로 반영. relevant는 06/07/08, runbook은 11/13/16/17, 실패 목록과 blocker family/reason code가 context와 일치해야 함 | submit trace drift면 wrapper 제출 금지, cloudbuild context 재생성 |
 | 14 | `SUBMIT_CHK_04` | `promotion-deploy-decision.json` | `bounded_runtime_summary.evidence_snapshot_summary.ok`, `missing_transition_evidence_n`, `missing_protection_runtime_evidence_n` | `ok=true`, 두 누락 카운트 `0` | runtime snapshot/exporter부터 다시 생성 |
 | 14A | `SUBMIT_CHK_04B` | `promotion-deploy-decision.json` | `bounded_runtime_summary.runtime_chain_audit_summary.ok`, `check_n`, `fail_n`, `failed_check_ids` | `ok=true`, `check_n > 0`, `fail_n=0`, `failed_check_ids=[]` | runtime chain audit 생성 경로와 entry/protection/reducer/alert 연결 불변식 재검토 |
-| 15 | `SUBMIT_CHK_09` | `promotion-deploy-decision.json` | `candidate_selection_summary.selection_contract.ok`, `scan_limit_respected`, `recent_window_enforced`, `selected_candidate_present`, `selected_preflight_ok`, `selected_cycle_matches_preflight`, `selected_cycle_matches_collector_env`, `selected_snapshot_counts_exact` | 모든 값 `true` | auto-select 결과 폐기 후 candidate selector부터 다시 시작 |
+| 15 | `SUBMIT_CHK_09` | `promotion-deploy-decision.json` | `candidate_selection_summary.selection_contract.ok`, `scan_limit_respected`, `recent_window_enforced`, `selected_candidate_present`, `selected_preflight_ok`, `selected_runtime_chain_ok`, `selected_cycle_matches_preflight`, `selected_cycle_matches_collector_env`, `selected_snapshot_counts_exact` | 모든 값 `true` | auto-select 결과 폐기 후 candidate selector부터 다시 시작 |
 | 16 | `SUBMIT_CHK_08` | `promotion-preflight.json`, `promotion-runtime-manifest.json`, `promotion-deploy-decision.json` | `lineage_contract.hash` | 세 hash가 동일 | artifact dir 폐기 후 preflight부터 다시 시작 |
 | 17 | `SUBMIT_CHK_08` | `promotion-cloudbuild-context.json`, `promotion-deploy-decision.json` | `lineage_contract_hash`, `bounded_runtime_summary.lineage_contract.hash` | 두 hash가 동일 | submit 직전 wrapper provenance 재검토 후 중단 |
 | 18 | `SUBMIT_CHK_10` | `promotion-deploy-decision.json` | `bounded_runtime_summary.openclaw_execution_audit_ledger_write.reason`, `skipped`, `doc_id` | `reason=OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITTEN`, `skipped=false`, `doc_id` 존재 | collector env의 `DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=1` 여부와 Firestore ledger write 실패 원인 재검토 |

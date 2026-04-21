@@ -1637,3 +1637,29 @@ V1 약점 재발 방지:
 2. 이번 단계는 terminal evidence 결함을 candidate selection 이전에 제거해서 late-fail을 줄인다
 3. preflight, selector, unified report, deploy decision이 같은 runtime chain 계약을 보게 되어 계층별 schema drift를 줄인다
 4. 따라서 V2 canary 승격 후보는 “최근 cycle이고 snapshot 수가 맞다”만으로는 부족하며, 실제 terminal evidence chain까지 통과해야 한다
+
+## 2026-04-22 Canary Runbook Runtime Chain Trace-Back
+
+추가 증거:
+
+1. `scripts/check-v2-canary-runbook.js`
+2. `scripts/run-v2-promotion-cloudbuild.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+5. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+6. `src/tests/check-v2-canary-runbook.test.js`
+7. `src/tests/run-v2-promotion-cloudbuild.test.js`
+
+판정:
+
+1. automated runbook verifier의 `CHK_15` 는 이제 `selection_contract.selected_runtime_chain_ok=true` 를 필수로 요구한다
+2. Cloud Build context의 `candidate_selection_summary.selection_contract` 는 `selected_runtime_chain_ok` 를 운영자 요약에 보존한다
+3. canary runbook checklist 15와 submit reverse index `SUBMIT_CHK_09` 는 runtime chain 계약까지 역추적 가능하게 문서화됐다
+4. promotion artifact contract는 `selection_contract` 최소 요구 항목을 8개에서 9개로 확장했다
+5. submit contract는 runbook과 Cloud Build context가 `selected_runtime_chain_ok` 를 누락하면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 코드 게이트가 강해져도 runbook/operator context가 오래된 필드 목록을 보여줘 사람이 잘못 승인할 수 있었다
+2. 이번 단계는 deploy decision, runbook verifier, Cloud Build context, 문서, submit contract가 같은 candidate selection 계약을 보게 맞췄다
+3. 따라서 V2에서는 “코드는 차단했지만 문서/운영 요약은 통과처럼 보이는” 관측성 drift를 줄인다

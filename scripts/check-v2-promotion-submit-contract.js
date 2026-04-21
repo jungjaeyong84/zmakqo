@@ -768,6 +768,28 @@ function evaluateSubmitContract() {
         : "cloudbuild context submit trace must preserve deploy warning runbook refs",
       file: FILES.cloudbuildWrapper,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_31",
+      label: "runbook candidate selection checklist requires runtime chain contract",
+      ok: runbookText.includes("selected_runtime_chain_ok")
+        && runbookText.includes("| `SUBMIT_CHK_09` | `15` | candidate selection contract complete |"),
+      reason: runbookText.includes("selected_runtime_chain_ok")
+        && runbookText.includes("| `SUBMIT_CHK_09` | `15` | candidate selection contract complete |")
+        ? "runbook maps SUBMIT_CHK_09 to checklist 15 and names selected_runtime_chain_ok"
+        : "runbook must map SUBMIT_CHK_09 to checklist 15 and require selected_runtime_chain_ok",
+      file: FILES.runbook,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_32",
+      label: "artifact contract and cloudbuild context preserve selected runtime chain",
+      ok: artifactContractText.includes("selected_runtime_chain_ok")
+        && cloudbuildWrapperText.includes("selected_runtime_chain_ok: candidateSelectionSummary.selection_contract.selected_runtime_chain_ok === true"),
+      reason: artifactContractText.includes("selected_runtime_chain_ok")
+        && cloudbuildWrapperText.includes("selected_runtime_chain_ok: candidateSelectionSummary.selection_contract.selected_runtime_chain_ok === true")
+        ? "artifact contract and cloudbuild context preserve selected_runtime_chain_ok"
+        : "artifact contract and cloudbuild context must preserve selected_runtime_chain_ok",
+      file: FILES.artifactContract,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

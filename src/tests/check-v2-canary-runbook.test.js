@@ -815,6 +815,90 @@ function buildProductionCutoverAuditFixture() {
   }
 })();
 
+(async function runbookCheckFailsWhenCandidateRuntimeChainContractIsFalse() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-candidate-runtime-chain-fail-"));
+  try {
+    const cycleId = "PCY__RUNBOOK__RUNTIME_CHAIN";
+    const dir = path.join(root, cycleId);
+    fs.mkdirSync(dir, { recursive: true });
+    writeJson(dir, "promotion-preflight.json", {
+      ok: true,
+      position_cycle_id: cycleId,
+      lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+    });
+    writeJson(dir, "promotion-canary-flow.json", {
+      ok: true,
+      stage: "PIPELINE_PASS",
+      position_cycle_id: cycleId,
+    });
+    writeJson(dir, "promotion-runtime-manifest.json", {
+      snapshot_meta: {
+        selector_meta: {
+          position_cycle_id: cycleId,
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
+        lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+      },
+    });
+    writeJson(dir, "unified-promotion-report.json", {
+      position_cycle_id: cycleId,
+    });
+    writeJson(dir, "promotion-deploy-decision.json", {
+      approved: true,
+      position_cycle_id: cycleId,
+      entry_boundary_audit: buildEntryBoundaryAuditFixture(),
+      fill_sync_canonical_boundary_audit: buildFillSyncCanonicalBoundaryAuditFixture(),
+      production_cutover_audit: buildProductionCutoverAuditFixture(),
+      bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
+      candidate_selection_summary: {
+        selected_position_cycle_id: cycleId,
+        selection_contract: {
+          ok: true,
+          scan_limit_respected: true,
+          recent_window_enforced: true,
+          selected_candidate_present: true,
+          selected_preflight_ok: true,
+          selected_runtime_chain_ok: false,
+          selected_cycle_matches_preflight: true,
+          selected_cycle_matches_collector_env: true,
+          selected_snapshot_counts_exact: true,
+        },
+      },
+    });
+    writeJson(dir, "promotion-cloudbuild-context.json", {
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
+      recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
+      recommended_next_action_reason: "deploy decision approved with no blocking families",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      submit_trace: buildWarningSubmitTrace([]),
+      deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 0,
+          top_warnings: [],
+          has_live_readiness_warning: false,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: false,
+        },
+        blocker_summary: {
+          blocker_n: 0,
+        },
+      },
+    });
+
+    const result = runbookCheck.runCanaryRunbookCheck({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
+    });
+    assert.strictEqual(result.review.ok, false);
+    const contractCheck = result.review.checks.find((row) => row.id === "CHK_15");
+    assert.ok(contractCheck);
+    assert.strictEqual(contractCheck.status, "FAIL");
+  } finally {
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (async function runbookCheckSkipsCandidateMatchForExplicitCyclePath() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-skip-"));
   try {
