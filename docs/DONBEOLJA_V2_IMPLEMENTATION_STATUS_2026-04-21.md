@@ -1687,3 +1687,25 @@ V1 약점 재발 방지:
 1. V1에서는 deploy gate와 최종 submit wrapper의 필수 증거 목록이 달라 마지막 제출 경로가 더 약해질 수 있었다
 2. 이번 단계는 deploy decision, runbook, submit trace, submit wrapper가 모두 같은 runtime chain audit 필수 조건을 보게 맞췄다
 3. 따라서 V2는 “배포 판정은 막았지만 제출 wrapper가 통과시키는” 마지막 단계 계약 불일치를 줄인다
+
+## 2026-04-22 Submit Auto-Select Contract Completeness
+
+추가 증거:
+
+1. `scripts/submit-v2-promotion-cloudbuild.js`
+2. `scripts/check-v2-promotion-submit-contract.js`
+3. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+4. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+
+판정:
+
+1. submit approval contract completeness는 이제 `candidate_selection_ready_required` 와 `selected_preflight_required` 타입을 필수로 검증한다
+2. artifact contract는 두 auto-select 조건 필드를 bounded approval contract 최소 항목에 포함한다
+3. auto-select submit request에서 `candidate_selection_ready_required` 가 누락되면 `SUBMIT_CHK_01` 이 fail-closed 된다
+4. submit contract는 두 필드가 wrapper와 artifact contract에서 빠지면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 auto-select/explicit-cycle 경로가 계약상 다르게 동작해도 최종 submit contract가 그 차이를 충분히 검증하지 못했다
+2. 이번 단계는 auto-select 조건 자체를 approval contract completeness에 포함해 “선택 경로가 자동인지 명시인지”가 제출 직전에 흐려지는 문제를 줄인다
+3. 따라서 V2에서는 auto-select 경로가 후보 선택/preflight 계약을 반드시 요구한다는 사실이 request, verification, 문서에 동시에 남는다

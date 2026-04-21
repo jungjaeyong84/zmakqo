@@ -807,6 +807,21 @@ function evaluateSubmitContract() {
         : "submit wrapper must verify runtime chain audit and map SUBMIT_CHK_04B to runbook 14A",
       file: FILES.submitWrapper,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_34",
+      label: "submit approval contract verifies auto-select contract flags",
+      ok: submitWrapperText.includes('typeof row.candidate_selection_ready_required === "boolean"')
+        && submitWrapperText.includes('typeof row.selected_preflight_required === "boolean"')
+        && artifactContractText.includes("approval_contract.candidate_selection_ready_required")
+        && artifactContractText.includes("approval_contract.selected_preflight_required"),
+      reason: submitWrapperText.includes('typeof row.candidate_selection_ready_required === "boolean"')
+        && submitWrapperText.includes('typeof row.selected_preflight_required === "boolean"')
+        && artifactContractText.includes("approval_contract.candidate_selection_ready_required")
+        && artifactContractText.includes("approval_contract.selected_preflight_required")
+        ? "submit approval contract verifies auto-select conditional flags"
+        : "submit approval contract must verify candidate_selection_ready_required and selected_preflight_required",
+      file: FILES.submitWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

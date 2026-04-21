@@ -534,6 +534,8 @@ function hasRequiredApprovalContract(contract) {
     typeof row.production_entry_route_canary_streak_required === "boolean" &&
     typeof row.live_cutover_readiness_summary_required === "boolean" &&
     row.runbook_review_pass_required === true &&
+    typeof row.candidate_selection_ready_required === "boolean" &&
+    typeof row.selected_preflight_required === "boolean" &&
     row.blocker_free_required === true &&
     row.recommended_next_action_required === "PROCEED_WITH_SUBMIT_WRAPPER" &&
     row.resolved_artifact_dir_required === true
@@ -1081,7 +1083,11 @@ function buildApprovalVerification(request) {
       "approval_contract.repair_firestore_canary_streak_required",
       "approval_contract.live_cutover_readiness_summary_required",
       "approval_contract.runbook_review_pass_required",
+      "approval_contract.candidate_selection_ready_required",
+      "approval_contract.selected_preflight_required",
+      "approval_contract.blocker_free_required",
       "approval_contract.recommended_next_action_required",
+      "approval_contract.resolved_artifact_dir_required",
     ],
   }));
 

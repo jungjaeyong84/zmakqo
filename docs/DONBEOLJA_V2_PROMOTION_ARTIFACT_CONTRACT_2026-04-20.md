@@ -159,9 +159,11 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 15. `approval_contract.scheduler_traffic_cutover_readiness_summary_required`
 16. `approval_contract.live_cutover_readiness_summary_required`
 17. `approval_contract.runbook_review_pass_required`
-18. `approval_contract.blocker_free_required`
-19. `approval_contract.recommended_next_action_required`
-20. `approval_contract.resolved_artifact_dir_required`
+18. `approval_contract.candidate_selection_ready_required`
+19. `approval_contract.selected_preflight_required`
+20. `approval_contract.blocker_free_required`
+21. `approval_contract.recommended_next_action_required`
+22. `approval_contract.resolved_artifact_dir_required`
 
 또한 submit request에는 “최종 승격이 어떤 artifact/field로 증명돼야 하는가” 도 같이 남아야 한다.
 

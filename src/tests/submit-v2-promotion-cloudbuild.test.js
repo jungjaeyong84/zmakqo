@@ -462,6 +462,38 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   );
 })();
 
+(function approvalVerificationRejectsIncompleteAutoSelectContractFlags() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-contract-incomplete-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__AUTO__CONTRACT");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__AUTO__CONTRACT", { autoSelect: true });
+    const request = submit.__test.buildSubmitRequest({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    });
+    const brokenRequest = {
+      ...request,
+      approval_contract: {
+        ...request.approval_contract,
+        candidate_selection_ready_required: undefined,
+      },
+    };
+    const verification = submit.__test.buildApprovalVerification(brokenRequest);
+    assert.strictEqual(verification.ok, false);
+    const contractCheck = verification.checks.find((row) => row.id === "SUBMIT_CHK_01");
+    assert.ok(contractCheck);
+    assert.strictEqual(contractCheck.ok, false);
+    assert.ok(contractCheck.doc_refs.artifact_contract.includes("approval_contract.candidate_selection_ready_required"));
+    assert.ok(contractCheck.doc_refs.artifact_contract.includes("approval_contract.selected_preflight_required"));
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (function liveSubmitRequestRequiresRepairFirestoreCanaryStreak() {
   const request = submit.__test.buildSubmitRequest({
     GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
