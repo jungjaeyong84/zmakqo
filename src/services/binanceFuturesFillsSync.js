@@ -553,10 +553,9 @@ function shouldSendImmediateProjectionMismatchAlert({ symbol, event, issues = []
   return { send: shouldSend, key, repeatCount, firstAtMs: prev.firstAtMs, lastAtMs: now };
 }
 
-async function markSameDirectionTrailProfitCooldownFromExternalFill({
-  exchange,
-  symbol,
+function shouldMarkSameDirectionTrailProfitCooldownFromExternalFill({
   event,
+  fullExit,
   realizedPnl,
   execTimeIso,
   positionSideBefore,
@@ -566,8 +565,33 @@ async function markSameDirectionTrailProfitCooldownFromExternalFill({
   const dir = String(positionSideBefore || "").trim().toUpperCase();
   const execMs = Date.parse(String(execTimeIso || ""));
   if (!ev.startsWith("EXIT_TRAIL")) return false;
+  if (fullExit !== true) return false;
   if (!Number.isFinite(pnl) || pnl <= 0) return false;
   if ((dir !== "LONG" && dir !== "SHORT") || !Number.isFinite(execMs)) return false;
+  return true;
+}
+
+async function markSameDirectionTrailProfitCooldownFromExternalFill({
+  exchange,
+  symbol,
+  event,
+  fullExit,
+  realizedPnl,
+  execTimeIso,
+  positionSideBefore,
+} = {}) {
+  if (!shouldMarkSameDirectionTrailProfitCooldownFromExternalFill({
+    event,
+    fullExit,
+    realizedPnl,
+    execTimeIso,
+    positionSideBefore,
+  })) return false;
+
+  const ev = String(event || "").trim().toUpperCase();
+  const pnl = Number(realizedPnl);
+  const dir = String(positionSideBefore || "").trim().toUpperCase();
+  const execMs = Date.parse(String(execTimeIso || ""));
 
   await upsertSameDirectionTrailProfitObservation({
     exchange,
@@ -4419,6 +4443,7 @@ async function syncMarketTrades({
             exchange: "BINANCEFUT",
             symbol: sym,
             event,
+            fullExit,
             realizedPnl,
             execTimeIso,
             positionSideBefore,
@@ -4852,6 +4877,7 @@ module.exports = {
     resolveFillSyncAlertIdentityEvent,
     shouldSendFillSyncTradeAlert,
     flushFillSyncAlertBatches,
+    shouldMarkSameDirectionTrailProfitCooldownFromExternalFill,
     canFinalizeIntentFromExternalFill,
     resolveExternalSyncHintStage,
     inferAuthoritativeForcedExitEventFromRefs,

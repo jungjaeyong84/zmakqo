@@ -141,6 +141,28 @@ async function run() {
   const stickyFullExitMerged = Array.from(stickyFullExitBatches.values())[0];
   assert.ok(approxEqual(stickyFullExitMerged.payload.closeRatio, 0.6), "sticky fullExit fixture must merge partial ratios");
   assert.strictEqual(stickyFullExitMerged.payload.fullExit, false, "batch merge must recompute fullExit instead of keeping sticky true");
+  assert.strictEqual(
+    fillsSyncTest.shouldMarkSameDirectionTrailProfitCooldownFromExternalFill({
+      event: "EXIT_TRAIL",
+      fullExit: false,
+      realizedPnl: 2.1,
+      execTimeIso: "2026-04-22T01:00:00.000Z",
+      positionSideBefore: "LONG",
+    }),
+    false,
+    "partial profitable trailing exits must not arm same-direction cooldown"
+  );
+  assert.strictEqual(
+    fillsSyncTest.shouldMarkSameDirectionTrailProfitCooldownFromExternalFill({
+      event: "EXIT_TRAIL",
+      fullExit: true,
+      realizedPnl: 2.1,
+      execTimeIso: "2026-04-22T01:00:00.000Z",
+      positionSideBefore: "LONG",
+    }),
+    true,
+    "terminal profitable trailing exits should arm same-direction cooldown"
+  );
 
   const batches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(batches, {

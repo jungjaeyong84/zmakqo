@@ -1515,3 +1515,25 @@ V1 약점 재발 방지:
 1. V1에서는 한 번 잘못 들어온 `fullExit=true` 가 alert batch 병합을 거치며 계속 보존될 수 있었다
 2. 이번 단계는 batch boundary에서도 full exit를 파생값으로 취급해, upstream payload 오염이 장기 전파되는 경로를 끊었다
 3. 따라서 V2는 “상태 사실은 매 단계 재계산한다”는 원칙을 fill sync alert aggregation에도 적용한다
+
+## 2026-04-22 Same Direction Trail Cooldown Full Exit Gate
+
+추가 증거:
+
+1. `src/services/binanceFuturesFillsSync.js`
+2. `src/tests/fills-sync-alert-aggregation.test.js`
+3. `src/tests/same-direction-profit-trail-cooldown.test.js`
+4. `src/tests/binance-fills-canonical-lineage-guard.test.js`
+
+판정:
+
+1. Binance fill sync의 same-direction trail profit cooldown 저장 함수는 이제 함수 내부에서도 `fullExit=true` 를 요구한다
+2. 호출부가 `looksLikeExit && fullExit` 를 검사하더라도, 저장 함수 자체가 같은 gate를 한 번 더 강제한다
+3. `EXIT_TRAIL + realizedPnl>0` 이더라도 partial fill이면 cooldown observation을 쓰지 않는다
+4. terminal profitable trail fill만 same-direction cooldown을 무장한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 호출부 조건과 저장 함수 조건이 분리되어, 나중에 다른 호출부가 생기면 partial trail profit도 cooldown을 무장할 수 있었다
+2. 이번 단계는 cooldown observation writer를 self-contained gate로 만들어 호출부 drift를 줄였다
+3. 따라서 V2는 “운영 제약을 거는 side-effect writer는 자기 입력 불변식을 직접 검증한다”는 원칙을 적용한다
