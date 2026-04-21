@@ -11,9 +11,12 @@ const comparisonArtifacts = require("./generate-v2-comparison-artifacts");
 const unifiedPromotionReport = require("./generate-v2-unified-promotion-report");
 const deployDecision = require("./check-v2-promotion-deploy-decision");
 const gate = require("./check-v2-promotion-gate");
+const repairFirestoreCanaryStreak = require("./check-v2-repair-queue-firestore-canary-streak");
 const productionEntryRouteCanaryStreak = require("./check-v2-production-entry-route-canary-streak");
 
+const REPAIR_FIRESTORE_CANARY_STREAK_FILENAME = "v2_repair_queue_firestore_canary_streak_latest.json";
 const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
+const REPAIR_FIRESTORE_CANARY_HISTORY_FILENAME = "v2_repair_queue_firestore_canary_history.jsonl";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -54,6 +57,10 @@ function shouldRefreshProductionEntryRouteCanaryStreak(env = process.env) {
   return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
 }
 
+function shouldRefreshRepairFirestoreCanaryStreak(env = process.env) {
+  return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
+}
+
 function writeJson(filePath, payload) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -74,6 +81,60 @@ function buildProductionEntryRouteCanaryStreakThrownReport(env = process.env, er
   });
 }
 
+function buildRepairFirestoreCanaryStreakThrownReport(env = process.env, error = null) {
+  return Object.freeze({
+    ok: false,
+    reason: "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_THROWN",
+    history_file: repairFirestoreCanaryStreak.__test.resolveHistoryFile(env),
+    blockers: Object.freeze(["FIRESTORE_CANARY_STREAK:HISTORY_READ_FAILED"]),
+    error: Object.freeze({
+      message: error && error.message ? error.message : String(error || "unknown repair firestore canary streak error"),
+    }),
+  });
+}
+
+function resolveRepairFirestoreCanaryHistoryFile(env = process.env) {
+  return trimOrNull(env.DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_HISTORY_FILE)
+    || path.resolve("ops", "daily", REPAIR_FIRESTORE_CANARY_HISTORY_FILENAME);
+}
+
+async function refreshRepairFirestoreCanaryStreak(env = process.env) {
+  if (!shouldRefreshRepairFirestoreCanaryStreak(env)) {
+    return Object.freeze({
+      required: false,
+      skipped: true,
+      reason: "REPAIR_FIRESTORE_CANARY_STREAK_REFRESH_SKIPPED",
+      report: null,
+      output_file: null,
+    });
+  }
+  const artifactDir = resolveArtifactDir(env);
+  const outputFile = path.join(artifactDir, REPAIR_FIRESTORE_CANARY_STREAK_FILENAME);
+  const streakEnv = Object.freeze({
+    ...env,
+    V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_ARTIFACT_DIR: artifactDir,
+    DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_HISTORY_FILE: resolveRepairFirestoreCanaryHistoryFile(env),
+    DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_STREAK_FILE: outputFile,
+  });
+  let report = null;
+  try {
+    report = repairFirestoreCanaryStreak.runCheck(streakEnv);
+  } catch (error) {
+    report = buildRepairFirestoreCanaryStreakThrownReport(streakEnv, error);
+  }
+  writeJson(outputFile, report);
+  return Object.freeze({
+    required: true,
+    skipped: false,
+    reason: report && report.ok === true
+      ? "REPAIR_FIRESTORE_CANARY_STREAK_REFRESH_PASS"
+      : "REPAIR_FIRESTORE_CANARY_STREAK_REFRESH_BLOCKED",
+    report,
+    output_file: outputFile,
+  });
+}
+
 async function refreshProductionEntryRouteCanaryStreak(env = process.env, { db = null } = {}) {
   if (!shouldRefreshProductionEntryRouteCanaryStreak(env)) {
     return Object.freeze({
@@ -85,8 +146,7 @@ async function refreshProductionEntryRouteCanaryStreak(env = process.env, { db =
     });
   }
   const artifactDir = resolveArtifactDir(env);
-  const outputFile = trimOrNull(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILE)
-    || path.join(artifactDir, PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME);
+  const outputFile = path.join(artifactDir, PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME);
   const streakEnv = Object.freeze({
     ...env,
     V2_PROMOTION_ARTIFACT_DIR: artifactDir,
@@ -134,14 +194,27 @@ async function runPipeline(env = process.env, {
   }
   await replayArtifact.main(effectiveEnv);
   await comparisonArtifacts.main(effectiveEnv);
+  const repairFirestoreCanaryStreakRefresh = await refreshRepairFirestoreCanaryStreak(effectiveEnv);
   const productionEntryRouteCanaryStreakRefresh = await refreshProductionEntryRouteCanaryStreak(effectiveEnv, {
     db: collectorDb || selectorDb,
   });
-  const gateResult = gate.__test.evaluateGateFromEnv(effectiveEnv);
-  const unifiedReport = await unifiedPromotionReport.main(effectiveEnv);
-  const deployDecisionResult = deployDecision.writeDeployDecisionArtifact(effectiveEnv);
+  const reportEnv = {
+    ...effectiveEnv,
+    ...(repairFirestoreCanaryStreakRefresh.output_file
+      ? { DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_STREAK_FILE: repairFirestoreCanaryStreakRefresh.output_file }
+      : {}),
+    ...(productionEntryRouteCanaryStreakRefresh.output_file
+      ? { DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILE: productionEntryRouteCanaryStreakRefresh.output_file }
+      : {}),
+  };
+  const gateResult = gate.__test.evaluateGateFromEnv(reportEnv);
+  const unifiedReport = await unifiedPromotionReport.main(reportEnv);
+  const deployDecisionResult = deployDecision.writeDeployDecisionArtifact(reportEnv);
   return Object.freeze({
     ...gateResult,
+    repairFirestoreCanaryStreak: repairFirestoreCanaryStreakRefresh.report,
+    repairFirestoreCanaryStreakFile: repairFirestoreCanaryStreakRefresh.output_file,
+    repairFirestoreCanaryStreakStatus: repairFirestoreCanaryStreakRefresh.reason,
     productionEntryRouteCanaryStreak: productionEntryRouteCanaryStreakRefresh.report,
     productionEntryRouteCanaryStreakFile: productionEntryRouteCanaryStreakRefresh.output_file,
     productionEntryRouteCanaryStreakStatus: productionEntryRouteCanaryStreakRefresh.reason,
@@ -203,6 +276,10 @@ if (require.main === module) {
       hasRuntimeCollectorInput,
       hasRuntimeSnapshotInput,
       resolveArtifactDir,
+      shouldRefreshRepairFirestoreCanaryStreak,
+      buildRepairFirestoreCanaryStreakThrownReport,
+      resolveRepairFirestoreCanaryHistoryFile,
+      refreshRepairFirestoreCanaryStreak,
       shouldRefreshProductionEntryRouteCanaryStreak,
       buildProductionEntryRouteCanaryStreakThrownReport,
       refreshProductionEntryRouteCanaryStreak,

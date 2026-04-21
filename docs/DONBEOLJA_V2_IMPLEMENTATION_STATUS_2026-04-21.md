@@ -1286,3 +1286,25 @@ V1 약점 재발 방지:
 2. 이번 단계는 production route streak refresh를 promotion pipeline 내부로 끌어와 “검사는 있는데 이번 배포 실행이 만든 증거인지 모르는” 단절을 줄였다
 3. LIVE에서는 여전히 `history_source=FIRESTORE` 가 아니면 deploy/submit에서 차단되므로, JSONL fallback이 운영 증거로 승격되지 않는다
 4. CANARY에서는 streak 부족을 warning으로 노출해 24시간 evidence를 누적할 수 있고, LIVE에서는 같은 결함이 blocker로 승격된다
+
+## 2026-04-21 Promotion Pipeline Repair Streak Refresh
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-pipeline.js`
+2. `src/tests/run-v2-promotion-pipeline.test.js`
+3. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. promotion pipeline은 이제 `generate-v2-unified-promotion-report` 를 실행하기 직전에 `v2_repair_queue_firestore_canary_streak_latest.json` 도 현재 artifact dir에 새로 쓴다
+2. repair canary의 원천은 장기 수집 JSONL history이며, 기본 history fallback은 `ops/daily/v2_repair_queue_firestore_canary_history.jsonl` 이다
+3. history read 실패는 `V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_THROWN` artifact로 남고, CANARY에서는 warning, LIVE에서는 blocker로 이어진다
+4. unified report와 deploy decision은 같은 artifact dir에 방금 생성된 repair streak artifact를 우선 읽는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 장기 canary가 별도 job에서 만든 latest verdict만 보고 승격 판단을 할 수 있었다
+2. 이번 단계는 장기 history 자체는 유지하되, 승격 판단에 들어가는 verdict JSON은 promotion pipeline이 직접 재계산한다
+3. 따라서 과거 latest verdict가 남아 있거나 collector가 최근 history를 반영하지 못한 상태가 LIVE submit 승인으로 이어지는 위험을 줄였다
+4. production route streak와 repair streak가 모두 같은 방식으로 artifact-dir-local refresh를 거치므로, 승격 evidence 생성 방식이 일관된다
