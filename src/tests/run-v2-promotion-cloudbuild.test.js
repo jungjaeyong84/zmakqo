@@ -873,6 +873,54 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(payload.requested_artifact_dir, dir);
     assert.strictEqual(payload.resolved_artifact_dir, finalDir);
     assert.strictEqual(payload.artifact_dir, finalDir);
+    assert.strictEqual(payload.artifact_dir_coherence.ok, true);
+    assert.strictEqual(payload.artifact_dir_coherence.reason, "ARTIFACT_DIR_COHERENT");
+    assert.strictEqual(payload.artifact_dir_coherence.requested_artifact_dir, dir);
+    assert.strictEqual(payload.artifact_dir_coherence.resolved_artifact_dir, finalDir);
+    assert.strictEqual(payload.artifact_dir_coherence.artifact_dir, finalDir);
+    assert.strictEqual(payload.artifact_dir_coherence.position_cycle_id, "PCY__CTX__FINAL");
+    assert.strictEqual(payload.artifact_dir_coherence.deploy_decision_position_cycle_id, "PCY__CTX__FINAL");
+    assert.strictEqual(payload.artifact_dir_coherence.position_cycle_required, true);
+    assert.strictEqual(payload.artifact_dir_coherence.artifact_dir_matches_resolved_artifact_dir, true);
+    assert.strictEqual(payload.artifact_dir_coherence.artifact_dir_contains_position_cycle_id, true);
+    assert.strictEqual(payload.artifact_dir_coherence.resolved_artifact_dir_contains_position_cycle_id, true);
+    assert.strictEqual(payload.artifact_dir_coherence.context_cycle_matches_deploy_decision, true);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function contextArtifactFlagsResolvedDirDriftAtWriteTime() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-drift-"));
+  const finalDir = path.join(dir, "PCY__CTX__DRIFT");
+  const staleDir = path.join(dir, "PCY__CTX__STALE");
+  try {
+    fs.mkdirSync(finalDir, { recursive: true });
+    fs.mkdirSync(staleDir, { recursive: true });
+    const plan = {
+      mode: "CANARY_FLOW",
+      script: "run:v2-promotion-canary-flow",
+      artifactDir: finalDir,
+      positionCycleId: "PCY__CTX__DRIFT",
+      promotionMode: "CANARY",
+    };
+    const file = cloudbuild.__test.writeContextArtifact(plan, {
+      requestedArtifactDir: dir,
+      resolvedArtifactDir: staleDir,
+      deployDecision: {
+        approved: true,
+        decision: "APPROVE_DEPLOY",
+        position_cycle_id: "PCY__CTX__DRIFT",
+        blockers: [],
+        warnings: [],
+      },
+    });
+    const payload = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.strictEqual(payload.artifact_dir, finalDir);
+    assert.strictEqual(payload.resolved_artifact_dir, staleDir);
+    assert.strictEqual(payload.artifact_dir_coherence.ok, false);
+    assert.strictEqual(payload.artifact_dir_coherence.reason, "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH");
+    assert.strictEqual(payload.artifact_dir_coherence.artifact_dir_matches_resolved_artifact_dir, false);
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

@@ -858,6 +858,25 @@ function evaluateSubmitContract() {
         : "runbook verifier must enforce resolved artifact dir coherence with CHK_01A",
       file: FILES.runbookChecker,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_37",
+      label: "cloudbuild context records artifact dir coherence at write time",
+      ok: cloudbuildWrapperText.includes("buildArtifactDirCoherence")
+        && cloudbuildWrapperText.includes("artifact_dir_coherence")
+        && cloudbuildWrapperText.includes("ARTIFACT_DIR_RESOLVED_DIR_MISMATCH")
+        && artifactContractText.includes("artifact_dir_coherence")
+        && artifactContractText.includes("artifact_dir_coherence.ok")
+        && runbookText.includes("artifact_dir_coherence"),
+      reason: cloudbuildWrapperText.includes("buildArtifactDirCoherence")
+        && cloudbuildWrapperText.includes("artifact_dir_coherence")
+        && cloudbuildWrapperText.includes("ARTIFACT_DIR_RESOLVED_DIR_MISMATCH")
+        && artifactContractText.includes("artifact_dir_coherence")
+        && artifactContractText.includes("artifact_dir_coherence.ok")
+        && runbookText.includes("artifact_dir_coherence")
+        ? "cloudbuild context self-reports artifact dir coherence before runbook and submit checks"
+        : "cloudbuild context must include artifact_dir_coherence and docs must require it",
+      file: FILES.cloudbuildWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

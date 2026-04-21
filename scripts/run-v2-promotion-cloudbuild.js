@@ -224,6 +224,71 @@ const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
   SUBMIT_CHK_08: Object.freeze(["lineage_contract_hash", "deploy_decision_summary.lineage_contract_hash"]),
 });
 
+function resolvePathOrNull(value) {
+  const text = trimOrNull(value);
+  return text ? path.resolve(text) : null;
+}
+
+function buildArtifactDirCoherence({ plan = null, requestedDir = null, resolvedDir = null, deployDecisionSummary = null } = {}) {
+  const row = normalizeObject(plan) || {};
+  const artifactDir = trimOrNull(row.artifactDir);
+  const resolvedArtifactDir = trimOrNull(resolvedDir) || artifactDir;
+  const requestedArtifactDir = trimOrNull(requestedDir) || artifactDir;
+  const positionCycleId = trimOrNull(row.positionCycleId);
+  const deployDecisionPositionCycleId = trimOrNull(deployDecisionSummary && deployDecisionSummary.position_cycle_id);
+  const promotionMode = upper(row.promotionMode);
+  const positionCycleRequired = ["CANARY_FLOW", "PIPELINE"].includes(upper(row.mode))
+    && ["CANARY", "LIVE"].includes(promotionMode);
+  const artifactDirResolved = resolvePathOrNull(artifactDir);
+  const resolvedArtifactDirResolved = resolvePathOrNull(resolvedArtifactDir);
+  const artifactDirMatchesResolvedArtifactDir = !!(
+    artifactDirResolved &&
+    resolvedArtifactDirResolved &&
+    artifactDirResolved === resolvedArtifactDirResolved
+  );
+  const artifactDirContainsPositionCycleId = !positionCycleRequired || !!(
+    artifactDir &&
+    positionCycleId &&
+    artifactDir.includes(positionCycleId)
+  );
+  const resolvedArtifactDirContainsPositionCycleId = !positionCycleRequired || !!(
+    resolvedArtifactDir &&
+    positionCycleId &&
+    resolvedArtifactDir.includes(positionCycleId)
+  );
+  const contextCycleMatchesDeployDecision = !deployDecisionPositionCycleId || deployDecisionPositionCycleId === positionCycleId;
+  const positionCyclePresent = !positionCycleRequired || !!positionCycleId;
+  const ok = !!(
+    artifactDir &&
+    resolvedArtifactDir &&
+    positionCyclePresent &&
+    artifactDirMatchesResolvedArtifactDir &&
+    artifactDirContainsPositionCycleId &&
+    resolvedArtifactDirContainsPositionCycleId &&
+    contextCycleMatchesDeployDecision
+  );
+  let reason = "ARTIFACT_DIR_COHERENT";
+  if (!artifactDir || !resolvedArtifactDir) reason = "ARTIFACT_DIR_MISSING";
+  else if (!positionCyclePresent) reason = "POSITION_CYCLE_ID_MISSING";
+  else if (!artifactDirMatchesResolvedArtifactDir) reason = "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH";
+  else if (!artifactDirContainsPositionCycleId || !resolvedArtifactDirContainsPositionCycleId) reason = "ARTIFACT_DIR_POSITION_CYCLE_MISMATCH";
+  else if (!contextCycleMatchesDeployDecision) reason = "DEPLOY_DECISION_POSITION_CYCLE_MISMATCH";
+  return Object.freeze({
+    ok,
+    reason,
+    requested_artifact_dir: requestedArtifactDir,
+    resolved_artifact_dir: resolvedArtifactDir,
+    artifact_dir: artifactDir,
+    position_cycle_id: positionCycleId,
+    deploy_decision_position_cycle_id: deployDecisionPositionCycleId,
+    position_cycle_required: positionCycleRequired,
+    artifact_dir_matches_resolved_artifact_dir: artifactDirMatchesResolvedArtifactDir,
+    artifact_dir_contains_position_cycle_id: artifactDirContainsPositionCycleId,
+    resolved_artifact_dir_contains_position_cycle_id: resolvedArtifactDirContainsPositionCycleId,
+    context_cycle_matches_deploy_decision: contextCycleMatchesDeployDecision,
+  });
+}
+
 function buildContextBlockerFamilies(summary) {
   const row = normalizeObject(summary);
   if (!row) return Object.freeze([]);
@@ -655,6 +720,12 @@ function writeContextArtifact(plan, {
   const runbookReviewSummary = buildRunbookReviewSummary(runbookReview, runbookReviewFile);
   const requestedDir = trimOrNull(requestedArtifactDir) || plan.artifactDir;
   const resolvedDir = trimOrNull(resolvedArtifactDir) || plan.artifactDir;
+  const artifactDirCoherence = buildArtifactDirCoherence({
+    plan,
+    requestedDir,
+    resolvedDir,
+    deployDecisionSummary,
+  });
   const contextSubmitTrace = buildContextSubmitTrace(deployDecisionSummary);
   writeJson(filePath, {
     mode: plan.mode,
@@ -664,6 +735,7 @@ function writeContextArtifact(plan, {
     requested_artifact_dir: requestedDir,
     resolved_artifact_dir: resolvedDir,
     artifact_dir: plan.artifactDir,
+    artifact_dir_coherence: artifactDirCoherence,
     script: plan.script,
     generated_at: new Date().toISOString(),
     final_status_line: buildStatusLine(deployDecisionSummary),
@@ -1325,6 +1397,8 @@ if (require.main === module) {
       buildRecommendedNextActionReason,
       buildRecommendedNextActionReasonCode,
       buildContextBlockerFamilies,
+      resolvePathOrNull,
+      buildArtifactDirCoherence,
       buildContextSubmitTrace,
       resolveExecutionMode,
       deriveArtifactDir,

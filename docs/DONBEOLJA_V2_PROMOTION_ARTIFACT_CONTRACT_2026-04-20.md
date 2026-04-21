@@ -44,30 +44,35 @@ optional review artifact:
 1. 실행 mode / script / artifact_dir / position_cycle_id
 2. `requested_artifact_dir`
 3. `resolved_artifact_dir`
-4. `final_status_line`
-5. `recommended_next_action`
-6. `recommended_next_action_reason`
-7. `recommended_next_action_reason_code`
-8. `lineage_contract_hash`
-9. `submit_trace.relevant_submit_check_ids`
-10. `submit_trace.relevant_runbook_checklist`
-11. `submit_trace.failed_submit_check_ids`
-12. `submit_trace.failed_runbook_checklist`
-13. `submit_trace.blocker_families`
-14. `submit_trace.primary_blocker_family`
-15. `submit_trace.deploy_warning_attention_required`
-16. `submit_trace.deploy_warning_summary`
-17. `submit_trace.deploy_warning_runbook_checklist`
-18. `submit_trace.recommended_next_action_reason_code`
-19. `submit_trace.checks[]`
-20. `deploy_decision_summary.approved`
-21. `deploy_decision_summary.lineage_contract_hash`
-22. `deploy_decision_summary.bounded_runtime_summary`
-23. `deploy_decision_summary.candidate_selection_summary`
-24. `deploy_decision_summary.blocker_summary`
-25. `runbook_review_file`
-26. `runbook_review_summary.ok`
-27. `runbook_review_summary.failed_check_ids`
+4. `artifact_dir_coherence.ok`
+5. `artifact_dir_coherence.reason`
+6. `artifact_dir_coherence.artifact_dir_matches_resolved_artifact_dir`
+7. `artifact_dir_coherence.artifact_dir_contains_position_cycle_id`
+8. `artifact_dir_coherence.context_cycle_matches_deploy_decision`
+9. `final_status_line`
+10. `recommended_next_action`
+11. `recommended_next_action_reason`
+12. `recommended_next_action_reason_code`
+13. `lineage_contract_hash`
+14. `submit_trace.relevant_submit_check_ids`
+15. `submit_trace.relevant_runbook_checklist`
+16. `submit_trace.failed_submit_check_ids`
+17. `submit_trace.failed_runbook_checklist`
+18. `submit_trace.blocker_families`
+19. `submit_trace.primary_blocker_family`
+20. `submit_trace.deploy_warning_attention_required`
+21. `submit_trace.deploy_warning_summary`
+22. `submit_trace.deploy_warning_runbook_checklist`
+23. `submit_trace.recommended_next_action_reason_code`
+24. `submit_trace.checks[]`
+25. `deploy_decision_summary.approved`
+26. `deploy_decision_summary.lineage_contract_hash`
+27. `deploy_decision_summary.bounded_runtime_summary`
+28. `deploy_decision_summary.candidate_selection_summary`
+29. `deploy_decision_summary.blocker_summary`
+30. `runbook_review_file`
+31. `runbook_review_summary.ok`
+32. `runbook_review_summary.failed_check_ids`
 
 `final_status_line` 은 operator가 파일을 열자마자 판정 상태를 한 줄로 읽기 위한 필드다.
 
@@ -521,6 +526,7 @@ cloudbuild는 아래 원칙을 따른다.
 7. `canary_flow` 는 `position_cycle_id` 없으면 즉시 실패해야 한다
 8. bounded canary/live mode에서 artifact dir는 같은 `position_cycle_id` 축으로만 고정되어야 한다
    최종 submit wrapper는 이 조건을 `SUBMIT_CHK_01A` 로 다시 검증해야 한다. `promotion-cloudbuild-context.json.artifact_dir`, `resolved_artifact_dir`, `position_cycle_id`, `promotion-deploy-decision.json.position_cycle_id`, `promotion-preflight.json.position_cycle_id`, `promotion-runtime-manifest.json.snapshot_meta.selector_meta.position_cycle_id` 가 같은 최종 bounded dir를 설명하지 못하면 provenance fail-closed다.
+   또한 cloudbuild context 생성기는 `artifact_dir_coherence` 를 함께 남겨야 한다. `artifact_dir_coherence.ok=false` 또는 `reason=ARTIFACT_DIR_RESOLVED_DIR_MISMATCH` 는 runbook `CHK_01A` 와 submit `SUBMIT_CHK_01A` 를 보기 전에 이미 final dir/staging dir drift가 발생했다는 증거다.
 9. bounded canary/live mode에서는 wrapper가 `promotion-deploy-decision.json` 을 직접 읽고 `APPROVE_DEPLOY` 가 아니면 즉시 실패해야 한다
 10. bounded explicit cycle 경로에서는 wrapper가 `promotion-runbook-review.json` 을 자동 생성하고 `overall_status=PASS` 가 아니면 즉시 실패해야 한다
 11. auto-select 경로는 runtime이 candidate selection 후 `<requested-artifact-dir>/<selected-position-cycle-id>` 로 artifact dir를 finalize 하고, wrapper는 그 final dir에서 `promotion-runbook-review.json` 을 자동 생성하고 `overall_status=PASS` 가 아니면 즉시 실패해야 한다

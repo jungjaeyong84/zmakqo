@@ -1756,3 +1756,26 @@ V1 약점 재발 방지:
 1. V1에서는 runbook이 PASS처럼 보였지만 최종 submit wrapper가 다른 artifact 축을 보는 식의 운영 drift가 늦게 드러날 수 있었다
 2. 이번 단계는 같은 provenance 조건을 runbook review와 submit wrapper 양쪽에서 중복 검증하게 만들어, 사람 승인 전에 먼저 깨진 축을 보여준다
 3. 따라서 V2에서는 final dir/staging dir 혼선이 한 단계 늦게 발견되는 구조를 줄이고, artifact dir 폐기 후 preflight 재실행이라는 대응을 더 빨리 유도한다
+
+## 2026-04-22 CloudBuild Context Artifact Dir Self-Check
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-cloudbuild.js`
+2. `scripts/check-v2-promotion-submit-contract.js`
+3. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+4. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+5. `src/tests/run-v2-promotion-cloudbuild.test.js`
+
+판정:
+
+1. CloudBuild context writer는 이제 `artifact_dir_coherence` 를 생성 시점에 기록한다
+2. 이 self-check는 `artifact_dir`, `resolved_artifact_dir`, `position_cycle_id`, deploy decision cycle id가 같은 final bounded dir를 설명하는지 즉시 보여준다
+3. `resolved_artifact_dir` 가 stale/final dir와 어긋나면 context artifact 자체에 `ok=false`, `reason=ARTIFACT_DIR_RESOLVED_DIR_MISMATCH` 가 남는다
+4. submit contract는 wrapper, runbook, artifact contract가 `artifact_dir_coherence` 를 모두 요구하지 않으면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 잘못된 산출물 축이 뒤쪽 gate에서만 드러나거나 운영자가 로그를 여러 파일에서 역추적해야 했다
+2. 이번 단계는 context를 쓰는 순간부터 self-check 결과를 같이 저장해, runbook/submit 이전에도 provenance drift를 단일 JSON에서 확인할 수 있게 한다
+3. 따라서 V2에서는 “생성은 됐지만 어느 cycle의 산출물인지 불명확한 context”가 조용히 다음 단계로 넘어가는 위험을 줄인다
