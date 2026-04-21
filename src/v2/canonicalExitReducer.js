@@ -83,6 +83,31 @@ function assertEvidence(evidence, positionCycleId) {
   };
 }
 
+function hasPlacedOrder(runtime, orderKey, statusKey) {
+  const row = runtime && typeof runtime === "object" ? runtime : {};
+  const orderId = trimOrNull(row[orderKey]);
+  const status = upper(row[statusKey]);
+  if (!orderId) return false;
+  if (status && status !== "PLACED") return false;
+  return true;
+}
+
+function assertTp1ProtectionGate({ positionCycle, protectionRuntime } = {}) {
+  const cycle = positionCycle && typeof positionCycle === "object" ? positionCycle : null;
+  const runtime = protectionRuntime && typeof protectionRuntime === "object" ? protectionRuntime : null;
+  if (!cycle) throw new Error("POSITION_CYCLE_REQUIRED");
+  if (!runtime) throw new Error("TP1_PROTECTION_RUNTIME_REQUIRED");
+  if (upper(cycle.status) !== "ACTIVE_PROTECTED") throw new Error("TP1_POSITION_NOT_ACTIVE_PROTECTED");
+  if (trimOrNull(runtime.position_cycle_id) !== trimOrNull(cycle.position_cycle_id)) {
+    throw new Error("TP1_PROTECTION_RUNTIME_CYCLE_MISMATCH");
+  }
+  if (upper(runtime.health_status) !== "HEALTHY") throw new Error("TP1_PROTECTION_RUNTIME_NOT_HEALTHY");
+  if (upper(runtime.native_refresh_status) !== "OK") throw new Error("TP1_NATIVE_REFRESH_NOT_OK");
+  if (!hasPlacedOrder(runtime, "sl_order_id", "sl_order_status")) throw new Error("TP1_SL_ORDER_MISSING");
+  if (!hasPlacedOrder(runtime, "tp1_order_id", "tp1_order_status")) throw new Error("TP1_ORDER_MISSING");
+  return true;
+}
+
 function buildProjectionFromPatch(baseProjection, patch) {
   return buildExitRuntimeProjectionDoc({
     positionCycleId: baseProjection.position_cycle_id,
@@ -108,11 +133,20 @@ function resolveOpenPositionQtyAbs(current) {
   return Number((current.entryQtyAbs - current.tp1FilledQtyAbs).toFixed(8));
 }
 
-function reduceCanonicalExit({ positionCycle, projection, evidence } = {}) {
+function reduceCanonicalExit({
+  positionCycle,
+  projection,
+  evidence,
+  protectionRuntime = null,
+  requireProtectionRuntimeGate = false,
+} = {}) {
   const current = assertProjectionIntegrity(positionCycle, projection);
   const ev = assertEvidence(evidence, positionCycle.position_cycle_id);
 
   if (ev.kind === "TP1_CONFIRMED") {
+    if (requireProtectionRuntimeGate === true) {
+      assertTp1ProtectionGate({ positionCycle, protectionRuntime });
+    }
     if (current.stage === "TP1_DONE" || current.stage === "TRAIL_ACTIVE") {
       return Object.freeze({
         ok: true,
@@ -261,10 +295,12 @@ function reduceCanonicalExit({ positionCycle, projection, evidence } = {}) {
 }
 
 module.exports = {
+  assertTp1ProtectionGate,
   reduceCanonicalExit,
   __test: {
     assertProjectionIntegrity,
     assertEvidence,
+    hasPlacedOrder,
     resolveOpenPositionQtyAbs,
   },
 };

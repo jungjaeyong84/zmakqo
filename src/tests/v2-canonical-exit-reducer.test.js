@@ -2,7 +2,8 @@
 
 const assert = require("assert");
 const { buildV2EntryBootstrap } = require("../v2/entryBootstrap");
-const { reduceCanonicalExit } = require("../v2/canonicalExitReducer");
+const { buildProtectionRuntimeDoc } = require("../v2/contracts");
+const { assertTp1ProtectionGate, reduceCanonicalExit } = require("../v2/canonicalExitReducer");
 
 function buildBaseLong() {
   return buildV2EntryBootstrap({
@@ -17,6 +18,30 @@ function buildBaseLong() {
     positionSide: "LONG",
     entryPrice: 2000,
     entryQtyAbs: 1,
+  });
+}
+
+function buildProtectedBaseLong() {
+  const bootstrap = buildBaseLong();
+  const protectionRuntime = buildProtectionRuntimeDoc({
+    positionCycleId: bootstrap.positionCycle.position_cycle_id,
+    slOrderId: "STOP__ETH__R1",
+    tp1OrderId: "TP1__ETH__R1",
+    nativeStopPrice: bootstrap.protectionPlan.sl_trigger_price,
+    nativeTp1Price: bootstrap.protectionPlan.tp1_trigger_price,
+    nativeRefreshStatus: "OK",
+    healthStatus: "HEALTHY",
+    slOrderStatus: "PLACED",
+    tp1OrderStatus: "PLACED",
+  });
+  return Object.freeze({
+    ...bootstrap,
+    positionCycle: Object.freeze({
+      ...bootstrap.positionCycle,
+      status: "ACTIVE_PROTECTED",
+      protection_runtime_id: protectionRuntime.protection_runtime_id,
+    }),
+    protectionRuntime,
   });
 }
 
@@ -39,6 +64,57 @@ function buildBaseLong() {
   assert.strictEqual(reduced.nextProjection.tp1_done, true);
   assert.strictEqual(reduced.nextProjection.tp1_filled_qty_abs, 0.5);
   assert.strictEqual(reduced.nextProjection.runner_remaining_qty_abs, 0.5);
+})();
+
+(function tp1ProtectionGateAcceptsOnlyFullyProtectedActiveCycle() {
+  const base = buildProtectedBaseLong();
+  assert.strictEqual(assertTp1ProtectionGate({
+    positionCycle: base.positionCycle,
+    protectionRuntime: base.protectionRuntime,
+  }), true);
+})();
+
+(function tp1ProtectionGateRejectsMissingTp1Order() {
+  const base = buildProtectedBaseLong();
+  let err = null;
+  try {
+    assertTp1ProtectionGate({
+      positionCycle: base.positionCycle,
+      protectionRuntime: {
+        ...base.protectionRuntime,
+        tp1_order_id: null,
+        tp1_order_status: "FAILED",
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "TP1_ORDER_MISSING");
+})();
+
+(function tp1ReducerGatePreventsTransitionBeforeProtectionIsActive() {
+  const base = buildBaseLong();
+  let err = null;
+  try {
+    reduceCanonicalExit({
+      positionCycle: base.positionCycle,
+      projection: base.projection,
+      requireProtectionRuntimeGate: true,
+      evidence: {
+        kind: "TP1_CONFIRMED",
+        positionCycleId: base.positionCycle.position_cycle_id,
+        sourceFillId: "FILL__TP1__NO_RUNTIME",
+        sourceOrderId: "ORDER__TP1__NO_RUNTIME",
+        fillQtyAbs: 0.5,
+        fillPrice: 2033.6,
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "TP1_PROTECTION_RUNTIME_REQUIRED");
 })();
 
 (function duplicateTp1IsNoop() {

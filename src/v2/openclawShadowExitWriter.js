@@ -272,6 +272,7 @@ async function commitReducedExitFillArtifacts({
   projection,
   exitFill,
   protectionRuntime = null,
+  persistProtectionRuntime = true,
   resultReason,
   sendSummary = null,
 } = {}) {
@@ -279,6 +280,7 @@ async function commitReducedExitFillArtifacts({
     positionCycle,
     projection,
     exitFill,
+    protectionRuntime,
   });
 
   if (reduced.duplicate === true || !reduced.transition) {
@@ -300,7 +302,7 @@ async function commitReducedExitFillArtifacts({
     transition: reduced.transition,
     projection: reduced.nextProjection,
     outbox: persistedOutbox,
-    protectionRuntime,
+    protectionRuntime: persistProtectionRuntime === true ? protectionRuntime : null,
   });
 
   return {
@@ -451,6 +453,8 @@ async function writeOpenClawShadowTp1Transition({
       fill_qty_abs: aggregate.fillQtyAbs,
       fill_price: fillPrice,
     },
+    protectionRuntime: protectionResult.doc,
+    persistProtectionRuntime: false,
     resultReason: "V2_SHADOW_TP1_TRANSITION_OK",
     sendSummary,
   });

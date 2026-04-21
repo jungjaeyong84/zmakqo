@@ -125,12 +125,15 @@ function reduceV2ExitFill({
   positionCycle,
   projection,
   exitFill,
+  protectionRuntime = null,
 } = {}) {
   const evidence = normalizeV2ExitFillEvidence({ exitFill });
   const reduced = reduceCanonicalExit({
     positionCycle,
     projection,
     evidence,
+    protectionRuntime,
+    requireProtectionRuntimeGate: evidence.kind === "TP1_CONFIRMED",
   });
   if (reduced.duplicate === true || !reduced.transition) {
     return Object.freeze({

@@ -3,13 +3,14 @@
 const assert = require("assert");
 const { buildV2EntryBootstrap } = require("../v2/entryBootstrap");
 const { reduceCanonicalExit } = require("../v2/canonicalExitReducer");
+const { buildProtectionRuntimeDoc } = require("../v2/contracts");
 const {
   normalizeV2ExitFillEvidence,
   reduceV2ExitFill,
 } = require("../v2/exitFillIngestion");
 
 function buildBaseLong() {
-  return buildV2EntryBootstrap({
+  const bootstrap = buildV2EntryBootstrap({
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
     entryEventId: "ENTRY__ETH__FILL_INGESTION",
@@ -21,6 +22,26 @@ function buildBaseLong() {
     positionSide: "LONG",
     entryPrice: 2000,
     entryQtyAbs: 1,
+  });
+  const protectionRuntime = buildProtectionRuntimeDoc({
+    positionCycleId: bootstrap.positionCycle.position_cycle_id,
+    slOrderId: "STOP__ETH__FILL_INGESTION",
+    tp1OrderId: "TP1__ETH__FILL_INGESTION",
+    nativeStopPrice: bootstrap.protectionPlan.sl_trigger_price,
+    nativeTp1Price: bootstrap.protectionPlan.tp1_trigger_price,
+    nativeRefreshStatus: "OK",
+    healthStatus: "HEALTHY",
+    slOrderStatus: "PLACED",
+    tp1OrderStatus: "PLACED",
+  });
+  return Object.freeze({
+    ...bootstrap,
+    positionCycle: Object.freeze({
+      ...bootstrap.positionCycle,
+      status: "ACTIVE_PROTECTED",
+      protection_runtime_id: protectionRuntime.protection_runtime_id,
+    }),
+    protectionRuntime,
   });
 }
 
@@ -47,6 +68,7 @@ function buildBaseLong() {
   const result = reduceV2ExitFill({
     positionCycle: base.positionCycle,
     projection: base.projection,
+    protectionRuntime: base.protectionRuntime,
     exitFill: {
       exit_kind: "TP1",
       source_fill_id: "FILL__TP1__INGESTION",
@@ -66,6 +88,55 @@ function buildBaseLong() {
   assert.strictEqual(result.transition.source_exchange_evidence.source_fill_id, "FILL__TP1__INGESTION");
   assert.strictEqual(result.alert.ok, true);
   assert.strictEqual(result.alert.outbox.canonical_transition_id, result.transition.canonical_transition_id);
+})();
+
+(function tp1FillRequiresHealthyNativeProtectionRuntime() {
+  const base = buildBaseLong();
+  let err = null;
+  try {
+    reduceV2ExitFill({
+      positionCycle: base.positionCycle,
+      projection: base.projection,
+      exitFill: {
+        exit_kind: "TP1",
+        source_fill_id: "FILL__TP1__NO_PROTECTION",
+        source_order_id: "ORDER__TP1__NO_PROTECTION",
+        fill_qty_abs: 0.5,
+        fill_price: 2033.6,
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "TP1_PROTECTION_RUNTIME_REQUIRED");
+})();
+
+(function tp1FillRejectsMissingTp1NativeOrderEvidence() {
+  const base = buildBaseLong();
+  let err = null;
+  try {
+    reduceV2ExitFill({
+      positionCycle: base.positionCycle,
+      projection: base.projection,
+      protectionRuntime: {
+        ...base.protectionRuntime,
+        tp1_order_id: null,
+        tp1_order_status: "FAILED",
+      },
+      exitFill: {
+        exit_kind: "TP1",
+        source_fill_id: "FILL__TP1__MISSING_NATIVE",
+        source_order_id: "ORDER__TP1__MISSING_NATIVE",
+        fill_qty_abs: 0.5,
+        fill_price: 2033.6,
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "TP1_ORDER_MISSING");
 })();
 
 (function stopFillMapsToSlBeforeTp1AndRequiresFillPrice() {
@@ -108,6 +179,8 @@ function buildBaseLong() {
   const tp1 = reduceCanonicalExit({
     positionCycle: base.positionCycle,
     projection: base.projection,
+    protectionRuntime: base.protectionRuntime,
+    requireProtectionRuntimeGate: true,
     evidence: {
       kind: "TP1_CONFIRMED",
       sourceFillId: "FILL__TP1__TRAIL_INGESTION",
@@ -128,6 +201,7 @@ function buildBaseLong() {
   const result = reduceV2ExitFill({
     positionCycle: base.positionCycle,
     projection: trail.nextProjection,
+    protectionRuntime: base.protectionRuntime,
     exitFill: {
       exit_kind: "TRAIL_HIT",
       source_fill_id: "FILL__TRAIL__INGESTION",

@@ -1363,3 +1363,27 @@ V1 약점 재발 방지:
 1. V1에서는 마지막 제출 전 context와 submit wrapper가 서로 다른 기준으로 blocker를 해석할 수 있었다
 2. 이번 단계는 context-level trace를 runbook checker가 fail-closed로 검증하므로, 문서상 trace-back이 실제 artifact와 어긋나는 상태를 조기에 차단한다
 3. warning trace와 blocker trace를 분리 검증해, “경고는 맞지만 실제 submit 차단 원인은 다른데도 통과하는” 운영 drift를 줄인다
+
+## 2026-04-22 TP1 Protection Runtime Gate
+
+추가 증거:
+
+1. `src/v2/canonicalExitReducer.js`
+2. `src/v2/exitFillIngestion.js`
+3. `src/v2/openclawShadowExitWriter.js`
+4. `src/tests/v2-canonical-exit-reducer.test.js`
+5. `src/tests/v2-exit-fill-ingestion.test.js`
+6. `src/tests/v2-openclaw-shadow-exit-writer.test.js`
+
+판정:
+
+1. V2 TP1 fill ingestion은 이제 `TP1_REACHED` reducer 호출 전에 `ACTIVE_PROTECTED` position cycle과 `HEALTHY/OK` protection runtime을 요구한다
+2. SL native order와 TP1 native order evidence가 없거나 order status가 `PLACED` 가 아니면 `TP1_REACHED` 가 생성되지 않는다
+3. OpenClaw shadow exit writer의 기존 TP1 runtime gate와 low-level ingestion gate가 같은 보호 조건을 공유한다
+4. TP1 경로에서는 protection runtime을 검증 입력으로만 쓰고, 의미 없는 runtime 재쓰기는 하지 않는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 TP1 체결 알림/상태 전이가 native TP1 주문 부재와 분리되어 `TP1_ORDER_MISSING` 이 반복됐다
+2. 이번 단계는 TP1 fill이 들어와도 보호 runtime이 완전하지 않으면 canonical transition을 쓰지 않아, “보호주문 없는 TP1 성공 처리”를 차단한다
+3. reducer/ingestion 경계에서 막기 때문에 상위 writer 하나가 실수해도 동일 조건을 다시 검사한다
