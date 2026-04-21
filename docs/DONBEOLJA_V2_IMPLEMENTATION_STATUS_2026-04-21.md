@@ -1493,3 +1493,25 @@ V1 약점 재발 방지:
 1. V1에서는 이벤트명이 “전량 종료 사실”과 섞여 상태/알림/쿨다운이 조용히 틀어질 수 있었다
 2. 이번 단계는 full exit classifier의 입력을 `closePosition` 과 수량 비율로 축소해, 이벤트 라벨이 사실처럼 전파되는 경로를 제거했다
 3. 따라서 V2는 terminal 판단을 더 늦게 하더라도, 증거 없는 전량 종료 확정보다 복구/감사 가능한 partial 상태를 우선한다
+
+## 2026-04-22 Full Exit Batch Recompute Contract
+
+추가 증거:
+
+1. `src/services/binanceFuturesFillsSync.js`
+2. `src/tests/fills-sync-alert-aggregation.test.js`
+3. `src/tests/binance-fills-canonical-lineage-guard.test.js`
+4. `src/tests/trade-execution-alert.test.js`
+
+판정:
+
+1. `queueFillSyncAlertBatch` 는 더 이상 `current.fullExit || payload.fullExit` 로 full exit를 병합하지 않는다
+2. 신규 batch와 병합 batch 모두 `resolveFillSyncAlertFullExit` 로 `event + orderMeta.closePosition + closeRatio` 를 다시 평가한다
+3. partial fill payload가 실수로 `fullExit=true` 를 들고 와도, 병합 close ratio가 1 미만이고 native closePosition 근거가 없으면 merged payload는 `fullExit=false` 로 정정된다
+4. split opposite-signal처럼 여러 partial이 합쳐져 close ratio가 1이 되는 경우에는 최종 batch만 `fullExit=true` 로 승격된다
+
+V1 약점 재발 방지:
+
+1. V1에서는 한 번 잘못 들어온 `fullExit=true` 가 alert batch 병합을 거치며 계속 보존될 수 있었다
+2. 이번 단계는 batch boundary에서도 full exit를 파생값으로 취급해, upstream payload 오염이 장기 전파되는 경로를 끊었다
+3. 따라서 V2는 “상태 사실은 매 단계 재계산한다”는 원칙을 fill sync alert aggregation에도 적용한다

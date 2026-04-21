@@ -1588,6 +1588,11 @@ function queueFillSyncAlertBatch(batchMap, {
   payload,
 } = {}) {
   if (!(batchMap instanceof Map) || !payload || typeof payload !== "object") return;
+  const firstFullExit = resolveFillSyncAlertFullExit({
+    event: payload.event || event,
+    orderMeta,
+    closeRatio: payload.closeRatio,
+  });
   const key = buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs, payload });
   const chainKey = buildFillSyncAlertChainKey({ symbol, event, intent, side, orderMeta, tradeMs, payload });
   const current = batchMap.get(key) || findExistingFillSyncAlertBatchByChainKey(batchMap, chainKey);
@@ -1597,7 +1602,10 @@ function queueFillSyncAlertBatch(batchMap, {
       chainKey,
       latestTradeMs: Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : 0,
       fillCount: 1,
-      payload: { ...payload },
+      payload: {
+        ...payload,
+        fullExit: firstFullExit,
+      },
     });
     return;
   }
@@ -1624,7 +1632,11 @@ function queueFillSyncAlertBatch(batchMap, {
       String(current.payload.closeRatioAggregation || "").trim().toUpperCase() === "MAX"
       && String(payload.closeRatioAggregation || "").trim().toUpperCase() === "MAX"
     ) ? "MAX" : "SUM",
-    fullExit: current.payload.fullExit === true || payload.fullExit === true,
+    fullExit: resolveFillSyncAlertFullExit({
+      event: preferredEvent,
+      orderMeta,
+      closeRatio: mergedCloseRatio,
+    }),
   };
   if (!(Number.isFinite(Number(payload.execPrice)) && nextTradeMs >= current.latestTradeMs)) {
     mergedPayload.execPrice = current.payload.execPrice;

@@ -105,6 +105,42 @@ async function run() {
     true,
     "non-TP1 exits may prove full exit through close ratio"
   );
+  const stickyFullExitBatches = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(stickyFullExitBatches, {
+    symbol: "ADAUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 77001, clientOrderId: "sticky_false", closePosition: false },
+    tradeMs: 1_777_776_001_000,
+    payload: {
+      symbol: "ADAUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      intent: "EXIT",
+      side: "SELL",
+      closeRatio: 0.4,
+      fullExit: true,
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(stickyFullExitBatches, {
+    symbol: "ADAUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 77001, clientOrderId: "sticky_false", closePosition: false },
+    tradeMs: 1_777_776_001_200,
+    payload: {
+      symbol: "ADAUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      intent: "EXIT",
+      side: "SELL",
+      closeRatio: 0.2,
+      fullExit: false,
+    },
+  });
+  const stickyFullExitMerged = Array.from(stickyFullExitBatches.values())[0];
+  assert.ok(approxEqual(stickyFullExitMerged.payload.closeRatio, 0.6), "sticky fullExit fixture must merge partial ratios");
+  assert.strictEqual(stickyFullExitMerged.payload.fullExit, false, "batch merge must recompute fullExit instead of keeping sticky true");
 
   const batches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(batches, {
