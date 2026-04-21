@@ -210,6 +210,70 @@ function buildLiveCutoverAlertPreviewFixtureResult() {
   });
 }
 
+function buildDeployWarningFormatterFixtureResult() {
+  return operatorSummary.buildOperatorSummary({
+    ok: true,
+    output_file: "/tmp/warning-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__WARNING__01",
+      submit_trace_summary: {
+        ok: true,
+        primary_blocker_family: null,
+        alert_retry_attention_required: false,
+        alert_runbook_refs: [],
+        alert_retry_summary: null,
+        deploy_warning_attention_required: true,
+        deploy_warning_runbook_checklist: ["26"],
+        deploy_warning_summary: {
+          warning_n: 1,
+          top_warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+          has_live_readiness_warning: true,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: true,
+        },
+        failed_submit_check_ids: [],
+        failed_runbook_checklist: [],
+        recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
+        recommended_next_action_reason: "all bounded submit verification checks passed",
+        recommended_next_action_reason_code: "ALL_CHECKS_PASSED",
+      },
+    },
+  });
+}
+
+function buildDeployWarningAlertPreviewFixtureResult() {
+  const summary = buildDeployWarningFormatterFixtureResult();
+  return operatorAlertPreview.buildOperatorAlertPreview({
+    ok: true,
+    output_file: "/tmp/warning-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__WARNING__01",
+      submit_trace_summary: {
+        ok: true,
+        primary_blocker_family: null,
+        alert_retry_attention_required: false,
+        alert_runbook_refs: [],
+        alert_retry_summary: null,
+        deploy_warning_attention_required: true,
+        deploy_warning_runbook_checklist: ["26"],
+        deploy_warning_summary: {
+          warning_n: 1,
+          top_warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+          has_live_readiness_warning: true,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: true,
+        },
+        failed_submit_check_ids: [],
+        failed_runbook_checklist: [],
+        recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
+        recommended_next_action_reason: "all bounded submit verification checks passed",
+        recommended_next_action_reason_code: "ALL_CHECKS_PASSED",
+      },
+      operator_summary: summary,
+    },
+  });
+}
+
 function evaluateSubmitContract() {
   const artifactContractText = readText(FILES.artifactContract);
   const runbookText = readText(FILES.runbook);
@@ -219,6 +283,11 @@ function evaluateSubmitContract() {
   const liveCutoverPreview = buildLiveCutoverAlertPreviewFixtureResult();
   const liveCutoverPreviewTraceLines = Array.isArray(liveCutoverPreview.sections && liveCutoverPreview.sections[1] && liveCutoverPreview.sections[1].lines)
     ? liveCutoverPreview.sections[1].lines
+    : [];
+  const deployWarningSummary = buildDeployWarningFormatterFixtureResult();
+  const deployWarningPreview = buildDeployWarningAlertPreviewFixtureResult();
+  const deployWarningPreviewTraceLines = Array.isArray(deployWarningPreview.sections && deployWarningPreview.sections[1] && deployWarningPreview.sections[1].lines)
+    ? deployWarningPreview.sections[1].lines
     : [];
   const checks = [
     buildCheck({
@@ -624,6 +693,51 @@ function evaluateSubmitContract() {
         : "submit wrapper must verify fill sync canonical boundary evidence",
       file: FILES.submitWrapper,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_26",
+      label: "artifact contract requires deploy warning streak classifiers",
+      ok: artifactContractText.includes("has_live_readiness_warning")
+        && artifactContractText.includes("has_repair_firestore_canary_streak_warning")
+        && artifactContractText.includes("has_production_entry_route_canary_streak_warning"),
+      reason: artifactContractText.includes("has_live_readiness_warning")
+        && artifactContractText.includes("has_repair_firestore_canary_streak_warning")
+        && artifactContractText.includes("has_production_entry_route_canary_streak_warning")
+        ? "artifact contract includes deploy warning streak classifier fields"
+        : "artifact contract must include deploy warning streak classifier fields",
+      file: FILES.artifactContract,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_27",
+      label: "submit wrapper maps streak warnings to runbook checklist",
+      ok: submitWrapperText.includes("has_repair_firestore_canary_streak_warning")
+        && submitWrapperText.includes("has_production_entry_route_canary_streak_warning")
+        && submitWrapperText.includes('refs.add("19")')
+        && submitWrapperText.includes('refs.add("26")'),
+      reason: submitWrapperText.includes("has_repair_firestore_canary_streak_warning")
+        && submitWrapperText.includes("has_production_entry_route_canary_streak_warning")
+        && submitWrapperText.includes('refs.add("19")')
+        && submitWrapperText.includes('refs.add("26")')
+        ? "submit wrapper maps repair and production streak warnings to runbook refs"
+        : "submit wrapper must map repair and production streak warnings to runbook refs",
+      file: FILES.submitWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_28",
+      label: "operator summary and alert preserve production streak warning runbook",
+      ok: deployWarningSummary.lines.includes("deploy_warning_runbook=26")
+        && deployWarningSummary.lines.includes("deploy_top_warnings=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY")
+        && deployWarningPreview.title === "V2 Promotion Submit Ready With Deploy Warning"
+        && deployWarningPreviewTraceLines.includes("deploy_warning_runbook=26")
+        && deployWarningPreviewTraceLines.includes("deploy_top_warnings=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"),
+      reason: deployWarningSummary.lines.includes("deploy_warning_runbook=26")
+        && deployWarningSummary.lines.includes("deploy_top_warnings=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY")
+        && deployWarningPreview.title === "V2 Promotion Submit Ready With Deploy Warning"
+        && deployWarningPreviewTraceLines.includes("deploy_warning_runbook=26")
+        && deployWarningPreviewTraceLines.includes("deploy_top_warnings=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY")
+        ? "operator summary and alert preserve production streak warning trace"
+        : "operator summary and alert must preserve production streak warning trace",
+      file: SHARED_ALERT_PREVIEW_MODULE_PATH,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
@@ -680,6 +794,8 @@ if (require.main === module) {
       buildFormatterFixtureResult,
       buildLiveCutoverFormatterFixtureResult,
       buildLiveCutoverAlertPreviewFixtureResult,
+      buildDeployWarningFormatterFixtureResult,
+      buildDeployWarningAlertPreviewFixtureResult,
       evaluateSubmitContract,
     },
   };

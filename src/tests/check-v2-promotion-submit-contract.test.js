@@ -48,4 +48,22 @@ const contractCheck = require("../../scripts/check-v2-promotion-submit-contract"
   assert.ok(traceLines.includes("runbook_review_file=/tmp/v2/PCY__LIVE__01/promotion-runbook-review.json"));
 })();
 
+(function deployWarningFormatterFixturePreservesProductionRouteRunbookTrace() {
+  const summary = contractCheck.__test.buildDeployWarningFormatterFixtureResult();
+  assert.strictEqual(summary.status, "READY_WITH_DEPLOY_WARNING");
+  assert.ok(summary.headline.includes("RUNBOOK:26"));
+  assert.ok(summary.lines.includes("deploy_warning_attention=YES"));
+  assert.ok(summary.lines.includes("deploy_warning_runbook=26"));
+  assert.ok(summary.lines.includes("deploy_top_warnings=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
+})();
+
+(function deployWarningAlertPreviewFixturePreservesProductionRouteRunbookTrace() {
+  const preview = contractCheck.__test.buildDeployWarningAlertPreviewFixtureResult();
+  const traceLines = preview.sections[1].lines;
+  assert.strictEqual(preview.title, "V2 Promotion Submit Ready With Deploy Warning");
+  assert.ok(traceLines.includes("deploy_warning_attention=YES"));
+  assert.ok(traceLines.includes("deploy_warning_runbook=26"));
+  assert.ok(traceLines.includes("deploy_top_warnings=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
+})();
+
 console.log("CHECK_V2_PROMOTION_SUBMIT_CONTRACT_TEST_OK");
