@@ -5,8 +5,11 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const exporter = require("../../scripts/export-v2-promotion-runtime-snapshot");
+const deployDecisionCheck = require("../../scripts/check-v2-promotion-deploy-decision");
 const { buildReferenceReplayFixtureSet } = require("../v2/replayFixtureFactory");
 const { buildReferenceComparisonFixtures } = require("../v2/comparisonFixtureFactory");
+
+const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
 
 (function validateRuntimeSnapshotRejectsMissingArrays() {
   let err = null;
@@ -97,8 +100,10 @@ const { buildReferenceComparisonFixtures } = require("../v2/comparisonFixtureFac
           runtime_chain_audits: [
             {
               ok: true,
-              check_n: 18,
+              check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
               fail_n: 0,
+              check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+              passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
               failed_check_ids: [],
             },
           ],
@@ -156,8 +161,9 @@ const { buildReferenceComparisonFixtures } = require("../v2/comparisonFixtureFac
     assert.strictEqual(manifest.snapshot_meta.openclaw_execution_separation_summary.audit_n, 1);
     assert.strictEqual(manifest.snapshot_meta.openclaw_execution_separation_summary.fail_n, 0);
     assert.strictEqual(manifest.snapshot_meta.runtime_chain_audit_summary.ok, true);
-    assert.strictEqual(manifest.snapshot_meta.runtime_chain_audit_summary.check_n, 18);
+    assert.strictEqual(manifest.snapshot_meta.runtime_chain_audit_summary.check_n, REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length);
     assert.strictEqual(manifest.snapshot_meta.runtime_chain_audit_summary.fail_n, 0);
+    assert.deepStrictEqual(manifest.snapshot_meta.runtime_chain_audit_summary.passed_check_ids, REQUIRED_RUNTIME_CHAIN_CHECK_IDS);
     assert.strictEqual(manifest.snapshot_meta.repair_evidence_summary.ok, true);
     assert.strictEqual(manifest.snapshot_meta.repair_evidence_summary.repair_request_n, 0);
     assert.strictEqual(manifest.snapshot_meta.repair_evidence_summary.missing_completion_evidence_n, 0);
@@ -184,14 +190,29 @@ const { buildReferenceComparisonFixtures } = require("../v2/comparisonFixtureFac
 (function buildRuntimeChainAuditSummaryCountsFailures() {
   const summary = exporter.__test.buildRuntimeChainAuditSummary({
     runtime_chain_audits: [
-      { ok: true, check_n: 18, fail_n: 0, failed_check_ids: [] },
-      { ok: false, check_n: 18, fail_n: 1, failed_check_ids: ["ALERT_OUTBOX_TRANSITION_MATCH"] },
+      {
+        ok: true,
+        check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
+        fail_n: 0,
+        check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+        passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+        failed_check_ids: [],
+      },
+      {
+        ok: false,
+        check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
+        fail_n: 1,
+        check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+        passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(0, -1),
+        failed_check_ids: ["REPLAY_GATE_EPISODE_VALID"],
+      },
     ],
   });
   assert.strictEqual(summary.ok, false);
-  assert.strictEqual(summary.check_n, 36);
+  assert.strictEqual(summary.check_n, REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length * 2);
   assert.strictEqual(summary.fail_n, 1);
-  assert.deepStrictEqual(summary.failed_check_ids, ["ALERT_OUTBOX_TRANSITION_MATCH"]);
+  assert.deepStrictEqual(summary.failed_check_ids, ["REPLAY_GATE_EPISODE_VALID"]);
+  assert.deepStrictEqual(summary.check_ids, REQUIRED_RUNTIME_CHAIN_CHECK_IDS);
 })();
 
 (function buildEvidenceSnapshotSummaryCountsMissingCoverage() {

@@ -5,10 +5,12 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const pipeline = require("../../scripts/run-v2-promotion-pipeline");
+const deployDecisionCheck = require("../../scripts/check-v2-promotion-deploy-decision");
 const { buildReferencePassEpisode, buildReferenceNativeMlEvidencePack } = require("../v2/replayFixtureFactory");
 const { buildWebhookBundle } = require("../v2/comparisonFixtureFactory");
 
 const PREFIX = "donbeolja_v2__";
+const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
 
 function buildFakeDb(store) {
   return {
@@ -152,8 +154,10 @@ function buildFakeDb(store) {
           runtime_chain_audits: [
             {
               ok: true,
-              check_n: 18,
+              check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
               fail_n: 0,
+              check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+              passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
               failed_check_ids: [],
             },
           ],
@@ -225,6 +229,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -334,6 +339,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -441,6 +447,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",

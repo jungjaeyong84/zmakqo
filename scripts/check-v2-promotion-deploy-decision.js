@@ -12,6 +12,21 @@ const OUTPUT_FILENAME = "promotion-deploy-decision.json";
 const UNIFIED_REPORT_FILENAME = "unified-promotion-report.json";
 const ROOT_DIR = path.resolve(__dirname, "..");
 const SRC_V2_DIR = path.join(ROOT_DIR, "src", "v2");
+const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = Object.freeze([
+  "COLLECTED_POSITION_CYCLE_ID_PRESENT",
+  "COLLECTED_ENTRY_EVENT_ID_PRESENT",
+  "COLLECTED_PROJECTION_POSITION_CYCLE_MATCH",
+  "COLLECTED_PROJECTION_STAGE_PRESENT",
+  "COLLECTED_PROTECTION_RUNTIME_POSITION_CYCLE_MATCH",
+  "COLLECTED_PROTECTION_HEALTH_STATUS_PRESENT",
+  "COLLECTED_ACTIVE_OR_TERMINAL_PROTECTION_STATUS_VALID",
+  "COLLECTED_TRANSITIONS_POSITION_CYCLE_MATCH",
+  "COLLECTED_TRANSITIONS_ENTRY_EVENT_MATCH",
+  "COLLECTED_TRANSITIONS_EXCHANGE_EVIDENCE_PRESENT",
+  "COLLECTED_OUTBOX_TRANSITION_LINKS_COMPLETE",
+  "COLLECTED_OUTBOX_POSITION_CYCLE_MATCH",
+  "REPLAY_GATE_EPISODE_VALID",
+]);
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -259,11 +274,13 @@ function hasRuntimeChainAuditCoverage(summary) {
   const row = normalizeObject(summary);
   const audit = normalizeObject(row && row.runtime_chain_audit_summary);
   if (!audit) return false;
+  const passed = new Set(ensureArray(audit.passed_check_ids).map(String).filter(Boolean));
   return (
     audit.ok === true &&
-    Number(audit.check_n) > 0 &&
+    Number(audit.check_n) >= REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length &&
     Number(audit.fail_n) === 0 &&
-    ensureArray(audit.failed_check_ids).length === 0
+    ensureArray(audit.failed_check_ids).length === 0 &&
+    REQUIRED_RUNTIME_CHAIN_CHECK_IDS.every((id) => passed.has(id))
   );
 }
 
@@ -616,6 +633,7 @@ if (require.main === module) {
       hasEvidenceSnapshotCoverage,
       hasOpenClawExecutionSeparationCoverage,
       hasRuntimeChainAuditCoverage,
+      REQUIRED_RUNTIME_CHAIN_CHECK_IDS,
       hasRepairEvidenceSummary,
       hasOpenClawExecutionAuditLedgerWrite,
       buildV2EntryBoundaryAuditSummary,

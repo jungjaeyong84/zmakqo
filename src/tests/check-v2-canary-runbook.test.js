@@ -5,11 +5,13 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const runbookCheck = require("../../scripts/check-v2-canary-runbook");
+const deployDecisionCheck = require("../../scripts/check-v2-promotion-deploy-decision");
 
 const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
   version: "V2_PROMOTION_SELECTOR_LINEAGE_SHA256_V1",
   hash: "lineage-hash-fixture",
 });
+const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
 
 function writeJson(dir, filename, payload) {
   fs.writeFileSync(path.join(dir, filename), JSON.stringify(payload, null, 2), "utf8");
@@ -33,8 +35,10 @@ function buildBoundedRuntimeSummaryFixture() {
     },
     runtime_chain_audit_summary: {
       ok: true,
-      check_n: 18,
+      check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
       fail_n: 0,
+      check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+      passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
       failed_check_ids: [],
     },
     openclaw_execution_audit_ledger_write: {

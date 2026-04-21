@@ -5,6 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const unifiedReport = require("../../scripts/generate-v2-unified-promotion-report");
+const deployDecisionCheck = require("../../scripts/check-v2-promotion-deploy-decision");
 const mockArtifacts = require("../../scripts/generate-v2-promotion-artifacts-mock");
 const { buildUnifiedPromotionReport } = require("../v2/unifiedPromotionReport");
 
@@ -12,6 +13,7 @@ const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
   version: "V2_PROMOTION_SELECTOR_LINEAGE_SHA256_V1",
   hash: "lineage-hash-fixture",
 });
+const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
 
 (async function unifiedReportScriptWritesSingleDecisionArtifact() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-unified-report-"));
@@ -113,8 +115,10 @@ const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
         },
         runtime_chain_audit_summary: {
           ok: true,
-          check_n: 18,
+          check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
           fail_n: 0,
+          check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+          passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
           failed_check_ids: [],
         },
         repair_evidence_summary: {
@@ -195,7 +199,8 @@ const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
     assert.strictEqual(stored.bounded_runtime_summary.openclaw_execution_separation_summary.ok, true);
     assert.strictEqual(stored.bounded_runtime_summary.openclaw_execution_separation_summary.audit_n, 1);
     assert.strictEqual(stored.bounded_runtime_summary.runtime_chain_audit_summary.ok, true);
-    assert.strictEqual(stored.bounded_runtime_summary.runtime_chain_audit_summary.check_n, 18);
+    assert.strictEqual(stored.bounded_runtime_summary.runtime_chain_audit_summary.check_n, REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length);
+    assert.deepStrictEqual(stored.bounded_runtime_summary.runtime_chain_audit_summary.passed_check_ids, REQUIRED_RUNTIME_CHAIN_CHECK_IDS);
     assert.strictEqual(stored.bounded_runtime_summary.repair_evidence_summary.ok, true);
     assert.deepStrictEqual(stored.bounded_runtime_summary.repair_evidence_summary.runbook_refs, ["RQ_RBK_01"]);
     assert.strictEqual(stored.bounded_runtime_summary.repair_evidence_summary.latest_completion.issue_code, "TP1_ORDER_MISSING");

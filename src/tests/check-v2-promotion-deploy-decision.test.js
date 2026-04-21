@@ -10,6 +10,7 @@ const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
   version: "V2_PROMOTION_SELECTOR_LINEAGE_SHA256_V1",
   hash: "lineage-hash-fixture",
 });
+const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecision.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
 
 function buildBoundedRuntimeSummaryFixture() {
   return {
@@ -43,8 +44,10 @@ function buildBoundedRuntimeSummaryFixture() {
     },
     runtime_chain_audit_summary: {
       ok: true,
-      check_n: 18,
+      check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
       fail_n: 0,
+      check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+      passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
       failed_check_ids: [],
     },
     repair_evidence_summary: {
@@ -365,6 +368,29 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     pass: true,
     mode: "CANARY",
     position_cycle_id: "PCY__CANARY__NO_RUNTIME_CHAIN",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture(),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:RUNTIME_CHAIN_AUDIT_REQUIRED"));
+})();
+
+(function canaryWithIncompleteRuntimeChainAuditFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.runtime_chain_audit_summary = {
+    ok: true,
+    check_n: 1,
+    fail_n: 0,
+    check_ids: ["REPLAY_GATE_EPISODE_VALID"],
+    passed_check_ids: ["REPLAY_GATE_EPISODE_VALID"],
+    failed_check_ids: [],
+  };
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__INCOMPLETE_RUNTIME_CHAIN",
     bounded_runtime_summary: bounded,
     candidate_selection_summary: buildCandidateSelectionSummaryFixture(),
     blockers: [],

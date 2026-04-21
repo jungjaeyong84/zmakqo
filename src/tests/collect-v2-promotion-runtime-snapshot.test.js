@@ -91,6 +91,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -153,8 +154,26 @@ function buildFakeDb(store) {
   assert.strictEqual(snapshot.snapshotMeta.repair_evidence_summary.ok, true);
   assert.strictEqual(snapshot.snapshotMeta.repair_evidence_summary.repair_request_n, 0);
   assert.strictEqual(snapshot.snapshotMeta.repair_evidence_summary.completion_evidence_n, 0);
+  assert.strictEqual(snapshot.snapshotMeta.runtime_chain_audits[0].ok, true);
+  assert.deepStrictEqual(
+    snapshot.snapshotMeta.runtime_chain_audits[0].passed_check_ids,
+    collector.__test.REQUIRED_COLLECTED_RUNTIME_CHAIN_CHECK_IDS
+  );
   assert.strictEqual(snapshot.snapshotMeta.openclaw_execution_audit_ledger_write.skipped, true);
   assert.strictEqual(snapshot.snapshotMeta.openclaw_execution_audit_ledger_write.reason, "OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_DISABLED");
+})();
+
+(function collectedRuntimeChainAuditFailsOnOutboxCycleDrift() {
+  const episode = buildReferencePassEpisode();
+  const audit = collector.__test.buildCollectedRuntimeChainAudit({
+    ...episode,
+    outboxes: episode.outboxes.map((row, index) => index === 0
+      ? { ...row, position_cycle_id: "PCY__DRIFT" }
+      : row),
+  });
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("COLLECTED_OUTBOX_POSITION_CYCLE_MATCH"));
+  assert.ok(audit.passed_check_ids.includes("COLLECTED_POSITION_CYCLE_ID_PRESENT"));
 })();
 
 (function repairEvidenceSummaryRequiresCompletionEvidenceWhenRepairRequested() {
@@ -247,6 +266,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -330,6 +350,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -457,6 +478,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -537,6 +559,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -614,6 +637,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -699,6 +723,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -780,6 +805,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",
@@ -856,6 +882,7 @@ function buildFakeDb(store) {
     },
     [`${PREFIX}protection_runtime_v2`]: {
       [`PRTV2__${episode.positionCycle.position_cycle_id}`]: {
+        ...episode.protectionRuntime,
         protection_runtime_id: `PRTV2__${episode.positionCycle.position_cycle_id}`,
         position_cycle_id: episode.positionCycle.position_cycle_id,
         sl_order_id: "STOP__1",

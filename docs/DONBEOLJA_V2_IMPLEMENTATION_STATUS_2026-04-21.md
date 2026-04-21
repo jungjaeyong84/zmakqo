@@ -1024,3 +1024,36 @@ V1 약점 재발 방지:
 2. 이번 단계부터는 repair request가 있는 cycle은 completion ledger의 `repair_evidence_summary` 가 promotion 상단까지 올라와야 한다
 3. 따라서 보호주문 누락/복구 계열이 다시 발생했을 때 “복구를 했는지, 어떤 주문 leg 증거가 있는지, runbook refs가 있는지”를 배포 판단에서 바로 볼 수 있다
 4. 증거가 없으면 deploy decision이 막히므로, V1식 “경고를 보긴 했지만 증거 없이 다음 단계로 진행”하는 실패 모드를 줄인다
+
+## 2026-04-21 Collected Runtime Chain Evidence Gate
+
+추가 증거:
+
+1. `scripts/collect-v2-promotion-runtime-snapshot.js`
+2. `scripts/export-v2-promotion-runtime-snapshot.js`
+3. `scripts/generate-v2-unified-promotion-report.js`
+4. `scripts/check-v2-promotion-deploy-decision.js`
+5. `src/tests/collect-v2-promotion-runtime-snapshot.test.js`
+6. `src/tests/export-v2-promotion-runtime-snapshot.test.js`
+7. `src/tests/generate-v2-unified-promotion-report.test.js`
+8. `src/tests/check-v2-promotion-deploy-decision.test.js`
+9. `src/tests/check-v2-canary-runbook.test.js`
+10. `src/tests/run-v2-promotion-pipeline.test.js`
+11. `src/tests/run-v2-promotion-cloudbuild.test.js`
+
+판정:
+
+1. promotion collector의 runtime chain audit가 더 이상 `replayGate.validateEpisode()` 하나를 `check_n=1` 로 요약하지 않는다
+2. collector는 실제 수집된 `positionCycle`, `projection`, `protectionRuntime`, `canonical transitions`, `alert outboxes` 를 같은 `position_cycle_id` 와 `entry_event_id` 로 교차검사한다
+3. 필수 check id는 `COLLECTED_POSITION_CYCLE_ID_PRESENT`, `COLLECTED_ENTRY_EVENT_ID_PRESENT`, `COLLECTED_PROJECTION_POSITION_CYCLE_MATCH`, `COLLECTED_PROTECTION_RUNTIME_POSITION_CYCLE_MATCH`, `COLLECTED_OUTBOX_TRANSITION_LINKS_COMPLETE`, `REPLAY_GATE_EPISODE_VALID` 등을 포함한다
+4. exporter와 unified report는 `runtime_chain_audit_summary.check_ids`, `passed_check_ids`, `failed_check_ids` 를 보존한다
+5. deploy decision은 CANARY/LIVE에서 단순 `ok=true` 가 아니라 모든 필수 runtime chain check id가 `passed_check_ids` 에 존재해야 승인한다
+6. runbook review는 같은 deploy decision helper를 재사용하므로, runbook과 deploy gate의 runtime chain 판정이 갈라지지 않는다
+7. outbox의 `position_cycle_id` 가 transition과 다른 drift 케이스는 `COLLECTED_OUTBOX_POSITION_CYCLE_MATCH` 로 fail-closed 된다
+
+V1 약점 재발 방지:
+
+1. V1에서는 “replay는 통과했지만 실제 운영 Firestore chain이 같은 lineage인지”가 충분히 드러나지 않았다
+2. 이번 단계에서는 promotion 승인 상단에 실제 수집 chain check id가 올라와야 하므로, replay/promotion tooling만 강하고 본체 runtime chain이 약한 착시를 줄인다
+3. transition/projection/outbox/protection runtime이 다시 분리 writer처럼 어긋나면 deploy decision이 `DEPLOY_DECISION:RUNTIME_CHAIN_AUDIT_REQUIRED` 로 막힌다
+4. 남은 한계는 이 검사가 아직 collected runtime evidence 기반이라는 점이다. 다음 단계는 실제 V2 entry orchestration runner가 이 chain을 직접 생산하도록 하는 것이다

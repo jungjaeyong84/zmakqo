@@ -21,6 +21,21 @@ function upper(value) {
 }
 
 const TERMINAL_STAGES = new Set(["EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
+const REQUIRED_COLLECTED_RUNTIME_CHAIN_CHECK_IDS = Object.freeze([
+  "COLLECTED_POSITION_CYCLE_ID_PRESENT",
+  "COLLECTED_ENTRY_EVENT_ID_PRESENT",
+  "COLLECTED_PROJECTION_POSITION_CYCLE_MATCH",
+  "COLLECTED_PROJECTION_STAGE_PRESENT",
+  "COLLECTED_PROTECTION_RUNTIME_POSITION_CYCLE_MATCH",
+  "COLLECTED_PROTECTION_HEALTH_STATUS_PRESENT",
+  "COLLECTED_ACTIVE_OR_TERMINAL_PROTECTION_STATUS_VALID",
+  "COLLECTED_TRANSITIONS_POSITION_CYCLE_MATCH",
+  "COLLECTED_TRANSITIONS_ENTRY_EVENT_MATCH",
+  "COLLECTED_TRANSITIONS_EXCHANGE_EVIDENCE_PRESENT",
+  "COLLECTED_OUTBOX_TRANSITION_LINKS_COMPLETE",
+  "COLLECTED_OUTBOX_POSITION_CYCLE_MATCH",
+  "REPLAY_GATE_EPISODE_VALID",
+]);
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -67,6 +82,25 @@ function sortRowsByTimestamp(rows = [], candidateFields = ["created_at", "snapsh
 
 function pickLatest(rows = [], candidateFields) {
   return sortRowsByTimestamp(rows, candidateFields)[0] || null;
+}
+
+function hasExchangeEvidenceSnapshot(snapshot) {
+  const row = snapshot && typeof snapshot === "object" ? snapshot : null;
+  if (!row) return false;
+  return !!(
+    trimOrNull(row.evidence_kind) &&
+    trimOrNull(row.observed_at) &&
+    (trimOrNull(row.source_fill_id) || trimOrNull(row.source_order_id)) &&
+    Object.prototype.hasOwnProperty.call(row, "raw_payload")
+  );
+}
+
+function pushRuntimeChainCheck(checks, id, ok, detail = null) {
+  checks.push(Object.freeze({
+    id,
+    ok: ok === true,
+    detail: detail && typeof detail === "object" ? Object.freeze({ ...detail }) : null,
+  }));
 }
 
 function parseJsonOrNull(value, reason = "V2_PROMOTION_COLLECT_JSON_INVALID") {
@@ -440,11 +474,79 @@ function buildRepairEvidenceSummary({ repairRequests = [], repairExecutionLedger
 function buildCollectedRuntimeChainAudit(episode) {
   const row = replayGateTest.validateEpisode(episode);
   const blockers = Array.isArray(row.blockers) ? row.blockers : [];
+  const positionCycle = episode && episode.positionCycle && typeof episode.positionCycle === "object"
+    ? episode.positionCycle
+    : null;
+  const projection = episode && episode.projection && typeof episode.projection === "object"
+    ? episode.projection
+    : null;
+  const protectionRuntime = episode && episode.protectionRuntime && typeof episode.protectionRuntime === "object"
+    ? episode.protectionRuntime
+    : null;
+  const transitions = Array.isArray(episode && episode.transitions) ? episode.transitions : [];
+  const outboxes = Array.isArray(episode && episode.outboxes) ? episode.outboxes : [];
+  const cycleId = trimOrNull(positionCycle && positionCycle.position_cycle_id);
+  const entryEventId = trimOrNull(positionCycle && positionCycle.entry_event_id);
+  const projectionStage = upper(projection && projection.stage);
+  const projectionHealth = upper(projection && projection.health_status);
+  const positionStatus = upper(positionCycle && positionCycle.status);
+  const protectionHealth = upper(protectionRuntime && protectionRuntime.health_status);
+  const terminalProjection = TERMINAL_STAGES.has(projectionStage) || projectionHealth === "TERMINAL_EXITED";
+  const transitionIds = new Set(transitions.map((item) => trimOrNull(item && item.canonical_transition_id)).filter(Boolean));
+  const outboxTransitionIds = new Set(outboxes.map((item) => trimOrNull(item && item.canonical_transition_id)).filter(Boolean));
+  const checks = [];
+
+  pushRuntimeChainCheck(checks, "COLLECTED_POSITION_CYCLE_ID_PRESENT", !!cycleId, { actual: cycleId });
+  pushRuntimeChainCheck(checks, "COLLECTED_ENTRY_EVENT_ID_PRESENT", !!entryEventId, { actual: entryEventId });
+  pushRuntimeChainCheck(checks, "COLLECTED_PROJECTION_POSITION_CYCLE_MATCH", !!projection && trimOrNull(projection.position_cycle_id) === cycleId, {
+    expected: cycleId,
+    actual: trimOrNull(projection && projection.position_cycle_id),
+  });
+  pushRuntimeChainCheck(checks, "COLLECTED_PROJECTION_STAGE_PRESENT", !!projectionStage, { actual: projectionStage });
+  pushRuntimeChainCheck(checks, "COLLECTED_PROTECTION_RUNTIME_POSITION_CYCLE_MATCH", !!protectionRuntime && trimOrNull(protectionRuntime.position_cycle_id) === cycleId, {
+    expected: cycleId,
+    actual: trimOrNull(protectionRuntime && protectionRuntime.position_cycle_id),
+  });
+  pushRuntimeChainCheck(checks, "COLLECTED_PROTECTION_HEALTH_STATUS_PRESENT", !!protectionHealth, { actual: protectionHealth });
+  pushRuntimeChainCheck(checks, "COLLECTED_ACTIVE_OR_TERMINAL_PROTECTION_STATUS_VALID", terminalProjection
+    ? protectionHealth === "TERMINAL_EXITED"
+    : positionStatus === "ACTIVE_PROTECTED" && protectionHealth === "HEALTHY", {
+      position_status: positionStatus,
+      projection_stage: projectionStage,
+      projection_health_status: projectionHealth,
+      protection_health_status: protectionHealth,
+    });
+  pushRuntimeChainCheck(checks, "COLLECTED_TRANSITIONS_POSITION_CYCLE_MATCH", transitions.every((item) => trimOrNull(item && item.position_cycle_id) === cycleId), {
+    transition_n: transitions.length,
+  });
+  pushRuntimeChainCheck(checks, "COLLECTED_TRANSITIONS_ENTRY_EVENT_MATCH", transitions.every((item) => trimOrNull(item && item.entry_event_id) === entryEventId), {
+    transition_n: transitions.length,
+  });
+  pushRuntimeChainCheck(checks, "COLLECTED_TRANSITIONS_EXCHANGE_EVIDENCE_PRESENT", transitions.every((item) => hasExchangeEvidenceSnapshot(item && item.source_exchange_evidence)), {
+    transition_n: transitions.length,
+  });
+  pushRuntimeChainCheck(checks, "COLLECTED_OUTBOX_TRANSITION_LINKS_COMPLETE", transitions.every((item) => outboxTransitionIds.has(trimOrNull(item && item.canonical_transition_id)))
+    && outboxes.every((item) => transitionIds.has(trimOrNull(item && item.canonical_transition_id))), {
+      transition_n: transitions.length,
+      outbox_n: outboxes.length,
+    });
+  pushRuntimeChainCheck(checks, "COLLECTED_OUTBOX_POSITION_CYCLE_MATCH", outboxes.every((item) => trimOrNull(item && item.position_cycle_id) === cycleId), {
+    outbox_n: outboxes.length,
+  });
+  pushRuntimeChainCheck(checks, "REPLAY_GATE_EPISODE_VALID", row.pass === true, {
+    replay_blockers: blockers.slice(),
+  });
+
+  const failedChecks = checks.filter((check) => check.ok !== true);
   return Object.freeze({
-    ok: row.pass === true,
-    check_n: 1,
-    fail_n: blockers.length,
-    failed_check_ids: blockers.slice(),
+    ok: failedChecks.length === 0,
+    check_n: checks.length,
+    fail_n: failedChecks.length,
+    check_ids: Object.freeze(checks.map((check) => check.id)),
+    passed_check_ids: Object.freeze(checks.filter((check) => check.ok === true).map((check) => check.id)),
+    failed_check_ids: Object.freeze(failedChecks.map((check) => check.id)),
+    replay_blockers: Object.freeze(blockers.slice()),
+    checks: Object.freeze(checks),
     source: "V2_PROMOTION_RUNTIME_COLLECTOR",
     scope: "COLLECTED_RUNTIME_EPISODE_CHAIN",
   });
@@ -803,6 +905,7 @@ if (require.main === module) {
       buildAlertRetrySummary,
       buildRepairEvidenceSummary,
       buildCollectedRuntimeChainAudit,
+      REQUIRED_COLLECTED_RUNTIME_CHAIN_CHECK_IDS,
       countBy,
       sortRowsByTimestamp,
       pickLatest,

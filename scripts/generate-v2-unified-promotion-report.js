@@ -117,6 +117,8 @@ function buildRuntimeChainAuditSummary(summary) {
     ok: row.ok === true,
     check_n: normalizeNumber(row.check_n),
     fail_n: normalizeNumber(row.fail_n),
+    check_ids: Array.isArray(row.check_ids) ? row.check_ids.slice() : [],
+    passed_check_ids: Array.isArray(row.passed_check_ids) ? row.passed_check_ids.slice() : [],
     failed_check_ids: Array.isArray(row.failed_check_ids) ? row.failed_check_ids.slice() : [],
   });
 }

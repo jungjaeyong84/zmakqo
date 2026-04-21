@@ -184,6 +184,8 @@ function buildRuntimeChainAuditSummary(snapshotMeta) {
       ok: existing.ok === true,
       check_n: Number.isFinite(checkN) ? checkN : null,
       fail_n: Number.isFinite(failN) ? failN : null,
+      check_ids: Array.isArray(existing.check_ids) ? existing.check_ids.slice() : [],
+      passed_check_ids: Array.isArray(existing.passed_check_ids) ? existing.passed_check_ids.slice() : [],
       failed_check_ids: Array.isArray(existing.failed_check_ids) ? existing.failed_check_ids.slice() : [],
     });
   }
@@ -194,6 +196,8 @@ function buildRuntimeChainAuditSummary(snapshotMeta) {
   if (!audits.length) return null;
 
   const failedCheckIds = [];
+  const passedCheckIds = [];
+  const checkIds = [];
   let checkCount = 0;
   let failCount = 0;
   for (const audit of audits) {
@@ -209,11 +213,21 @@ function buildRuntimeChainAuditSummary(snapshotMeta) {
     if (Array.isArray(auditRow && auditRow.failed_check_ids)) {
       failedCheckIds.push(...auditRow.failed_check_ids.map(String).filter(Boolean));
     }
+    if (Array.isArray(auditRow && auditRow.passed_check_ids)) {
+      passedCheckIds.push(...auditRow.passed_check_ids.map(String).filter(Boolean));
+    }
+    if (Array.isArray(auditRow && auditRow.check_ids)) {
+      checkIds.push(...auditRow.check_ids.map(String).filter(Boolean));
+    } else if (Array.isArray(auditRow && auditRow.checks)) {
+      checkIds.push(...auditRow.checks.map((check) => check && check.id).map(String).filter(Boolean));
+    }
   }
   return Object.freeze({
     ok: failCount === 0 && checkCount > 0,
     check_n: checkCount,
     fail_n: failCount,
+    check_ids: Array.from(new Set(checkIds)),
+    passed_check_ids: Array.from(new Set(passedCheckIds)),
     failed_check_ids: Array.from(new Set(failedCheckIds)),
   });
 }
