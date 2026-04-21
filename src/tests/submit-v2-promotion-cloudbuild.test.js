@@ -389,9 +389,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_FLOW_ENABLED, "1");
   assert.strictEqual(request.substitutions._V2_PROMOTION_SELECT_POSITION_CYCLE_ID, "PCY__CANARY__01");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "1");
-  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "0");
-  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "0");
-  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "JSONL");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
   assert.ok(request.command.includes("--substitutions"));
 })();
 
@@ -428,6 +428,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.candidate_selection.field, "candidate_selection_summary.selection_contract");
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
   assert.strictEqual(
     request.substitutions._V2_PROMOTION_CANDIDATE_EXCHANGE_STATE_JSON,
     "{\"has_active_position\":false}"

@@ -1240,3 +1240,24 @@ V1 약점 재발 방지:
 3. Firestore write/read는 명시 env opt-in이 필요하므로, V1의 exit-integrity cycle처럼 감시 기능이 갑자기 full-scan 비용 폭발로 바뀌지 않는다
 4. 쿼리는 `generated_at_ms >= sinceMs` 와 bounded limit만 사용하므로, 긴 collection full-scan을 promotion gate 안에 넣지 않는다
 5. 이 증거는 여전히 `NO_EXCHANGE_ROUTE_PROOF` 이다. 실거래소 write 증거와 scheduler route 증거를 섞지 않아, V1식 성공 조건 혼선을 줄인다
+
+## 2026-04-21 Production Entry Route Canary Collection Bootstrap
+
+추가 증거:
+
+1. `scripts/submit-v2-promotion-cloudbuild.js`
+2. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+3. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. bounded CANARY/LIVE 제출 request는 이제 production entry route canary Firestore write/read/source env를 자동으로 `1/1/FIRESTORE` 로 설정한다
+2. CANARY에서도 이 durable history 수집을 켜는 이유는 LIVE 승격 직전에 24시간 Firestore streak가 필요하기 때문이다
+3. LIVE deploy decision은 여전히 `history_source=FIRESTORE` 를 요구하므로, JSONL fallback으로 LIVE를 통과할 수 없다
+4. MOCK/GATE 계열은 기본 `0/0/JSONL` 로 남아, 로컬 개발이나 단순 gate 실행이 Firestore write를 만들지 않는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 운영 증거를 요구하면서 그 증거를 만드는 scheduler/env가 먼저 켜져 있는지 별도였다
+2. 이번 단계는 CANARY 제출 시점부터 durable canary history 수집 env를 같이 전달해, LIVE 직전에 “필수 증거가 없어서 다시 수동 설정해야 하는” chicken-and-egg를 줄인다
+3. Firestore write는 production entry route canary의 bounded single-doc history에 한정되며, V1 exit-integrity full-scan 같은 비용 폭발 경로가 아니다

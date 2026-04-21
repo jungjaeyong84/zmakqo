@@ -243,6 +243,7 @@ function buildSubstitutions(plan) {
   const row = plan && typeof plan === "object" ? plan : {};
   const requiresOpenClawExecutionAuditLedgerWrite = ["CANARY_FLOW", "PIPELINE"].includes(row.mode)
     && ["CANARY", "LIVE"].includes(row.promotionMode);
+  const enablesProductionEntryRouteCanaryFirestore = ["CANARY", "LIVE"].includes(row.promotionMode);
   return Object.freeze({
     _V2_PROMOTION_CANARY_FLOW_ENABLED: row.mode === "CANARY_FLOW" ? "1" : "0",
     _V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED: row.canaryAutoSelectEnabled ? "1" : "0",
@@ -258,9 +259,9 @@ function buildSubstitutions(plan) {
     _V2_PROMOTION_COMPARISON_FIXTURE_PROFILE: trimOrNull(row.effectiveEnv && row.effectiveEnv.V2_PROMOTION_COMPARISON_FIXTURE_PROFILE) || "REFERENCE_CLEAN",
     _DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: requiresOpenClawExecutionAuditLedgerWrite ? "1" : "0",
     _DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON) || "",
-    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED) || (row.promotionMode === "LIVE" ? "1" : "0"),
-    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED) || (row.promotionMode === "LIVE" ? "1" : "0"),
-    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE) || (row.promotionMode === "LIVE" ? "FIRESTORE" : "JSONL"),
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE) || (enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : "JSONL"),
   });
 }
 

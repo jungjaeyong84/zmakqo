@@ -262,6 +262,9 @@ Cloud Build에서는 개별 script를 직접 조합하지 않는다.
 2. `_V2_PROMOTION_MODE=CANARY`
 3. `_V2_PROMOTION_SELECT_POSITION_CYCLE_ID=<position-cycle-id>`
 4. `_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=1`
+5. `_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED=1`
+6. `_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED=1`
+7. `_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE=FIRESTORE`
 
 권장 사항:
 
@@ -271,7 +274,9 @@ Cloud Build에서는 개별 script를 직접 조합하지 않는다.
 4. bounded explicit cycle 경로에서는 wrapper가 `check:v2-canary-runbook` 을 자동 실행하고 `promotion-runbook-review.json.ok = true` 가 아니면 즉시 실패한다
 5. auto-select 경로에서는 runtime이 먼저 candidate를 선택한 뒤 `<requested-artifact-dir>/<selected-position-cycle-id>` 로 bounded artifact dir를 finalize 하고, 그 final dir 기준으로 wrapper가 `check:v2-canary-runbook` 을 자동 실행해야 한다
 6. `submit:v2-promotion-cloudbuild` 는 bounded CANARY/LIVE 제출 request에서 `_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=1` 을 자동 설정한다
-7. LIVE 제출은 `bounded_runtime_summary.repair_firestore_canary_streak` 이 24시간 Firestore-backed repair canary streak pass를 증명해야 하며, CANARY에서는 같은 증거가 없으면 warning으로만 남긴다
+7. `submit:v2-promotion-cloudbuild` 는 bounded CANARY/LIVE 제출 request에서 production entry route canary Firestore write/read/source env를 자동으로 `1/1/FIRESTORE` 로 설정한다
+8. LIVE 제출은 `bounded_runtime_summary.repair_firestore_canary_streak` 이 24시간 Firestore-backed repair canary streak pass를 증명해야 하며, CANARY에서는 같은 증거가 없으면 warning으로만 남긴다
+9. LIVE 제출은 `bounded_runtime_summary.production_entry_route_canary_streak.history_source=FIRESTORE` 를 요구하므로, CANARY 기간에 먼저 durable canary history를 누적해야 한다
 
 로컬 제출 request 생성 예시:
 
