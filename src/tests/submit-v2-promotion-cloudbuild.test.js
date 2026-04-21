@@ -18,6 +18,24 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
 }
 
+function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
+  return {
+    ok: true,
+    reason: "ARTIFACT_DIR_COHERENT",
+    requested_artifact_dir: dir,
+    resolved_artifact_dir: dir,
+    artifact_dir: dir,
+    position_cycle_id: cycleId,
+    deploy_decision_position_cycle_id: cycleId,
+    position_cycle_required: true,
+    artifact_dir_matches_resolved_artifact_dir: true,
+    artifact_dir_contains_position_cycle_id: true,
+    resolved_artifact_dir_contains_position_cycle_id: true,
+    context_cycle_matches_deploy_decision: true,
+    ...overrides,
+  };
+}
+
 function buildProductionCutoverAuditFixture() {
   return {
     ok: true,
@@ -186,6 +204,7 @@ function seedBoundedSubmitArtifacts(
     position_cycle_id: cycleId,
     artifact_dir: dir,
     resolved_artifact_dir: dir,
+    artifact_dir_coherence: buildArtifactDirCoherenceFixture(dir, cycleId),
     lineage_contract_hash: contextLineageHash || LINEAGE_CONTRACT_FIXTURE.hash,
     final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
     recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -412,7 +431,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.production_entry_route_canary_streak, null);
   assert.strictEqual(request.approval_evidence_sources.runbook_review.expected_value, "PASS");
   assert.strictEqual(request.approval_evidence_sources.resolved_artifact_dir.file, "promotion-cloudbuild-context.json");
-  assert.strictEqual(request.approval_evidence_sources.resolved_artifact_dir.field, "artifact_dir,resolved_artifact_dir,position_cycle_id");
+  assert.strictEqual(request.approval_evidence_sources.resolved_artifact_dir.field, "artifact_dir,resolved_artifact_dir,artifact_dir_coherence,position_cycle_id");
   assert.strictEqual(request.approval_evidence_sources.lineage_hash_sources.length, 4);
   assert.strictEqual(request.approval_evidence_sources.lineage_hash_sources[3].field, "lineage_contract_hash");
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_FLOW_ENABLED, "1");
@@ -494,6 +513,42 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(contractCheck.ok, false);
     assert.ok(contractCheck.doc_refs.artifact_contract.includes("approval_contract.candidate_selection_ready_required"));
     assert.ok(contractCheck.doc_refs.artifact_contract.includes("approval_contract.selected_preflight_required"));
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function approvalVerificationRejectsFalseArtifactDirSelfCheck() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-dir-self-check-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__DIR__SELF_CHECK");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__DIR__SELF_CHECK");
+    const contextFile = path.join(artifactDir, "promotion-cloudbuild-context.json");
+    const context = JSON.parse(fs.readFileSync(contextFile, "utf8"));
+    writeJson(contextFile, {
+      ...context,
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture(artifactDir, "PCY__DIR__SELF_CHECK", {
+        ok: false,
+        reason: "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH",
+        artifact_dir_matches_resolved_artifact_dir: false,
+      }),
+    });
+    const request = submit.__test.buildSubmitRequest({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__DIR__SELF_CHECK",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    });
+    const verification = submit.__test.buildApprovalVerification(request);
+    assert.strictEqual(verification.ok, false);
+    const dirCheck = verification.checks.find((row) => row.id === "SUBMIT_CHK_01A");
+    assert.ok(dirCheck);
+    assert.strictEqual(dirCheck.ok, false);
+    assert.strictEqual(dirCheck.field, "artifact_dir,resolved_artifact_dir,artifact_dir_coherence,position_cycle_id");
+    assert.strictEqual(dirCheck.reason, "request artifact dir, context self-check, resolved dir, or selected cycle is inconsistent");
+    assert.ok(verification.blocker_summary.has_provenance_blocker);
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

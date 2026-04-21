@@ -831,16 +831,18 @@ function evaluateSubmitContract() {
       label: "submit wrapper verifies resolved artifact dir coherence",
       ok: submitWrapperText.includes("SUBMIT_CHK_01A")
         && submitWrapperText.includes("hasResolvedArtifactDirCoherence")
+        && submitWrapperText.includes("artifact_dir_coherence")
         && submitTraceText.includes("SUBMIT_CHK_01A")
         && runbookText.includes("| `SUBMIT_CHK_01A` | `1`, `5`, `9` | resolved artifact dir matches selected cycle |")
         && artifactContractText.includes("approval_evidence_sources.resolved_artifact_dir"),
       reason: submitWrapperText.includes("SUBMIT_CHK_01A")
         && submitWrapperText.includes("hasResolvedArtifactDirCoherence")
+        && submitWrapperText.includes("artifact_dir_coherence")
         && submitTraceText.includes("SUBMIT_CHK_01A")
         && runbookText.includes("| `SUBMIT_CHK_01A` | `1`, `5`, `9` | resolved artifact dir matches selected cycle |")
         && artifactContractText.includes("approval_evidence_sources.resolved_artifact_dir")
-        ? "submit wrapper maps resolved artifact dir coherence to SUBMIT_CHK_01A and runbook 1/5/9"
-        : "submit wrapper must verify resolved artifact dir coherence and map SUBMIT_CHK_01A to runbook 1/5/9",
+        ? "submit wrapper maps resolved artifact dir and context self-check coherence to SUBMIT_CHK_01A and runbook 1/5/9"
+        : "submit wrapper must verify resolved artifact dir and artifact_dir_coherence and map SUBMIT_CHK_01A to runbook 1/5/9",
       file: FILES.submitWrapper,
     }),
     buildCheck({

@@ -1800,3 +1800,25 @@ V1 약점 재발 방지:
 1. V1에서는 “진단 필드가 존재하지만 gate가 읽지 않는” 장식성 관측값이 운영 판단을 흐릴 수 있었다
 2. 이번 단계는 context self-check를 runbook fail-closed 조건에 연결해, 관측값과 게이트 판단이 분리되는 문제를 줄인다
 3. 따라서 V2에서는 final artifact dir drift가 context에 기록만 되고 승격 검토를 통과하는 경로를 차단한다
+
+## 2026-04-22 Submit Enforces Context Artifact Dir Self-Check
+
+추가 증거:
+
+1. `scripts/submit-v2-promotion-cloudbuild.js`
+2. `scripts/check-v2-promotion-submit-contract.js`
+3. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+4. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+
+판정:
+
+1. submit wrapper `SUBMIT_CHK_01A` 는 이제 `promotion-cloudbuild-context.json.artifact_dir_coherence.ok=true` 를 직접 요구한다
+2. self-check의 `artifact_dir`, `resolved_artifact_dir`, `position_cycle_id`, `deploy_decision_position_cycle_id` 가 submit request artifact dir와 deploy/preflight/manifest cycle에 맞지 않으면 provenance blocker다
+3. `approval_evidence_sources.resolved_artifact_dir.field` 는 `artifact_dir_coherence` 를 포함해 운영자에게 어떤 필드를 봐야 하는지 노출한다
+4. submit contract는 submit wrapper가 `artifact_dir_coherence` 를 실제로 참조하지 않으면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 runbook과 최종 실행 wrapper가 서로 다른 증거 집합을 읽어 마지막 단계에서 판단이 갈라질 수 있었다
+2. 이번 단계는 runbook `CHK_01A` 와 submit `SUBMIT_CHK_01A` 가 동일한 context self-check를 요구하도록 맞췄다
+3. 따라서 V2에서는 context self-check가 false인데도 최종 submit만 통과하는 운영 drift를 차단한다

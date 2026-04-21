@@ -487,8 +487,8 @@ function buildApprovalEvidenceSources(plan) {
     }),
     resolved_artifact_dir: buildEvidenceRef({
       file: "promotion-cloudbuild-context.json",
-      field: "artifact_dir,resolved_artifact_dir,position_cycle_id",
-      note: "request artifact_dir, context artifact_dir/resolved_artifact_dir, and deploy/preflight/manifest/context cycle ids must describe the same finalized bounded directory",
+      field: "artifact_dir,resolved_artifact_dir,artifact_dir_coherence,position_cycle_id",
+      note: "request artifact_dir, context artifact_dir/resolved_artifact_dir/self-check, and deploy/preflight/manifest/context cycle ids must describe the same finalized bounded directory",
     }),
     lineage_hash_sources: Object.freeze([
       buildEvidenceRef({
@@ -587,8 +587,15 @@ function hasResolvedArtifactDirCoherence({ artifactDir = null, artifacts = {}, d
   const submittedArtifactDir = resolvePathOrNull(artifactDir);
   const contextArtifactDir = resolvePathOrNull(cloudbuildContext && cloudbuildContext.artifact_dir);
   const contextResolvedArtifactDir = resolvePathOrNull(cloudbuildContext && cloudbuildContext.resolved_artifact_dir);
+  const selfCheck = cloudbuildContext && typeof cloudbuildContext.artifact_dir_coherence === "object"
+    ? cloudbuildContext.artifact_dir_coherence
+    : null;
+  const selfCheckArtifactDir = resolvePathOrNull(selfCheck && selfCheck.artifact_dir);
+  const selfCheckResolvedArtifactDir = resolvePathOrNull(selfCheck && selfCheck.resolved_artifact_dir);
   const decisionCycleId = trimOrNull(deployDecision && deployDecision.position_cycle_id);
   const contextCycleId = trimOrNull(cloudbuildContext && cloudbuildContext.position_cycle_id);
+  const selfCheckCycleId = trimOrNull(selfCheck && selfCheck.position_cycle_id);
+  const selfCheckDeployCycleId = trimOrNull(selfCheck && selfCheck.deploy_decision_position_cycle_id);
   const preflightCycleId = trimOrNull(artifacts.preflight && artifacts.preflight.payload && artifacts.preflight.payload.position_cycle_id);
   const manifestCycleId = trimOrNull(
     artifacts.runtimeManifest
@@ -601,16 +608,30 @@ function hasResolvedArtifactDirCoherence({ artifactDir = null, artifacts = {}, d
     submittedArtifactDir &&
     contextArtifactDir &&
     contextResolvedArtifactDir &&
+    selfCheck &&
+    selfCheck.ok === true &&
+    selfCheckArtifactDir &&
+    selfCheckResolvedArtifactDir &&
     decisionCycleId &&
     contextCycleId &&
+    selfCheckCycleId &&
+    selfCheckDeployCycleId &&
     preflightCycleId &&
     manifestCycleId &&
     submittedArtifactDir === contextArtifactDir &&
     submittedArtifactDir === contextResolvedArtifactDir &&
+    submittedArtifactDir === selfCheckArtifactDir &&
+    submittedArtifactDir === selfCheckResolvedArtifactDir &&
     submittedArtifactDir.includes(decisionCycleId) &&
     contextCycleId === decisionCycleId &&
+    selfCheckCycleId === decisionCycleId &&
+    selfCheckDeployCycleId === decisionCycleId &&
     preflightCycleId === decisionCycleId &&
-    manifestCycleId === decisionCycleId
+    manifestCycleId === decisionCycleId &&
+    selfCheck.artifact_dir_matches_resolved_artifact_dir === true &&
+    selfCheck.artifact_dir_contains_position_cycle_id === true &&
+    selfCheck.resolved_artifact_dir_contains_position_cycle_id === true &&
+    selfCheck.context_cycle_matches_deploy_decision === true
   );
 }
 
@@ -1145,9 +1166,9 @@ function buildApprovalVerification(request) {
     ok: resolvedArtifactDirCoherent,
     reason: resolvedArtifactDirCoherent
       ? "request artifact dir, context resolved dir, and selected cycle are coherent"
-      : "request artifact dir, context resolved dir, or selected cycle is inconsistent",
+      : "request artifact dir, context self-check, resolved dir, or selected cycle is inconsistent",
     file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
-    field: "artifact_dir,resolved_artifact_dir,position_cycle_id",
+    field: "artifact_dir,resolved_artifact_dir,artifact_dir_coherence,position_cycle_id",
   }), {
     runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_01A"),
     artifactContract: [
