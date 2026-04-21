@@ -30,6 +30,7 @@ function auditV2ProductionCutoverContract({
   routeSource = "",
   guardSource = "",
   productionEntryRouteSource = "",
+  productionEntryRouteCanarySource = "",
   entryBoundaryAuditSource = "",
 } = {}) {
   const checks = [
@@ -72,6 +73,11 @@ function auditV2ProductionCutoverContract({
       "V2_PRODUCTION_ENTRY_ROUTE_AUDITS_OPENCLAW_SEPARATION",
       productionEntryRouteSource.includes("evaluateOpenClawExecutionSeparation") && productionEntryRouteSource.includes("V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED"),
       "production entry route must compare kernel executed entry against OpenClaw/router lineage"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_ROUTE_CANARY_NO_EXCHANGE_WRITE",
+      productionEntryRouteCanarySource.includes("runV2ProductionEntryRoute") && productionEntryRouteCanarySource.includes("NO_EXCHANGE_ROUTE_PROOF") && productionEntryRouteCanarySource.includes("exchange_write_performed: false"),
+      "production entry route canary must prove route wiring without exchange writes"
     ),
     buildCheck(
       "V2_ENTRY_BOUNDARY_FORBIDS_KERNEL_BYPASS",
@@ -118,6 +124,7 @@ function auditWorkspaceV2ProductionCutoverContract({ rootDir = path.resolve(__di
     routeSource: readTextSafe(path.join(rootDir, "src", "routes", "webhook.routes.js")),
     guardSource: readTextSafe(path.join(rootDir, "src", "v2", "productionCutoverGuard.js")),
     productionEntryRouteSource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryRoute.js")),
+    productionEntryRouteCanarySource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryRouteCanary.js")),
     entryBoundaryAuditSource: readTextSafe(path.join(rootDir, "src", "v2", "entryBoundaryAudit.js")),
   });
 }

@@ -85,7 +85,9 @@
     "check:v2-production-runtime-config": "node scripts/check-v2-production-runtime-config.js",
     "check:v2-scheduler-traffic-collector-prereq": "node scripts/check-v2-scheduler-traffic-collector-prereq.js",
     "check:v2-scheduler-traffic-cutover": "node scripts/check-v2-scheduler-traffic-cutover.js",
-    "collect:v2-scheduler-traffic-state": "node scripts/collect-v2-scheduler-traffic-state.js"
+    "collect:v2-scheduler-traffic-state": "node scripts/collect-v2-scheduler-traffic-state.js",
+    "run:v2-production-entry-route-canary": "node scripts/run-v2-production-entry-route-canary.js",
+    "test:v2-production-entry-route-canary": "node src/tests/v2-production-entry-route-canary.test.js"
   },
   "author": "Jaeyong Jung",
   "license": "ISC",

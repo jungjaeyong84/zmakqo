@@ -110,6 +110,22 @@ router.post("/api/openclaw/cron/retrospect", requireSchedulerToken, async (req, 
   }
 });
 
+// v2-production-entry-route-canary: proves OpenClaw scheduler traffic can
+// reach the V2 production entry route without allowing exchange writes.
+router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/run-v2-production-entry-route-canary");
+    const outcome = await runWithShortTimeout("v2_production_entry_route_canary", () => main({ setProcessExitCode: false }), 120000);
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // Health probe — returns 200 with a small payload so scheduler smoke
 // tests can verify auth + routing without kicking off a full run.
 router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
@@ -119,6 +135,7 @@ router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
       "POST /api/openclaw/cron/evidence-linker",
       "POST /api/openclaw/cron/calibration",
       "POST /api/openclaw/cron/retrospect",
+      "POST /api/openclaw/cron/v2-production-entry-route-canary",
     ],
     now_iso: new Date().toISOString(),
   });

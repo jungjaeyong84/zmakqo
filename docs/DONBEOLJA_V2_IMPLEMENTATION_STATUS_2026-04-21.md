@@ -1144,3 +1144,34 @@ V1 약점 재발 방지:
 3. 따라서 OpenClaw 승인만 있거나, kernel이 fake success를 내거나, 실행 lineage가 다른 경우가 entry success로 포장되지 않는다
 4. cutover audit가 route/kernel wiring 계약을 검사하므로, route를 만들고도 deploy gate가 모르는 V1식 문서-코드 단절을 줄였다
 5. 남은 한계는 실제 Cloud Run scheduler/OpenClaw cron handler가 `runV2ProductionEntryRoute` 를 호출하도록 연결하고, 그 호출 증거를 24시간 canary에서 수집하는 단계다
+
+## 2026-04-21 Production Entry Route Canary Hook
+
+추가 증거:
+
+1. `src/v2/productionEntryRouteCanary.js`
+2. `scripts/run-v2-production-entry-route-canary.js`
+3. `src/routes/openclaw.cron.routes.js`
+4. `scripts/lib/openclaw-cron-manifest.js`
+5. `src/tests/v2-production-entry-route-canary.test.js`
+6. `src/tests/run-v2-production-entry-route-canary.test.js`
+7. `src/tests/openclaw-cron-routes.test.js`
+8. `src/tests/openclaw-cron-manifest.test.js`
+
+판정:
+
+1. OpenClaw Cloud Scheduler가 호출할 수 있는 `/api/openclaw/cron/v2-production-entry-route-canary` endpoint가 추가됐다
+2. endpoint는 `SCHEDULER_TOKEN` 인증을 통과해야 하고, 기존 OpenClaw cron timeout wrapper를 재사용한다
+3. canary script는 `runV2ProductionEntryRoute` 를 호출하되 거래소 write를 하지 않는다
+4. artifact에는 `canary_mode=NO_EXCHANGE_ROUTE_PROOF` 와 `exchange_write_performed=false` 가 고정된다
+5. canary는 runtime guard, deterministic router, route-level execution kernel result, OpenClaw separation audit, audit ledger skip evidence를 모두 검사한다
+6. audit ledger write는 의도적으로 `PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED` 로 skip 하며, 이 skip evidence가 없으면 pass가 아니다
+7. Cloud Scheduler manifest에 `v2_production_entry_route_canary` job이 추가되어 endpoint와 manifest가 분리되지 않는다
+8. static route test가 endpoint, script binding, `_ping` route list, blocked canary HTTP 500 mapping을 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 cron/scheduler가 어느 runtime 경로를 실제로 타는지 운영자가 artifact만 보고 복원하기 어려웠다
+2. 이번 단계에서는 OpenClaw cron이 V2 production entry route까지 도달했다는 증거가 별도 artifact로 남는다
+3. 다만 이 canary는 실주문/실보호주문 증거가 아니다. 의도적으로 `NO_EXCHANGE_ROUTE_PROOF` 에 머물러서 scheduler 연결 증거와 live exchange write 증거를 섞지 않는다
+4. 다음 단계는 이 canary가 24시간 동안 누락 없이 생성되는지 수집한 뒤, 실제 canary entry transport 연결로 승격하는 것이다

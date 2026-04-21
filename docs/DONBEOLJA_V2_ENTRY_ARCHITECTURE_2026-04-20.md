@@ -205,6 +205,28 @@ V2 production route / scheduler / OpenClaw cron은 `runV2ProductionEntryRoute` �
 
 이 계약의 목적은 V1의 "scheduler / native signal / repair / watchdog가 각자 성공 의미를 다르게 해석한 문제"를 production entry 최상단에서 끊는 것이다.
 
+## production entry route canary contract
+
+OpenClaw cron은 실제 주문 연결 전에 `v2-production-entry-route-canary` 를 통해 production route 도달 증거를 먼저 남긴다.
+
+범위:
+
+1. Cloud Scheduler / OpenClaw HTTP endpoint가 살아 있는지 확인한다
+2. `runV2ProductionEntryRoute` 가 호출되는지 확인한다
+3. route가 runtime config, deterministic router, execution kernel, OpenClaw separation audit, audit ledger 판단을 모두 통과하는지 확인한다
+4. 거래소 write는 하지 않는다
+
+필수 정책:
+
+1. canary mode는 `NO_EXCHANGE_ROUTE_PROOF` 로 고정한다
+2. artifact는 `exchange_write_performed=false` 를 반드시 포함한다
+3. audit ledger write는 `PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED` 로 의도적으로 skip 한다
+4. route success reason은 `V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED` 이어야 한다
+5. kernel audit, OpenClaw execution separation audit, ledger skip evidence 중 하나라도 깨지면 `V2_PRODUCTION_ENTRY_ROUTE_CANARY_BLOCKED` 로 차단한다
+
+이 canary는 "실제 주문이 성공했다"는 증거가 아니다.
+목적은 V1의 "cron이 다른 route를 타거나 상위 runner가 하위 성공값을 다르게 해석하는 문제"를 production write 전에 먼저 차단하는 것이다.
+
 ## entry submitter contract
 
 V2 entry submitter는 production route가 직접 호출하지 않고 `runV2EntryExecutionKernel` 을 통해서만 호출한다.
