@@ -740,6 +740,40 @@ function seedRunbookArtifacts(dir, cycleId) {
   }
 })();
 
+(function contextArtifactPersistsProductionRouteWarningClassifiers() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-warning-"));
+  try {
+    const plan = {
+      mode: "CANARY_FLOW",
+      script: "run:v2-promotion-canary-flow",
+      artifactDir: dir,
+      positionCycleId: "PCY__CTX__WARNING",
+      promotionMode: "CANARY",
+    };
+    const file = cloudbuild.__test.writeContextArtifact(plan, {
+      deployDecision: {
+        approved: true,
+        decision: "APPROVE_DEPLOY",
+        position_cycle_id: "PCY__CTX__WARNING",
+        blockers: [],
+        warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+      },
+    });
+    const payload = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.strictEqual(payload.deploy_decision_summary.warning_summary.warning_n, 1);
+    assert.deepStrictEqual(payload.deploy_decision_summary.warning_summary.top_warnings, [
+      "DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY",
+    ]);
+    assert.strictEqual(payload.deploy_decision_summary.warning_summary.has_live_readiness_warning, true);
+    assert.strictEqual(payload.deploy_decision_summary.warning_summary.has_repair_firestore_canary_streak_warning, false);
+    assert.strictEqual(payload.deploy_decision_summary.warning_summary.has_production_entry_route_canary_streak_warning, true);
+    assert.ok(payload.final_status_line.includes("warnings=1"));
+    assert.ok(payload.final_status_line.includes("warn=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (function contextArtifactCanExposeRequestedAndResolvedDirs() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-finalized-"));
   const finalDir = path.join(dir, "PCY__CTX__FINAL");

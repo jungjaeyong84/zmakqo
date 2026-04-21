@@ -1308,3 +1308,32 @@ V1 약점 재발 방지:
 2. 이번 단계는 장기 history 자체는 유지하되, 승격 판단에 들어가는 verdict JSON은 promotion pipeline이 직접 재계산한다
 3. 따라서 과거 latest verdict가 남아 있거나 collector가 최근 history를 반영하지 못한 상태가 LIVE submit 승인으로 이어지는 위험을 줄였다
 4. production route streak와 repair streak가 모두 같은 방식으로 artifact-dir-local refresh를 거치므로, 승격 evidence 생성 방식이 일관된다
+
+## 2026-04-21 Warning Classifier End-to-End Contract
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-cloudbuild.js`
+2. `scripts/submit-v2-promotion-cloudbuild.js`
+3. `scripts/check-v2-canary-runbook.js`
+4. `scripts/check-v2-promotion-submit-contract.js`
+5. `src/tests/run-v2-promotion-cloudbuild.test.js`
+6. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+7. `src/tests/check-v2-canary-runbook.test.js`
+8. `src/tests/check-v2-promotion-submit-contract.test.js`
+
+판정:
+
+1. repair streak warning과 production entry route streak warning은 모두 `has_live_readiness_warning` 으로 분류된다
+2. repair streak warning은 `has_repair_firestore_canary_streak_warning=true` 와 runbook 19로 추적된다
+3. production entry route streak warning은 `has_production_entry_route_canary_streak_warning=true` 와 runbook 26으로 추적된다
+4. `promotion-cloudbuild-context.json` 생성 경로는 production route warning classifier를 실제 artifact에 남기는 테스트를 가진다
+5. `promotion-runbook-review` 의 `CHK_13B` 는 warning count/top warning/final status뿐 아니라 세 classifier boolean까지 일치해야 PASS한다
+6. submit contract는 classifier 필드, runbook 19/26 매핑, operator summary/alert preview 보존을 모두 필수 조건으로 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 warning 문구만 있고 운영자가 어떤 runbook 또는 증거 파일을 봐야 하는지 코드로 강제되지 않았다
+2. 이번 단계는 warning 생성자, cloudbuild context, runbook review, submit request, operator alert가 같은 classifier 스키마를 공유하도록 잠갔다
+3. classifier 누락은 단순 문서 drift가 아니라 `promotion-runbook-review` 또는 `check:v2-promotion-submit-contract` 실패로 드러난다
+4. 따라서 “최종 알림은 떴지만 정확히 어떤 계열 문제인지 모르는” V1식 모호한 운영 상태를 줄인다
