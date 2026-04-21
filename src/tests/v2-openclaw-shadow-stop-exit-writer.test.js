@@ -91,9 +91,15 @@ function seedPreTp1(store) {
     nativeTp1Price: 152.52,
     nativeRefreshStatus: "OK",
     healthStatus: "HEALTHY",
+    slOrderStatus: "PLACED",
+    tp1OrderStatus: "PLACED",
   });
   store["dbjv2__position_cycles_v2"] = {
-    [base.positionCycle.position_cycle_id]: base.positionCycle,
+    [base.positionCycle.position_cycle_id]: {
+      ...base.positionCycle,
+      status: "ACTIVE_PROTECTED",
+      protection_runtime_id: protection.protection_runtime_id,
+    },
   };
   store["dbjv2__exit_runtime_projection_v2"] = {
     [`ERPv2__${base.positionCycle.position_cycle_id}`]: base.projection,
@@ -143,9 +149,15 @@ function seedTrailActive(store) {
     nativeTp1Price: 2033.6,
     nativeRefreshStatus: "OK",
     healthStatus: "HEALTHY",
+    slOrderStatus: "PLACED",
+    tp1OrderStatus: "PLACED",
   });
   store["dbjv2__position_cycles_v2"] = {
-    [base.positionCycle.position_cycle_id]: base.positionCycle,
+    [base.positionCycle.position_cycle_id]: {
+      ...base.positionCycle,
+      status: "ACTIVE_PROTECTED",
+      protection_runtime_id: protection.protection_runtime_id,
+    },
   };
   store["dbjv2__exit_runtime_projection_v2"] = {
     [`ERPv2__${base.positionCycle.position_cycle_id}`]: trail.nextProjection,
@@ -291,6 +303,78 @@ function seedTrailActive(store) {
   assert.strictEqual(second.reason, "V2_SHADOW_STOP_EXIT_ALREADY_TERMINAL");
   const projection = store["dbjv2__exit_runtime_projection_v2"][`ERPv2__${base.positionCycle.position_cycle_id}`];
   assert.strictEqual(projection.stage, "EXITED_SL");
+})();
+
+(async function stopExitRequiresProtectionRuntimeContext() {
+  const store = {};
+  const calls = [];
+  const base = seedPreTp1(store);
+  delete store["dbjv2__protection_runtime_v2"][`PRTV2__${base.positionCycle.position_cycle_id}`];
+  const result = await writer.writeOpenClawShadowStopExit({
+    db: buildFakeDb(store, calls),
+    env: buildEnv(),
+    symbol: "SOLUSDT",
+    entryEventId: "ENTRY__SOL__SL",
+    positionSide: "LONG",
+    sourceFillId: "FILL__SL__NO_RUNTIME",
+    sourceOrderId: "STOP__SOL__1",
+    fillPrice: 147.52,
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.written, false);
+  assert.strictEqual(result.skipped, true);
+  assert.strictEqual(result.reason, "V2_SHADOW_STOP_EXIT_PROTECTION_CONTEXT_MISSING");
+})();
+
+(async function stopExitRejectsInactivePositionCycle() {
+  const store = {};
+  const calls = [];
+  const base = seedPreTp1(store);
+  store["dbjv2__position_cycles_v2"][base.positionCycle.position_cycle_id] = {
+    ...store["dbjv2__position_cycles_v2"][base.positionCycle.position_cycle_id],
+    status: "PROTECTION_PENDING",
+  };
+  const result = await writer.writeOpenClawShadowStopExit({
+    db: buildFakeDb(store, calls),
+    env: buildEnv(),
+    symbol: "SOLUSDT",
+    entryEventId: "ENTRY__SOL__SL",
+    positionSide: "LONG",
+    sourceFillId: "FILL__SL__PENDING",
+    sourceOrderId: "STOP__SOL__1",
+    fillPrice: 147.52,
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.written, false);
+  assert.strictEqual(result.skipped, true);
+  assert.strictEqual(result.reason, "V2_SHADOW_STOP_EXIT_POSITION_NOT_ACTIVE_PROTECTED");
+  assert.deepStrictEqual(result.issue_codes, ["POSITION_NOT_ACTIVE_PROTECTED"]);
+})();
+
+(async function stopExitRejectsMissingNativeStopEvidence() {
+  const store = {};
+  const calls = [];
+  const base = seedPreTp1(store);
+  store["dbjv2__protection_runtime_v2"][`PRTV2__${base.positionCycle.position_cycle_id}`] = {
+    ...store["dbjv2__protection_runtime_v2"][`PRTV2__${base.positionCycle.position_cycle_id}`],
+    sl_order_id: null,
+    sl_order_status: "FAILED",
+  };
+  const result = await writer.writeOpenClawShadowStopExit({
+    db: buildFakeDb(store, calls),
+    env: buildEnv(),
+    symbol: "SOLUSDT",
+    entryEventId: "ENTRY__SOL__SL",
+    positionSide: "LONG",
+    sourceFillId: "FILL__SL__NO_STOP",
+    sourceOrderId: "STOP__SOL__MISSING",
+    fillPrice: 147.52,
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.written, false);
+  assert.strictEqual(result.skipped, true);
+  assert.strictEqual(result.reason, "V2_SHADOW_STOP_EXIT_SL_ORDER_MISSING");
+  assert.deepStrictEqual(result.issue_codes, ["SL_ORDER_MISSING"]);
 })();
 
 (async function externalCloseWritesTerminalExternalSync() {

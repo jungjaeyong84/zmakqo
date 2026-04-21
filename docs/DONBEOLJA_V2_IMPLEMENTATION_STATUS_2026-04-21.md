@@ -1387,3 +1387,25 @@ V1 약점 재발 방지:
 1. V1에서는 TP1 체결 알림/상태 전이가 native TP1 주문 부재와 분리되어 `TP1_ORDER_MISSING` 이 반복됐다
 2. 이번 단계는 TP1 fill이 들어와도 보호 runtime이 완전하지 않으면 canonical transition을 쓰지 않아, “보호주문 없는 TP1 성공 처리”를 차단한다
 3. reducer/ingestion 경계에서 막기 때문에 상위 writer 하나가 실수해도 동일 조건을 다시 검사한다
+
+## 2026-04-22 Stop Exit Native Protection Gate
+
+추가 증거:
+
+1. `src/v2/openclawShadowExitWriter.js`
+2. `src/tests/v2-openclaw-shadow-stop-exit-writer.test.js`
+3. `src/tests/v2-openclaw-shadow-exit-writer.test.js`
+4. `src/tests/v2-openclaw-shadow-trail-writer.test.js`
+
+판정:
+
+1. V2 `SL_HIT` / `TRAIL_HIT` shadow writer는 이제 position cycle이 `ACTIVE_PROTECTED` 가 아니면 terminal transition을 쓰지 않는다
+2. protection runtime 문서가 없거나 cycle id가 맞지 않거나 이미 terminal이면 stop exit를 skip한다
+3. placed SL/native stop evidence가 없으면 `SL_HIT` / `TRAIL_HIT` 를 만들지 않고 `V2_SHADOW_STOP_EXIT_*` reason과 issue code로 관측 가능하게 남긴다
+4. manual/external close는 stop fill과 다른 경로로 유지해, 사용자 수동 정리와 native stop 체결을 섞지 않는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 stop event 문자열만 보고 SL/TRAIL terminal을 쓰는 경로가 남아 native stop 실제 근거와 projection이 어긋날 수 있었다
+2. 이번 단계는 terminal stop transition을 “활성 보호 포지션 + native stop evidence” 뒤에만 허용한다
+3. 따라서 보호주문 없이 들어간 포지션이 뒤늦게 stop/terminal 성공처럼 보이는 V1식 착시를 줄인다

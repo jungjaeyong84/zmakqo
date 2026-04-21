@@ -210,6 +210,41 @@ function evaluateTp1TransitionRuntimeGate({
   });
 }
 
+function hasPlacedRuntimeOrder(runtime, orderKey, statusKey) {
+  const row = runtime && typeof runtime === "object" ? runtime : {};
+  const orderId = trimOrNull(row[orderKey]);
+  const status = upper(row[statusKey]);
+  if (!orderId) return false;
+  if (status && status !== "PLACED") return false;
+  return true;
+}
+
+function evaluateStopExitRuntimeGate({
+  positionCycle,
+  projection,
+  protectionRuntime,
+} = {}) {
+  const cycle = positionCycle && typeof positionCycle === "object" ? positionCycle : {};
+  const runtime = protectionRuntime && typeof protectionRuntime === "object" ? protectionRuntime : {};
+  const issues = [];
+
+  if (upper(cycle.status) !== "ACTIVE_PROTECTED") issues.push("POSITION_NOT_ACTIVE_PROTECTED");
+  if (trimOrNull(runtime.position_cycle_id) !== trimOrNull(cycle.position_cycle_id)) {
+    issues.push("PROTECTION_RUNTIME_CYCLE_MISMATCH");
+  }
+  if (upper(runtime.health_status) === "TERMINAL_EXITED") issues.push("PROTECTION_RUNTIME_ALREADY_TERMINAL");
+  if (!hasPlacedRuntimeOrder(runtime, "sl_order_id", "sl_order_status")) issues.push("SL_ORDER_MISSING");
+  if (!(toNumberOrNull(runtime.native_stop_price) > 0 || toNumberOrNull(projection && projection.native_stop_price) > 0)) {
+    issues.push("NATIVE_STOP_PRICE_MISSING");
+  }
+
+  return Object.freeze({
+    ok: issues.length === 0,
+    reason: issues[0] || "V2_SHADOW_STOP_EXIT_RUNTIME_READY",
+    issue_codes: Object.freeze(issues),
+  });
+}
+
 function prepareCanonicalExitAlertArtifacts({
   positionCycle,
   transition,
@@ -740,6 +775,30 @@ async function writeOpenClawShadowStopExit({
       position_cycle_id: positionCycleId,
     };
   }
+  if (!protectionResult.ok) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: "V2_SHADOW_STOP_EXIT_PROTECTION_CONTEXT_MISSING",
+      position_cycle_id: positionCycleId,
+    };
+  }
+  const runtimeGate = evaluateStopExitRuntimeGate({
+    positionCycle: positionCycleResult.doc,
+    projection: projectionResult.doc,
+    protectionRuntime: protectionResult.doc,
+  });
+  if (runtimeGate.ok !== true) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: `V2_SHADOW_STOP_EXIT_${runtimeGate.reason}`,
+      issue_codes: runtimeGate.issue_codes,
+      position_cycle_id: positionCycleId,
+    };
+  }
 
   const evidenceSnapshot = buildExchangeEvidenceSnapshot({
     evidenceKind: "STOP_EXIT",
@@ -750,18 +809,16 @@ async function writeOpenClawShadowStopExit({
   });
 
   const terminalHealthStatus = "TERMINAL_EXITED";
-  const protectionRuntime = protectionResult.ok
-    ? {
-      ...protectionResult.doc,
-      native_stop_price: normalizedFillPrice,
-      native_refresh_status: "OK",
-      last_refresh_at: resolveObservedAtIso(observedAtMs),
-      health_status: terminalHealthStatus,
-      last_reason: trimOrNull(event) || null,
-      last_exchange_evidence: evidenceSnapshot,
-      last_evidence_observed_at: evidenceSnapshot.observed_at,
-    }
-    : null;
+  const protectionRuntime = {
+    ...protectionResult.doc,
+    native_stop_price: normalizedFillPrice,
+    native_refresh_status: "OK",
+    last_refresh_at: resolveObservedAtIso(observedAtMs),
+    health_status: terminalHealthStatus,
+    last_reason: trimOrNull(event) || null,
+    last_exchange_evidence: evidenceSnapshot,
+    last_evidence_observed_at: evidenceSnapshot.observed_at,
+  };
 
   const result = await commitReducedExitFillArtifacts({
     db,
@@ -929,6 +986,7 @@ module.exports = {
     isTerminalProjectionStage,
     evaluateTrailActivationProtectionGate,
     evaluateTp1TransitionRuntimeGate,
+    evaluateStopExitRuntimeGate,
     prepareCanonicalExitAlertArtifacts,
     resolveObservedAtIso,
     buildExchangeEvidenceSnapshot,
