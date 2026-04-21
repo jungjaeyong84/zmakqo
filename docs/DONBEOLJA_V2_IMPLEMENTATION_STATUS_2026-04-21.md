@@ -1709,3 +1709,28 @@ V1 약점 재발 방지:
 1. V1에서는 auto-select/explicit-cycle 경로가 계약상 다르게 동작해도 최종 submit contract가 그 차이를 충분히 검증하지 못했다
 2. 이번 단계는 auto-select 조건 자체를 approval contract completeness에 포함해 “선택 경로가 자동인지 명시인지”가 제출 직전에 흐려지는 문제를 줄인다
 3. 따라서 V2에서는 auto-select 경로가 후보 선택/preflight 계약을 반드시 요구한다는 사실이 request, verification, 문서에 동시에 남는다
+
+## 2026-04-22 Submit Resolved Artifact Dir Coherence
+
+추가 증거:
+
+1. `scripts/submit-v2-promotion-cloudbuild.js`
+2. `scripts/lib/v2-promotion-submit-trace.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+5. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+6. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+
+판정:
+
+1. submit approval verification은 이제 `SUBMIT_CHK_01A` 로 request `artifact_dir`, context `artifact_dir`, context `resolved_artifact_dir` 가 같은 최종 bounded dir인지 직접 검증한다
+2. 같은 체크는 `promotion-deploy-decision.json.position_cycle_id`, `promotion-preflight.json.position_cycle_id`, `promotion-runtime-manifest.json.snapshot_meta.selector_meta.position_cycle_id`, `promotion-cloudbuild-context.json.position_cycle_id` 도 같은 cycle로 고정됐는지 확인한다
+3. 실패하면 provenance blocker로 분류되어 `DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT` 로 fail-closed 된다
+4. runbook reverse index는 `SUBMIT_CHK_01A -> 1,5,9` 를 제공하므로 submit 차단에서 artifact dir/cycle mismatch를 바로 추적할 수 있다
+5. submit contract는 `SUBMIT_CHK_01A`, `hasResolvedArtifactDirCoherence`, `approval_evidence_sources.resolved_artifact_dir`, runbook reverse index가 누락되면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 selector, deploy decision, context, submit wrapper가 서로 다른 artifact/cycle 축을 보더라도 마지막 제출 경로에서 명시적으로 드러나지 않을 수 있었다
+2. 이번 단계는 최종 submit wrapper가 runbook PASS에만 의존하지 않고, artifact dir와 selected cycle coherence를 자체 검증하게 만든다
+3. 따라서 V2에서는 auto-select finalize 이후 staging dir와 final dir가 섞이거나, 사람이 오래된 artifact dir를 재사용하는 provenance drift를 마지막 제출 전에 차단한다

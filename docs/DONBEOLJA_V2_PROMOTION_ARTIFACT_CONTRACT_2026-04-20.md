@@ -188,6 +188,7 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 17. `approval_evidence_sources.blocker_summary`
 18. `approval_evidence_sources.lineage_hash_sources`
 19. `approval_evidence_sources.candidate_selection` (auto-select path만)
+20. `approval_evidence_sources.resolved_artifact_dir`
 
 submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도 같이 남아야 한다.
 
@@ -519,6 +520,7 @@ cloudbuild는 아래 원칙을 따른다.
 6. live/canary 승격 판단은 mock이 아니라 real pipeline artifact 기준이어야 한다
 7. `canary_flow` 는 `position_cycle_id` 없으면 즉시 실패해야 한다
 8. bounded canary/live mode에서 artifact dir는 같은 `position_cycle_id` 축으로만 고정되어야 한다
+   최종 submit wrapper는 이 조건을 `SUBMIT_CHK_01A` 로 다시 검증해야 한다. `promotion-cloudbuild-context.json.artifact_dir`, `resolved_artifact_dir`, `position_cycle_id`, `promotion-deploy-decision.json.position_cycle_id`, `promotion-preflight.json.position_cycle_id`, `promotion-runtime-manifest.json.snapshot_meta.selector_meta.position_cycle_id` 가 같은 최종 bounded dir를 설명하지 못하면 provenance fail-closed다.
 9. bounded canary/live mode에서는 wrapper가 `promotion-deploy-decision.json` 을 직접 읽고 `APPROVE_DEPLOY` 가 아니면 즉시 실패해야 한다
 10. bounded explicit cycle 경로에서는 wrapper가 `promotion-runbook-review.json` 을 자동 생성하고 `overall_status=PASS` 가 아니면 즉시 실패해야 한다
 11. auto-select 경로는 runtime이 candidate selection 후 `<requested-artifact-dir>/<selected-position-cycle-id>` 로 artifact dir를 finalize 하고, wrapper는 그 final dir에서 `promotion-runbook-review.json` 을 자동 생성하고 `overall_status=PASS` 가 아니면 즉시 실패해야 한다

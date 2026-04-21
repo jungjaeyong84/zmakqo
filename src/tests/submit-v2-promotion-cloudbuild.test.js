@@ -183,6 +183,9 @@ function seedBoundedSubmitArtifacts(
     } : {}),
   });
   writeJson(path.join(dir, "promotion-cloudbuild-context.json"), {
+    position_cycle_id: cycleId,
+    artifact_dir: dir,
+    resolved_artifact_dir: dir,
     lineage_contract_hash: contextLineageHash || LINEAGE_CONTRACT_FIXTURE.hash,
     final_status_line: `APPROVE_DEPLOY ; cycle=${cycleId} ; blockers=0 ; warnings=0`,
     recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -408,6 +411,8 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.repair_firestore_canary_streak, null);
   assert.strictEqual(request.approval_evidence_sources.production_entry_route_canary_streak, null);
   assert.strictEqual(request.approval_evidence_sources.runbook_review.expected_value, "PASS");
+  assert.strictEqual(request.approval_evidence_sources.resolved_artifact_dir.file, "promotion-cloudbuild-context.json");
+  assert.strictEqual(request.approval_evidence_sources.resolved_artifact_dir.field, "artifact_dir,resolved_artifact_dir,position_cycle_id");
   assert.strictEqual(request.approval_evidence_sources.lineage_hash_sources.length, 4);
   assert.strictEqual(request.approval_evidence_sources.lineage_hash_sources[3].field, "lineage_contract_hash");
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_FLOW_ENABLED, "1");
@@ -489,6 +494,41 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(contractCheck.ok, false);
     assert.ok(contractCheck.doc_refs.artifact_contract.includes("approval_contract.candidate_selection_ready_required"));
     assert.ok(contractCheck.doc_refs.artifact_contract.includes("approval_contract.selected_preflight_required"));
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function approvalVerificationRejectsResolvedArtifactDirDrift() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-dir-drift-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__DIR__DRIFT");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__DIR__DRIFT");
+    const contextFile = path.join(artifactDir, "promotion-cloudbuild-context.json");
+    const context = JSON.parse(fs.readFileSync(contextFile, "utf8"));
+    writeJson(contextFile, {
+      ...context,
+      resolved_artifact_dir: path.join(dir, "PCY__OTHER__DRIFT"),
+    });
+    const request = submit.__test.buildSubmitRequest({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__DIR__DRIFT",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    });
+    const verification = submit.__test.buildApprovalVerification(request);
+    assert.strictEqual(verification.ok, false);
+    const dirCheck = verification.checks.find((row) => row.id === "SUBMIT_CHK_01A");
+    assert.ok(dirCheck);
+    assert.strictEqual(dirCheck.ok, false);
+    assert.deepStrictEqual(dirCheck.doc_refs.runbook_checklist, ["1", "5", "9"]);
+    assert.ok(verification.blocker_summary.has_provenance_blocker);
+    assert.strictEqual(
+      submit.__test.buildVerificationRecommendedAction(verification.blocker_summary),
+      "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT"
+    );
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

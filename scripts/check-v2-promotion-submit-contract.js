@@ -14,6 +14,7 @@ const FILES = Object.freeze({
   runbook: path.resolve(__dirname, "..", "docs", "DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md"),
   cloudbuildWrapper: path.resolve(__dirname, "run-v2-promotion-cloudbuild.js"),
   submitWrapper: path.resolve(__dirname, "submit-v2-promotion-cloudbuild.js"),
+  submitTrace: path.resolve(__dirname, "lib", "v2-promotion-submit-trace.js"),
   renderScript: path.resolve(__dirname, "render-v2-promotion-submit-operator-alert.js"),
   sendScript: path.resolve(__dirname, "send-v2-promotion-submit-operator-alert.js"),
 });
@@ -280,6 +281,7 @@ function evaluateSubmitContract() {
   const runbookText = readText(FILES.runbook);
   const cloudbuildWrapperText = readText(FILES.cloudbuildWrapper);
   const submitWrapperText = readText(FILES.submitWrapper);
+  const submitTraceText = readText(FILES.submitTrace);
   const summary = buildFormatterFixtureResult();
   const liveCutoverSummary = buildLiveCutoverFormatterFixtureResult();
   const liveCutoverPreview = buildLiveCutoverAlertPreviewFixtureResult();
@@ -820,6 +822,23 @@ function evaluateSubmitContract() {
         && artifactContractText.includes("approval_contract.selected_preflight_required")
         ? "submit approval contract verifies auto-select conditional flags"
         : "submit approval contract must verify candidate_selection_ready_required and selected_preflight_required",
+      file: FILES.submitWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_35",
+      label: "submit wrapper verifies resolved artifact dir coherence",
+      ok: submitWrapperText.includes("SUBMIT_CHK_01A")
+        && submitWrapperText.includes("hasResolvedArtifactDirCoherence")
+        && submitTraceText.includes("SUBMIT_CHK_01A")
+        && runbookText.includes("| `SUBMIT_CHK_01A` | `1`, `5`, `9` | resolved artifact dir matches selected cycle |")
+        && artifactContractText.includes("approval_evidence_sources.resolved_artifact_dir"),
+      reason: submitWrapperText.includes("SUBMIT_CHK_01A")
+        && submitWrapperText.includes("hasResolvedArtifactDirCoherence")
+        && submitTraceText.includes("SUBMIT_CHK_01A")
+        && runbookText.includes("| `SUBMIT_CHK_01A` | `1`, `5`, `9` | resolved artifact dir matches selected cycle |")
+        && artifactContractText.includes("approval_evidence_sources.resolved_artifact_dir")
+        ? "submit wrapper maps resolved artifact dir coherence to SUBMIT_CHK_01A and runbook 1/5/9"
+        : "submit wrapper must verify resolved artifact dir coherence and map SUBMIT_CHK_01A to runbook 1/5/9",
       file: FILES.submitWrapper,
     }),
   ];

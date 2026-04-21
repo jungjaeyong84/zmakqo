@@ -43,6 +43,7 @@ npm run check:v2-canary-runbook
 아래는 operator가 위에서 아래로 체크해야 하는 fail-closed checklist다.
 
 1. 같은 `position_cycle_id` 로 artifact 디렉터리를 고정했는가
+   submit trace-back: `SUBMIT_CHK_01A`
 2. preflight 없이 pipeline 또는 cloudbuild wrapper를 먼저 실행하지 않았는가
 3. `promotion-preflight.json.ok = true` 인가
 4. `promotion-canary-flow.json.ok = true` 인가
@@ -82,6 +83,7 @@ npm run check:v2-canary-runbook
 
 | Checklist | Submit Check IDs | File | Field | Pass 조건 | Fail 시 행동 |
 | --- | --- | --- | --- | --- | --- |
+| 1 | `SUBMIT_CHK_01A` | `promotion-cloudbuild-context.json`, `promotion-deploy-decision.json`, `promotion-preflight.json`, `promotion-runtime-manifest.json` | `artifact_dir`, `resolved_artifact_dir`, `position_cycle_id`, `snapshot_meta.selector_meta.position_cycle_id` | request artifact dir, context artifact/resolved dir, deploy/preflight/manifest/context cycle id가 모두 같은 최종 bounded dir를 가리킴 | artifact dir 폐기 후 preflight부터 다시 시작 |
 | 3 | - | `promotion-preflight.json` | `ok` | `true` | preflight부터 다시 시작 |
 | 4 | - | `promotion-canary-flow.json` | `ok`, `stage` | `ok=true`, `stage=PIPELINE_PASS` | canary flow 재실행 |
 | 5 | - | `promotion-runtime-manifest.json` | `snapshot_meta.selector_meta.position_cycle_id` | 입력 `position_cycle_id` 와 동일 | artifact dir 폐기 후 preflight부터 다시 시작 |
@@ -117,6 +119,7 @@ npm run check:v2-canary-runbook
 
 | Submit Check ID | Runbook Checklist | 의미 |
 | --- | --- | --- |
+| `SUBMIT_CHK_01A` | `1`, `5`, `9` | resolved artifact dir matches selected cycle |
 | `SUBMIT_CHK_02` | `7` | deploy decision approved |
 | `SUBMIT_CHK_03` | `8` | bounded runtime summary complete |
 | `SUBMIT_CHK_04` | `14` | evidence snapshot coverage complete |

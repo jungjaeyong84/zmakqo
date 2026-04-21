@@ -7,6 +7,11 @@ function trimOrNull(value) {
 
 const TRACE_INDEX = Object.freeze([
   Object.freeze({
+    id: "SUBMIT_CHK_01A",
+    runbookChecklist: Object.freeze(["1", "5", "9"]),
+    summary: "resolved artifact dir matches selected cycle",
+  }),
+  Object.freeze({
     id: "SUBMIT_CHK_02",
     runbookChecklist: Object.freeze(["7"]),
     summary: "deploy decision approved",

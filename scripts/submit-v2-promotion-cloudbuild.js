@@ -92,7 +92,7 @@ function buildVerificationSummary(checks) {
     .map((row) => trimOrNull(row.reason) || trimOrNull(row.label) || trimOrNull(row.id))
     .filter(Boolean)
     .slice(0, 3);
-  const hasProvenanceBlocker = ids.some((id) => ["SUBMIT_CHK_01", "SUBMIT_CHK_08"].includes(id));
+  const hasProvenanceBlocker = ids.some((id) => ["SUBMIT_CHK_01", "SUBMIT_CHK_01A", "SUBMIT_CHK_08"].includes(id));
   const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19"].includes(id));
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
@@ -381,6 +381,7 @@ function buildApprovalEvidenceSources(plan) {
       production_entry_route_canary_streak: null,
       lineage_hash_sources: [],
       candidate_selection: null,
+      resolved_artifact_dir: null,
     });
   }
 
@@ -484,6 +485,11 @@ function buildApprovalEvidenceSources(plan) {
       field: "deploy_decision_summary.blocker_summary.blocker_n",
       expectedValue: 0,
     }),
+    resolved_artifact_dir: buildEvidenceRef({
+      file: "promotion-cloudbuild-context.json",
+      field: "artifact_dir,resolved_artifact_dir,position_cycle_id",
+      note: "request artifact_dir, context artifact_dir/resolved_artifact_dir, and deploy/preflight/manifest/context cycle ids must describe the same finalized bounded directory",
+    }),
     lineage_hash_sources: Object.freeze([
       buildEvidenceRef({
         file: "promotion-preflight.json",
@@ -570,6 +576,42 @@ function collectLineageHashes(artifacts = {}) {
     deploy_decision: deployHash,
     cloudbuild_context: contextHash,
   });
+}
+
+function resolvePathOrNull(value) {
+  const text = trimOrNull(value);
+  return text ? path.resolve(text) : null;
+}
+
+function hasResolvedArtifactDirCoherence({ artifactDir = null, artifacts = {}, deployDecision = null, cloudbuildContext = null } = {}) {
+  const submittedArtifactDir = resolvePathOrNull(artifactDir);
+  const contextArtifactDir = resolvePathOrNull(cloudbuildContext && cloudbuildContext.artifact_dir);
+  const contextResolvedArtifactDir = resolvePathOrNull(cloudbuildContext && cloudbuildContext.resolved_artifact_dir);
+  const decisionCycleId = trimOrNull(deployDecision && deployDecision.position_cycle_id);
+  const contextCycleId = trimOrNull(cloudbuildContext && cloudbuildContext.position_cycle_id);
+  const preflightCycleId = trimOrNull(artifacts.preflight && artifacts.preflight.payload && artifacts.preflight.payload.position_cycle_id);
+  const manifestCycleId = trimOrNull(
+    artifacts.runtimeManifest
+    && artifacts.runtimeManifest.payload
+    && artifacts.runtimeManifest.payload.snapshot_meta
+    && artifacts.runtimeManifest.payload.snapshot_meta.selector_meta
+    && artifacts.runtimeManifest.payload.snapshot_meta.selector_meta.position_cycle_id
+  );
+  return !!(
+    submittedArtifactDir &&
+    contextArtifactDir &&
+    contextResolvedArtifactDir &&
+    decisionCycleId &&
+    contextCycleId &&
+    preflightCycleId &&
+    manifestCycleId &&
+    submittedArtifactDir === contextArtifactDir &&
+    submittedArtifactDir === contextResolvedArtifactDir &&
+    submittedArtifactDir.includes(decisionCycleId) &&
+    contextCycleId === decisionCycleId &&
+    preflightCycleId === decisionCycleId &&
+    manifestCycleId === decisionCycleId
+  );
 }
 
 function buildSubmitTraceFamilies(summary) {
@@ -1088,6 +1130,29 @@ function buildApprovalVerification(request) {
       "approval_contract.blocker_free_required",
       "approval_contract.recommended_next_action_required",
       "approval_contract.resolved_artifact_dir_required",
+    ],
+  }));
+
+  const resolvedArtifactDirCoherent = hasResolvedArtifactDirCoherence({
+    artifactDir,
+    artifacts,
+    deployDecision,
+    cloudbuildContext,
+  });
+  checks.push(withDocRefs(buildVerificationCheck({
+    id: "SUBMIT_CHK_01A",
+    label: "resolved artifact dir matches selected cycle",
+    ok: resolvedArtifactDirCoherent,
+    reason: resolvedArtifactDirCoherent
+      ? "request artifact dir, context resolved dir, and selected cycle are coherent"
+      : "request artifact dir, context resolved dir, or selected cycle is inconsistent",
+    file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
+    field: "artifact_dir,resolved_artifact_dir,position_cycle_id",
+  }), {
+    runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_01A"),
+    artifactContract: [
+      "approval_contract.resolved_artifact_dir_required",
+      "approval_evidence_sources.resolved_artifact_dir",
     ],
   }));
 
@@ -1831,6 +1896,8 @@ if (require.main === module) {
       validateSubmitContract: submitContractCheck.assertSubmitContract,
       buildOperatorSummaryResult,
       collectLineageHashes,
+      resolvePathOrNull,
+      hasResolvedArtifactDirCoherence,
       hasRequiredApprovalContract,
       normalizeObject,
       readJsonFile,
