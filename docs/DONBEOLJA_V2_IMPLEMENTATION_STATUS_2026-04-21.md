@@ -1261,3 +1261,28 @@ V1 약점 재발 방지:
 1. V1에서는 운영 증거를 요구하면서 그 증거를 만드는 scheduler/env가 먼저 켜져 있는지 별도였다
 2. 이번 단계는 CANARY 제출 시점부터 durable canary history 수집 env를 같이 전달해, LIVE 직전에 “필수 증거가 없어서 다시 수동 설정해야 하는” chicken-and-egg를 줄인다
 3. Firestore write는 production entry route canary의 bounded single-doc history에 한정되며, V1 exit-integrity full-scan 같은 비용 폭발 경로가 아니다
+
+## 2026-04-21 Promotion Pipeline Production Route Streak Refresh
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-pipeline.js`
+2. `scripts/run-v2-promotion-cloudbuild.js`
+3. `src/tests/run-v2-promotion-pipeline.test.js`
+4. `src/tests/run-v2-promotion-cloudbuild.test.js`
+5. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. promotion pipeline은 이제 `generate-v2-unified-promotion-report` 를 실행하기 직전에 `v2_production_entry_route_canary_streak_latest.json` 를 현재 artifact dir에 새로 쓴다
+2. CANARY/LIVE 모드만 refresh 대상이며, SHADOW/MOCK 계열은 production route canary streak를 요구하지 않는다
+3. streak read 실패는 프로세스 예외로 묻히지 않고 `V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_THROWN` artifact로 남는다
+4. unified report와 deploy decision은 외부 `ops/daily` fallback보다 같은 artifact dir에 방금 생성된 streak artifact를 우선 읽는다
+5. cloudbuild context summary도 `bounded_runtime_summary.production_entry_route_canary_streak` 를 노출하므로 submit 차단 원인을 context에서 바로 추적할 수 있다
+
+V1 약점 재발 방지:
+
+1. V1에서는 gate가 요구하는 증거가 실제 승격 wrapper 바깥에서 생성되어 stale latest artifact를 믿는 구조가 반복됐다
+2. 이번 단계는 production route streak refresh를 promotion pipeline 내부로 끌어와 “검사는 있는데 이번 배포 실행이 만든 증거인지 모르는” 단절을 줄였다
+3. LIVE에서는 여전히 `history_source=FIRESTORE` 가 아니면 deploy/submit에서 차단되므로, JSONL fallback이 운영 증거로 승격되지 않는다
+4. CANARY에서는 streak 부족을 warning으로 노출해 24시간 evidence를 누적할 수 있고, LIVE에서는 같은 결함이 blocker로 승격된다

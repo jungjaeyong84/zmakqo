@@ -84,6 +84,17 @@ function buildBoundedRuntimeSummaryFixture() {
       invalid_line_n: 0,
       blockers: [],
     },
+    production_entry_route_canary_streak: {
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+      history_source: "FIRESTORE",
+      history_file: "donbeolja_v2__production_entry_route_canaries_v2",
+      healthy_run_n: 13,
+      min_run_count: 12,
+      unhealthy_run_n: 0,
+      invalid_line_n: 0,
+      blockers: [],
+    },
     alert_retry_summary: {
       outbox_n: 3,
       failed_n: 1,
@@ -667,6 +678,8 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(summary.bounded_runtime_summary.repair_evidence_summary.ok, true);
     assert.strictEqual(summary.bounded_runtime_summary.openclaw_execution_audit_ledger_write.reason, "OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITTEN");
     assert.strictEqual(summary.bounded_runtime_summary.repair_firestore_canary_streak.reason, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS");
+    assert.strictEqual(summary.bounded_runtime_summary.production_entry_route_canary_streak.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
+    assert.strictEqual(summary.bounded_runtime_summary.production_entry_route_canary_streak.history_source, "FIRESTORE");
     assert.strictEqual(summary.candidate_selection_summary.selection_contract.ok, true);
     assert.strictEqual(summary.blocker_summary.blocker_n, 0);
     const statusLine = cloudbuild.__test.buildStatusLine(summary);

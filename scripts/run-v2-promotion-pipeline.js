@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const runtimeInputSelector = require("./select-v2-promotion-runtime-inputs");
 const runtimeSnapshotCollector = require("./collect-v2-promotion-runtime-snapshot");
 const runtimeSnapshotExporter = require("./export-v2-promotion-runtime-snapshot");
@@ -9,6 +11,9 @@ const comparisonArtifacts = require("./generate-v2-comparison-artifacts");
 const unifiedPromotionReport = require("./generate-v2-unified-promotion-report");
 const deployDecision = require("./check-v2-promotion-deploy-decision");
 const gate = require("./check-v2-promotion-gate");
+const productionEntryRouteCanaryStreak = require("./check-v2-production-entry-route-canary-streak");
+
+const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -37,6 +42,75 @@ function hasRuntimeSelectorInput(env = process.env) {
   return trimOrNull(env.V2_PROMOTION_SELECT_POSITION_CYCLE_ID) != null;
 }
 
+function upper(value) {
+  return String(value || "").trim().toUpperCase() || null;
+}
+
+function resolveArtifactDir(env = process.env) {
+  return trimOrNull(env.V2_PROMOTION_ARTIFACT_DIR) || process.cwd();
+}
+
+function shouldRefreshProductionEntryRouteCanaryStreak(env = process.env) {
+  return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
+}
+
+function writeJson(filePath, payload) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+function buildProductionEntryRouteCanaryStreakThrownReport(env = process.env, error = null) {
+  return Object.freeze({
+    ok: false,
+    reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_THROWN",
+    history_source: productionEntryRouteCanaryStreak.__test.resolveHistorySource(env),
+    history_file: productionEntryRouteCanaryStreak.__test.resolveHistorySource(env) === "FIRESTORE"
+      ? null
+      : productionEntryRouteCanaryStreak.__test.resolveHistoryFile(env),
+    blockers: Object.freeze(["PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:HISTORY_READ_FAILED"]),
+    error: Object.freeze({
+      message: error && error.message ? error.message : String(error || "unknown production route canary streak error"),
+    }),
+  });
+}
+
+async function refreshProductionEntryRouteCanaryStreak(env = process.env, { db = null } = {}) {
+  if (!shouldRefreshProductionEntryRouteCanaryStreak(env)) {
+    return Object.freeze({
+      required: false,
+      skipped: true,
+      reason: "PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REFRESH_SKIPPED",
+      report: null,
+      output_file: null,
+    });
+  }
+  const artifactDir = resolveArtifactDir(env);
+  const outputFile = trimOrNull(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILE)
+    || path.join(artifactDir, PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME);
+  const streakEnv = Object.freeze({
+    ...env,
+    V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_ARTIFACT_DIR: artifactDir,
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILE: outputFile,
+  });
+  let report = null;
+  try {
+    report = await productionEntryRouteCanaryStreak.runCheck(streakEnv, { db });
+  } catch (error) {
+    report = buildProductionEntryRouteCanaryStreakThrownReport(streakEnv, error);
+  }
+  writeJson(outputFile, report);
+  return Object.freeze({
+    required: true,
+    skipped: false,
+    reason: report && report.ok === true
+      ? "PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REFRESH_PASS"
+      : "PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REFRESH_BLOCKED",
+    report,
+    output_file: outputFile,
+  });
+}
+
 async function runPipeline(env = process.env, {
   selectorDb = null,
   collectorDb = null,
@@ -60,11 +134,17 @@ async function runPipeline(env = process.env, {
   }
   await replayArtifact.main(effectiveEnv);
   await comparisonArtifacts.main(effectiveEnv);
+  const productionEntryRouteCanaryStreakRefresh = await refreshProductionEntryRouteCanaryStreak(effectiveEnv, {
+    db: collectorDb || selectorDb,
+  });
   const gateResult = gate.__test.evaluateGateFromEnv(effectiveEnv);
   const unifiedReport = await unifiedPromotionReport.main(effectiveEnv);
   const deployDecisionResult = deployDecision.writeDeployDecisionArtifact(effectiveEnv);
   return Object.freeze({
     ...gateResult,
+    productionEntryRouteCanaryStreak: productionEntryRouteCanaryStreakRefresh.report,
+    productionEntryRouteCanaryStreakFile: productionEntryRouteCanaryStreakRefresh.output_file,
+    productionEntryRouteCanaryStreakStatus: productionEntryRouteCanaryStreakRefresh.reason,
     unifiedReport,
     deployDecision: deployDecisionResult.decision,
   });
@@ -122,6 +202,10 @@ if (require.main === module) {
       hasRuntimeSelectorInput,
       hasRuntimeCollectorInput,
       hasRuntimeSnapshotInput,
+      resolveArtifactDir,
+      shouldRefreshProductionEntryRouteCanaryStreak,
+      buildProductionEntryRouteCanaryStreakThrownReport,
+      refreshProductionEntryRouteCanaryStreak,
     },
   };
 }

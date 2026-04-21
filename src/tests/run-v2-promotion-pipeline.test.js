@@ -59,6 +59,60 @@ function buildFakeDb(store) {
   };
 }
 
+function buildHealthyProductionRouteCanaryPayload(generatedAt) {
+  return {
+    ok: true,
+    reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_PASS",
+    scope: "production_entry_route_canary",
+    canary_mode: "NO_EXCHANGE_ROUTE_PROOF",
+    exchange_write_performed: false,
+    route_called: true,
+    kernel_called: true,
+    persist_called: true,
+    generated_at: generatedAt,
+    fail_n: 0,
+    failed_check_ids: [],
+    route_result_summary: {
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED",
+      position_cycle_id: "PCYV2__ETHUSDT__ENTRY__CANARY",
+      entry_event_id: "ENTRY__V2_PRODUCTION_ROUTE_CANARY",
+      protection_runtime_id: "PCYV2__ETHUSDT__ENTRY__CANARY__PROTECTION_RUNTIME__CANARY",
+      audit_ledger_reason: "PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED",
+    },
+  };
+}
+
+function buildProductionRouteCanaryHistoryDb(rows) {
+  return {
+    collection() {
+      return {
+        where(field, op, value) {
+          return {
+            limit(limit) {
+              return {
+                async get() {
+                  return {
+                    docs: rows
+                      .map((payload) => ({
+                        production_entry_route_canary_id: `PERCHV2__${payload.generated_at}`,
+                        generated_at_ms: Date.parse(payload.generated_at),
+                        artifact_snapshot: payload,
+                      }))
+                      .filter((doc) => op === ">=" && Number(doc[field]) >= Number(value))
+                      .slice(0, limit)
+                      .map((doc) => ({ data: () => ({ ...doc }) })),
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 (function pipelineRejectsMockMix() {
   let err = null;
   try {
@@ -200,6 +254,114 @@ function buildFakeDb(store) {
     assert.strictEqual(storedDecision.bounded_runtime_summary.openclaw_execution_separation_summary.ok, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.runtime_chain_audit_summary.ok, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.repair_evidence_summary.ok, true);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(async function canaryPipelineRefreshesProductionRouteCanaryStreakBeforeDeployDecision() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-pipeline-prod-route-streak-"));
+  const nowMs = Date.now();
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push(buildHealthyProductionRouteCanaryPayload(new Date(nowMs - hour * 60 * 60000).toISOString()));
+  }
+  try {
+    const result = await pipeline.runPipeline({
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_REPLAY_FIXTURE_PROFILE: "REFERENCE_NATIVE_PASS",
+      V2_PROMOTION_COMPARISON_FIXTURE_PROFILE: "REFERENCE_CLEAN",
+      V2_PROMOTION_RUNTIME_SNAPSHOT_JSON: JSON.stringify({
+        snapshotMeta: {
+          source: "TEST_RUNTIME_SNAPSHOT",
+          query_budget: {
+            limits: {
+              transitionsLimit: 50,
+              outboxesLimit: 50,
+            },
+            counts: {
+              transitions: 3,
+              outboxes: 1,
+            },
+          },
+          selector_meta: {
+            position_cycle_id: "PCY__PROD_ROUTE_STREAK__TEST",
+            query_budget: {
+              query_limit: 25,
+              recent_window_hours: 168,
+              recent_cutoff_at: "2026-04-13T00:00:00.000Z",
+            },
+            alignment_checks: {
+              symbol_match: true,
+              side_match: true,
+              timeframe_match: true,
+              policy_scope_match: true,
+            },
+          },
+          openclaw_execution_separation_audits: [
+            {
+              ok: true,
+              audit_id: "OCEXSEPAUDV2__PIPELINE_PROD_ROUTE_STREAK",
+              fail_n: 0,
+              failed_check_ids: [],
+            },
+          ],
+          runtime_chain_audits: [
+            {
+              ok: true,
+              check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
+              fail_n: 0,
+              check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+              passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+              failed_check_ids: [],
+            },
+          ],
+          openclaw_execution_audit_ledger_write: {
+            ok: true,
+            skipped: false,
+            reason: "OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITTEN",
+            collection_key: "OPENCLAW_EXECUTION_AUDITS",
+            doc_id: "OCEXSEPAUDV2__PIPELINE_PROD_ROUTE_STREAK",
+          },
+          repair_evidence_summary: {
+            ok: true,
+            repair_request_n: 0,
+            repair_execution_ledger_n: 0,
+            completion_ledger_n: 0,
+            completion_evidence_n: 0,
+            completed_success_n: 0,
+            completed_failed_n: 0,
+            missing_completion_evidence_n: 0,
+            runbook_refs: [],
+            order_evidence_n: 0,
+            latest_completion: null,
+          },
+        },
+        episodes: require("../v2/replayFixtureFactory").buildReferenceReplayFixtureSet("REFERENCE_NATIVE_PASS").episodes,
+        shadowLivePairs: require("../v2/comparisonFixtureFactory").buildReferenceComparisonFixtures("REFERENCE_CLEAN").shadowLivePairs,
+        sourceModePairs: require("../v2/comparisonFixtureFactory").buildReferenceComparisonFixtures("REFERENCE_CLEAN").sourceModePairs,
+      }),
+      DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: "1",
+      DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: "FIRESTORE",
+    }, {
+      collectorDb: buildProductionRouteCanaryHistoryDb(rows),
+    });
+    const streakFile = path.join(dir, "v2_production_entry_route_canary_streak_latest.json");
+    assert.ok(fs.existsSync(streakFile));
+    assert.strictEqual(result.productionEntryRouteCanaryStreakStatus, "PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REFRESH_PASS");
+    assert.strictEqual(result.productionEntryRouteCanaryStreak.history_source, "FIRESTORE");
+    assert.strictEqual(result.productionEntryRouteCanaryStreak.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
+    const storedReport = JSON.parse(fs.readFileSync(path.join(dir, "unified-promotion-report.json"), "utf8"));
+    assert.strictEqual(
+      storedReport.bounded_runtime_summary.production_entry_route_canary_streak.reason,
+      "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"
+    );
+    const storedDecision = JSON.parse(fs.readFileSync(path.join(dir, "promotion-deploy-decision.json"), "utf8"));
+    assert.strictEqual(
+      storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.reason,
+      "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"
+    );
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

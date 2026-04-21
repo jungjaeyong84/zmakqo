@@ -469,6 +469,7 @@ function buildDeployDecisionSummary(deployDecision) {
       repair_evidence_summary: normalizeObject(boundedRuntimeSummary.repair_evidence_summary),
       openclaw_execution_audit_ledger_write: normalizeObject(boundedRuntimeSummary.openclaw_execution_audit_ledger_write),
       repair_firestore_canary_streak: normalizeObject(boundedRuntimeSummary.repair_firestore_canary_streak),
+      production_entry_route_canary_streak: normalizeObject(boundedRuntimeSummary.production_entry_route_canary_streak),
     }) : null,
     candidate_selection_summary: candidateSelectionSummary ? Object.freeze({
       ok: candidateSelectionSummary.ok === true,
