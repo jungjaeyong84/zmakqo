@@ -237,13 +237,31 @@ async function run() {
     fullExit: true,
     entryEventId: "ENTRY__ETH",
     positionSide: "LONG",
-    orderMeta: { orderId: "STOP__ETH__ORDER" },
+    orderMeta: {
+      orderId: "STOP__ETH__ORDER",
+      orderType: "STOP_MARKET",
+      status: "FILLED",
+      closePosition: true,
+      reduceOnly: true,
+      stopPrice: 2300,
+      avgPrice: 2300,
+      clientOrderId: "dbj_eth_sl",
+    },
     fillId: "FILL__SL",
     execPrice: 2300,
     tradeMs: 1776026600000,
     writeStopExit: async (request) => {
       assert.strictEqual(request.sourceOrderId, "STOP__ETH__ORDER");
       assert.strictEqual(request.fillPrice, 2300);
+      assert.strictEqual(request.fullExit, true);
+      assert.strictEqual(request.exchangeEvidence.execution_type, "TRADE");
+      assert.strictEqual(request.exchangeEvidence.order_type, "STOP_MARKET");
+      assert.strictEqual(request.exchangeEvidence.order_status, "FILLED");
+      assert.strictEqual(request.exchangeEvidence.close_position, true);
+      assert.strictEqual(request.exchangeEvidence.reduce_only, true);
+      assert.strictEqual(request.exchangeEvidence.stop_price, 2300);
+      assert.strictEqual(request.exchangeEvidence.avg_price, 2300);
+      assert.strictEqual(request.exchangeEvidence.full_exit, true);
       return buildBatchShadowWrite({ reason: "V2_SHADOW_STOP_EXIT_OK" });
     },
   });

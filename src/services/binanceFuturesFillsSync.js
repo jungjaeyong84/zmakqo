@@ -3012,7 +3012,20 @@ async function maybeWriteV2ShadowStopExit({
       sourceOrderId: evidence.sourceOrderId,
       fillPrice: evidence.fillPrice,
       event: normalizedEvent,
+      fullExit,
       observedAtMs: tradeMs,
+      exchangeEvidence: {
+        event_type: "BINANCE_USER_TRADES_SYNC",
+        execution_type: "TRADE",
+        order_type: orderMeta && orderMeta.orderType ? String(orderMeta.orderType).toUpperCase() : null,
+        order_status: orderMeta && orderMeta.status ? String(orderMeta.status).toUpperCase() : null,
+        client_order_id: orderMeta && orderMeta.clientOrderId ? String(orderMeta.clientOrderId) : null,
+        close_position: orderMeta && orderMeta.closePosition === true,
+        reduce_only: orderMeta && orderMeta.reduceOnly === true,
+        stop_price: orderMeta && Number.isFinite(Number(orderMeta.stopPrice)) ? Number(orderMeta.stopPrice) : null,
+        avg_price: orderMeta && Number.isFinite(Number(orderMeta.avgPrice)) ? Number(orderMeta.avgPrice) : null,
+        full_exit: fullExit === true,
+      },
     });
   } catch (error) {
     return {
@@ -3395,6 +3408,8 @@ function normalizeFetchedOrderMeta(ord) {
       reduceOnly: false,
       clientOrderId: null,
       status: null,
+      stopPrice: null,
+      avgPrice: null,
     };
   }
   return {
@@ -3403,6 +3418,8 @@ function normalizeFetchedOrderMeta(ord) {
     reduceOnly: normalizeOrderBool(ord.reduceOnly),
     clientOrderId: String(ord.clientOrderId || ord.origClientOrderId || "").trim() || null,
     status: String(ord.status || "").toUpperCase() || null,
+    stopPrice: Number.isFinite(Number(ord.stopPrice)) ? Number(ord.stopPrice) : null,
+    avgPrice: Number.isFinite(Number(ord.avgPrice)) ? Number(ord.avgPrice) : null,
   };
 }
 
@@ -3422,6 +3439,8 @@ async function resolveExternalOrderMeta({
       reduceOnly: false,
       clientOrderId: null,
       status: null,
+      stopPrice: null,
+      avgPrice: null,
     };
   }
   if (orderMetaCache && orderMetaCache.has(orderId)) {
@@ -3435,6 +3454,8 @@ async function resolveExternalOrderMeta({
     reduceOnly: false,
     clientOrderId: null,
     status: null,
+    stopPrice: null,
+    avgPrice: null,
   };
   let regularFetchError = null;
   try {

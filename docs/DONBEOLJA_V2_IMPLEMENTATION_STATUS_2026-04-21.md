@@ -1429,3 +1429,24 @@ V1 약점 재발 방지:
 1. V1에서는 stop 계열 이벤트가 들어오면 실제 전체 종료인지와 stop 체결인지가 분리 검증되지 않아 partial/ambiguous fill이 terminal처럼 보일 수 있었다
 2. 이번 단계는 final stop fill 완료 기준인 `fullExit=true` + 실제 stop fill 근거를 코드 레벨에서 강제한다
 3. 따라서 `ACTIVE_PROTECTED` 이더라도 단순 이벤트 문자열이나 약한 fill payload만으로 종료 상태가 확정되는 V1식 silent corruption을 줄인다
+
+## 2026-04-22 Stop Exit Upstream Evidence Propagation
+
+추가 증거:
+
+1. `src/services/binanceFuturesFillsSync.js`
+2. `src/tests/binance-fills-canonical-lineage-guard.test.js`
+3. `src/tests/fills-sync-alert-aggregation.test.js`
+
+판정:
+
+1. Binance fill sync의 `maybeWriteV2ShadowStopExit` 는 이제 `fullExit` 를 V2 stop writer까지 그대로 전달한다
+2. fetched Binance order meta의 `order_type`, `order_status`, `close_position`, `reduce_only`, `stop_price`, `avg_price` 가 `exchangeEvidence` 로 전달된다
+3. upstream wrapper가 `fullExit` 를 선검사만 하고 writer에 넘기지 않아 정상 stop terminal이 gate에서 막히는 drift를 제거했다
+4. order meta normalize 단계에서 stop/avg price를 보존해, writer가 “실제 stop fill 근거”를 raw evidence로 복원할 수 있다
+
+V1 약점 재발 방지:
+
+1. V1에서는 하위 gate는 엄격해졌지만 upstream payload가 비어 있어 정상 이벤트가 skip되거나, 반대로 legacy 경로가 이를 우회할 위험이 있었다
+2. 이번 단계는 fill sync wrapper와 V2 writer 사이의 계약을 테스트로 고정해, `fullExit` 와 Binance native order evidence가 중간에서 유실되면 회귀 테스트가 실패한다
+3. 따라서 “writer는 안전하지만 ingress가 증거를 전달하지 않는” V1식 계층 간 계약 불일치를 줄인다
