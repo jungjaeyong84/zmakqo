@@ -213,6 +213,7 @@ function seedTrailActive(store) {
     exchangeEvidence: {
       event_type: "ORDER_TRADE_UPDATE",
       execution_type: "TRADE",
+      order_type: "STOP_MARKET",
       realized_pnl: "-24.8",
     },
   });

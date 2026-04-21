@@ -1,6 +1,8 @@
 "use strict";
 
 const TERMINAL_STAGES = new Set(["EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
+const TERMINAL_TRANSITION_EVENTS = new Set(["SL_HIT", "TRAIL_HIT", "EXTERNAL_CLOSE_SYNC", "MANUAL_CLOSE_SYNC"]);
+const STOP_TERMINAL_TRANSITION_EVENTS = new Set(["SL_HIT", "TRAIL_HIT"]);
 const REQUIRED_REPLAY_TRANSITION_EVENTS = Object.freeze([
   "TP1_REACHED",
   "TRAIL_ACTIVATED",
@@ -30,8 +32,26 @@ function toNumberOrNull(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function parseBoolStrict(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return null;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return null;
+}
+
 function isObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function pickEvidenceValue(evidence, keys) {
+  const row = isObject(evidence) ? evidence : {};
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+  }
+  return null;
 }
 
 function collectTransitionIds(transitions) {
@@ -61,6 +81,80 @@ function hasValidExchangeEvidenceSnapshot(snapshot) {
     (sourceFillId || sourceOrderId) &&
     Object.prototype.hasOwnProperty.call(row, "raw_payload")
   );
+}
+
+function hasTerminalFullExitEvidence(snapshot) {
+  const rawPayload = isObject(snapshot) && isObject(snapshot.raw_payload) ? snapshot.raw_payload : null;
+  if (!rawPayload) return false;
+
+  const evidenceFlag = parseBoolStrict(pickEvidenceValue(rawPayload, [
+    "full_exit",
+    "fullExit",
+    "is_full_exit",
+    "isFullExit",
+    "is_final_exit",
+    "isFinalExit",
+    "position_closed",
+    "positionClosed",
+  ]));
+  if (evidenceFlag === true) return true;
+  if (evidenceFlag === false) return false;
+
+  const remainingQty = toNumberOrNull(pickEvidenceValue(rawPayload, [
+    "position_amt_after",
+    "positionAmtAfter",
+    "position_qty_after",
+    "positionQtyAfter",
+    "remaining_position_qty_abs",
+    "remainingPositionQtyAbs",
+  ]));
+  return Number.isFinite(remainingQty) && Math.abs(remainingQty) <= EPSILON;
+}
+
+function hasStopFillEvidence({ snapshot }) {
+  const rawPayload = isObject(snapshot) && isObject(snapshot.raw_payload) ? snapshot.raw_payload : null;
+  if (!rawPayload) return false;
+
+  const executionType = upper(pickEvidenceValue(rawPayload, [
+    "execution_type",
+    "executionType",
+    "x",
+  ]));
+  const exchangeEvent = upper(pickEvidenceValue(rawPayload, [
+    "event",
+    "event_type",
+    "eventType",
+    "execution_event",
+    "executionEvent",
+    "order_event",
+    "orderEvent",
+  ]));
+  const orderType = upper(pickEvidenceValue(rawPayload, [
+    "order_type",
+    "orderType",
+    "type",
+    "o",
+  ]));
+  const stopPrice = toNumberOrNull(pickEvidenceValue(rawPayload, [
+    "stop_price",
+    "stopPrice",
+    "sp",
+  ]));
+  const stopEvent = [
+    "EXIT_SL",
+    "EXIT_STOP",
+    "EXIT_TRAIL",
+    "SL_HIT",
+    "STOP_EXIT",
+    "TRAIL_HIT",
+  ].includes(exchangeEvent);
+  const stopOrderType = [
+    "STOP",
+    "STOP_MARKET",
+    "TRAILING_STOP_MARKET",
+  ].includes(orderType);
+
+  return executionType === "TRADE" && (stopEvent || stopOrderType || stopPrice > 0);
 }
 
 function resolveSignalSourceMode(episode) {
@@ -149,6 +243,17 @@ function validateEpisode(episode) {
       }
       if (!hasValidExchangeEvidenceSnapshot(row.source_exchange_evidence)) {
         blockers.push(`TRANSITION_EXCHANGE_EVIDENCE_MISSING:${index}`);
+      } else {
+        const event = upper(row && row.transition_event);
+        if (TERMINAL_TRANSITION_EVENTS.has(event) && !hasTerminalFullExitEvidence(row.source_exchange_evidence)) {
+          blockers.push(`TERMINAL_FULL_EXIT_EVIDENCE_MISSING:${index}`);
+        }
+        if (
+          STOP_TERMINAL_TRANSITION_EVENTS.has(event) &&
+          !hasStopFillEvidence({ snapshot: row.source_exchange_evidence })
+        ) {
+          blockers.push(`STOP_TERMINAL_FILL_EVIDENCE_MISSING:${index}`);
+        }
       }
     }
     const last = transitions[transitions.length - 1];
@@ -299,5 +404,7 @@ module.exports = {
     resolveTransitionEventCoverageRequired,
     resolveLatestTp1FilledQtyAbs,
     hasValidExchangeEvidenceSnapshot,
+    hasTerminalFullExitEvidence,
+    hasStopFillEvidence,
   },
 };

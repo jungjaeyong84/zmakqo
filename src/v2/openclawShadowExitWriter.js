@@ -270,12 +270,20 @@ function resolveStopExitFullExit({ fullExit = null, exchangeEvidence = null } = 
   return { ok: false, reason: "STOP_FULL_EXIT_NOT_CONFIRMED" };
 }
 
-function resolveStopFillEvidence({ event = null, exchangeEvidence = null } = {}) {
-  const normalizedEvent = upper(event);
+function resolveStopFillEvidence({ exchangeEvidence = null } = {}) {
   const executionType = upper(pickEvidenceValue(exchangeEvidence, [
     "execution_type",
     "executionType",
     "x",
+  ]));
+  const exchangeEvent = upper(pickEvidenceValue(exchangeEvidence, [
+    "event",
+    "event_type",
+    "eventType",
+    "execution_event",
+    "executionEvent",
+    "order_event",
+    "orderEvent",
   ]));
   const orderType = upper(pickEvidenceValue(exchangeEvidence, [
     "order_type",
@@ -295,7 +303,7 @@ function resolveStopFillEvidence({ event = null, exchangeEvidence = null } = {})
     "SL_HIT",
     "STOP_EXIT",
     "TRAIL_HIT",
-  ].includes(normalizedEvent);
+  ].includes(exchangeEvent);
   const stopOrderType = [
     "STOP",
     "STOP_MARKET",
@@ -322,7 +330,7 @@ function evaluateStopExitFillEvidenceGate({
     });
   }
 
-  const stopFillGate = resolveStopFillEvidence({ event, exchangeEvidence });
+  const stopFillGate = resolveStopFillEvidence({ exchangeEvidence });
   if (stopFillGate.ok !== true) {
     return Object.freeze({
       ok: false,

@@ -1559,3 +1559,28 @@ V1 약점 재발 방지:
 1. V1에서는 external/manual close가 stop과 다른 경로로 terminal projection을 쓸 수 있어 partial close가 전량 종료처럼 보일 위험이 있었다
 2. 이번 단계는 stop terminal과 external/manual terminal 모두 full-exit evidence gate를 공유하는 방향으로 정렬했다
 3. 따라서 V2 terminal 상태는 close origin이 stop이든 manual/external이든 “전량 종료 근거 없이는 terminal write 금지” 원칙을 유지한다
+
+## 2026-04-22 Replay Terminal Evidence Gate
+
+추가 증거:
+
+1. `src/v2/replayGate.js`
+2. `src/v2/replayFixtureFactory.js`
+3. `src/v2/openclawShadowExitWriter.js`
+4. `src/tests/v2-replay-gate.test.js`
+5. `src/tests/v2-openclaw-shadow-stop-exit-writer.test.js`
+6. `src/tests/generate-v2-replay-artifact.test.js`
+
+판정:
+
+1. replay gate는 이제 `SL_HIT`, `TRAIL_HIT`, `EXTERNAL_CLOSE_SYNC`, `MANUAL_CLOSE_SYNC` terminal transition마다 `full_exit=true` 또는 position-after zero evidence를 요구한다
+2. `SL_HIT` / `TRAIL_HIT` 는 추가로 raw exchange payload 안의 `execution_type=TRADE` 와 stop order type / stop price / stop event evidence 중 하나를 요구한다
+3. reference replay fixture는 terminal stop, external close, manual close 모두 production writer가 요구하는 full-exit evidence shape를 포함한다
+4. stop writer도 canonical event 문자열만으로 stop fill을 인정하지 않고 raw exchange evidence에서 stop 근거를 확인한다
+5. terminal evidence가 빠진 replay fixture는 `TERMINAL_FULL_EXIT_EVIDENCE_MISSING:*` 또는 `STOP_TERMINAL_FILL_EVIDENCE_MISSING:*` 로 fail-closed 된다
+
+V1 약점 재발 방지:
+
+1. V1에서는 replay fixture가 “객체 존재”만 만족해도 통과할 수 있어, 실제 terminal 판단 계약보다 약한 증거로 배포 게이트가 초록불이 될 수 있었다
+2. 이번 단계는 production writer 계약과 replay/deploy gate 계약을 같은 방향으로 맞춰, 코드가 강해져도 테스트 fixture가 약해서 회귀를 놓치는 착시를 줄였다
+3. 따라서 V2 terminal exit는 코드 실행과 배포 전 replay 양쪽에서 “전량 종료 근거 + stop 체결 근거”를 요구한다

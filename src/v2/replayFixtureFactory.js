@@ -114,7 +114,11 @@ function buildReferencePassEpisode() {
   });
   const trailExitTransition = withExchangeEvidence(trailExit.transition, "STOP_EXIT", {
     execution_type: "TRADE",
+    order_type: "TRAILING_STOP_MARKET",
     fill_price: 2030.2,
+    stop_price: 2030.2,
+    full_exit: true,
+    position_amt_after: "0",
   });
 
   const prep1 = prepareExitTransitionAlert({
@@ -168,7 +172,11 @@ function buildReferencePassEpisode() {
       source_order_id: trailExitTransition.source_order_id,
       raw_payload: {
         execution_type: "TRADE",
+        order_type: "TRAILING_STOP_MARKET",
         fill_price: 2030.2,
+        stop_price: 2030.2,
+        full_exit: true,
+        position_amt_after: "0",
       },
     },
     last_evidence_observed_at: trailExitTransition.created_at,
@@ -211,7 +219,11 @@ function buildReferenceSlEpisode() {
   });
   const slTransition = withExchangeEvidence(sl.transition, "STOP_EXIT", {
     execution_type: "TRADE",
+    order_type: "STOP_MARKET",
     fill_price: 69419,
+    stop_price: 69419,
+    full_exit: true,
+    position_amt_after: "0",
   });
   const outboxes = buildDeliveredOutboxes({
     positionCycle: base.positionCycle,
@@ -270,6 +282,8 @@ function buildReferenceExternalCloseEpisode() {
   const externalTransition = withExchangeEvidence(external.transition, "EXTERNAL_CLOSE", {
     execution_type: "ACCOUNT_SYNC",
     fill_price: 608,
+    full_exit: true,
+    position_amt_after: "0",
   });
   const outboxes = buildDeliveredOutboxes({
     positionCycle: base.positionCycle,
@@ -356,6 +370,8 @@ function buildReferenceManualCloseEpisode() {
   const manualTransition = withExchangeEvidence(manual.transition, "MANUAL_CLOSE", {
     execution_type: "ACCOUNT_SYNC",
     fill_price: 0.512,
+    full_exit: true,
+    position_amt_after: "0",
   });
   const transitions = [tp1Transition, trailTransition, manualTransition];
   const outboxes = buildDeliveredOutboxes({

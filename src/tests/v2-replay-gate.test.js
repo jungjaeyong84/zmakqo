@@ -75,6 +75,70 @@ const {
   assert.ok(report.blockers.some((row) => row.includes("TRANSITION_EXCHANGE_EVIDENCE_MISSING:1")));
 })();
 
+(function terminalFullExitEvidenceMissingFailsClosed() {
+  const episode = buildReferencePassEpisode();
+  const transitions = episode.transitions.map((row, index, arr) => {
+    if (index !== arr.length - 1) return row;
+    const raw = { ...row.source_exchange_evidence.raw_payload };
+    delete raw.full_exit;
+    delete raw.fullExit;
+    delete raw.position_amt_after;
+    delete raw.positionAmtAfter;
+    delete raw.position_qty_after;
+    delete raw.positionQtyAfter;
+    delete raw.remaining_position_qty_abs;
+    delete raw.remainingPositionQtyAbs;
+    return {
+      ...row,
+      source_exchange_evidence: {
+        ...row.source_exchange_evidence,
+        raw_payload: raw,
+      },
+    };
+  });
+  const report = evaluateReplayFixtureSet({
+    episodes: [{
+      ...episode,
+      label: "TERMINAL_FULL_EXIT_EVIDENCE_MISSING",
+      transitions,
+    }],
+  });
+  assert.strictEqual(report.pass, false);
+  assert.ok(report.blockers.some((row) => row.includes("TERMINAL_FULL_EXIT_EVIDENCE_MISSING:2")));
+})();
+
+(function stopTerminalFillEvidenceMissingFailsClosed() {
+  const episode = buildReferencePassEpisode();
+  const transitions = episode.transitions.map((row, index, arr) => {
+    if (index !== arr.length - 1) return row;
+    const raw = { ...row.source_exchange_evidence.raw_payload };
+    delete raw.order_type;
+    delete raw.orderType;
+    delete raw.type;
+    delete raw.o;
+    delete raw.stop_price;
+    delete raw.stopPrice;
+    delete raw.sp;
+    return {
+      ...row,
+      source_exchange_evidence: {
+        ...row.source_exchange_evidence,
+        evidence_kind: "AMBIGUOUS_EXIT",
+        raw_payload: raw,
+      },
+    };
+  });
+  const report = evaluateReplayFixtureSet({
+    episodes: [{
+      ...episode,
+      label: "STOP_FILL_EVIDENCE_MISSING",
+      transitions,
+    }],
+  });
+  assert.strictEqual(report.pass, false);
+  assert.ok(report.blockers.some((row) => row.includes("STOP_TERMINAL_FILL_EVIDENCE_MISSING:2")));
+})();
+
 (function finalStageMismatchFailsClosed() {
   const episode = buildReferencePassEpisode();
   const report = evaluateReplayFixtureSet({
