@@ -6,11 +6,13 @@ const os = require("os");
 const path = require("path");
 const submit = require("../../scripts/submit-v2-promotion-cloudbuild");
 const renderer = require("../../scripts/render-v2-promotion-submit-operator-alert");
+const deployDecisionCheck = require("../../scripts/check-v2-promotion-deploy-decision");
 
 const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
   version: "V2_PROMOTION_SELECTOR_LINEAGE_SHA256_V1",
   hash: "lineage-hash-fixture",
 });
+const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
 
 function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -112,6 +114,14 @@ function seedBoundedSubmitArtifacts(
         protection_runtime_n: 1,
         protection_runtime_evidence_n: 1,
         missing_protection_runtime_evidence_n: 0,
+      },
+      runtime_chain_audit_summary: {
+        ok: true,
+        check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
+        fail_n: 0,
+        check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+        passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+        failed_check_ids: [],
       },
       repair_evidence_summary: {
         ok: true,
@@ -374,6 +384,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.lineage_contract_required, true);
   assert.strictEqual(request.approval_contract.lineage_hash_match_required, true);
   assert.strictEqual(request.approval_contract.evidence_snapshot_summary_required, true);
+  assert.strictEqual(request.approval_contract.runtime_chain_audit_summary_required, true);
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, true);
@@ -389,6 +400,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.recommended_next_action_required, "PROCEED_WITH_SUBMIT_WRAPPER");
   assert.strictEqual(request.approval_evidence_sources.required, true);
   assert.strictEqual(request.approval_evidence_sources.deploy_decision.file, "promotion-deploy-decision.json");
+  assert.strictEqual(request.approval_evidence_sources.runtime_chain_audit_summary.field, "bounded_runtime_summary.runtime_chain_audit_summary");
   assert.strictEqual(request.approval_evidence_sources.entry_boundary_audit.field, "entry_boundary_audit");
   assert.strictEqual(request.approval_evidence_sources.fill_sync_canonical_boundary_audit.field, "fill_sync_canonical_boundary_audit");
   assert.strictEqual(request.approval_evidence_sources.production_cutover_audit.field, "production_cutover_audit");
@@ -424,6 +436,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.resolved_artifact_dir_required, true);
   assert.strictEqual(request.approval_contract.lineage_contract_required, true);
   assert.strictEqual(request.approval_contract.lineage_hash_match_required, true);
+  assert.strictEqual(request.approval_contract.runtime_chain_audit_summary_required, true);
   assert.strictEqual(request.approval_contract.runbook_review_pass_required, true);
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, true);
@@ -502,6 +515,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.lineage_contract_required, false);
   assert.strictEqual(request.approval_contract.lineage_hash_match_required, false);
   assert.strictEqual(request.approval_contract.evidence_snapshot_summary_required, false);
+  assert.strictEqual(request.approval_contract.runtime_chain_audit_summary_required, false);
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, false);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, false);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, false);
@@ -843,10 +857,12 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(payload.approval_contract.lineage_contract_required, true);
     assert.strictEqual(payload.approval_contract.lineage_hash_match_required, true);
     assert.strictEqual(payload.approval_contract.evidence_snapshot_summary_required, true);
+    assert.strictEqual(payload.approval_contract.runtime_chain_audit_summary_required, true);
     assert.strictEqual(payload.approval_contract.entry_boundary_audit_required, true);
     assert.strictEqual(payload.approval_contract.fill_sync_canonical_boundary_audit_required, true);
     assert.strictEqual(payload.approval_contract.runbook_review_pass_required, true);
     assert.strictEqual(payload.approval_evidence_sources.required, true);
+    assert.strictEqual(payload.approval_evidence_sources.runtime_chain_audit_summary.field, "bounded_runtime_summary.runtime_chain_audit_summary");
     assert.strictEqual(payload.approval_evidence_sources.entry_boundary_audit.field, "entry_boundary_audit");
     assert.strictEqual(payload.approval_evidence_sources.fill_sync_canonical_boundary_audit.field, "fill_sync_canonical_boundary_audit");
     assert.strictEqual(payload.approval_evidence_sources.recommended_next_action.expected_value, "PROCEED_WITH_SUBMIT_WRAPPER");
@@ -891,7 +907,48 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     const lineageCheck = payload.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_08");
     assert.ok(lineageCheck);
     assert.deepStrictEqual(lineageCheck.doc_refs.runbook_checklist, ["16", "17"]);
+    const runtimeChainCheck = payload.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_04B");
+    assert.ok(runtimeChainCheck);
+    assert.strictEqual(runtimeChainCheck.ok, true);
+    assert.deepStrictEqual(runtimeChainCheck.doc_refs.runbook_checklist, ["14A"]);
     assert.strictEqual(payload.submit_enabled, false);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function submitRequestBlocksWhenRuntimeChainAuditIsMissing() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-runtime-chain-blocked-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__RUNTIME_CHAIN_BLOCKED");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__RUNTIME_CHAIN_BLOCKED");
+    const deployDecisionPath = path.join(artifactDir, "promotion-deploy-decision.json");
+    const deployDecision = JSON.parse(fs.readFileSync(deployDecisionPath, "utf8"));
+    delete deployDecision.bounded_runtime_summary.runtime_chain_audit_summary;
+    writeJson(deployDecisionPath, deployDecision);
+
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__RUNTIME_CHAIN_BLOCKED",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_BLOCKED");
+    const runtimeChainCheck = result.request.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_04B");
+    assert.ok(runtimeChainCheck);
+    assert.strictEqual(runtimeChainCheck.ok, false);
+    assert.deepStrictEqual(runtimeChainCheck.doc_refs.runbook_checklist, ["14A"]);
+    assert.strictEqual(result.request.approval_verification.blocker_summary.has_bounded_runtime_blocker, true);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_submit_check_ids, ["SUBMIT_CHK_04B"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_runbook_checklist, ["14A"]);
+    assert.strictEqual(
+      result.request.approval_verification.recommended_next_action,
+      "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION"
+    );
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

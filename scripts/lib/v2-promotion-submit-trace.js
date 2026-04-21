@@ -22,6 +22,11 @@ const TRACE_INDEX = Object.freeze([
     summary: "evidence snapshot coverage complete",
   }),
   Object.freeze({
+    id: "SUBMIT_CHK_04B",
+    runbookChecklist: Object.freeze(["14A"]),
+    summary: "runtime chain audit complete",
+  }),
+  Object.freeze({
     id: "SUBMIT_CHK_13",
     runbookChecklist: Object.freeze(["21"]),
     summary: "V2 entry boundary audit complete",

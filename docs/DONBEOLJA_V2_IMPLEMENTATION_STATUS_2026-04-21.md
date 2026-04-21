@@ -1663,3 +1663,27 @@ V1 약점 재발 방지:
 1. V1에서는 코드 게이트가 강해져도 runbook/operator context가 오래된 필드 목록을 보여줘 사람이 잘못 승인할 수 있었다
 2. 이번 단계는 deploy decision, runbook verifier, Cloud Build context, 문서, submit contract가 같은 candidate selection 계약을 보게 맞췄다
 3. 따라서 V2에서는 “코드는 차단했지만 문서/운영 요약은 통과처럼 보이는” 관측성 drift를 줄인다
+
+## 2026-04-22 Submit Runtime Chain Audit Gate
+
+추가 증거:
+
+1. `scripts/submit-v2-promotion-cloudbuild.js`
+2. `scripts/lib/v2-promotion-submit-trace.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+5. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+
+판정:
+
+1. submit approval contract는 이제 `runtime_chain_audit_summary_required=true` 를 직접 포함한다
+2. submit evidence source는 `bounded_runtime_summary.runtime_chain_audit_summary` 를 `approval_evidence_sources.runtime_chain_audit_summary` 로 가리킨다
+3. submit approval verification은 `SUBMIT_CHK_04B` 로 runtime chain audit를 검사하고 runbook checklist `14A` 로 역추적한다
+4. runtime chain audit가 누락되면 submit은 `REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION` 으로 fail-closed 된다
+5. submit contract는 `SUBMIT_CHK_04B`, `hasRuntimeChainAuditCoverage`, runbook reverse index가 누락되면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 deploy gate와 최종 submit wrapper의 필수 증거 목록이 달라 마지막 제출 경로가 더 약해질 수 있었다
+2. 이번 단계는 deploy decision, runbook, submit trace, submit wrapper가 모두 같은 runtime chain audit 필수 조건을 보게 맞췄다
+3. 따라서 V2는 “배포 판정은 막았지만 제출 wrapper가 통과시키는” 마지막 단계 계약 불일치를 줄인다

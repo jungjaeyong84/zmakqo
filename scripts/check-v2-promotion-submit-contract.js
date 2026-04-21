@@ -790,6 +790,23 @@ function evaluateSubmitContract() {
         : "artifact contract and cloudbuild context must preserve selected_runtime_chain_ok",
       file: FILES.artifactContract,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_33",
+      label: "submit wrapper verifies runtime chain audit contract",
+      ok: submitWrapperText.includes("SUBMIT_CHK_04B")
+        && submitWrapperText.includes("hasRuntimeChainAuditCoverage")
+        && submitWrapperText.includes("approval_contract.runtime_chain_audit_summary_required")
+        && submitWrapperText.includes("approval_evidence_sources.runtime_chain_audit_summary")
+        && runbookText.includes("| `SUBMIT_CHK_04B` | `14A` | runtime chain audit complete |"),
+      reason: submitWrapperText.includes("SUBMIT_CHK_04B")
+        && submitWrapperText.includes("hasRuntimeChainAuditCoverage")
+        && submitWrapperText.includes("approval_contract.runtime_chain_audit_summary_required")
+        && submitWrapperText.includes("approval_evidence_sources.runtime_chain_audit_summary")
+        && runbookText.includes("| `SUBMIT_CHK_04B` | `14A` | runtime chain audit complete |")
+        ? "submit wrapper maps runtime chain audit to SUBMIT_CHK_04B and runbook 14A"
+        : "submit wrapper must verify runtime chain audit and map SUBMIT_CHK_04B to runbook 14A",
+      file: FILES.submitWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

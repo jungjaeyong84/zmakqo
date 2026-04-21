@@ -120,6 +120,7 @@ npm run check:v2-canary-runbook
 | `SUBMIT_CHK_02` | `7` | deploy decision approved |
 | `SUBMIT_CHK_03` | `8` | bounded runtime summary complete |
 | `SUBMIT_CHK_04` | `14` | evidence snapshot coverage complete |
+| `SUBMIT_CHK_04B` | `14A` | runtime chain audit complete |
 | `SUBMIT_CHK_05` | `runbook aggregate` | automated runbook review overall status must be PASS |
 | `SUBMIT_CHK_06` | `11` | cloudbuild next action is submit |
 | `SUBMIT_CHK_07` | `13` | cloudbuild blocker count is zero |

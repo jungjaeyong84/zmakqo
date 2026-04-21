@@ -93,7 +93,7 @@ function buildVerificationSummary(checks) {
     .filter(Boolean)
     .slice(0, 3);
   const hasProvenanceBlocker = ids.some((id) => ["SUBMIT_CHK_01", "SUBMIT_CHK_08"].includes(id));
-  const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19"].includes(id));
+  const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19"].includes(id));
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
   const hasProductionCutoverBlocker = ids.some((id) => ["SUBMIT_CHK_14", "SUBMIT_CHK_15"].includes(id));
@@ -310,6 +310,7 @@ function buildApprovalContract(plan) {
       lineage_contract_required: false,
       lineage_hash_match_required: false,
       evidence_snapshot_summary_required: false,
+      runtime_chain_audit_summary_required: false,
       entry_boundary_audit_required: false,
       fill_sync_canonical_boundary_audit_required: false,
       production_cutover_audit_required: false,
@@ -336,6 +337,7 @@ function buildApprovalContract(plan) {
     lineage_contract_required: true,
     lineage_hash_match_required: true,
     evidence_snapshot_summary_required: true,
+    runtime_chain_audit_summary_required: true,
     entry_boundary_audit_required: true,
     fill_sync_canonical_boundary_audit_required: true,
     production_cutover_audit_required: true,
@@ -367,6 +369,9 @@ function buildApprovalEvidenceSources(plan) {
       runbook_review: null,
       recommended_next_action: null,
       blocker_summary: null,
+      bounded_runtime_summary: null,
+      evidence_snapshot_summary: null,
+      runtime_chain_audit_summary: null,
       entry_boundary_audit: null,
       fill_sync_canonical_boundary_audit: null,
       production_cutover_audit: null,
@@ -396,6 +401,11 @@ function buildApprovalEvidenceSources(plan) {
       file: "promotion-deploy-decision.json",
       field: "bounded_runtime_summary.evidence_snapshot_summary",
       note: "ok=true and missing counts must both be 0",
+    }),
+    runtime_chain_audit_summary: buildEvidenceRef({
+      file: "promotion-deploy-decision.json",
+      field: "bounded_runtime_summary.runtime_chain_audit_summary",
+      note: "ok=true, check_n > 0, fail_n=0, and failed_check_ids=[]",
     }),
     entry_boundary_audit: buildEvidenceRef({
       file: "promotion-deploy-decision.json",
@@ -512,6 +522,7 @@ function hasRequiredApprovalContract(contract) {
     row.lineage_contract_required === true &&
     row.lineage_hash_match_required === true &&
     row.evidence_snapshot_summary_required === true &&
+    row.runtime_chain_audit_summary_required === true &&
     row.entry_boundary_audit_required === true &&
     row.fill_sync_canonical_boundary_audit_required === true &&
     row.production_cutover_audit_required === true &&
@@ -1060,6 +1071,7 @@ function buildApprovalVerification(request) {
       "approval_contract.lineage_contract_required",
       "approval_contract.lineage_hash_match_required",
       "approval_contract.evidence_snapshot_summary_required",
+      "approval_contract.runtime_chain_audit_summary_required",
       "approval_contract.entry_boundary_audit_required",
       "approval_contract.fill_sync_canonical_boundary_audit_required",
       "approval_contract.production_cutover_audit_required",
@@ -1118,6 +1130,23 @@ function buildApprovalVerification(request) {
     artifactContract: [
       "approval_contract.evidence_snapshot_summary_required",
       "approval_evidence_sources.evidence_snapshot_summary",
+    ],
+  }));
+
+  checks.push(withDocRefs(buildVerificationCheck({
+    id: "SUBMIT_CHK_04B",
+    label: "runtime chain audit complete",
+    ok: deployDecisionCheck.__test.hasRuntimeChainAuditCoverage(deployDecision && deployDecision.bounded_runtime_summary),
+    reason: deployDecisionCheck.__test.hasRuntimeChainAuditCoverage(deployDecision && deployDecision.bounded_runtime_summary)
+      ? "runtime chain audit complete"
+      : "runtime chain audit missing or failed",
+    file: artifacts.deployDecision && artifacts.deployDecision.filePath,
+    field: "bounded_runtime_summary.runtime_chain_audit_summary",
+  }), {
+    runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_04B"),
+    artifactContract: [
+      "approval_contract.runtime_chain_audit_summary_required",
+      "approval_evidence_sources.runtime_chain_audit_summary",
     ],
   }));
 
