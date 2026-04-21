@@ -597,10 +597,14 @@ function normalizeDeployWarnings(warnings) {
 
 function buildDeployWarningSummary(warnings) {
   const rows = normalizeDeployWarnings(warnings);
+  const hasRepairFirestoreCanaryStreakWarning = rows.some((row) => row.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"));
+  const hasProductionEntryRouteCanaryStreakWarning = rows.some((row) => row.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
   return Object.freeze({
     warning_n: rows.length,
     top_warnings: Object.freeze(rows.slice(0, 3)),
-    has_live_readiness_warning: rows.some((row) => row.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY")),
+    has_live_readiness_warning: hasRepairFirestoreCanaryStreakWarning || hasProductionEntryRouteCanaryStreakWarning,
+    has_repair_firestore_canary_streak_warning: hasRepairFirestoreCanaryStreakWarning,
+    has_production_entry_route_canary_streak_warning: hasProductionEntryRouteCanaryStreakWarning,
   });
 }
 
@@ -613,10 +617,16 @@ function extractDeployWarningSummaryFromArtifacts(artifacts = {}) {
     && cloudbuildContext.deploy_decision_summary.warning_summary
   );
   if (fromContext) {
+    const topWarnings = normalizeDeployWarnings(fromContext.top_warnings);
+    const fallbackSummary = buildDeployWarningSummary(topWarnings);
     return Object.freeze({
       warning_n: Number.isFinite(Number(fromContext.warning_n)) ? Number(fromContext.warning_n) : 0,
-      top_warnings: Object.freeze(normalizeDeployWarnings(fromContext.top_warnings)),
-      has_live_readiness_warning: fromContext.has_live_readiness_warning === true,
+      top_warnings: Object.freeze(topWarnings),
+      has_live_readiness_warning: fromContext.has_live_readiness_warning === true || fallbackSummary.has_live_readiness_warning === true,
+      has_repair_firestore_canary_streak_warning: fromContext.has_repair_firestore_canary_streak_warning === true
+        || fallbackSummary.has_repair_firestore_canary_streak_warning === true,
+      has_production_entry_route_canary_streak_warning: fromContext.has_production_entry_route_canary_streak_warning === true
+        || fallbackSummary.has_production_entry_route_canary_streak_warning === true,
     });
   }
   return buildDeployWarningSummary(deployDecision && deployDecision.warnings);
@@ -627,8 +637,20 @@ function collectDeployWarningRunbookChecklist(summary) {
   if (!row) return Object.freeze([]);
   const refs = new Set();
   const warnings = normalizeDeployWarnings(row.top_warnings);
-  if (row.has_live_readiness_warning || warnings.some((value) => value.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"))) {
+  if (row.has_repair_firestore_canary_streak_warning || warnings.some((value) => value.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"))) {
     refs.add("19");
+  }
+  if (row.has_production_entry_route_canary_streak_warning || warnings.some((value) => value.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"))) {
+    refs.add("26");
+  }
+  if (
+    row.has_live_readiness_warning
+    && !row.has_repair_firestore_canary_streak_warning
+    && !row.has_production_entry_route_canary_streak_warning
+    && !refs.size
+  ) {
+    refs.add("19");
+    refs.add("26");
   }
   return Object.freeze(Array.from(refs).sort());
 }

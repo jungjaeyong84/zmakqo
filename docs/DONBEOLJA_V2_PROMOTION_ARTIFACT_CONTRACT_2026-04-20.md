@@ -218,6 +218,8 @@ submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도
 17. `submit_trace_summary.recommended_next_action_reason`
 18. `submit_trace_summary.recommended_next_action_reason_code`
 
+`submit_trace_summary.deploy_warning_summary` 는 최소한 `warning_n`, `top_warnings`, `has_live_readiness_warning`, `has_repair_firestore_canary_streak_warning`, `has_production_entry_route_canary_streak_warning` 를 포함해야 한다. repair streak warning은 runbook 19, production entry route streak warning은 runbook 26으로 역추적 가능해야 한다.
+
 동시에 operator/alert 채널이 바로 재사용할 수 있는 `operator_summary` 도 같이 남아야 한다.
 
 최소 포함 항목:

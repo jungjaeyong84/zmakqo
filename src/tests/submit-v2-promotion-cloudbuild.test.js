@@ -192,7 +192,12 @@ function seedBoundedSubmitArtifacts(
       warning_summary: {
         warning_n: deployWarnings.length,
         top_warnings: deployWarnings.slice(0, 3),
-        has_live_readiness_warning: deployWarnings.some((value) => String(value).includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY")),
+        has_live_readiness_warning: deployWarnings.some((value) => (
+          String(value).includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY")
+          || String(value).includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY")
+        )),
+        has_repair_firestore_canary_streak_warning: deployWarnings.some((value) => String(value).includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY")),
+        has_production_entry_route_canary_streak_warning: deployWarnings.some((value) => String(value).includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY")),
       },
       blocker_summary: {
         blocker_n: 0,
@@ -936,6 +941,38 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(cliPayload.operator_alert_preview.title, "V2 Promotion Submit Ready With Deploy Warning");
     assert.strictEqual(cliPayload.submit_trace_summary.deploy_warning_attention_required, true);
     assert.deepStrictEqual(cliPayload.submit_trace_summary.deploy_warning_runbook_checklist, ["19"]);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function submitRequestMapsProductionRouteCanaryDeployWarningsToRunbook26() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-prod-warning-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__PROD_WARNING");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__PROD_WARNING", {
+      deployWarnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+    });
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__PROD_WARNING",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_REQUEST_READY");
+    assert.strictEqual(result.request.submit_trace_summary.deploy_warning_attention_required, true);
+    assert.deepStrictEqual(result.request.submit_trace_summary.deploy_warning_runbook_checklist, ["26"]);
+    assert.strictEqual(result.request.submit_trace_summary.deploy_warning_summary.has_live_readiness_warning, true);
+    assert.strictEqual(result.request.submit_trace_summary.deploy_warning_summary.has_repair_firestore_canary_streak_warning, false);
+    assert.strictEqual(result.request.submit_trace_summary.deploy_warning_summary.has_production_entry_route_canary_streak_warning, true);
+    assert.strictEqual(result.request.operator_summary.status, "READY_WITH_DEPLOY_WARNING");
+    assert.ok(result.request.operator_summary.headline.includes("RUNBOOK:26"));
+    assert.ok(result.request.operator_summary.lines.includes("deploy_warning_runbook=26"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("deploy_warning_runbook=26"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("deploy_top_warnings=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

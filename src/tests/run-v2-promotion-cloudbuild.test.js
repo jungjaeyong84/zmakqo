@@ -473,6 +473,17 @@ function seedRunbookArtifacts(dir, cycleId) {
   assert.strictEqual(summary.blocker_summary.has_bounded_runtime_blocker, true);
 })();
 
+(function warningSummaryClassifiesBothLiveReadinessStreakWarnings() {
+  const summary = cloudbuild.__test.summarizeWarnings([
+    "DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY",
+    "DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY",
+  ]);
+  assert.strictEqual(summary.warning_n, 2);
+  assert.strictEqual(summary.has_live_readiness_warning, true);
+  assert.strictEqual(summary.has_repair_firestore_canary_streak_warning, true);
+  assert.strictEqual(summary.has_production_entry_route_canary_streak_warning, true);
+})();
+
 (function statusLineSummarizesDecisionForOperators() {
   const statusLine = cloudbuild.__test.buildStatusLine({
     approved: false,

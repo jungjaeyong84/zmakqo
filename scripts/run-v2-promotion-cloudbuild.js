@@ -68,10 +68,14 @@ function summarizeWarnings(warnings) {
   const normalized = rows
     .map((row) => trimOrNull(row))
     .filter(Boolean);
+  const hasRepairFirestoreCanaryStreakWarning = normalized.some((row) => row.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"));
+  const hasProductionEntryRouteCanaryStreakWarning = normalized.some((row) => row.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
   return Object.freeze({
     warning_n: normalized.length,
     top_warnings: normalized.slice(0, 3),
-    has_live_readiness_warning: normalized.some((row) => row.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY")),
+    has_live_readiness_warning: hasRepairFirestoreCanaryStreakWarning || hasProductionEntryRouteCanaryStreakWarning,
+    has_repair_firestore_canary_streak_warning: hasRepairFirestoreCanaryStreakWarning,
+    has_production_entry_route_canary_streak_warning: hasProductionEntryRouteCanaryStreakWarning,
   });
 }
 
