@@ -83,6 +83,40 @@ function normalizeEntryFillReceipt({ receipt, entryContract } = {}) {
   });
 }
 
+function validateProtectionActivationResult(result) {
+  const row = result && typeof result === "object" ? result : null;
+  if (!row) return Object.freeze({ ok: false, reason: "ENTRY_PROTECTION_RESULT_REQUIRED" });
+  const activationCommit = row.activationCommit && typeof row.activationCommit === "object" ? row.activationCommit : null;
+  const chainAudit = activationCommit && activationCommit.chainAudit && typeof activationCommit.chainAudit === "object"
+    ? activationCommit.chainAudit
+    : null;
+  const protectionWriteResult = row.protectionWriteResult && typeof row.protectionWriteResult === "object"
+    ? row.protectionWriteResult
+    : null;
+  const writeDecision = protectionWriteResult && protectionWriteResult.writeDecision && typeof protectionWriteResult.writeDecision === "object"
+    ? protectionWriteResult.writeDecision
+    : null;
+  const runtimeDoc = protectionWriteResult && protectionWriteResult.runtimeDoc && typeof protectionWriteResult.runtimeDoc === "object"
+    ? protectionWriteResult.runtimeDoc
+    : null;
+  const checks = [
+    ["ENTRY_PROTECTION_RESULT_OK", row.ok === true],
+    ["ENTRY_PROTECTION_ACTIVATION_COMMIT_OK", activationCommit && activationCommit.ok === true],
+    ["ENTRY_PROTECTION_ACTIVE_STATUS", activationCommit && upper(activationCommit.position_cycle_status) === "ACTIVE_PROTECTED"],
+    ["ENTRY_PROTECTION_CHAIN_AUDIT_OK", chainAudit && chainAudit.ok === true && Number(chainAudit.fail_n) === 0],
+    ["ENTRY_PROTECTION_WRITE_DECISION_OK", writeDecision && writeDecision.ok === true],
+    ["ENTRY_PROTECTION_RUNTIME_HEALTHY", runtimeDoc && upper(runtimeDoc.health_status) === "HEALTHY"],
+    ["ENTRY_PROTECTION_SL_ORDER_PRESENT", runtimeDoc && !!trimOrNull(runtimeDoc.sl_order_id)],
+    ["ENTRY_PROTECTION_TP1_ORDER_PRESENT", runtimeDoc && !!trimOrNull(runtimeDoc.tp1_order_id)],
+  ];
+  const failed = checks.filter(([, ok]) => ok !== true).map(([id]) => id);
+  return Object.freeze({
+    ok: failed.length === 0,
+    reason: failed.length === 0 ? "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_OK" : "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_INVALID",
+    failed_check_ids: Object.freeze(failed),
+  });
+}
+
 async function runV2EntrySubmitter({
   db = null,
   env = process.env,
@@ -142,14 +176,16 @@ async function runV2EntrySubmitter({
       error_message: trimOrNull(error && error.message) || String(error),
     });
   }
+  const protectionEvidence = validateProtectionActivationResult(protectionResult);
 
   return Object.freeze({
-    ok: protectionResult && protectionResult.ok === true,
-    reason: protectionResult && protectionResult.ok === true ? "ENTRY_SUBMITTED_AND_PROTECTED" : "ENTRY_SUBMITTED_PROTECTION_BLOCKED",
+    ok: protectionEvidence.ok === true,
+    reason: protectionEvidence.ok === true ? "ENTRY_SUBMITTED_AND_PROTECTED" : "ENTRY_SUBMITTED_PROTECTION_BLOCKED",
     submitted_at: submittedAt,
     entryContract,
     fill,
     executedEntry,
+    protectionEvidence,
     protectionResult,
   });
 }
@@ -157,6 +193,7 @@ async function runV2EntrySubmitter({
 module.exports = {
   runV2EntrySubmitter,
   normalizeEntryFillReceipt,
+  validateProtectionActivationResult,
   __test: {
     trimOrNull,
     upper,
@@ -165,5 +202,6 @@ module.exports = {
     validateRequiredObject,
     validateTransportFn,
     validateProtectionTransports,
+    validateProtectionActivationResult,
   },
 };

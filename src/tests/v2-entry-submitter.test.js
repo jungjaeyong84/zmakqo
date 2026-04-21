@@ -46,6 +46,37 @@ function buildProtectionTransports() {
   };
 }
 
+function buildProtectionActivationFixture(executedEntry) {
+  const positionCycleId = executedEntry.positionCycle.position_cycle_id;
+  return Object.freeze({
+    ok: true,
+    reason: "ENTRY_PROTECTION_ACTIVE",
+    activationCommit: Object.freeze({
+      ok: true,
+      position_cycle_id: positionCycleId,
+      position_cycle_status: "ACTIVE_PROTECTED",
+      protection_runtime_id: `PRTV2__${positionCycleId}`,
+      chainAudit: Object.freeze({
+        ok: true,
+        fail_n: 0,
+        failed_check_ids: [],
+      }),
+    }),
+    protectionWriteResult: Object.freeze({
+      writeDecision: Object.freeze({
+        ok: true,
+      }),
+      runtimeDoc: Object.freeze({
+        protection_runtime_id: `PRTV2__${positionCycleId}`,
+        position_cycle_id: positionCycleId,
+        health_status: "HEALTHY",
+        sl_order_id: "STOP__SUBMITTER",
+        tp1_order_id: "TP1__SUBMITTER",
+      }),
+    }),
+  });
+}
+
 async function submitterRunsProtectionOnlyAfterFilledEntryReceipt() {
   const calls = [];
   const result = await runV2EntrySubmitter({
@@ -69,18 +100,49 @@ async function submitterRunsProtectionOnlyAfterFilledEntryReceipt() {
     now: () => "2026-04-21T05:00:00.000Z",
     runProtectionActivation: async ({ executedEntry, transports }) => {
       calls.push({ type: "protection", executedEntry, transports });
-      return Object.freeze({
-        ok: true,
-        reason: "ENTRY_PROTECTION_ACTIVE",
-      });
+      return buildProtectionActivationFixture(executedEntry);
     },
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "ENTRY_SUBMITTED_AND_PROTECTED");
+  assert.strictEqual(result.protectionEvidence.ok, true);
   assert.deepStrictEqual(calls.map((row) => row.type), ["entry-submit", "protection"]);
   assert.strictEqual(result.executedEntry.positionCycle.status, "PROTECTION_PENDING");
   assert.strictEqual(result.executedEntry.positionCycle.entry_event_id, "ENTRY__ETH__SUBMITTER");
   assert.strictEqual(result.executedEntry.protectionPlan.tp1_qty_abs, 0.4);
+}
+
+async function fakeProtectionOkWithoutEvidenceIsBlockedAfterEntrySubmit() {
+  const calls = [];
+  const result = await runV2EntrySubmitter({
+    entryIntent: buildEntryIntent(),
+    entryTransport: {
+      submitEntryOrder: async () => {
+        calls.push("entry-submit");
+        return {
+          status: "FILLED",
+          symbol: "ETHUSDT",
+          side: "LONG",
+          entry_event_id: "ENTRY__ETH__FAKE_PROTECTION_OK",
+          entry_order_id: "ORDER__ETH__FAKE_PROTECTION_OK",
+          entry_fill_group_id: "FILL_GROUP__ETH__FAKE_PROTECTION_OK",
+          avg_price: 2500,
+          executed_qty_abs: 0.8,
+        };
+      },
+    },
+    protectionTransports: buildProtectionTransports(),
+    runProtectionActivation: async () => {
+      calls.push("protection");
+      return { ok: true, reason: "ENTRY_PROTECTION_ACTIVE" };
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "ENTRY_SUBMITTED_PROTECTION_BLOCKED");
+  assert.strictEqual(result.protectionEvidence.reason, "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_INVALID");
+  assert.ok(result.protectionEvidence.failed_check_ids.includes("ENTRY_PROTECTION_ACTIVATION_COMMIT_OK"));
+  assert.ok(result.protectionEvidence.failed_check_ids.includes("ENTRY_PROTECTION_WRITE_DECISION_OK"));
+  assert.deepStrictEqual(calls, ["entry-submit", "protection"]);
 }
 
 async function missingProtectionTransportBlocksBeforeEntrySubmit() {
@@ -203,6 +265,8 @@ async function protectionActivationThrowReturnsStructuredPostFillFailure() {
   assert.strictEqual(result.executedEntry.positionCycle.entry_event_id, "ENTRY__ETH__PROTECTION_THROW");
   assert.strictEqual(result.protectionResult.reason, "ENTRY_PROTECTION_ACTIVATION_THROWN");
   assert.strictEqual(result.protectionResult.error_code, "FIRESTORE_UNAVAILABLE_AFTER_FILL");
+  assert.strictEqual(result.protectionEvidence.ok, false);
+  assert.ok(result.protectionEvidence.failed_check_ids.includes("ENTRY_PROTECTION_RESULT_OK"));
   assert.deepStrictEqual(calls, ["entry-submit", "protection"]);
 }
 
@@ -232,6 +296,7 @@ async function protectionActivationThrowReturnsStructuredPostFillFailure() {
 
 async function main() {
   await submitterRunsProtectionOnlyAfterFilledEntryReceipt();
+  await fakeProtectionOkWithoutEvidenceIsBlockedAfterEntrySubmit();
   await missingProtectionTransportBlocksBeforeEntrySubmit();
   await shadowIntentBlocksBeforeEntrySubmit();
   await missingFillLineageBlocksProtectionAfterEntrySubmit();

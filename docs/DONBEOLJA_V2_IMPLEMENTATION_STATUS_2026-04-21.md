@@ -1057,3 +1057,30 @@ V1 약점 재발 방지:
 2. 이번 단계에서는 promotion 승인 상단에 실제 수집 chain check id가 올라와야 하므로, replay/promotion tooling만 강하고 본체 runtime chain이 약한 착시를 줄인다
 3. transition/projection/outbox/protection runtime이 다시 분리 writer처럼 어긋나면 deploy decision이 `DEPLOY_DECISION:RUNTIME_CHAIN_AUDIT_REQUIRED` 로 막힌다
 4. 남은 한계는 이 검사가 아직 collected runtime evidence 기반이라는 점이다. 다음 단계는 실제 V2 entry orchestration runner가 이 chain을 직접 생산하도록 하는 것이다
+
+## 2026-04-21 Entry Submitter Protection Evidence Hardening
+
+추가 증거:
+
+1. `src/v2/entrySubmitter.js`
+2. `src/tests/v2-entry-submitter.test.js`
+3. `src/tests/v2-entry-protection-runner.test.js`
+4. `src/tests/v2-entry-protection-storage.test.js`
+5. `src/tests/v2-protection-writer.test.js`
+6. `src/tests/v2-binance-entry-order-transport.test.js`
+7. `src/tests/v2-runtime-chain-audit.test.js`
+
+판정:
+
+1. `runV2EntrySubmitter` 는 더 이상 `protectionResult.ok === true` 만으로 `ENTRY_SUBMITTED_AND_PROTECTED` 를 반환하지 않는다
+2. submitter는 `activationCommit.ok=true`, `position_cycle_status=ACTIVE_PROTECTED`, `activationCommit.chainAudit.ok=true`, `protectionWriteResult.writeDecision.ok=true`, `runtimeDoc.health_status=HEALTHY`, `sl_order_id`, `tp1_order_id` 를 모두 확인한다
+3. 보호 활성화 함수가 실수로 `{ ok: true }` 만 반환하면 `ENTRY_SUBMITTED_PROTECTION_BLOCKED` 로 떨어지고 `protectionEvidence.failed_check_ids` 에 깨진 조건이 남는다
+4. 진입 체결 이후 Firestore/protection activation이 throw 되어도 성공으로 포장하지 않고, fill lineage와 structured failure를 같이 반환한다
+5. 정상 경로는 기존처럼 entry fill 이후 protection activation을 거쳐 `ENTRY_SUBMITTED_AND_PROTECTED` 로 끝난다
+
+V1 약점 재발 방지:
+
+1. V1에서는 “보호 주문을 시도했다” 와 “보호 주문이 실제로 활성화됐고 position이 ACTIVE_PROTECTED가 됐다” 가 운영상 섞였다
+2. 이번 단계에서는 submitter 최상단 성공 조건이 실제 activation batch와 runtime chain audit 증거에 의존한다
+3. 따라서 보호 주문이 없는데도 상위 entry path가 성공으로 끝나는 half-active 상태를 줄인다
+4. 남은 한계는 이 submitter가 production scheduler/native signal runner에 본선으로 연결되는 단계가 아직 남아 있다는 점이다
