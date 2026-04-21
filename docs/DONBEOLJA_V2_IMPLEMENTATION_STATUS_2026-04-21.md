@@ -1331,6 +1331,7 @@ V1 약점 재발 방지:
 5. `promotion-runbook-review` 의 `CHK_13B` 는 warning count/top warning/final status뿐 아니라 세 classifier boolean까지 일치해야 PASS한다
 6. submit contract는 classifier 필드, runbook 19/26 매핑, operator summary/alert preview 보존을 모두 필수 조건으로 검사한다
 7. warning이 0건이어도 `warning_summary` 와 세 classifier false 값이 있어야 하며, 생략되면 `CHK_13B` 가 실패한다
+8. `promotion-cloudbuild-context.json.submit_trace` 도 `deploy_warning_attention_required`, `deploy_warning_summary`, `deploy_warning_runbook_checklist` 를 남겨 submit wrapper 전 단계에서 runbook 19/26을 바로 복원한다
 
 V1 약점 재발 방지:
 
@@ -1338,4 +1339,5 @@ V1 약점 재발 방지:
 2. 이번 단계는 warning 생성자, cloudbuild context, runbook review, submit request, operator alert가 같은 classifier 스키마를 공유하도록 잠갔다
 3. classifier 누락은 단순 문서 drift가 아니라 `promotion-runbook-review` 또는 `check:v2-promotion-submit-contract` 실패로 드러난다
 4. no-warning 상태도 동일 스키마를 유지하므로, “문제가 없을 때는 필드가 없고 문제가 있을 때만 필드가 생기는” V1식 조건부 artifact drift를 줄인다
-5. 따라서 “최종 알림은 떴지만 정확히 어떤 계열 문제인지 모르는” V1식 모호한 운영 상태를 줄인다
+5. submit request 생성 전에도 context artifact만 보고 warning 계열과 runbook 번호를 확인할 수 있어, 중간 단계 artifact의 관측성 공백을 줄인다
+6. 따라서 “최종 알림은 떴지만 정확히 어떤 계열 문제인지 모르는” V1식 모호한 운영 상태를 줄인다

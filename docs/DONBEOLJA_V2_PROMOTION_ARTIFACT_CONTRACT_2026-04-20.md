@@ -55,16 +55,19 @@ optional review artifact:
 12. `submit_trace.failed_runbook_checklist`
 13. `submit_trace.blocker_families`
 14. `submit_trace.primary_blocker_family`
-15. `submit_trace.recommended_next_action_reason_code`
-16. `submit_trace.checks[]`
-17. `deploy_decision_summary.approved`
-18. `deploy_decision_summary.lineage_contract_hash`
-19. `deploy_decision_summary.bounded_runtime_summary`
-20. `deploy_decision_summary.candidate_selection_summary`
-21. `deploy_decision_summary.blocker_summary`
-22. `runbook_review_file`
-23. `runbook_review_summary.ok`
-24. `runbook_review_summary.failed_check_ids`
+15. `submit_trace.deploy_warning_attention_required`
+16. `submit_trace.deploy_warning_summary`
+17. `submit_trace.deploy_warning_runbook_checklist`
+18. `submit_trace.recommended_next_action_reason_code`
+19. `submit_trace.checks[]`
+20. `deploy_decision_summary.approved`
+21. `deploy_decision_summary.lineage_contract_hash`
+22. `deploy_decision_summary.bounded_runtime_summary`
+23. `deploy_decision_summary.candidate_selection_summary`
+24. `deploy_decision_summary.blocker_summary`
+25. `runbook_review_file`
+26. `runbook_review_summary.ok`
+27. `runbook_review_summary.failed_check_ids`
 
 `final_status_line` 은 operator가 파일을 열자마자 판정 상태를 한 줄로 읽기 위한 필드다.
 
@@ -102,14 +105,19 @@ optional review artifact:
 4. `failed_runbook_checklist`
 5. `blocker_families`
 6. `primary_blocker_family`
-7. `recommended_next_action_reason_code`
-8. `checks[].id`
-9. `checks[].ok`
-10. `checks[].runbook_checklist`
-11. `checks[].fields`
-12. `checks[].reason`
+7. `deploy_warning_attention_required`
+8. `deploy_warning_summary`
+9. `deploy_warning_runbook_checklist`
+10. `recommended_next_action_reason_code`
+11. `checks[].id`
+12. `checks[].ok`
+13. `checks[].runbook_checklist`
+14. `checks[].fields`
+15. `checks[].reason`
 
 즉, operator가 `promotion-cloudbuild-context.json` 하나만 열어도 현재 context 기준으로 어느 `SUBMIT_CHK_*` 가 막히는지, 같은 문제를 runbook 몇 번에서 다시 봐야 하는지, 그 문제가 어느 계열인지 즉시 복원할 수 있어야 한다.
+
+warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 읽을 수 있어야 한다. repair streak warning은 `deploy_warning_runbook_checklist=["19"]`, production entry route streak warning은 `deploy_warning_runbook_checklist=["26"]` 으로 복원 가능해야 한다.
 
 `blocker_summary` 는 raw blocker 배열을 대체하는 것이 아니라 operator 판독 속도를 위한 1차 요약이다.
 

@@ -238,6 +238,33 @@ function buildContextBlockerFamilies(summary) {
   return Object.freeze(families);
 }
 
+function collectContextDeployWarningRunbookChecklist(summary) {
+  const row = normalizeObject(summary);
+  const warningSummary = normalizeObject(row && row.warning_summary);
+  if (!warningSummary) return Object.freeze([]);
+  const refs = new Set();
+  const topWarnings = Array.isArray(warningSummary.top_warnings)
+    ? warningSummary.top_warnings.map((value) => trimOrNull(value)).filter(Boolean)
+    : [];
+  if (
+    warningSummary.has_repair_firestore_canary_streak_warning === true
+    || topWarnings.some((warning) => warning.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"))
+  ) {
+    refs.add("19");
+  }
+  if (
+    warningSummary.has_production_entry_route_canary_streak_warning === true
+    || topWarnings.some((warning) => warning.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"))
+  ) {
+    refs.add("26");
+  }
+  if (warningSummary.has_live_readiness_warning === true && refs.size === 0) {
+    refs.add("19");
+    refs.add("26");
+  }
+  return Object.freeze(Array.from(refs).sort((a, b) => Number(a) - Number(b)));
+}
+
 function buildContextSubmitTrace(summary) {
   const row = normalizeObject(summary);
   if (!row) {
@@ -248,6 +275,9 @@ function buildContextSubmitTrace(summary) {
       failed_runbook_checklist: submitTrace.collectRunbookChecklist(["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]),
       blocker_families: Object.freeze(["PROVENANCE"]),
       primary_blocker_family: "PROVENANCE",
+      deploy_warning_attention_required: false,
+      deploy_warning_summary: null,
+      deploy_warning_runbook_checklist: Object.freeze([]),
       recommended_next_action_reason_code: "DEPLOY_DECISION_ARTIFACT_MISSING",
       checks: Object.freeze([
         Object.freeze({
@@ -312,6 +342,7 @@ function buildContextSubmitTrace(summary) {
   );
   const blockerFamilies = buildContextBlockerFamilies(blockerSummary);
   const primaryBlockerFamily = blockerFamilies[0] || (failedSubmitCheckIds.includes("SUBMIT_CHK_08") ? "PROVENANCE" : null);
+  const warningSummary = normalizeObject(row.warning_summary);
   return Object.freeze({
     relevant_submit_check_ids: Object.freeze(checks.map((entry) => entry.id)),
     relevant_runbook_checklist: submitTrace.collectRunbookChecklist(checks.map((entry) => entry.id)),
@@ -319,6 +350,9 @@ function buildContextSubmitTrace(summary) {
     failed_runbook_checklist: submitTrace.collectRunbookChecklist(failedSubmitCheckIds),
     blocker_families: blockerFamilies,
     primary_blocker_family: primaryBlockerFamily,
+    deploy_warning_attention_required: Number(warningSummary && warningSummary.warning_n || 0) > 0,
+    deploy_warning_summary: warningSummary,
+    deploy_warning_runbook_checklist: collectContextDeployWarningRunbookChecklist(row),
     recommended_next_action_reason_code: buildRecommendedNextActionReasonCode(row),
     checks,
   });

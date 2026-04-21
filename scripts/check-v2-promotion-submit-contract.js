@@ -12,6 +12,7 @@ const SHARED_ALERT_PREVIEW_MODULE_PATH = "/Users/jeongjaeyong/Projects/donbeolja
 const FILES = Object.freeze({
   artifactContract: path.resolve(__dirname, "..", "docs", "DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md"),
   runbook: path.resolve(__dirname, "..", "docs", "DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md"),
+  cloudbuildWrapper: path.resolve(__dirname, "run-v2-promotion-cloudbuild.js"),
   submitWrapper: path.resolve(__dirname, "submit-v2-promotion-cloudbuild.js"),
   renderScript: path.resolve(__dirname, "render-v2-promotion-submit-operator-alert.js"),
   sendScript: path.resolve(__dirname, "send-v2-promotion-submit-operator-alert.js"),
@@ -277,6 +278,7 @@ function buildDeployWarningAlertPreviewFixtureResult() {
 function evaluateSubmitContract() {
   const artifactContractText = readText(FILES.artifactContract);
   const runbookText = readText(FILES.runbook);
+  const cloudbuildWrapperText = readText(FILES.cloudbuildWrapper);
   const submitWrapperText = readText(FILES.submitWrapper);
   const summary = buildFormatterFixtureResult();
   const liveCutoverSummary = buildLiveCutoverFormatterFixtureResult();
@@ -737,6 +739,34 @@ function evaluateSubmitContract() {
         ? "operator summary and alert preserve production streak warning trace"
         : "operator summary and alert must preserve production streak warning trace",
       file: SHARED_ALERT_PREVIEW_MODULE_PATH,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_29",
+      label: "artifact contract requires context warning trace fields",
+      ok: artifactContractText.includes("submit_trace.deploy_warning_attention_required")
+        && artifactContractText.includes("submit_trace.deploy_warning_summary")
+        && artifactContractText.includes("submit_trace.deploy_warning_runbook_checklist"),
+      reason: artifactContractText.includes("submit_trace.deploy_warning_attention_required")
+        && artifactContractText.includes("submit_trace.deploy_warning_summary")
+        && artifactContractText.includes("submit_trace.deploy_warning_runbook_checklist")
+        ? "artifact contract includes context deploy warning trace fields"
+        : "artifact contract must include context deploy warning trace fields",
+      file: FILES.artifactContract,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_30",
+      label: "cloudbuild context submit trace preserves warning runbook refs",
+      ok: cloudbuildWrapperText.includes("deploy_warning_attention_required")
+        && cloudbuildWrapperText.includes("deploy_warning_summary")
+        && cloudbuildWrapperText.includes("deploy_warning_runbook_checklist")
+        && cloudbuildWrapperText.includes("collectContextDeployWarningRunbookChecklist"),
+      reason: cloudbuildWrapperText.includes("deploy_warning_attention_required")
+        && cloudbuildWrapperText.includes("deploy_warning_summary")
+        && cloudbuildWrapperText.includes("deploy_warning_runbook_checklist")
+        && cloudbuildWrapperText.includes("collectContextDeployWarningRunbookChecklist")
+        ? "cloudbuild context submit trace preserves deploy warning runbook refs"
+        : "cloudbuild context submit trace must preserve deploy warning runbook refs",
+      file: FILES.cloudbuildWrapper,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

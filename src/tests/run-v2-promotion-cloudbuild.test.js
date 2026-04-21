@@ -647,6 +647,9 @@ function seedRunbookArtifacts(dir, cycleId) {
   assert.deepStrictEqual(trace.failed_runbook_checklist, ["11", "13", "16", "17"]);
   assert.deepStrictEqual(trace.blocker_families, ["BOUNDED_RUNTIME"]);
   assert.strictEqual(trace.primary_blocker_family, "BOUNDED_RUNTIME");
+  assert.strictEqual(trace.deploy_warning_attention_required, false);
+  assert.strictEqual(trace.deploy_warning_summary, null);
+  assert.deepStrictEqual(trace.deploy_warning_runbook_checklist, []);
 })();
 
 (function shadowPipelineDoesNotRequireDeployApproval() {
@@ -741,6 +744,9 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.deepStrictEqual(payload.submit_trace.failed_submit_check_ids, ["SUBMIT_CHK_08"]);
     assert.deepStrictEqual(payload.submit_trace.failed_runbook_checklist, ["16", "17"]);
     assert.strictEqual(payload.submit_trace.primary_blocker_family, "PROVENANCE");
+    assert.strictEqual(payload.submit_trace.deploy_warning_attention_required, false);
+    assert.strictEqual(payload.submit_trace.deploy_warning_summary.warning_n, 0);
+    assert.deepStrictEqual(payload.submit_trace.deploy_warning_runbook_checklist, []);
     assert.strictEqual(payload.submit_trace.recommended_next_action_reason_code, "APPROVED_NO_BLOCKING_FAMILIES");
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
@@ -774,6 +780,9 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(payload.deploy_decision_summary.warning_summary.has_live_readiness_warning, true);
     assert.strictEqual(payload.deploy_decision_summary.warning_summary.has_repair_firestore_canary_streak_warning, false);
     assert.strictEqual(payload.deploy_decision_summary.warning_summary.has_production_entry_route_canary_streak_warning, true);
+    assert.strictEqual(payload.submit_trace.deploy_warning_attention_required, true);
+    assert.strictEqual(payload.submit_trace.deploy_warning_summary.has_production_entry_route_canary_streak_warning, true);
+    assert.deepStrictEqual(payload.submit_trace.deploy_warning_runbook_checklist, ["26"]);
     assert.ok(payload.final_status_line.includes("warnings=1"));
     assert.ok(payload.final_status_line.includes("warn=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
   } finally {
