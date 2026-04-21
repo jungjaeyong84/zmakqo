@@ -258,22 +258,31 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     : null;
   if (!context || !trace || !deploySummary || !blockerSummary) return false;
 
-  const expectedRelevantSubmitChecks = ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"];
+  const expectedRelevantSubmitChecks = ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"];
   const expectedRelevantRunbook = submitTrace.collectRunbookChecklist(expectedRelevantSubmitChecks);
   const failedSubmitChecks = [];
+  const artifactDirCoherence = context.artifact_dir_coherence && typeof context.artifact_dir_coherence === "object"
+    ? context.artifact_dir_coherence
+    : null;
+  const artifactDirOk = artifactDirCoherence && artifactDirCoherence.ok === true;
   const actionOk = trimOrNull(context.recommended_next_action) === "PROCEED_WITH_SUBMIT_WRAPPER";
   const blockerOk = Number(blockerSummary.blocker_n) === 0;
   const lineageOk = !!trimOrNull(context.lineage_contract_hash);
+  if (!artifactDirOk) failedSubmitChecks.push("SUBMIT_CHK_01A");
   if (!actionOk) failedSubmitChecks.push("SUBMIT_CHK_06");
   if (!blockerOk) failedSubmitChecks.push("SUBMIT_CHK_07");
   if (!lineageOk) failedSubmitChecks.push("SUBMIT_CHK_08");
 
   const expectedFailedRunbook = submitTrace.collectRunbookChecklist(failedSubmitChecks);
-  const expectedFamilies = buildExpectedContextBlockerFamilies(blockerSummary);
-  const expectedPrimaryFamily = expectedFamilies[0] || (failedSubmitChecks.includes("SUBMIT_CHK_08") ? "PROVENANCE" : null);
+  const baseExpectedFamilies = buildExpectedContextBlockerFamilies(blockerSummary);
+  const expectedFamilies = failedSubmitChecks.includes("SUBMIT_CHK_01A") || failedSubmitChecks.includes("SUBMIT_CHK_08")
+    ? Array.from(new Set(["PROVENANCE", ...baseExpectedFamilies]))
+    : baseExpectedFamilies;
+  const expectedPrimaryFamily = expectedFamilies[0] || null;
   const checks = Array.isArray(trace.checks) ? trace.checks : [];
   const checksById = new Map(checks.map((row) => [trimOrNull(row && row.id), row]));
   const expectedOkById = new Map([
+    ["SUBMIT_CHK_01A", artifactDirOk],
     ["SUBMIT_CHK_06", actionOk],
     ["SUBMIT_CHK_07", blockerOk],
     ["SUBMIT_CHK_08", lineageOk],

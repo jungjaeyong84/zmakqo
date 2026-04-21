@@ -275,8 +275,8 @@ function seedRunbookArtifacts(dir, cycleId) {
     recommended_next_action_reason: "deploy decision approved with no blocking families",
     recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
     submit_trace: {
-      relevant_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"],
-      relevant_runbook_checklist: ["11", "13", "16", "17"],
+      relevant_submit_check_ids: ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"],
+      relevant_runbook_checklist: ["1", "5", "9", "11", "13", "16", "17"],
       failed_submit_check_ids: [],
       failed_runbook_checklist: [],
       blocker_families: [],
@@ -292,6 +292,13 @@ function seedRunbookArtifacts(dir, cycleId) {
       deploy_warning_runbook_checklist: [],
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       checks: [
+        {
+          id: "SUBMIT_CHK_01A",
+          ok: true,
+          runbook_checklist: ["1", "5", "9"],
+          fields: ["artifact_dir", "resolved_artifact_dir", "artifact_dir_coherence", "position_cycle_id"],
+          reason: "cloudbuild artifact dir self-check is coherent",
+        },
         {
           id: "SUBMIT_CHK_06",
           ok: true,
@@ -711,13 +718,15 @@ function seedRunbookArtifacts(dir, cycleId) {
       has_bounded_runtime_blocker: true,
       has_watchdog_blocker: false,
     },
+  }, {
+    artifactDirCoherence: { ok: true },
   });
-  assert.deepStrictEqual(trace.relevant_submit_check_ids, ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]);
-  assert.deepStrictEqual(trace.relevant_runbook_checklist, ["11", "13", "16", "17"]);
+  assert.deepStrictEqual(trace.relevant_submit_check_ids, ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]);
+  assert.deepStrictEqual(trace.relevant_runbook_checklist, ["1", "5", "9", "11", "13", "16", "17"]);
   assert.deepStrictEqual(trace.failed_submit_check_ids, ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]);
   assert.deepStrictEqual(trace.failed_runbook_checklist, ["11", "13", "16", "17"]);
-  assert.deepStrictEqual(trace.blocker_families, ["BOUNDED_RUNTIME"]);
-  assert.strictEqual(trace.primary_blocker_family, "BOUNDED_RUNTIME");
+  assert.deepStrictEqual(trace.blocker_families, ["PROVENANCE", "BOUNDED_RUNTIME"]);
+  assert.strictEqual(trace.primary_blocker_family, "PROVENANCE");
   assert.strictEqual(trace.deploy_warning_attention_required, false);
   assert.strictEqual(trace.deploy_warning_summary, null);
   assert.deepStrictEqual(trace.deploy_warning_runbook_checklist, []);
@@ -784,8 +793,10 @@ function seedRunbookArtifacts(dir, cycleId) {
 })();
 
 (function contextArtifactWritesFinalStatusLine() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-"));
+  const dir = path.join(root, "PCY__CTX__01");
   try {
+    fs.mkdirSync(dir, { recursive: true });
     const plan = {
       mode: "CANARY_FLOW",
       script: "run:v2-promotion-canary-flow",
@@ -812,8 +823,8 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(payload.recommended_next_action, "PROCEED_WITH_SUBMIT_WRAPPER");
     assert.strictEqual(payload.recommended_next_action_reason, "deploy decision approved with no blocking families");
     assert.strictEqual(payload.recommended_next_action_reason_code, "APPROVED_NO_BLOCKING_FAMILIES");
-    assert.deepStrictEqual(payload.submit_trace.relevant_submit_check_ids, ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]);
-    assert.deepStrictEqual(payload.submit_trace.relevant_runbook_checklist, ["11", "13", "16", "17"]);
+    assert.deepStrictEqual(payload.submit_trace.relevant_submit_check_ids, ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]);
+    assert.deepStrictEqual(payload.submit_trace.relevant_runbook_checklist, ["1", "5", "9", "11", "13", "16", "17"]);
     assert.deepStrictEqual(payload.submit_trace.failed_submit_check_ids, ["SUBMIT_CHK_08"]);
     assert.deepStrictEqual(payload.submit_trace.failed_runbook_checklist, ["16", "17"]);
     assert.strictEqual(payload.submit_trace.primary_blocker_family, "PROVENANCE");
@@ -822,13 +833,15 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.deepStrictEqual(payload.submit_trace.deploy_warning_runbook_checklist, []);
     assert.strictEqual(payload.submit_trace.recommended_next_action_reason_code, "APPROVED_NO_BLOCKING_FAMILIES");
   } finally {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
 })();
 
 (function contextArtifactPersistsProductionRouteWarningClassifiers() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-warning-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-warning-"));
+  const dir = path.join(root, "PCY__CTX__WARNING");
   try {
+    fs.mkdirSync(dir, { recursive: true });
     const plan = {
       mode: "CANARY_FLOW",
       script: "run:v2-promotion-canary-flow",
@@ -859,7 +872,7 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.ok(payload.final_status_line.includes("warnings=1"));
     assert.ok(payload.final_status_line.includes("warn=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
   } finally {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
 })();
 
@@ -931,6 +944,7 @@ function seedRunbookArtifacts(dir, cycleId) {
         position_cycle_id: "PCY__CTX__DRIFT",
         blockers: [],
         warnings: [],
+        bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
       },
     });
     const payload = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -939,14 +953,24 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(payload.artifact_dir_coherence.ok, false);
     assert.strictEqual(payload.artifact_dir_coherence.reason, "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH");
     assert.strictEqual(payload.artifact_dir_coherence.artifact_dir_matches_resolved_artifact_dir, false);
+    assert.strictEqual(payload.recommended_next_action, "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT");
+    assert.strictEqual(payload.recommended_next_action_reason, "artifact dir self-check failed: ARTIFACT_DIR_RESOLVED_DIR_MISMATCH");
+    assert.strictEqual(payload.recommended_next_action_reason_code, "PROVENANCE_BLOCKER");
+    assert.deepStrictEqual(payload.submit_trace.failed_submit_check_ids, ["SUBMIT_CHK_01A", "SUBMIT_CHK_06"]);
+    assert.deepStrictEqual(payload.submit_trace.failed_runbook_checklist, ["1", "5", "9", "11"]);
+    assert.deepStrictEqual(payload.submit_trace.blocker_families, ["PROVENANCE"]);
+    assert.strictEqual(payload.submit_trace.primary_blocker_family, "PROVENANCE");
+    assert.strictEqual(payload.submit_trace.recommended_next_action_reason_code, "PROVENANCE_BLOCKER");
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }
 })();
 
 (function contextArtifactSurfacesLineageHashWhenPresent() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-lineage-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-context-lineage-"));
+  const dir = path.join(root, "PCY__CTX__LINEAGE");
   try {
+    fs.mkdirSync(dir, { recursive: true });
     const plan = {
       mode: "CANARY_FLOW",
       script: "run:v2-promotion-canary-flow",
@@ -968,7 +992,7 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(payload.lineage_contract_hash, "lineage-hash-fixture");
     assert.strictEqual(payload.deploy_decision_summary.lineage_contract_hash, "lineage-hash-fixture");
   } finally {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
 })();
 

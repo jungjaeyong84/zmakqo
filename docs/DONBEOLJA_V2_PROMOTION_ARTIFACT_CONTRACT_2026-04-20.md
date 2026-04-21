@@ -118,6 +118,9 @@ optional review artifact:
 12. `checks[].ok`
 13. `checks[].runbook_checklist`
 14. `checks[].fields`
+
+submit_trace.checks[] must include `SUBMIT_CHK_01A` and map it to `artifact_dir`, `resolved_artifact_dir`, `artifact_dir_coherence`, `position_cycle_id`.
+If `artifact_dir_coherence.ok=false`, `submit_trace.failed_submit_check_ids` must include `SUBMIT_CHK_01A`, `failed_runbook_checklist` must include `1`, `5`, `9`, and `recommended_next_action_reason_code` must be `PROVENANCE_BLOCKER`.
 15. `checks[].reason`
 
 즉, operator가 `promotion-cloudbuild-context.json` 하나만 열어도 현재 context 기준으로 어느 `SUBMIT_CHK_*` 가 막히는지, 같은 문제를 runbook 몇 번에서 다시 봐야 하는지, 그 문제가 어느 계열인지 즉시 복원할 수 있어야 한다.

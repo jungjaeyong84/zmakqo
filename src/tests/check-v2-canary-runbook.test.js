@@ -36,8 +36,8 @@ function buildWarningSubmitTrace(warnings = []) {
   if (summary.has_repair_firestore_canary_streak_warning) refs.push("19");
   if (summary.has_production_entry_route_canary_streak_warning) refs.push("26");
   return {
-    relevant_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"],
-    relevant_runbook_checklist: ["11", "13", "16", "17"],
+    relevant_submit_check_ids: ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"],
+    relevant_runbook_checklist: ["1", "5", "9", "11", "13", "16", "17"],
     failed_submit_check_ids: [],
     failed_runbook_checklist: [],
     blocker_families: [],
@@ -47,6 +47,13 @@ function buildWarningSubmitTrace(warnings = []) {
     deploy_warning_runbook_checklist: refs,
     recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
     checks: [
+      {
+        id: "SUBMIT_CHK_01A",
+        ok: true,
+        runbook_checklist: ["1", "5", "9"],
+        fields: ["artifact_dir", "resolved_artifact_dir", "artifact_dir_coherence", "position_cycle_id"],
+        reason: "cloudbuild artifact dir self-check is coherent",
+      },
       {
         id: "SUBMIT_CHK_06",
         ok: true,
@@ -800,6 +807,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
 (function contextSubmitTraceHelperAcceptsMatchingContextChecks() {
   assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
     cloudbuildContext: {
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__OK", "PCY__TRACE__OK"),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
@@ -816,6 +824,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
 (function contextSubmitTraceHelperRejectsFailedSubmitCheckDrift() {
   assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
     cloudbuildContext: {
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__DRIFT", "PCY__TRACE__DRIFT"),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
@@ -836,6 +845,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
 (function contextSubmitTraceHelperRejectsBlockerFamilyDrift() {
   assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
     cloudbuildContext: {
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__BLOCKER", "PCY__TRACE__BLOCKER"),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
       recommended_next_action: "FIX_V2_PROMOTION_PROVENANCE_AND_RERUN",
       recommended_next_action_reason_code: "PROVENANCE_BLOCKER",

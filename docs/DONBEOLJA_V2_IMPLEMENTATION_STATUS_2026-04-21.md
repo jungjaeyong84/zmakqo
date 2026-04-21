@@ -1822,3 +1822,27 @@ V1 약점 재발 방지:
 1. V1에서는 runbook과 최종 실행 wrapper가 서로 다른 증거 집합을 읽어 마지막 단계에서 판단이 갈라질 수 있었다
 2. 이번 단계는 runbook `CHK_01A` 와 submit `SUBMIT_CHK_01A` 가 동일한 context self-check를 요구하도록 맞췄다
 3. 따라서 V2에서는 context self-check가 false인데도 최종 submit만 통과하는 운영 drift를 차단한다
+
+## 2026-04-22 Context Submit Trace Includes Artifact Dir Self-Check
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-cloudbuild.js`
+2. `scripts/check-v2-canary-runbook.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+5. `src/tests/run-v2-promotion-cloudbuild.test.js`
+6. `src/tests/check-v2-canary-runbook.test.js`
+
+판정:
+
+1. `promotion-cloudbuild-context.json.submit_trace.relevant_submit_check_ids` 는 이제 `SUBMIT_CHK_01A` 를 포함한다
+2. `artifact_dir_coherence.ok=false` 이면 context submit trace의 `failed_submit_check_ids` 에 `SUBMIT_CHK_01A` 가 남고, runbook refs `1,5,9` 로 역추적된다
+3. 같은 경우 context top-level `recommended_next_action` 도 `DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT` 로 바뀐다
+4. runbook verifier `CHK_13C` 는 context submit trace가 `SUBMIT_CHK_01A` 를 누락하거나 blocker family/reason code와 어긋나면 실패한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 산출물 본문과 운영자용 trace가 같은 실패를 다르게 표현해 원인 추적이 늦어질 수 있었다
+2. 이번 단계는 context 본문, submit trace, runbook verifier가 같은 artifact dir self-check 결과를 공유하게 만든다
+3. 따라서 V2에서는 final dir drift가 발생했을 때 “무엇이 깨졌는지, runbook 몇 번을 봐야 하는지, 다음 행동이 무엇인지”가 context 하나에서 동시에 드러난다

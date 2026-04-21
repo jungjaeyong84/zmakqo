@@ -868,17 +868,23 @@ function evaluateSubmitContract() {
       ok: cloudbuildWrapperText.includes("buildArtifactDirCoherence")
         && cloudbuildWrapperText.includes("artifact_dir_coherence")
         && cloudbuildWrapperText.includes("ARTIFACT_DIR_RESOLVED_DIR_MISMATCH")
+        && cloudbuildWrapperText.includes("SUBMIT_CHK_01A")
+        && cloudbuildWrapperText.includes("buildContextRecommendedNextAction")
         && artifactContractText.includes("artifact_dir_coherence")
         && artifactContractText.includes("artifact_dir_coherence.ok")
+        && artifactContractText.includes("submit_trace.checks[] must include `SUBMIT_CHK_01A`")
         && runbookText.includes("artifact_dir_coherence"),
       reason: cloudbuildWrapperText.includes("buildArtifactDirCoherence")
         && cloudbuildWrapperText.includes("artifact_dir_coherence")
         && cloudbuildWrapperText.includes("ARTIFACT_DIR_RESOLVED_DIR_MISMATCH")
+        && cloudbuildWrapperText.includes("SUBMIT_CHK_01A")
+        && cloudbuildWrapperText.includes("buildContextRecommendedNextAction")
         && artifactContractText.includes("artifact_dir_coherence")
         && artifactContractText.includes("artifact_dir_coherence.ok")
+        && artifactContractText.includes("submit_trace.checks[] must include `SUBMIT_CHK_01A`")
         && runbookText.includes("artifact_dir_coherence")
-        ? "cloudbuild context self-reports artifact dir coherence before runbook and submit checks"
-        : "cloudbuild context must include artifact_dir_coherence and docs must require it",
+        ? "cloudbuild context self-reports artifact dir coherence and maps it to submit trace before runbook and submit checks"
+        : "cloudbuild context must include artifact_dir_coherence, map it to SUBMIT_CHK_01A, and docs must require it",
       file: FILES.cloudbuildWrapper,
     }),
   ];

@@ -219,6 +219,7 @@ function buildRecommendedNextActionReasonCode(summary) {
 }
 
 const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
+  SUBMIT_CHK_01A: Object.freeze(["artifact_dir", "resolved_artifact_dir", "artifact_dir_coherence", "position_cycle_id"]),
   SUBMIT_CHK_06: Object.freeze(["recommended_next_action"]),
   SUBMIT_CHK_07: Object.freeze(["deploy_decision_summary.blocker_summary.blocker_n"]),
   SUBMIT_CHK_08: Object.freeze(["lineage_contract_hash", "deploy_decision_summary.lineage_contract_hash"]),
@@ -289,6 +290,33 @@ function buildArtifactDirCoherence({ plan = null, requestedDir = null, resolvedD
   });
 }
 
+function hasArtifactDirCoherenceFailure(artifactDirCoherence = null) {
+  const row = normalizeObject(artifactDirCoherence);
+  return !!(row && row.ok !== true);
+}
+
+function buildContextRecommendedNextAction(summary, artifactDirCoherence = null) {
+  if (hasArtifactDirCoherenceFailure(artifactDirCoherence)) {
+    return "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT";
+  }
+  return buildRecommendedNextAction(summary);
+}
+
+function buildContextRecommendedNextActionReason(summary, artifactDirCoherence = null) {
+  const row = normalizeObject(artifactDirCoherence);
+  if (hasArtifactDirCoherenceFailure(row)) {
+    return `artifact dir self-check failed: ${trimOrNull(row.reason) || "ARTIFACT_DIR_COHERENCE_FAILED"}`;
+  }
+  return buildRecommendedNextActionReason(summary);
+}
+
+function buildContextRecommendedNextActionReasonCode(summary, artifactDirCoherence = null) {
+  if (hasArtifactDirCoherenceFailure(artifactDirCoherence)) {
+    return "PROVENANCE_BLOCKER";
+  }
+  return buildRecommendedNextActionReasonCode(summary);
+}
+
 function buildContextBlockerFamilies(summary) {
   const row = normalizeObject(summary);
   if (!row) return Object.freeze([]);
@@ -330,14 +358,16 @@ function collectContextDeployWarningRunbookChecklist(summary) {
   return Object.freeze(Array.from(refs).sort((a, b) => Number(a) - Number(b)));
 }
 
-function buildContextSubmitTrace(summary) {
+function buildContextSubmitTrace(summary, { artifactDirCoherence = null } = {}) {
   const row = normalizeObject(summary);
+  const artifactCoherenceOk = artifactDirCoherence && artifactDirCoherence.ok === true;
   if (!row) {
+    const failedIds = Object.freeze(["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]);
     return Object.freeze({
-      relevant_submit_check_ids: Object.freeze(["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]),
-      relevant_runbook_checklist: submitTrace.collectRunbookChecklist(["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]),
-      failed_submit_check_ids: Object.freeze(["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]),
-      failed_runbook_checklist: submitTrace.collectRunbookChecklist(["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"]),
+      relevant_submit_check_ids: failedIds,
+      relevant_runbook_checklist: submitTrace.collectRunbookChecklist(failedIds),
+      failed_submit_check_ids: failedIds,
+      failed_runbook_checklist: submitTrace.collectRunbookChecklist(failedIds),
       blocker_families: Object.freeze(["PROVENANCE"]),
       primary_blocker_family: "PROVENANCE",
       deploy_warning_attention_required: false,
@@ -345,6 +375,13 @@ function buildContextSubmitTrace(summary) {
       deploy_warning_runbook_checklist: Object.freeze([]),
       recommended_next_action_reason_code: "DEPLOY_DECISION_ARTIFACT_MISSING",
       checks: Object.freeze([
+        Object.freeze({
+          id: "SUBMIT_CHK_01A",
+          ok: false,
+          runbook_checklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_01A"),
+          fields: CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_01A,
+          reason: "cloudbuild context is missing so artifact dir coherence cannot be validated",
+        }),
         Object.freeze({
           id: "SUBMIT_CHK_06",
           ok: false,
@@ -370,10 +407,19 @@ function buildContextSubmitTrace(summary) {
     });
   }
 
-  const recommendedNextAction = buildRecommendedNextAction(row);
+  const recommendedNextAction = buildContextRecommendedNextAction(row, artifactDirCoherence);
   const blockerSummary = normalizeObject(row.blocker_summary);
   const lineageHash = trimOrNull(row.lineage_contract_hash);
   const checks = Object.freeze([
+    Object.freeze({
+      id: "SUBMIT_CHK_01A",
+      ok: artifactCoherenceOk,
+      runbook_checklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_01A"),
+      fields: CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_01A,
+      reason: artifactCoherenceOk
+        ? "cloudbuild artifact dir self-check is coherent"
+        : `cloudbuild artifact dir self-check failed: ${trimOrNull(artifactDirCoherence && artifactDirCoherence.reason) || "ARTIFACT_DIR_COHERENCE_FAILED"}`,
+    }),
     Object.freeze({
       id: "SUBMIT_CHK_06",
       ok: recommendedNextAction === "PROCEED_WITH_SUBMIT_WRAPPER",
@@ -406,19 +452,22 @@ function buildContextSubmitTrace(summary) {
     checks.filter((entry) => entry.ok !== true).map((entry) => entry.id)
   );
   const blockerFamilies = buildContextBlockerFamilies(blockerSummary);
-  const primaryBlockerFamily = blockerFamilies[0] || (failedSubmitCheckIds.includes("SUBMIT_CHK_08") ? "PROVENANCE" : null);
+  const effectiveBlockerFamilies = failedSubmitCheckIds.includes("SUBMIT_CHK_01A") || failedSubmitCheckIds.includes("SUBMIT_CHK_08")
+    ? Object.freeze(Array.from(new Set(["PROVENANCE", ...blockerFamilies])))
+    : blockerFamilies;
+  const primaryBlockerFamily = effectiveBlockerFamilies[0] || null;
   const warningSummary = normalizeObject(row.warning_summary);
   return Object.freeze({
     relevant_submit_check_ids: Object.freeze(checks.map((entry) => entry.id)),
     relevant_runbook_checklist: submitTrace.collectRunbookChecklist(checks.map((entry) => entry.id)),
     failed_submit_check_ids: failedSubmitCheckIds,
     failed_runbook_checklist: submitTrace.collectRunbookChecklist(failedSubmitCheckIds),
-    blocker_families: blockerFamilies,
+    blocker_families: effectiveBlockerFamilies,
     primary_blocker_family: primaryBlockerFamily,
     deploy_warning_attention_required: Number(warningSummary && warningSummary.warning_n || 0) > 0,
     deploy_warning_summary: warningSummary,
     deploy_warning_runbook_checklist: collectContextDeployWarningRunbookChecklist(row),
-    recommended_next_action_reason_code: buildRecommendedNextActionReasonCode(row),
+    recommended_next_action_reason_code: buildContextRecommendedNextActionReasonCode(row, artifactDirCoherence),
     checks,
   });
 }
@@ -726,7 +775,7 @@ function writeContextArtifact(plan, {
     resolvedDir,
     deployDecisionSummary,
   });
-  const contextSubmitTrace = buildContextSubmitTrace(deployDecisionSummary);
+  const contextSubmitTrace = buildContextSubmitTrace(deployDecisionSummary, { artifactDirCoherence });
   writeJson(filePath, {
     mode: plan.mode,
     promotion_mode: plan.promotionMode,
@@ -739,9 +788,9 @@ function writeContextArtifact(plan, {
     script: plan.script,
     generated_at: new Date().toISOString(),
     final_status_line: buildStatusLine(deployDecisionSummary),
-    recommended_next_action: buildRecommendedNextAction(deployDecisionSummary),
-    recommended_next_action_reason: buildRecommendedNextActionReason(deployDecisionSummary),
-    recommended_next_action_reason_code: buildRecommendedNextActionReasonCode(deployDecisionSummary),
+    recommended_next_action: buildContextRecommendedNextAction(deployDecisionSummary, artifactDirCoherence),
+    recommended_next_action_reason: buildContextRecommendedNextActionReason(deployDecisionSummary, artifactDirCoherence),
+    recommended_next_action_reason_code: buildContextRecommendedNextActionReasonCode(deployDecisionSummary, artifactDirCoherence),
     submit_trace: contextSubmitTrace,
     live_cutover_readiness_file: trimOrNull(liveCutoverReadinessFile),
     live_cutover_readiness_summary: liveCutoverReadinessSummary,
@@ -1396,6 +1445,10 @@ if (require.main === module) {
       buildRecommendedNextAction,
       buildRecommendedNextActionReason,
       buildRecommendedNextActionReasonCode,
+      hasArtifactDirCoherenceFailure,
+      buildContextRecommendedNextAction,
+      buildContextRecommendedNextActionReason,
+      buildContextRecommendedNextActionReasonCode,
       buildContextBlockerFamilies,
       resolvePathOrNull,
       buildArtifactDirCoherence,
