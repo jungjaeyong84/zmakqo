@@ -8,6 +8,7 @@ const gate = require("./check-v2-promotion-gate");
 const OUTPUT_FILENAME = "unified-promotion-report.json";
 const CANDIDATE_SELECTION_FILENAME = "promotion-canary-candidate-selection.json";
 const REPAIR_FIRESTORE_CANARY_STREAK_FILENAME = "v2_repair_queue_firestore_canary_streak_latest.json";
+const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -170,6 +171,22 @@ function readRepairFirestoreCanaryStreakArtifact(env = process.env, artifactDir 
   return readOptionalJson(resolveRepairFirestoreCanaryStreakFile(env, artifactDir));
 }
 
+function resolveProductionEntryRouteCanaryStreakFile(env = process.env, artifactDir = null) {
+  const explicit = trimOrNull(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILE);
+  if (explicit) return path.resolve(explicit);
+  const dir = trimOrNull(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_ARTIFACT_DIR);
+  if (dir) return path.resolve(dir, PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME);
+  const artifactScoped = trimOrNull(artifactDir)
+    ? path.resolve(artifactDir, PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME)
+    : null;
+  if (artifactScoped && fs.existsSync(artifactScoped)) return artifactScoped;
+  return path.resolve("ops", "daily", PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME);
+}
+
+function readProductionEntryRouteCanaryStreakArtifact(env = process.env, artifactDir = null) {
+  return readOptionalJson(resolveProductionEntryRouteCanaryStreakFile(env, artifactDir));
+}
+
 function buildRepairFirestoreCanaryStreakSummary(streak) {
   const row = normalizeObject(streak);
   if (!row) return null;
@@ -191,7 +208,31 @@ function buildRepairFirestoreCanaryStreakSummary(streak) {
   });
 }
 
-function buildBoundedRuntimeSummary(manifest, selectorMeta, { repairFirestoreCanaryStreak = null } = {}) {
+function buildProductionEntryRouteCanaryStreakSummary(streak) {
+  const row = normalizeObject(streak);
+  if (!row) return null;
+  return Object.freeze({
+    ok: row.ok === true,
+    reason: trimOrNull(row.reason),
+    history_file: trimOrNull(row.history_file),
+    lookback_hours: normalizeNumber(row.lookback_hours),
+    min_run_count: normalizeNumber(row.min_run_count),
+    max_gap_minutes: normalizeNumber(row.max_gap_minutes),
+    row_n: normalizeNumber(row.row_n),
+    healthy_run_n: normalizeNumber(row.healthy_run_n),
+    unhealthy_run_n: normalizeNumber(row.unhealthy_run_n),
+    invalid_line_n: normalizeNumber(row.invalid_line_n),
+    latest_age_minutes: normalizeNumber(row.latest_age_minutes),
+    coverage_minutes: normalizeNumber(row.coverage_minutes),
+    max_observed_gap_minutes: normalizeNumber(row.max_observed_gap_minutes),
+    blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
+  });
+}
+
+function buildBoundedRuntimeSummary(manifest, selectorMeta, {
+  repairFirestoreCanaryStreak = null,
+  productionEntryRouteCanaryStreak = null,
+} = {}) {
   const manifestRow = normalizeObject(manifest);
   const selectorRow = normalizeObject(selectorMeta);
   if (!manifestRow && !selectorRow) return null;
@@ -210,6 +251,7 @@ function buildBoundedRuntimeSummary(manifest, selectorMeta, { repairFirestoreCan
     repair_evidence_summary: buildRepairEvidenceSummary(snapshotMeta && snapshotMeta.repair_evidence_summary),
     openclaw_execution_audit_ledger_write: normalizeObject(snapshotMeta && snapshotMeta.openclaw_execution_audit_ledger_write),
     repair_firestore_canary_streak: buildRepairFirestoreCanaryStreakSummary(repairFirestoreCanaryStreak),
+    production_entry_route_canary_streak: buildProductionEntryRouteCanaryStreakSummary(productionEntryRouteCanaryStreak),
   });
 }
 
@@ -243,7 +285,11 @@ function buildCandidateSelectionSummary(candidateSelection) {
   });
 }
 
-function buildUnifiedArtifactPayload(result, { candidateSelection = null, repairFirestoreCanaryStreak = null } = {}) {
+function buildUnifiedArtifactPayload(result, {
+  candidateSelection = null,
+  repairFirestoreCanaryStreak = null,
+  productionEntryRouteCanaryStreak = null,
+} = {}) {
   const row = result && typeof result === "object" ? result : {};
   const inputs = row.inputs && typeof row.inputs === "object" ? row.inputs : {};
   const report = row.report && typeof row.report === "object" ? row.report : null;
@@ -259,7 +305,10 @@ function buildUnifiedArtifactPayload(result, { candidateSelection = null, repair
     mode: report && report.mode ? report.mode : null,
     position_cycle_id: trimOrNull(selectorMeta && selectorMeta.position_cycle_id),
     selector_meta: selectorMeta || null,
-    bounded_runtime_summary: buildBoundedRuntimeSummary(manifest, selectorMeta, { repairFirestoreCanaryStreak }),
+    bounded_runtime_summary: buildBoundedRuntimeSummary(manifest, selectorMeta, {
+      repairFirestoreCanaryStreak,
+      productionEntryRouteCanaryStreak,
+    }),
     alert_retry_summary: buildAlertRetrySummary(manifest && manifest.snapshot_meta && manifest.snapshot_meta.alert_retry_summary),
     candidate_selection_summary: buildCandidateSelectionSummary(candidateSelection),
     report,
@@ -271,7 +320,12 @@ function generateUnifiedPromotionReport(env = process.env) {
   const artifactDir = resolveArtifactDir(env);
   const candidateSelection = readCandidateSelectionArtifact(artifactDir);
   const repairFirestoreCanaryStreak = readRepairFirestoreCanaryStreakArtifact(env, artifactDir);
-  return buildUnifiedArtifactPayload(result, { candidateSelection, repairFirestoreCanaryStreak });
+  const productionEntryRouteCanaryStreak = readProductionEntryRouteCanaryStreakArtifact(env, artifactDir);
+  return buildUnifiedArtifactPayload(result, {
+    candidateSelection,
+    repairFirestoreCanaryStreak,
+    productionEntryRouteCanaryStreak,
+  });
 }
 
 async function main(env = process.env) {
@@ -305,9 +359,11 @@ if (require.main === module) {
       OUTPUT_FILENAME,
       CANDIDATE_SELECTION_FILENAME,
       REPAIR_FIRESTORE_CANARY_STREAK_FILENAME,
+      PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME,
       trimOrNull,
       resolveArtifactDir,
       resolveRepairFirestoreCanaryStreakFile,
+      resolveProductionEntryRouteCanaryStreakFile,
       normalizeObject,
       normalizeNumber,
       buildEvidenceSnapshotSummary,
@@ -319,7 +375,9 @@ if (require.main === module) {
       readOptionalJson,
       readCandidateSelectionArtifact,
       readRepairFirestoreCanaryStreakArtifact,
+      readProductionEntryRouteCanaryStreakArtifact,
       buildRepairFirestoreCanaryStreakSummary,
+      buildProductionEntryRouteCanaryStreakSummary,
       buildBoundedRuntimeSummary,
       buildCandidateSelectionSummary,
       buildUnifiedArtifactPayload,

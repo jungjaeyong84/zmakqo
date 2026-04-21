@@ -1175,3 +1175,33 @@ V1 약점 재발 방지:
 2. 이번 단계에서는 OpenClaw cron이 V2 production entry route까지 도달했다는 증거가 별도 artifact로 남는다
 3. 다만 이 canary는 실주문/실보호주문 증거가 아니다. 의도적으로 `NO_EXCHANGE_ROUTE_PROOF` 에 머물러서 scheduler 연결 증거와 live exchange write 증거를 섞지 않는다
 4. 다음 단계는 이 canary가 24시간 동안 누락 없이 생성되는지 수집한 뒤, 실제 canary entry transport 연결로 승격하는 것이다
+
+## 2026-04-21 Production Entry Route Canary 24h Streak Gate
+
+추가 증거:
+
+1. `scripts/run-v2-production-entry-route-canary.js`
+2. `scripts/check-v2-production-entry-route-canary-streak.js`
+3. `src/tests/check-v2-production-entry-route-canary-streak.test.js`
+4. `scripts/generate-v2-unified-promotion-report.js`
+5. `scripts/check-v2-promotion-deploy-decision.js`
+6. `scripts/submit-v2-promotion-cloudbuild.js`
+7. `scripts/lib/v2-promotion-submit-trace.js`
+8. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. production entry route canary는 이제 latest artifact뿐 아니라 `v2_production_entry_route_canary_history.jsonl` 에도 append 된다
+2. streak checker는 최근 24시간 history에서 `V2_PRODUCTION_ENTRY_ROUTE_CANARY_PASS`, `NO_EXCHANGE_ROUTE_PROOF`, `exchange_write_performed=false`, route success, kernel called, ledger skip evidence를 모두 확인한다
+3. 단일 최신 파일만 있는 상태는 `PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:MIN_RUN_COUNT` 및 `COVERAGE_INSUFFICIENT` 로 차단된다
+4. unhealthy row, stale latest, 긴 gap, invalid JSONL도 모두 fail-closed 로 드러난다
+5. unified promotion report는 `bounded_runtime_summary.production_entry_route_canary_streak` 를 포함한다
+6. deploy decision은 LIVE에서 이 streak가 없으면 `DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED` 로 차단하고, CANARY에서는 warning으로만 둔다
+7. submit wrapper는 같은 조건을 `SUBMIT_CHK_19` 로 다시 검사하며 runbook checklist `26` 으로 역추적된다
+
+V1 약점 재발 방지:
+
+1. V1에서는 scheduler 연결 증거와 실제 주문 성공 증거가 운영상 섞일 수 있었다
+2. 이번 단계는 route 도달 증거를 거래소 write와 분리해 검증하므로, live entry transport를 붙이기 전에 scheduler/control-plane 경로가 충분히 안정적인지 먼저 본다
+3. LIVE 승격은 이제 repair Firestore canary streak뿐 아니라 production entry route canary streak도 통과해야 하므로, route가 한 번 성공한 착시로 live cutover를 진행하는 위험을 줄인다
+4. 남은 한계는 Cloud Run 로컬 파일시스템이 24시간 영속 증거로 충분하지 않다는 점이다. 따라서 실제 운영 수집은 Firestore-backed history 또는 외부 artifact collector로 승격해야 한다

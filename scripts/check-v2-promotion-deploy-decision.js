@@ -344,6 +344,20 @@ function hasRepairFirestoreCanaryStreak(summary) {
   );
 }
 
+function hasProductionEntryRouteCanaryStreak(summary) {
+  const row = normalizeObject(summary);
+  const streak = normalizeObject(row && row.production_entry_route_canary_streak);
+  if (!streak) return false;
+  return (
+    streak.ok === true &&
+    trimOrNull(streak.reason) === "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS" &&
+    Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
+    Number(streak.unhealthy_run_n) === 0 &&
+    Number(streak.invalid_line_n) === 0 &&
+    ensureArray(streak.blockers).length === 0
+  );
+}
+
 function hasExactCandidateSnapshotCounts(summary) {
   const row = normalizeObject(summary);
   const selectedPreflight = normalizeObject(row && row.selected_preflight);
@@ -505,6 +519,12 @@ function buildDeployDecision(unifiedReport, {
   if (mode === "CANARY" && !hasRepairFirestoreCanaryStreak(boundedRuntimeSummary)) {
     warnings.push("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY");
   }
+  if (mode === "LIVE" && !hasProductionEntryRouteCanaryStreak(boundedRuntimeSummary)) {
+    blockers.push("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED");
+  }
+  if (mode === "CANARY" && !hasProductionEntryRouteCanaryStreak(boundedRuntimeSummary)) {
+    warnings.push("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY");
+  }
   if (mode === "SHADOW") {
     blockers.push("DEPLOY_DECISION:SHADOW_MODE_NOT_DEPLOYABLE");
   }
@@ -643,6 +663,7 @@ if (require.main === module) {
       buildV2ProductionCutoverAuditSummary,
       hasProductionCutoverAudit,
       hasRepairFirestoreCanaryStreak,
+      hasProductionEntryRouteCanaryStreak,
       buildAlertRetrySummary,
       hasAlertRetryAttention,
       hasExactCandidateSnapshotCounts,

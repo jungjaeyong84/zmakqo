@@ -69,6 +69,22 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
       max_observed_gap_minutes: 120,
       blockers: [],
     }, null, 2), "utf8");
+    fs.writeFileSync(path.join(dir, "v2_production_entry_route_canary_streak_latest.json"), JSON.stringify({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+      history_file: "/tmp/v2_production_entry_route_canary_history.jsonl",
+      lookback_hours: 24,
+      min_run_count: 12,
+      max_gap_minutes: 180,
+      row_n: 13,
+      healthy_run_n: 13,
+      unhealthy_run_n: 0,
+      invalid_line_n: 0,
+      latest_age_minutes: 15,
+      coverage_minutes: 1440,
+      max_observed_gap_minutes: 120,
+      blockers: [],
+    }, null, 2), "utf8");
     fs.writeFileSync(path.join(dir, "promotion-runtime-manifest.json"), JSON.stringify({
       snapshot_size_bytes: 12345,
       snapshot_meta: {
@@ -207,6 +223,8 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     assert.strictEqual(stored.bounded_runtime_summary.openclaw_execution_audit_ledger_write.collection_key, "OPENCLAW_EXECUTION_AUDITS");
     assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.reason, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS");
     assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.healthy_run_n, 13);
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.healthy_run_n, 13);
     assert.strictEqual(stored.bounded_runtime_summary.alert_retry_summary.failed_n, 1);
     assert.strictEqual(stored.alert_retry_summary.latest_failed.last_reason_family, "TRANSPORT");
     assert.strictEqual(stored.candidate_selection_summary.selection_status, "READY");

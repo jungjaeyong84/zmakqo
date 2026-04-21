@@ -136,6 +136,15 @@ function seedBoundedSubmitArtifacts(
         invalid_line_n: 0,
         blockers: [],
       },
+      production_entry_route_canary_streak: {
+        ok: true,
+        reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+        healthy_run_n: 13,
+        min_run_count: 12,
+        unhealthy_run_n: 0,
+        invalid_line_n: 0,
+        blockers: [],
+      },
     },
     ...(autoSelect ? {
       candidate_selection_summary: {
@@ -357,6 +366,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, false);
+  assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, false);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.runbook_review_pass_required, true);
   assert.strictEqual(request.approval_contract.candidate_selection_ready_required, false);
@@ -370,6 +380,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.production_cutover_audit.field, "production_cutover_audit");
   assert.strictEqual(request.approval_evidence_sources.openclaw_execution_audit_ledger_write.field, "bounded_runtime_summary.openclaw_execution_audit_ledger_write");
   assert.strictEqual(request.approval_evidence_sources.repair_firestore_canary_streak, null);
+  assert.strictEqual(request.approval_evidence_sources.production_entry_route_canary_streak, null);
   assert.strictEqual(request.approval_evidence_sources.runbook_review.expected_value, "PASS");
   assert.strictEqual(request.approval_evidence_sources.lineage_hash_sources.length, 4);
   assert.strictEqual(request.approval_evidence_sources.lineage_hash_sources[3].field, "lineage_contract_hash");
@@ -403,6 +414,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, false);
+  assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, false);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.candidate_selection_ready_required, true);
   assert.strictEqual(request.approval_contract.selected_preflight_required, true);
@@ -428,12 +440,17 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.mode, "PIPELINE");
   assert.strictEqual(request.promotion_mode, "LIVE");
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, true);
+  assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.scheduler_traffic_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, true);
   assert.strictEqual(
     request.approval_evidence_sources.repair_firestore_canary_streak.field,
     "bounded_runtime_summary.repair_firestore_canary_streak"
+  );
+  assert.strictEqual(
+    request.approval_evidence_sources.production_entry_route_canary_streak.field,
+    "bounded_runtime_summary.production_entry_route_canary_streak"
   );
   assert.strictEqual(
     request.approval_evidence_sources.live_cutover_readiness_summary.field,

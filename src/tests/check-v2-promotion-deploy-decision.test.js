@@ -79,6 +79,15 @@ function buildBoundedRuntimeSummaryFixture() {
       invalid_line_n: 0,
       blockers: [],
     },
+    production_entry_route_canary_streak: {
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+      healthy_run_n: 13,
+      min_run_count: 12,
+      unhealthy_run_n: 0,
+      invalid_line_n: 0,
+      blockers: [],
+    },
     alert_retry_summary: {
       outbox_n: 3,
       failed_n: 1,
@@ -343,6 +352,70 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
+})();
+
+(function canaryWithoutProductionEntryRouteStreakWarnsButDoesNotBlock() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  delete bounded.production_entry_route_canary_streak;
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__NO_ROUTE_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__NO_ROUTE_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__NO_ROUTE_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, true);
+  assert.ok(decision.warnings.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
+})();
+
+(function liveWithoutProductionEntryRouteStreakFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.production_entry_route_canary_streak = {
+    ok: false,
+    reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_BLOCKED",
+    healthy_run_n: 3,
+    min_run_count: 12,
+    unhealthy_run_n: 0,
+    invalid_line_n: 0,
+    blockers: ["PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:MIN_RUN_COUNT"],
+  };
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__NO_ROUTE_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__NO_ROUTE_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__NO_ROUTE_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED"));
 })();
 
 (function canaryWithoutOpenClawExecutionSeparationFailsClosed() {

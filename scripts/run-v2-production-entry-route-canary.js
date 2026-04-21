@@ -10,19 +10,34 @@ function resolveOutputFile(env = process.env) {
   return explicit || path.join(OPS_DAILY_DIR, "v2_production_entry_route_canary_latest.json");
 }
 
+function resolveHistoryFile(env = process.env) {
+  const explicit = String(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_HISTORY_FILE || "").trim();
+  return explicit || path.join(OPS_DAILY_DIR, "v2_production_entry_route_canary_history.jsonl");
+}
+
+function appendJsonl(filePath, payload) {
+  const fs = require("fs");
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.appendFileSync(filePath, `${JSON.stringify(payload)}\n`, "utf8");
+}
+
 async function main({ env = process.env, setProcessExitCode = require.main === module } = {}) {
   const result = await runV2ProductionEntryRouteCanary({ env });
   const outputFile = resolveOutputFile(env);
+  const historyFile = resolveHistoryFile(env);
   const artifact = Object.freeze({
     ...result,
     output_file: outputFile,
+    history_file: historyFile,
   });
   writeJson(outputFile, artifact);
+  appendJsonl(historyFile, artifact);
   // Keep stdout compact for Cloud Scheduler logs. Full evidence is in the artifact.
   console.log(JSON.stringify({
     ok: artifact.ok,
     reason: artifact.reason,
     output_file: artifact.output_file,
+    history_file: artifact.history_file,
     exchange_write_performed: artifact.exchange_write_performed,
     route_reason: artifact.route_result_summary && artifact.route_result_summary.reason,
   }));
@@ -41,5 +56,7 @@ module.exports = {
   main,
   __test: {
     resolveOutputFile,
+    resolveHistoryFile,
+    appendJsonl,
   },
 };

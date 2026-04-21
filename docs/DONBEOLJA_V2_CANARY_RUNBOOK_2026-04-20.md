@@ -108,6 +108,7 @@ npm run check:v2-canary-runbook
 | 23 | `SUBMIT_CHK_15` | `promotion-cloudbuild-context.json`, `v2_production_cutover_readiness_latest.json` | `production_cutover_readiness_summary`, `reason`, `guard_reason`, `legacy_webhook_blocked`, `v2_enabled`, `v2_dry_run`, `v2_canary_only` | LIVE만 필수. `reason=V2_PRODUCTION_CUTOVER_READINESS_PASS`, `legacy_webhook_blocked=true`, `guard_reason=V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED`, `v2_enabled=true`, `v2_dry_run=false`, `v2_canary_only=false`. 실패 시에도 context에는 `production_cutover_readiness_summary.ok=false` 와 `failed_check_ids` 가 남아야 함 | LIVE env cutover flags와 legacy webhook 차단 상태를 수정하고 `check:v2-production-cutover` 및 LIVE cloudbuild wrapper를 다시 실행 |
 | 24 | `SUBMIT_CHK_16`, `SUBMIT_CHK_17` | `promotion-cloudbuild-context.json`, `v2_scheduler_traffic_collector_preflight_latest.json`, `v2_scheduler_traffic_cutover_readiness_latest.json` | `scheduler_traffic_collector_preflight_summary`, `scheduler_traffic_cutover_readiness_summary`, `scheduler_sot`, `missing_openclaw_job_ids`, `active_legacy_scheduler_job_n`, `cloud_run_services` | LIVE만 필수. collector preflight는 `reason=V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS`, readiness는 `reason=V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run 서비스 traffic/revision/env 모두 ready. collector preflight 실패 시에도 context에는 `scheduler_traffic_collector_preflight_summary.ok=false` 와 `failed_check_ids` 가 남아야 함 | collector 권한/환경 문제면 `SCHED_TRAFFIC_COLLECTOR_PREREQ_*` 를 먼저 해소하고, scheduler 상태 문제면 Cloud Scheduler/OpenClaw cron/Cloud Run traffic state를 수정한 뒤 `check:v2-scheduler-traffic-cutover` 및 LIVE cloudbuild wrapper를 다시 실행 |
 | 25 | `SUBMIT_CHK_18` | `promotion-deploy-decision.json` | `fill_sync_canonical_boundary_audit.ok`, `reason`, `scope`, `contract.fail_n`, `contract.failed_check_ids` | `ok=true`, `reason=V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_PASS`, `scope=binance_fills_sync_canonical_boundary`, `contract.fail_n=0`, `contract.failed_check_ids=[]` | legacy fill sync canonical write 경계를 수정하고 `check:v2-fill-sync-canonical-boundary` 및 deploy decision을 다시 실행 |
+| 26 | `SUBMIT_CHK_19` | `promotion-deploy-decision.json`, `v2_production_entry_route_canary_streak_latest.json` | `bounded_runtime_summary.production_entry_route_canary_streak.reason`, `healthy_run_n`, `blockers` | LIVE만 필수. `reason=V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS`, `healthy_run_n >= min_run_count`, `blockers=[]`, canary artifact는 `exchange_write_performed=false` 이어야 함 | OpenClaw cron의 V2 production route canary history와 streak output을 재검토. route canary가 24시간 coverage를 채우기 전 LIVE 승격 금지 |
 
 ## Submit Reverse Index
 
@@ -132,6 +133,7 @@ npm run check:v2-canary-runbook
 | `SUBMIT_CHK_16` | `24` | LIVE scheduler traffic cutover uses OpenClaw cron only |
 | `SUBMIT_CHK_17` | `24` | LIVE scheduler traffic collector preflight can read GCP state |
 | `SUBMIT_CHK_18` | `25` | V2 fill sync canonical boundary audit complete |
+| `SUBMIT_CHK_19` | `26` | LIVE production entry route canary streak complete |
 
 실무 원칙:
 

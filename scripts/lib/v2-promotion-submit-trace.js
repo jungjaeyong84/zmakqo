@@ -62,6 +62,11 @@ const TRACE_INDEX = Object.freeze([
     summary: "LIVE repair Firestore canary streak complete",
   }),
   Object.freeze({
+    id: "SUBMIT_CHK_19",
+    runbookChecklist: Object.freeze(["26"]),
+    summary: "LIVE production entry route canary streak complete",
+  }),
+  Object.freeze({
     id: "SUBMIT_CHK_12",
     runbookChecklist: Object.freeze(["20"]),
     summary: "LIVE repair cutover readiness summary visible in final submit path",

@@ -93,7 +93,7 @@ function buildVerificationSummary(checks) {
     .filter(Boolean)
     .slice(0, 3);
   const hasProvenanceBlocker = ids.some((id) => ["SUBMIT_CHK_01", "SUBMIT_CHK_08"].includes(id));
-  const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12"].includes(id));
+  const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19"].includes(id));
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
   const hasProductionCutoverBlocker = ids.some((id) => ["SUBMIT_CHK_14", "SUBMIT_CHK_15"].includes(id));
@@ -314,6 +314,7 @@ function buildApprovalContract(plan) {
       scheduler_traffic_cutover_readiness_summary_required: false,
       openclaw_execution_audit_ledger_write_required: false,
       repair_firestore_canary_streak_required: false,
+      production_entry_route_canary_streak_required: false,
       live_cutover_readiness_summary_required: false,
       runbook_review_pass_required: false,
       candidate_selection_ready_required: false,
@@ -339,6 +340,7 @@ function buildApprovalContract(plan) {
     scheduler_traffic_cutover_readiness_summary_required: row.promotionMode === "LIVE",
     openclaw_execution_audit_ledger_write_required: true,
     repair_firestore_canary_streak_required: row.promotionMode === "LIVE",
+    production_entry_route_canary_streak_required: row.promotionMode === "LIVE",
     live_cutover_readiness_summary_required: row.promotionMode === "LIVE",
     runbook_review_pass_required: true,
     candidate_selection_ready_required: row.canaryAutoSelectEnabled === true,
@@ -367,6 +369,7 @@ function buildApprovalEvidenceSources(plan) {
      production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
+      production_entry_route_canary_streak: null,
       lineage_hash_sources: [],
       candidate_selection: null,
     });
@@ -438,6 +441,13 @@ function buildApprovalEvidenceSources(plan) {
           note: "LIVE requires V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS with no blockers",
         })
       : null,
+    production_entry_route_canary_streak: row.promotionMode === "LIVE"
+      ? buildEvidenceRef({
+          file: "promotion-deploy-decision.json",
+          field: "bounded_runtime_summary.production_entry_route_canary_streak",
+          note: "LIVE requires V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS with no blockers and no exchange write",
+        })
+      : null,
     live_cutover_readiness_summary: row.promotionMode === "LIVE"
       ? buildEvidenceRef({
           file: "promotion-cloudbuild-context.json",
@@ -506,6 +516,7 @@ function hasRequiredApprovalContract(contract) {
     typeof row.scheduler_traffic_cutover_readiness_summary_required === "boolean" &&
     row.openclaw_execution_audit_ledger_write_required === true &&
     typeof row.repair_firestore_canary_streak_required === "boolean" &&
+    typeof row.production_entry_route_canary_streak_required === "boolean" &&
     typeof row.live_cutover_readiness_summary_required === "boolean" &&
     row.runbook_review_pass_required === true &&
     row.blocker_free_required === true &&
@@ -1167,6 +1178,25 @@ function buildApprovalVerification(request) {
       artifactContract: [
         "approval_contract.repair_firestore_canary_streak_required",
         "approval_evidence_sources.repair_firestore_canary_streak",
+      ],
+    }));
+  }
+
+  if (row.approval_contract && row.approval_contract.production_entry_route_canary_streak_required === true) {
+    checks.push(withDocRefs(buildVerificationCheck({
+      id: "SUBMIT_CHK_19",
+      label: "LIVE production entry route canary streak complete",
+      ok: deployDecisionCheck.__test.hasProductionEntryRouteCanaryStreak(deployDecision && deployDecision.bounded_runtime_summary),
+      reason: deployDecisionCheck.__test.hasProductionEntryRouteCanaryStreak(deployDecision && deployDecision.bounded_runtime_summary)
+        ? "LIVE production entry route canary streak evidence complete"
+        : "LIVE production entry route canary streak evidence is missing or blocked",
+      file: artifacts.deployDecision && artifacts.deployDecision.filePath,
+      field: "bounded_runtime_summary.production_entry_route_canary_streak",
+    }), {
+      runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_19"),
+      artifactContract: [
+        "approval_contract.production_entry_route_canary_streak_required",
+        "approval_evidence_sources.production_entry_route_canary_streak",
       ],
     }));
   }
