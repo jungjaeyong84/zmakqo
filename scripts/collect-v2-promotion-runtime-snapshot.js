@@ -32,6 +32,8 @@ const REQUIRED_COLLECTED_RUNTIME_CHAIN_CHECK_IDS = Object.freeze([
   "COLLECTED_TRANSITIONS_POSITION_CYCLE_MATCH",
   "COLLECTED_TRANSITIONS_ENTRY_EVENT_MATCH",
   "COLLECTED_TRANSITIONS_EXCHANGE_EVIDENCE_PRESENT",
+  "COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT",
+  "COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT",
   "COLLECTED_OUTBOX_TRANSITION_LINKS_COMPLETE",
   "COLLECTED_OUTBOX_POSITION_CYCLE_MATCH",
   "REPLAY_GATE_EPISODE_VALID",
@@ -93,6 +95,14 @@ function hasExchangeEvidenceSnapshot(snapshot) {
     (trimOrNull(row.source_fill_id) || trimOrNull(row.source_order_id)) &&
     Object.prototype.hasOwnProperty.call(row, "raw_payload")
   );
+}
+
+function isTerminalTransitionEvent(event) {
+  return ["SL_HIT", "TRAIL_HIT", "EXTERNAL_CLOSE_SYNC", "MANUAL_CLOSE_SYNC"].includes(upper(event));
+}
+
+function isStopTerminalTransitionEvent(event) {
+  return ["SL_HIT", "TRAIL_HIT"].includes(upper(event));
 }
 
 function pushRuntimeChainCheck(checks, id, ok, detail = null) {
@@ -525,6 +535,26 @@ function buildCollectedRuntimeChainAudit(episode) {
   pushRuntimeChainCheck(checks, "COLLECTED_TRANSITIONS_EXCHANGE_EVIDENCE_PRESENT", transitions.every((item) => hasExchangeEvidenceSnapshot(item && item.source_exchange_evidence)), {
     transition_n: transitions.length,
   });
+  const terminalTransitions = transitions.filter((item) => isTerminalTransitionEvent(item && item.transition_event));
+  const stopTerminalTransitions = transitions.filter((item) => isStopTerminalTransitionEvent(item && item.transition_event));
+  pushRuntimeChainCheck(
+    checks,
+    "COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT",
+    terminalTransitions.every((item) => replayGateTest.hasTerminalFullExitEvidence(item && item.source_exchange_evidence)),
+    {
+      terminal_transition_n: terminalTransitions.length,
+      terminal_full_exit_evidence_n: terminalTransitions.filter((item) => replayGateTest.hasTerminalFullExitEvidence(item && item.source_exchange_evidence)).length,
+    }
+  );
+  pushRuntimeChainCheck(
+    checks,
+    "COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT",
+    stopTerminalTransitions.every((item) => replayGateTest.hasStopFillEvidence({ snapshot: item && item.source_exchange_evidence })),
+    {
+      stop_terminal_transition_n: stopTerminalTransitions.length,
+      stop_terminal_fill_evidence_n: stopTerminalTransitions.filter((item) => replayGateTest.hasStopFillEvidence({ snapshot: item && item.source_exchange_evidence })).length,
+    }
+  );
   pushRuntimeChainCheck(checks, "COLLECTED_OUTBOX_TRANSITION_LINKS_COMPLETE", transitions.every((item) => outboxTransitionIds.has(trimOrNull(item && item.canonical_transition_id)))
     && outboxes.every((item) => transitionIds.has(trimOrNull(item && item.canonical_transition_id))), {
       transition_n: transitions.length,

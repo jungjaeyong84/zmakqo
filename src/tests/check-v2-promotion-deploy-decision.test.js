@@ -32,6 +32,12 @@ function buildBoundedRuntimeSummaryFixture() {
       transition_n: 3,
       transition_evidence_n: 3,
       missing_transition_evidence_n: 0,
+      terminal_transition_n: 1,
+      terminal_full_exit_evidence_n: 1,
+      missing_terminal_full_exit_evidence_n: 0,
+      stop_terminal_transition_n: 1,
+      stop_terminal_fill_evidence_n: 1,
+      missing_stop_terminal_fill_evidence_n: 0,
       protection_runtime_n: 1,
       protection_runtime_evidence_n: 1,
       missing_protection_runtime_evidence_n: 0,
@@ -656,6 +662,39 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__CANARY__NO_EVIDENCE",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EVIDENCE_SNAPSHOT_SUMMARY_REQUIRED"));
+})();
+
+(function canaryWithStaleEvidenceSnapshotSummaryFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  delete bounded.evidence_snapshot_summary.terminal_transition_n;
+  delete bounded.evidence_snapshot_summary.terminal_full_exit_evidence_n;
+  delete bounded.evidence_snapshot_summary.missing_terminal_full_exit_evidence_n;
+  delete bounded.evidence_snapshot_summary.stop_terminal_transition_n;
+  delete bounded.evidence_snapshot_summary.stop_terminal_fill_evidence_n;
+  delete bounded.evidence_snapshot_summary.missing_stop_terminal_fill_evidence_n;
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__STALE_EVIDENCE",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__STALE_EVIDENCE",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__STALE_EVIDENCE",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

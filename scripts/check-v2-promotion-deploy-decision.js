@@ -23,6 +23,8 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = Object.freeze([
   "COLLECTED_TRANSITIONS_POSITION_CYCLE_MATCH",
   "COLLECTED_TRANSITIONS_ENTRY_EVENT_MATCH",
   "COLLECTED_TRANSITIONS_EXCHANGE_EVIDENCE_PRESENT",
+  "COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT",
+  "COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT",
   "COLLECTED_OUTBOX_TRANSITION_LINKS_COMPLETE",
   "COLLECTED_OUTBOX_POSITION_CYCLE_MATCH",
   "REPLAY_GATE_EPISODE_VALID",
@@ -243,6 +245,12 @@ function hasEvidenceSnapshotCoverage(summary) {
   const protectionRuntimeCount = Number(evidence.protection_runtime_n);
   const protectionRuntimeEvidenceCount = Number(evidence.protection_runtime_evidence_n);
   const missingProtectionRuntimeEvidenceCount = Number(evidence.missing_protection_runtime_evidence_n);
+  const terminalCount = Number(evidence.terminal_transition_n);
+  const terminalFullExitEvidenceCount = Number(evidence.terminal_full_exit_evidence_n);
+  const missingTerminalFullExitEvidenceCount = Number(evidence.missing_terminal_full_exit_evidence_n);
+  const stopTerminalCount = Number(evidence.stop_terminal_transition_n);
+  const stopTerminalFillEvidenceCount = Number(evidence.stop_terminal_fill_evidence_n);
+  const missingStopTerminalFillEvidenceCount = Number(evidence.missing_stop_terminal_fill_evidence_n);
   return (
     evidence.ok === true &&
     Number.isFinite(transitionCount) &&
@@ -251,10 +259,20 @@ function hasEvidenceSnapshotCoverage(summary) {
     Number.isFinite(protectionRuntimeCount) &&
     Number.isFinite(protectionRuntimeEvidenceCount) &&
     Number.isFinite(missingProtectionRuntimeEvidenceCount) &&
+    Number.isFinite(terminalCount) &&
+    Number.isFinite(terminalFullExitEvidenceCount) &&
+    Number.isFinite(missingTerminalFullExitEvidenceCount) &&
+    Number.isFinite(stopTerminalCount) &&
+    Number.isFinite(stopTerminalFillEvidenceCount) &&
+    Number.isFinite(missingStopTerminalFillEvidenceCount) &&
     transitionEvidenceCount >= transitionCount &&
     protectionRuntimeEvidenceCount >= protectionRuntimeCount &&
     missingTransitionEvidenceCount === 0 &&
-    missingProtectionRuntimeEvidenceCount === 0
+    missingProtectionRuntimeEvidenceCount === 0 &&
+    terminalFullExitEvidenceCount >= terminalCount &&
+    stopTerminalFillEvidenceCount >= stopTerminalCount &&
+    missingTerminalFullExitEvidenceCount === 0 &&
+    missingStopTerminalFillEvidenceCount === 0
   );
 }
 

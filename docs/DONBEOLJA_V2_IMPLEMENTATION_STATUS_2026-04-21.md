@@ -1584,3 +1584,29 @@ V1 약점 재발 방지:
 1. V1에서는 replay fixture가 “객체 존재”만 만족해도 통과할 수 있어, 실제 terminal 판단 계약보다 약한 증거로 배포 게이트가 초록불이 될 수 있었다
 2. 이번 단계는 production writer 계약과 replay/deploy gate 계약을 같은 방향으로 맞춰, 코드가 강해져도 테스트 fixture가 약해서 회귀를 놓치는 착시를 줄였다
 3. 따라서 V2 terminal exit는 코드 실행과 배포 전 replay 양쪽에서 “전량 종료 근거 + stop 체결 근거”를 요구한다
+
+## 2026-04-22 Runtime Snapshot Terminal Evidence Chain
+
+추가 증거:
+
+1. `scripts/collect-v2-promotion-runtime-snapshot.js`
+2. `scripts/export-v2-promotion-runtime-snapshot.js`
+3. `scripts/generate-v2-unified-promotion-report.js`
+4. `scripts/check-v2-promotion-deploy-decision.js`
+5. `src/tests/collect-v2-promotion-runtime-snapshot.test.js`
+6. `src/tests/export-v2-promotion-runtime-snapshot.test.js`
+7. `src/tests/run-v2-promotion-pipeline.test.js`
+
+판정:
+
+1. collector runtime chain audit는 이제 `COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT` 와 `COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT` 를 별도 check id로 산출한다
+2. runtime snapshot exporter는 terminal transition / terminal full-exit evidence / stop terminal fill evidence 개수를 manifest에 보존한다
+3. unified promotion report는 이 terminal evidence summary 필드를 더 이상 누락하지 않고 bounded runtime summary까지 전달한다
+4. deploy decision은 stale evidence summary가 새 필드를 갖지 않으면 `evidence_snapshot_summary` 를 통과시키지 않는다
+5. 약한 terminal evidence fixture는 collector audit, replay gate, deploy decision 계층에서 모두 fail-closed 된다
+
+V1 약점 재발 방지:
+
+1. V1에서는 생산 코드, replay, 운영 snapshot, 통합 보고서 사이에서 evidence schema가 조금씩 달라져 게이트가 실제 운영 결함을 놓칠 수 있었다
+2. 이번 단계는 terminal evidence 계약을 collector -> exporter -> unified report -> deploy decision 전체 체인에 관통시켰다
+3. 따라서 V2는 “운영 증거가 실제로 수집되고 보고서/배포판정까지 보존되는가”를 배포 전 품질 조건으로 본다

@@ -4,6 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { buildLineageContract } = require("./lib/v2-promotion-lineage-contract");
+const { __test: replayGateTest } = require("../src/v2/replayGate");
 
 const SNAPSHOT_FILENAME = "promotion-runtime-snapshot.json";
 const REPLAY_FIXTURES_FILENAME = "replay-fixtures.json";
@@ -37,6 +38,10 @@ function writeJson(filePath, payload) {
 
 function normalizeObject(value) {
   return value && typeof value === "object" ? value : null;
+}
+
+function upper(value) {
+  return String(value || "").trim().toUpperCase() || null;
 }
 
 function resolveArtifactDir(env = process.env) {
@@ -104,6 +109,10 @@ function buildEvidenceSnapshotSummary(episodes) {
   const rows = Array.isArray(episodes) ? episodes : [];
   let transitionCount = 0;
   let transitionEvidenceCount = 0;
+  let terminalTransitionCount = 0;
+  let terminalFullExitEvidenceCount = 0;
+  let stopTerminalTransitionCount = 0;
+  let stopTerminalFillEvidenceCount = 0;
   let protectionRuntimeCount = 0;
   let protectionRuntimeEvidenceCount = 0;
 
@@ -112,6 +121,21 @@ function buildEvidenceSnapshotSummary(episodes) {
     const transitions = Array.isArray(episodeRow && episodeRow.transitions) ? episodeRow.transitions : [];
     transitionCount += transitions.length;
     transitionEvidenceCount += transitions.filter((transition) => normalizeObject(transition && transition.source_exchange_evidence)).length;
+    for (const transition of transitions) {
+      const event = upper(transition && transition.transition_event);
+      if (["SL_HIT", "TRAIL_HIT", "EXTERNAL_CLOSE_SYNC", "MANUAL_CLOSE_SYNC"].includes(event)) {
+        terminalTransitionCount += 1;
+        if (replayGateTest.hasTerminalFullExitEvidence(transition && transition.source_exchange_evidence)) {
+          terminalFullExitEvidenceCount += 1;
+        }
+      }
+      if (["SL_HIT", "TRAIL_HIT"].includes(event)) {
+        stopTerminalTransitionCount += 1;
+        if (replayGateTest.hasStopFillEvidence({ snapshot: transition && transition.source_exchange_evidence })) {
+          stopTerminalFillEvidenceCount += 1;
+        }
+      }
+    }
 
     const protectionRuntime = normalizeObject(episodeRow && episodeRow.protectionRuntime);
     if (!protectionRuntime) continue;
@@ -122,12 +146,23 @@ function buildEvidenceSnapshotSummary(episodes) {
   }
 
   const missingTransitionEvidenceCount = Math.max(transitionCount - transitionEvidenceCount, 0);
+  const missingTerminalFullExitEvidenceCount = Math.max(terminalTransitionCount - terminalFullExitEvidenceCount, 0);
+  const missingStopTerminalFillEvidenceCount = Math.max(stopTerminalTransitionCount - stopTerminalFillEvidenceCount, 0);
   const missingProtectionRuntimeEvidenceCount = Math.max(protectionRuntimeCount - protectionRuntimeEvidenceCount, 0);
   return Object.freeze({
-    ok: missingTransitionEvidenceCount === 0 && missingProtectionRuntimeEvidenceCount === 0,
+    ok: missingTransitionEvidenceCount === 0
+      && missingTerminalFullExitEvidenceCount === 0
+      && missingStopTerminalFillEvidenceCount === 0
+      && missingProtectionRuntimeEvidenceCount === 0,
     transition_n: transitionCount,
     transition_evidence_n: transitionEvidenceCount,
     missing_transition_evidence_n: missingTransitionEvidenceCount,
+    terminal_transition_n: terminalTransitionCount,
+    terminal_full_exit_evidence_n: terminalFullExitEvidenceCount,
+    missing_terminal_full_exit_evidence_n: missingTerminalFullExitEvidenceCount,
+    stop_terminal_transition_n: stopTerminalTransitionCount,
+    stop_terminal_fill_evidence_n: stopTerminalFillEvidenceCount,
+    missing_stop_terminal_fill_evidence_n: missingStopTerminalFillEvidenceCount,
     protection_runtime_n: protectionRuntimeCount,
     protection_runtime_evidence_n: protectionRuntimeEvidenceCount,
     missing_protection_runtime_evidence_n: missingProtectionRuntimeEvidenceCount,

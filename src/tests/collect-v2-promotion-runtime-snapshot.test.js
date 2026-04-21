@@ -176,6 +176,34 @@ function buildFakeDb(store) {
   assert.ok(audit.passed_check_ids.includes("COLLECTED_POSITION_CYCLE_ID_PRESENT"));
 })();
 
+(function collectedRuntimeChainAuditFailsOnWeakTerminalEvidence() {
+  const episode = buildReferencePassEpisode();
+  const transitions = episode.transitions.map((row, index, arr) => {
+    if (index !== arr.length - 1) return row;
+    const raw = { ...row.source_exchange_evidence.raw_payload };
+    delete raw.full_exit;
+    delete raw.position_amt_after;
+    delete raw.order_type;
+    delete raw.stop_price;
+    return {
+      ...row,
+      source_exchange_evidence: {
+        ...row.source_exchange_evidence,
+        evidence_kind: "AMBIGUOUS_EXIT",
+        raw_payload: raw,
+      },
+    };
+  });
+  const audit = collector.__test.buildCollectedRuntimeChainAudit({
+    ...episode,
+    transitions,
+  });
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT"));
+  assert.ok(audit.failed_check_ids.includes("COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT"));
+  assert.ok(audit.failed_check_ids.includes("REPLAY_GATE_EPISODE_VALID"));
+})();
+
 (function repairEvidenceSummaryRequiresCompletionEvidenceWhenRepairRequested() {
   const summary = collector.__test.buildRepairEvidenceSummary({
     repairRequests: [

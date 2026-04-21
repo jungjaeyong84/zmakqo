@@ -151,6 +151,18 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
       manifest.snapshot_meta.evidence_snapshot_summary.transition_n
     );
     assert.strictEqual(manifest.snapshot_meta.evidence_snapshot_summary.missing_transition_evidence_n, 0);
+    assert.ok(manifest.snapshot_meta.evidence_snapshot_summary.terminal_transition_n > 0);
+    assert.strictEqual(
+      manifest.snapshot_meta.evidence_snapshot_summary.terminal_full_exit_evidence_n,
+      manifest.snapshot_meta.evidence_snapshot_summary.terminal_transition_n
+    );
+    assert.strictEqual(manifest.snapshot_meta.evidence_snapshot_summary.missing_terminal_full_exit_evidence_n, 0);
+    assert.ok(manifest.snapshot_meta.evidence_snapshot_summary.stop_terminal_transition_n > 0);
+    assert.strictEqual(
+      manifest.snapshot_meta.evidence_snapshot_summary.stop_terminal_fill_evidence_n,
+      manifest.snapshot_meta.evidence_snapshot_summary.stop_terminal_transition_n
+    );
+    assert.strictEqual(manifest.snapshot_meta.evidence_snapshot_summary.missing_stop_terminal_fill_evidence_n, 0);
     assert.ok(manifest.snapshot_meta.evidence_snapshot_summary.protection_runtime_n > 0);
     assert.strictEqual(
       manifest.snapshot_meta.evidence_snapshot_summary.protection_runtime_evidence_n,
@@ -232,9 +244,52 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
   assert.strictEqual(summary.transition_n, 2);
   assert.strictEqual(summary.transition_evidence_n, 1);
   assert.strictEqual(summary.missing_transition_evidence_n, 1);
+  assert.strictEqual(summary.terminal_transition_n, 0);
+  assert.strictEqual(summary.terminal_full_exit_evidence_n, 0);
+  assert.strictEqual(summary.missing_terminal_full_exit_evidence_n, 0);
+  assert.strictEqual(summary.stop_terminal_transition_n, 0);
+  assert.strictEqual(summary.stop_terminal_fill_evidence_n, 0);
+  assert.strictEqual(summary.missing_stop_terminal_fill_evidence_n, 0);
   assert.strictEqual(summary.protection_runtime_n, 1);
   assert.strictEqual(summary.protection_runtime_evidence_n, 0);
   assert.strictEqual(summary.missing_protection_runtime_evidence_n, 1);
+})();
+
+(function buildEvidenceSnapshotSummaryCountsWeakTerminalEvidence() {
+  const summary = exporter.__test.buildEvidenceSnapshotSummary([
+    {
+      transitions: [
+        {
+          transition_event: "TRAIL_HIT",
+          source_exchange_evidence: {
+            evidence_kind: "AMBIGUOUS_EXIT",
+            observed_at: "2026-04-22T00:00:00.000Z",
+            source_fill_id: "FILL__WEAK",
+            raw_payload: {
+              execution_type: "TRADE",
+              fill_price: 100,
+            },
+          },
+        },
+      ],
+      protectionRuntime: {
+        last_exchange_evidence: {
+          evidence_kind: "AMBIGUOUS_EXIT",
+          observed_at: "2026-04-22T00:00:00.000Z",
+          source_fill_id: "FILL__WEAK",
+          raw_payload: {},
+        },
+        last_evidence_observed_at: "2026-04-22T00:00:00.000Z",
+      },
+    },
+  ]);
+  assert.strictEqual(summary.ok, false);
+  assert.strictEqual(summary.terminal_transition_n, 1);
+  assert.strictEqual(summary.terminal_full_exit_evidence_n, 0);
+  assert.strictEqual(summary.missing_terminal_full_exit_evidence_n, 1);
+  assert.strictEqual(summary.stop_terminal_transition_n, 1);
+  assert.strictEqual(summary.stop_terminal_fill_evidence_n, 0);
+  assert.strictEqual(summary.missing_stop_terminal_fill_evidence_n, 1);
 })();
 
 console.log("EXPORT_V2_PROMOTION_RUNTIME_SNAPSHOT_TEST_OK");

@@ -121,6 +121,12 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
           transition_n: 3,
           transition_evidence_n: 3,
           missing_transition_evidence_n: 0,
+          terminal_transition_n: 1,
+          terminal_full_exit_evidence_n: 1,
+          missing_terminal_full_exit_evidence_n: 0,
+          stop_terminal_transition_n: 1,
+          stop_terminal_fill_evidence_n: 1,
+          missing_stop_terminal_fill_evidence_n: 0,
           protection_runtime_n: 1,
           protection_runtime_evidence_n: 1,
           missing_protection_runtime_evidence_n: 0,
@@ -214,6 +220,8 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     assert.strictEqual(stored.bounded_runtime_summary.lineage_contract.hash, "lineage-hash-fixture");
     assert.strictEqual(stored.bounded_runtime_summary.evidence_snapshot_summary.ok, true);
     assert.strictEqual(stored.bounded_runtime_summary.evidence_snapshot_summary.transition_evidence_n, 3);
+    assert.strictEqual(stored.bounded_runtime_summary.evidence_snapshot_summary.terminal_full_exit_evidence_n, 1);
+    assert.strictEqual(stored.bounded_runtime_summary.evidence_snapshot_summary.stop_terminal_fill_evidence_n, 1);
     assert.strictEqual(stored.bounded_runtime_summary.openclaw_execution_separation_summary.ok, true);
     assert.strictEqual(stored.bounded_runtime_summary.openclaw_execution_separation_summary.audit_n, 1);
     assert.strictEqual(stored.bounded_runtime_summary.runtime_chain_audit_summary.ok, true);
