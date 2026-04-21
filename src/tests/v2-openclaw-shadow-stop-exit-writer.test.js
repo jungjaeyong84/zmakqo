@@ -459,10 +459,12 @@ function seedTrailActive(store) {
     sourceFillId: "FILL__EXT__1",
     sourceOrderId: "ORDER__EXT__1",
     event: "EXIT_EXTERNAL_SYNC",
+    fullExit: true,
     observedAtMs: 1713573234567,
     exchangeEvidence: {
       event_type: "ACCOUNT_UPDATE",
       reason: "EXTERNAL_FILL_RECONCILED",
+      position_amt_after: "0",
     },
   });
   assert.strictEqual(result.ok, true);
@@ -483,6 +485,33 @@ function seedTrailActive(store) {
   assert.strictEqual(outbox.status, "FAILED");
 })();
 
+(async function externalCloseRejectsPartialCloseEvidence() {
+  const store = {};
+  const calls = [];
+  seedPreTp1(store);
+  const result = await writer.writeOpenClawShadowExternalClose({
+    db: buildFakeDb(store, calls),
+    env: buildEnv(),
+    symbol: "SOLUSDT",
+    entryEventId: "ENTRY__SOL__SL",
+    positionSide: "LONG",
+    sourceFillId: "FILL__EXT__PARTIAL",
+    sourceOrderId: "ORDER__EXT__PARTIAL",
+    event: "EXIT_EXTERNAL_SYNC",
+    fullExit: false,
+    observedAtMs: 1713573234567,
+    exchangeEvidence: {
+      event_type: "ACCOUNT_UPDATE",
+      reason: "EXTERNAL_PARTIAL_RECONCILED",
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.written, false);
+  assert.strictEqual(result.skipped, true);
+  assert.strictEqual(result.reason, "V2_SHADOW_EXTERNAL_CLOSE_FULL_EXIT_NOT_CONFIRMED");
+  assert.deepStrictEqual(result.issue_codes, ["EXTERNAL_CLOSE_FULL_EXIT_NOT_CONFIRMED"]);
+})();
+
 (async function manualCloseAfterTp1WritesResidualManualSync() {
   const store = {};
   const calls = [];
@@ -497,7 +526,11 @@ function seedTrailActive(store) {
     sourceOrderId: "ORDER__MANUAL__1",
     event: "EXIT_EXTERNAL_SYNC",
     closeKind: "MANUAL",
+    fullExit: true,
     observedAtMs: 1713574234567,
+    exchangeEvidence: {
+      full_exit: true,
+    },
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, true);

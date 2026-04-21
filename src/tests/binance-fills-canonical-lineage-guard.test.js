@@ -345,24 +345,56 @@ async function run() {
     symbol: "ETHUSDT",
     event: "EXIT_EXTERNAL_SYNC",
     transitionEvents: ["EXTERNAL_CLOSE_SYNC"],
+    fullExit: true,
     entryEventId: "ENTRY__ETH",
     positionSide: "LONG",
-    orderMeta: { orderId: "EXT__ETH__ORDER" },
+    orderMeta: {
+      orderId: "EXT__ETH__ORDER",
+      orderType: "MARKET",
+      status: "FILLED",
+      closePosition: true,
+      reduceOnly: true,
+      clientOrderId: "manual_ext_close",
+    },
     fillId: "FILL__EXT",
     tradeMs: 1776026600000,
     writeExternalClose: async (request) => {
       assert.strictEqual(request.sourceOrderId, "EXT__ETH__ORDER");
       assert.strictEqual(request.closeKind, "EXTERNAL");
+      assert.strictEqual(request.fullExit, true);
+      assert.strictEqual(request.exchangeEvidence.execution_type, "TRADE");
+      assert.strictEqual(request.exchangeEvidence.order_type, "MARKET");
+      assert.strictEqual(request.exchangeEvidence.order_status, "FILLED");
+      assert.strictEqual(request.exchangeEvidence.close_position, true);
+      assert.strictEqual(request.exchangeEvidence.reduce_only, true);
+      assert.strictEqual(request.exchangeEvidence.full_exit, true);
       return buildBatchShadowWrite({ reason: "V2_SHADOW_EXTERNAL_CLOSE_OK" });
     },
   });
   assert.strictEqual(writtenExternalCloseShadowWrite.ok, true);
   assert.strictEqual(writtenExternalCloseShadowWrite.written, true);
 
+  const partialExternalCloseShadowWrite = await __test.maybeWriteV2ShadowExternalClose({
+    symbol: "ETHUSDT",
+    event: "EXIT_EXTERNAL_SYNC",
+    transitionEvents: ["EXTERNAL_CLOSE_SYNC"],
+    fullExit: false,
+    entryEventId: "ENTRY__ETH",
+    positionSide: "LONG",
+    orderMeta: { orderId: "EXT__ETH__PARTIAL" },
+    fillId: "FILL__EXT_PARTIAL",
+    writeExternalClose: async () => {
+      throw new Error("EXTERNAL_CLOSE_WRITER_MUST_NOT_BE_CALLED_FOR_PARTIAL");
+    },
+  });
+  assert.strictEqual(partialExternalCloseShadowWrite.skipped, true);
+  assert.strictEqual(partialExternalCloseShadowWrite.reason, "V2_SHADOW_EXTERNAL_CLOSE_NOT_FULL_EXIT");
+
   const writtenManualCloseShadowWrite = await __test.maybeWriteV2ShadowExternalClose({
     symbol: "ETHUSDT",
     event: "EXIT_EXTERNAL_SYNC",
     transitionEvents: ["MANUAL_CLOSE_SYNC"],
+    fullExit: true,
     entryEventId: "ENTRY__ETH",
     positionSide: "LONG",
     fillId: "FILL__MANUAL",

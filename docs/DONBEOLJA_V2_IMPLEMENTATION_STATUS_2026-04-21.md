@@ -1537,3 +1537,25 @@ V1 약점 재발 방지:
 1. V1에서는 호출부 조건과 저장 함수 조건이 분리되어, 나중에 다른 호출부가 생기면 partial trail profit도 cooldown을 무장할 수 있었다
 2. 이번 단계는 cooldown observation writer를 self-contained gate로 만들어 호출부 drift를 줄였다
 3. 따라서 V2는 “운영 제약을 거는 side-effect writer는 자기 입력 불변식을 직접 검증한다”는 원칙을 적용한다
+
+## 2026-04-22 External Close Full Exit Evidence Gate
+
+추가 증거:
+
+1. `src/v2/openclawShadowExitWriter.js`
+2. `src/services/binanceFuturesFillsSync.js`
+3. `src/tests/v2-openclaw-shadow-stop-exit-writer.test.js`
+4. `src/tests/binance-fills-canonical-lineage-guard.test.js`
+
+판정:
+
+1. V2 `EXTERNAL_CLOSE_SYNC` / `MANUAL_CLOSE_SYNC` writer는 이제 `fullExit=true` 또는 position-after zero evidence가 없으면 terminal transition을 쓰지 않는다
+2. Binance fill sync의 `maybeWriteV2ShadowExternalClose` 는 partial external/manual close에서 writer를 호출하지 않고 `V2_SHADOW_EXTERNAL_CLOSE_NOT_FULL_EXIT` 로 skip한다
+3. full external close는 order type/status/closePosition/reduceOnly/fullExit evidence를 writer raw payload로 전달한다
+4. manual close도 terminal sync를 쓰려면 full close evidence를 요구한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 external/manual close가 stop과 다른 경로로 terminal projection을 쓸 수 있어 partial close가 전량 종료처럼 보일 위험이 있었다
+2. 이번 단계는 stop terminal과 external/manual terminal 모두 full-exit evidence gate를 공유하는 방향으로 정렬했다
+3. 따라서 V2 terminal 상태는 close origin이 stop이든 manual/external이든 “전량 종료 근거 없이는 terminal write 금지” 원칙을 유지한다

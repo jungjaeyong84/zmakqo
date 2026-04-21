@@ -338,6 +338,67 @@ function evaluateStopExitFillEvidenceGate({
   });
 }
 
+function evaluateExternalCloseEvidenceGate({
+  fullExit = null,
+  exchangeEvidence = null,
+} = {}) {
+  const direct = parseBoolStrict(fullExit);
+  if (direct === true) {
+    return Object.freeze({
+      ok: true,
+      reason: "V2_SHADOW_EXTERNAL_CLOSE_EVIDENCE_READY",
+      issue_codes: Object.freeze([]),
+    });
+  }
+  if (direct === false) {
+    return Object.freeze({
+      ok: false,
+      reason: "FULL_EXIT_NOT_CONFIRMED",
+      issue_codes: Object.freeze(["EXTERNAL_CLOSE_FULL_EXIT_NOT_CONFIRMED"]),
+    });
+  }
+
+  const evidenceFlag = parseBoolStrict(pickEvidenceValue(exchangeEvidence, [
+    "full_exit",
+    "fullExit",
+    "is_full_exit",
+    "isFullExit",
+    "is_final_exit",
+    "isFinalExit",
+    "position_closed",
+    "positionClosed",
+  ]));
+  if (evidenceFlag === true) {
+    return Object.freeze({
+      ok: true,
+      reason: "V2_SHADOW_EXTERNAL_CLOSE_EVIDENCE_READY",
+      issue_codes: Object.freeze([]),
+    });
+  }
+
+  const remainingQty = toNumberOrNull(pickEvidenceValue(exchangeEvidence, [
+    "position_amt_after",
+    "positionAmtAfter",
+    "position_qty_after",
+    "positionQtyAfter",
+    "remaining_position_qty_abs",
+    "remainingPositionQtyAbs",
+  ]));
+  if (Number.isFinite(remainingQty) && Math.abs(remainingQty) <= EPSILON) {
+    return Object.freeze({
+      ok: true,
+      reason: "V2_SHADOW_EXTERNAL_CLOSE_EVIDENCE_READY",
+      issue_codes: Object.freeze([]),
+    });
+  }
+
+  return Object.freeze({
+    ok: false,
+    reason: "FULL_EXIT_NOT_CONFIRMED",
+    issue_codes: Object.freeze(["EXTERNAL_CLOSE_FULL_EXIT_NOT_CONFIRMED"]),
+  });
+}
+
 function evaluateStopExitRuntimeGate({
   positionCycle,
   projection,
@@ -990,6 +1051,7 @@ async function writeOpenClawShadowExternalClose({
   sourceOrderId,
   event = "EXIT_EXTERNAL_SYNC",
   closeKind = null,
+  fullExit = null,
   observedAtMs = null,
   exchangeEvidence = null,
   sendSummary = null,
@@ -1067,6 +1129,21 @@ async function writeOpenClawShadowExternalClose({
     };
   }
 
+  const evidenceGate = evaluateExternalCloseEvidenceGate({
+    fullExit,
+    exchangeEvidence,
+  });
+  if (evidenceGate.ok !== true) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: `V2_SHADOW_EXTERNAL_CLOSE_${evidenceGate.reason}`,
+      issue_codes: evidenceGate.issue_codes,
+      position_cycle_id: positionCycleId,
+    };
+  }
+
   const evidenceSnapshot = buildExchangeEvidenceSnapshot({
     evidenceKind: normalizedKind === "MANUAL" ? "MANUAL_CLOSE" : "EXTERNAL_CLOSE",
     observedAtMs,
@@ -1124,6 +1201,7 @@ module.exports = {
     evaluateTp1TransitionRuntimeGate,
     evaluateStopExitRuntimeGate,
     evaluateStopExitFillEvidenceGate,
+    evaluateExternalCloseEvidenceGate,
     prepareCanonicalExitAlertArtifacts,
     resolveObservedAtIso,
     buildExchangeEvidenceSnapshot,

@@ -3068,6 +3068,7 @@ async function maybeWriteV2ShadowExternalClose({
   symbol,
   event,
   transitionEvents = null,
+  fullExit,
   entryEventId,
   positionSide,
   orderMeta = null,
@@ -3088,6 +3089,14 @@ async function maybeWriteV2ShadowExternalClose({
       reason: "V2_SHADOW_EXTERNAL_CLOSE_EVENT_NOT_APPLICABLE",
     };
   }
+  if (fullExit !== true) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: "V2_SHADOW_EXTERNAL_CLOSE_NOT_FULL_EXIT",
+    };
+  }
   try {
     if (typeof writeExternalClose !== "function") throw new Error("V2_SHADOW_EXTERNAL_CLOSE_WRITER_REQUIRED");
     const closeKind = manualClose ? "MANUAL" : "EXTERNAL";
@@ -3106,7 +3115,18 @@ async function maybeWriteV2ShadowExternalClose({
       sourceOrderId: evidence.sourceOrderId,
       event,
       closeKind,
+      fullExit,
       observedAtMs: tradeMs,
+      exchangeEvidence: {
+        event_type: "BINANCE_USER_TRADES_SYNC",
+        execution_type: "TRADE",
+        order_type: orderMeta && orderMeta.orderType ? String(orderMeta.orderType).toUpperCase() : null,
+        order_status: orderMeta && orderMeta.status ? String(orderMeta.status).toUpperCase() : null,
+        client_order_id: orderMeta && orderMeta.clientOrderId ? String(orderMeta.clientOrderId) : null,
+        close_position: orderMeta && orderMeta.closePosition === true,
+        reduce_only: orderMeta && orderMeta.reduceOnly === true,
+        full_exit: fullExit === true,
+      },
     });
   } catch (error) {
     return {
@@ -4247,6 +4267,7 @@ async function syncMarketTrades({
             symbol: sym,
             event,
             transitionEvents: canonicalTransitionDecision.transitionEvents,
+            fullExit,
             entryEventId,
             positionSide: positionSideBefore,
             orderMeta,
