@@ -171,9 +171,15 @@ function hasConsistentWarningSummary({ cloudbuildContext = null, deployDecision 
   if (!summary) return false;
   const topWarnings = normalizeWarnings(summary.top_warnings);
   const expectedTopWarnings = warnings.slice(0, 3);
+  const expectedRepairFirestoreCanaryStreakWarning = warnings.some((warning) => warning.includes("REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"));
+  const expectedProductionEntryRouteCanaryStreakWarning = warnings.some((warning) => warning.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"));
+  const expectedLiveReadinessWarning = expectedRepairFirestoreCanaryStreakWarning || expectedProductionEntryRouteCanaryStreakWarning;
   return (
     Number(summary.warning_n) === warnings.length &&
     JSON.stringify(topWarnings) === JSON.stringify(expectedTopWarnings) &&
+    summary.has_live_readiness_warning === expectedLiveReadinessWarning &&
+    summary.has_repair_firestore_canary_streak_warning === expectedRepairFirestoreCanaryStreakWarning &&
+    summary.has_production_entry_route_canary_streak_warning === expectedProductionEntryRouteCanaryStreakWarning &&
     finalStatusLine.includes(`warnings=${warnings.length}`) &&
     expectedTopWarnings.every((warning) => finalStatusLine.includes(warning))
   );
@@ -531,8 +537,8 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
     label: "cloudbuild warning summary matches deploy decision warnings",
     status: hasConsistentWarningSummary({ cloudbuildContext, deployDecision }) ? "PASS" : "FAIL",
     reason: hasConsistentWarningSummary({ cloudbuildContext, deployDecision })
-      ? "cloudbuild warning summary matches deploy decision warnings"
-      : "cloudbuild warning summary or final status line is inconsistent with deploy decision warnings",
+      ? "cloudbuild warning summary matches deploy decision warnings and streak classifiers"
+      : "cloudbuild warning summary, streak classifiers, or final status line is inconsistent with deploy decision warnings",
     file: artifacts.cloudbuildContext.filePath,
     field: "deploy_decision_summary.warning_summary,final_status_line",
   }));

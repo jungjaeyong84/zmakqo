@@ -461,10 +461,50 @@ function buildProductionCutoverAuditFixture() {
         warning_summary: {
           warning_n: 1,
           top_warnings: ["DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY"],
+          has_live_readiness_warning: true,
+          has_repair_firestore_canary_streak_warning: true,
+          has_production_entry_route_canary_streak_warning: false,
         },
       },
     },
   }), true);
+})();
+
+(function warningSummaryHelperAcceptsProductionRouteStreakClassifier() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentWarningSummary({
+    deployDecision: {
+      warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+    },
+    cloudbuildContext: {
+      final_status_line: "APPROVE_DEPLOY ; warnings=1 ; warn=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY",
+      deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 1,
+          top_warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+          has_live_readiness_warning: true,
+          has_repair_firestore_canary_streak_warning: false,
+          has_production_entry_route_canary_streak_warning: true,
+        },
+      },
+    },
+  }), true);
+})();
+
+(function warningSummaryHelperRejectsMissingStreakClassifiers() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentWarningSummary({
+    deployDecision: {
+      warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+    },
+    cloudbuildContext: {
+      final_status_line: "APPROVE_DEPLOY ; warnings=1 ; warn=DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY",
+      deploy_decision_summary: {
+        warning_summary: {
+          warning_n: 1,
+          top_warnings: ["DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY"],
+        },
+      },
+    },
+  }), false);
 })();
 
 (async function runbookCheckFailsWhenCandidateSelectionContractIsMissing() {
