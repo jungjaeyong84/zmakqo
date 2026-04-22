@@ -1862,6 +1862,29 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "scheduler collector preflight must not pass from readable Cloud Run service state unless LIVE canary Firestore env values are exact",
       file: path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js"),
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_70",
+      label: "LIVE long-run streaks require collector execution summaries",
+      ok: productionEntryRouteStreakCheckerText.includes("collector_execution_summary")
+        && productionEntryRouteStreakCheckerText.includes("producer_script: \"run-v2-production-entry-route-canary\"")
+        && exitRuntimeStreakCheckerText.includes("collector_execution_summary")
+        && exitRuntimeStreakCheckerText.includes("producer_script: \"run-v2-exit-runtime-canary\"")
+        && deployDecisionCheckerText.includes("hasProductionEntryRouteCollectorExecutionSummary")
+        && deployDecisionCheckerText.includes("hasExitRuntimeCollectorExecutionSummary")
+        && deployDecisionCheckerText.includes("numericFieldsMatch(collector, row")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithProductionEntryRouteMissingCollectorExecutionSummaryFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithProductionEntryRouteCollectorExecutionDriftFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithExitRuntimeMissingCollectorExecutionSummaryFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithExitRuntimeCollectorExecutionDriftFailsClosed")
+        && artifactContractText.includes("Long-run collector execution summary contract")
+        && runbookText.includes("collector_execution_summary.status=PASS"),
+      reason: deployDecisionCheckerText.includes("hasProductionEntryRouteCollectorExecutionSummary")
+        && deployDecisionCheckerText.includes("hasExitRuntimeCollectorExecutionSummary")
+        && artifactContractText.includes("Long-run collector execution summary contract")
+        ? "LIVE deploy decision now verifies that long-run streaks came from the expected scheduler producer, not only from top-level PASS counters"
+        : "LIVE long-run streaks must include collector_execution_summary and deploy decision must fail closed on missing or drifted producer evidence",
+      file: FILES.deployDecisionChecker,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

@@ -146,6 +146,39 @@ function extractHealthyPositionCycleIds(rows) {
   return Object.freeze(Array.from(ids));
 }
 
+function buildCollectorExecutionSummary({
+  ok,
+  historySource,
+  config,
+  rowN,
+  healthyRunN,
+  latestAgeMinutes,
+  coverageMinutes,
+  maxObservedGapMinutes,
+  blockers,
+} = {}) {
+  return Object.freeze({
+    status: ok === true ? "PASS" : "BLOCKED",
+    scheduler_job_id: "v2_production_entry_route_canary",
+    expected_scheduler_job_id: "v2_production_entry_route_canary",
+    producer_script: "run-v2-production-entry-route-canary",
+    producer_scope: "production_entry_route_canary",
+    canary_mode: "NO_EXCHANGE_ROUTE_PROOF",
+    exchange_write_performed: false,
+    history_source: trimOrNull(historySource) || "JSONL",
+    firestore_source_required: config && config.requireFirestoreSource === true,
+    lookback_hours: Number(config && config.lookbackHours),
+    min_run_count: Number(config && config.minRunCount),
+    max_gap_minutes: Number(config && config.maxGapMinutes),
+    row_n: Number(rowN) || 0,
+    healthy_run_n: Number(healthyRunN) || 0,
+    latest_age_minutes: Number.isFinite(Number(latestAgeMinutes)) ? Number(latestAgeMinutes) : null,
+    coverage_minutes: Number.isFinite(Number(coverageMinutes)) ? Number(coverageMinutes) : 0,
+    max_observed_gap_minutes: Number.isFinite(Number(maxObservedGapMinutes)) ? Number(maxObservedGapMinutes) : null,
+    blockers: Object.freeze(Array.isArray(blockers) ? blockers.slice() : []),
+  });
+}
+
 function evaluateProductionEntryRouteCanaryStreak({
   history,
   config = resolveStreakConfig({}),
@@ -189,9 +222,21 @@ function evaluateProductionEntryRouteCanaryStreak({
   if (coverageMinutes < Math.max(0, Number(config.lookbackHours) * 60 - Number(config.maxGapMinutes))) {
     blockers.push("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:COVERAGE_INSUFFICIENT");
   }
+  const ok = blockers.length === 0;
+  const collectorExecutionSummary = buildCollectorExecutionSummary({
+    ok,
+    historySource: normalizedHistorySource,
+    config,
+    rowN: rowsInWindow.length,
+    healthyRunN: healthyRows.length,
+    latestAgeMinutes,
+    coverageMinutes,
+    maxObservedGapMinutes: gaps.length ? Math.max(...gaps) : null,
+    blockers,
+  });
   return Object.freeze({
-    ok: blockers.length === 0,
-    reason: blockers.length === 0
+    ok,
+    reason: ok
       ? "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"
       : "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_BLOCKED",
     generated_at: new Date(Number(nowMs)).toISOString(),
@@ -211,6 +256,7 @@ function evaluateProductionEntryRouteCanaryStreak({
     latest_age_minutes: latestAgeMinutes,
     coverage_minutes: coverageMinutes,
     max_observed_gap_minutes: gaps.length ? Math.max(...gaps) : null,
+    collector_execution_summary: collectorExecutionSummary,
     blockers: Object.freeze(blockers),
   });
 }
@@ -310,6 +356,7 @@ if (require.main === module) {
       toMs,
       isHealthyProductionEntryRouteCanaryRow,
       extractHealthyPositionCycleIds,
+      buildCollectorExecutionSummary,
     },
   };
 }

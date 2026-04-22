@@ -95,6 +95,11 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.unprotected_window_violation_n, 0);
   assert.strictEqual(report.alert_silent_drop_n, 0);
   assert.strictEqual(report.firestore_source_required, false);
+  assert.strictEqual(report.collector_execution_summary.status, "PASS");
+  assert.strictEqual(report.collector_execution_summary.scheduler_job_id, "v2_exit_runtime_canary");
+  assert.strictEqual(report.collector_execution_summary.producer_script, "run-v2-exit-runtime-canary");
+  assert.strictEqual(report.collector_execution_summary.history_source, "FIRESTORE");
+  assert.strictEqual(report.collector_execution_summary.exchange_write_performed, false);
   assert.strictEqual(report.long_run_quality_summary.status, "PASS");
   assert.strictEqual(report.long_run_quality_summary.defect_counts.tp1_missing_n, 0);
   assert.strictEqual(report.long_run_quality_summary.coverage_minutes, 1440);
@@ -151,6 +156,8 @@ function buildFakeDb(rows) {
   });
   assert.strictEqual(report.ok, false);
   assert.strictEqual(report.firestore_source_required, true);
+  assert.strictEqual(report.collector_execution_summary.status, "BLOCKED");
+  assert.strictEqual(report.collector_execution_summary.firestore_source_required, true);
   assert.strictEqual(report.long_run_quality_summary.firestore_source_required, true);
   assert.ok(report.blockers.includes("EXIT_RUNTIME_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED"));
 })();

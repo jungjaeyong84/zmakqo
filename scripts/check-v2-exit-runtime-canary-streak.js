@@ -186,6 +186,39 @@ function buildLongRunQualitySummary({
   });
 }
 
+function buildCollectorExecutionSummary({
+  ok,
+  historySource,
+  config,
+  rowN,
+  healthyRunN,
+  latestAgeMinutes,
+  coverageMinutes,
+  maxObservedGapMinutes,
+  blockers,
+} = {}) {
+  return Object.freeze({
+    status: ok === true ? "PASS" : "BLOCKED",
+    scheduler_job_id: "v2_exit_runtime_canary",
+    expected_scheduler_job_id: "v2_exit_runtime_canary",
+    producer_script: "run-v2-exit-runtime-canary",
+    producer_scope: "exit_runtime_canary",
+    canary_mode: "LIVE_EXIT_RUNTIME_OBSERVATION",
+    exchange_write_performed: false,
+    history_source: trimOrNull(historySource) || "JSONL",
+    firestore_source_required: config && config.requireFirestoreSource === true,
+    lookback_hours: Number(config && config.lookbackHours),
+    min_run_count: Number(config && config.minRunCount),
+    max_gap_minutes: Number(config && config.maxGapMinutes),
+    row_n: Number(rowN) || 0,
+    healthy_run_n: Number(healthyRunN) || 0,
+    latest_age_minutes: Number.isFinite(Number(latestAgeMinutes)) ? Number(latestAgeMinutes) : null,
+    coverage_minutes: Number.isFinite(Number(coverageMinutes)) ? Number(coverageMinutes) : 0,
+    max_observed_gap_minutes: Number.isFinite(Number(maxObservedGapMinutes)) ? Number(maxObservedGapMinutes) : null,
+    blockers: Object.freeze(Array.isArray(blockers) ? blockers.slice() : []),
+  });
+}
+
 function evaluateExitRuntimeCanaryStreak({
   history,
   config = resolveStreakConfig({}),
@@ -253,6 +286,17 @@ function evaluateExitRuntimeCanaryStreak({
     alertSilentDropN,
     blockers,
   });
+  const collectorExecutionSummary = buildCollectorExecutionSummary({
+    ok,
+    historySource: normalizedHistorySource,
+    config,
+    rowN: rowsInWindow.length,
+    healthyRunN: healthyRows.length,
+    latestAgeMinutes,
+    coverageMinutes,
+    maxObservedGapMinutes: gaps.length ? Math.max(...gaps) : null,
+    blockers,
+  });
   return Object.freeze({
     ok,
     reason: ok
@@ -280,6 +324,7 @@ function evaluateExitRuntimeCanaryStreak({
     native_refresh_unhealthy_n: nativeRefreshUnhealthyN,
     unprotected_window_violation_n: unprotectedWindowViolationN,
     alert_silent_drop_n: alertSilentDropN,
+    collector_execution_summary: collectorExecutionSummary,
     long_run_quality_summary: qualitySummary,
     blockers: Object.freeze(blockers),
   });
@@ -388,6 +433,7 @@ if (require.main === module) {
       isHealthyExitRuntimeCanaryRow,
       extractHealthyPositionCycleIds,
       buildLongRunQualitySummary,
+      buildCollectorExecutionSummary,
     },
   };
 }

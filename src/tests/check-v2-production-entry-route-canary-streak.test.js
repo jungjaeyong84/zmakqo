@@ -103,6 +103,11 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.position_cycle_id_n, 1);
   assert.strictEqual(report.healthy_run_n, 13);
   assert.strictEqual(report.firestore_source_required, false);
+  assert.strictEqual(report.collector_execution_summary.status, "PASS");
+  assert.strictEqual(report.collector_execution_summary.scheduler_job_id, "v2_production_entry_route_canary");
+  assert.strictEqual(report.collector_execution_summary.producer_script, "run-v2-production-entry-route-canary");
+  assert.strictEqual(report.collector_execution_summary.history_source, "JSONL");
+  assert.strictEqual(report.collector_execution_summary.exchange_write_performed, false);
   assert.strictEqual(report.blockers.length, 0);
 })();
 
@@ -126,6 +131,8 @@ function buildFakeDb(rows) {
   });
   assert.strictEqual(report.ok, false);
   assert.strictEqual(report.firestore_source_required, true);
+  assert.strictEqual(report.collector_execution_summary.status, "BLOCKED");
+  assert.strictEqual(report.collector_execution_summary.firestore_source_required, true);
   assert.ok(report.blockers.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED"));
 })();
 

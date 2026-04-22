@@ -401,6 +401,45 @@ function hasRepairFirestoreCanaryStreak(summary) {
   );
 }
 
+function hasCollectorExecutionSummary(streak, {
+  schedulerJobId,
+  producerScript,
+  producerScope,
+  canaryMode,
+} = {}) {
+  const row = normalizeObject(streak);
+  const collector = normalizeObject(row && row.collector_execution_summary);
+  if (!row || !collector) return false;
+  return (
+    trimOrNull(collector.status) === "PASS" &&
+    trimOrNull(collector.scheduler_job_id) === schedulerJobId &&
+    trimOrNull(collector.expected_scheduler_job_id) === schedulerJobId &&
+    trimOrNull(collector.producer_script) === producerScript &&
+    trimOrNull(collector.producer_scope) === producerScope &&
+    trimOrNull(collector.canary_mode) === canaryMode &&
+    collector.exchange_write_performed === false &&
+    trimOrNull(collector.history_source) === "FIRESTORE" &&
+    collector.firestore_source_required === true &&
+    numericFieldsMatch(collector, row, [
+      "row_n",
+      "healthy_run_n",
+      "latest_age_minutes",
+      "coverage_minutes",
+      "max_observed_gap_minutes",
+    ]) &&
+    ensureArray(collector.blockers).length === 0
+  );
+}
+
+function hasProductionEntryRouteCollectorExecutionSummary(streak) {
+  return hasCollectorExecutionSummary(streak, {
+    schedulerJobId: "v2_production_entry_route_canary",
+    producerScript: "run-v2-production-entry-route-canary",
+    producerScope: "production_entry_route_canary",
+    canaryMode: "NO_EXCHANGE_ROUTE_PROOF",
+  });
+}
+
 function hasProductionEntryRouteCanaryStreak(summary) {
   const row = normalizeObject(summary);
   const streak = normalizeObject(row && row.production_entry_route_canary_streak);
@@ -413,10 +452,12 @@ function hasProductionEntryRouteCanaryStreak(summary) {
     !!trimOrNull(streak.artifact_dir) &&
     streak.artifact_current_dir_match === true &&
     trimOrNull(streak.history_source) === "FIRESTORE" &&
+    streak.firestore_source_required === true &&
     !!trimOrNull(streak.history_file) &&
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
     Number(streak.unhealthy_run_n) === 0 &&
     Number(streak.invalid_line_n) === 0 &&
+    hasProductionEntryRouteCollectorExecutionSummary(streak) &&
     hasFreshLongRunStreakCoverage(streak) &&
     ensureArray(streak.blockers).length === 0
   );
@@ -470,10 +511,20 @@ function hasExitRuntimeCanaryStreak(summary) {
     Number(streak.native_refresh_unhealthy_n || 0) === 0 &&
     Number(streak.unprotected_window_violation_n || 0) === 0 &&
     Number(streak.alert_silent_drop_n || 0) === 0 &&
+    hasExitRuntimeCollectorExecutionSummary(streak) &&
     hasExitRuntimeLongRunQualitySummary(streak) &&
     hasFreshLongRunStreakCoverage(streak) &&
     ensureArray(streak.blockers).length === 0
   );
+}
+
+function hasExitRuntimeCollectorExecutionSummary(streak) {
+  return hasCollectorExecutionSummary(streak, {
+    schedulerJobId: "v2_exit_runtime_canary",
+    producerScript: "run-v2-exit-runtime-canary",
+    producerScope: "exit_runtime_canary",
+    canaryMode: "LIVE_EXIT_RUNTIME_OBSERVATION",
+  });
 }
 
 function hasExitRuntimeLongRunQualitySummary(streak) {
@@ -1082,9 +1133,12 @@ if (require.main === module) {
       MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES,
       hasProductionLiveEntrySizingContract,
       hasRepairFirestoreCanaryStreak,
+      hasCollectorExecutionSummary,
+      hasProductionEntryRouteCollectorExecutionSummary,
       hasProductionEntryRouteCanaryStreak,
       hasProductionEntryProtectedCanary,
       hasFreshProtectedCanaryArtifact,
+      hasExitRuntimeCollectorExecutionSummary,
       hasExitRuntimeLongRunQualitySummary,
       hasFreshLongRunStreakCoverage,
       hasExitRuntimeCanaryStreak,

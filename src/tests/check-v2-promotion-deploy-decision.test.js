@@ -134,8 +134,10 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_generated_at: "2026-04-22T12:00:00.000Z",
       artifact_generated_age_minutes: 15,
       history_source: "FIRESTORE",
+      firestore_source_required: true,
       history_file: "dbjv2__production_entry_route_canaries_v2",
       lookback_hours: 24,
+      row_n: 13,
       healthy_run_n: 13,
       min_run_count: 12,
       max_gap_minutes: 180,
@@ -144,6 +146,23 @@ function buildBoundedRuntimeSummaryFixture() {
       latest_age_minutes: 15,
       coverage_minutes: 1440,
       max_observed_gap_minutes: 120,
+      collector_execution_summary: {
+        status: "PASS",
+        scheduler_job_id: "v2_production_entry_route_canary",
+        expected_scheduler_job_id: "v2_production_entry_route_canary",
+        producer_script: "run-v2-production-entry-route-canary",
+        producer_scope: "production_entry_route_canary",
+        canary_mode: "NO_EXCHANGE_ROUTE_PROOF",
+        exchange_write_performed: false,
+        history_source: "FIRESTORE",
+        firestore_source_required: true,
+        row_n: 13,
+        healthy_run_n: 13,
+        latest_age_minutes: 15,
+        coverage_minutes: 1440,
+        max_observed_gap_minutes: 120,
+        blockers: [],
+      },
       blockers: [],
     },
     exit_runtime_canary_streak: {
@@ -175,6 +194,23 @@ function buildBoundedRuntimeSummaryFixture() {
       native_refresh_unhealthy_n: 0,
       unprotected_window_violation_n: 0,
       alert_silent_drop_n: 0,
+      collector_execution_summary: {
+        status: "PASS",
+        scheduler_job_id: "v2_exit_runtime_canary",
+        expected_scheduler_job_id: "v2_exit_runtime_canary",
+        producer_script: "run-v2-exit-runtime-canary",
+        producer_scope: "exit_runtime_canary",
+        canary_mode: "LIVE_EXIT_RUNTIME_OBSERVATION",
+        exchange_write_performed: false,
+        history_source: "FIRESTORE",
+        firestore_source_required: true,
+        row_n: 13,
+        healthy_run_n: 13,
+        latest_age_minutes: 15,
+        coverage_minutes: 1440,
+        max_observed_gap_minutes: 120,
+        blockers: [],
+      },
       long_run_quality_summary: {
         status: "PASS",
         history_source: "FIRESTORE",
@@ -1001,6 +1037,69 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED"));
 })();
 
+(function liveWithProductionEntryRouteMissingCollectorExecutionSummaryFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  delete bounded.production_entry_route_canary_streak.collector_execution_summary;
+  assert.strictEqual(deployDecision.__test.hasProductionEntryRouteCollectorExecutionSummary(bounded.production_entry_route_canary_streak), false);
+  assert.strictEqual(deployDecision.__test.hasProductionEntryRouteCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__ROUTE_COLLECTOR_MISSING",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__ROUTE_COLLECTOR_MISSING",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__ROUTE_COLLECTOR_MISSING",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithProductionEntryRouteCollectorExecutionDriftFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.production_entry_route_canary_streak.collector_execution_summary = {
+    ...bounded.production_entry_route_canary_streak.collector_execution_summary,
+    scheduler_job_id: "v1_legacy_scheduler",
+  };
+  assert.strictEqual(deployDecision.__test.hasProductionEntryRouteCollectorExecutionSummary(bounded.production_entry_route_canary_streak), false);
+  assert.strictEqual(deployDecision.__test.hasProductionEntryRouteCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__ROUTE_COLLECTOR_DRIFT",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__ROUTE_COLLECTOR_DRIFT",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__ROUTE_COLLECTOR_DRIFT",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED"));
+})();
+
 (function liveWithoutExitRuntimeStreakFailsClosed() {
   const bounded = buildBoundedRuntimeSummaryFixture();
   bounded.exit_runtime_canary_streak = {
@@ -1096,6 +1195,69 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__EXIT_QUALITY_MISSING",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithExitRuntimeMissingCollectorExecutionSummaryFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  delete bounded.exit_runtime_canary_streak.collector_execution_summary;
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCollectorExecutionSummary(bounded.exit_runtime_canary_streak), false);
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__EXIT_COLLECTOR_MISSING",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__EXIT_COLLECTOR_MISSING",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__EXIT_COLLECTOR_MISSING",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithExitRuntimeCollectorExecutionDriftFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.exit_runtime_canary_streak.collector_execution_summary = {
+    ...bounded.exit_runtime_canary_streak.collector_execution_summary,
+    producer_scope: "legacy_exit_runtime",
+  };
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCollectorExecutionSummary(bounded.exit_runtime_canary_streak), false);
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__EXIT_COLLECTOR_DRIFT",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__EXIT_COLLECTOR_DRIFT",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__EXIT_COLLECTOR_DRIFT",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,
