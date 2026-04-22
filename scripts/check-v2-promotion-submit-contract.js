@@ -1392,6 +1392,7 @@ function evaluateSubmitContract() {
         && unifiedPromotionReportGeneratorText.includes("artifact_generated_age_minutes")
         && deployDecisionCheckerText.includes("MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES")
         && deployDecisionCheckerText.includes("hasFreshProtectedCanaryArtifact")
+        && deployDecisionCheckerText.includes("hasStaleArtifactFreshness")
         && deployDecisionCheckerText.includes("artifact_generated_age_minutes")
         && artifactContractText.includes("production_entry_protected_canary")
         && artifactContractText.includes("artifact_generated_age_minutes")
@@ -1402,6 +1403,18 @@ function evaluateSubmitContract() {
         ? "protected entry canary pass now requires current-dir provenance and bounded generated freshness"
         : "protected entry canary must not pass CANARY/LIVE from a copied stale PASS artifact",
       file: FILES.deployDecisionChecker,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_53",
+      label: "protected entry stale freshness reaches submit trace fixture",
+      ok: readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("submitRequestClassifiesStaleProtectedEntryCanaryFreshnessAsStaleArtifact")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("STALE_ARTIFACT_PROVENANCE")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithStaleRepairFirestoreStreakGeneratedAtFailsClosedAsStaleArtifact"),
+      reason: readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("submitRequestClassifiesStaleProtectedEntryCanaryFreshnessAsStaleArtifact")
+        ? "generated freshness staleness is verified through deploy decision and final submit trace fixtures"
+        : "generated freshness staleness must be tested end-to-end, not only by static string checks",
+      file: path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js"),
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

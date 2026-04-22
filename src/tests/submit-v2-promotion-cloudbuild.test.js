@@ -1373,6 +1373,56 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   }
 })();
 
+(function submitRequestClassifiesStaleProtectedEntryCanaryFreshnessAsStaleArtifact() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-protected-canary-stale-freshness-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__PROTECTED_CANARY_STALE_FRESHNESS");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__PROTECTED_CANARY_STALE_FRESHNESS");
+    const deployDecisionPath = path.join(artifactDir, "promotion-deploy-decision.json");
+    const deployDecision = JSON.parse(fs.readFileSync(deployDecisionPath, "utf8"));
+    deployDecision.mode = "CANARY";
+    deployDecision.bounded_runtime_summary.production_entry_protected_canary.artifact_generated_age_minutes =
+      deployDecisionCheck.__test.MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES + 1;
+    writeJson(deployDecisionPath, deployDecision);
+
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__PROTECTED_CANARY_STALE_FRESHNESS",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.ok, false);
+    const protectedCanaryCheck = result.request.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_20A");
+    assert.ok(protectedCanaryCheck);
+    assert.strictEqual(protectedCanaryCheck.ok, false);
+    assert.strictEqual(protectedCanaryCheck.reason, "production entry protected canary evidence has stale artifact provenance");
+    assert.deepStrictEqual(protectedCanaryCheck.doc_refs.runbook_checklist, ["27A"]);
+    assert.strictEqual(result.request.approval_verification.blocker_summary.has_stale_artifact_provenance_blocker, true);
+    assert.strictEqual(result.request.approval_verification.blocker_summary.has_production_entry_protected_canary_blocker, true);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_submit_check_ids, ["SUBMIT_CHK_20A"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_runbook_checklist, ["27A"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.blocker_families, [
+      "STALE_ARTIFACT_PROVENANCE",
+      "PROTECTED_ENTRY_CANARY",
+      "BOUNDED_RUNTIME",
+    ]);
+    assert.strictEqual(result.request.submit_trace_summary.primary_blocker_family, "STALE_ARTIFACT_PROVENANCE");
+    assert.strictEqual(
+      result.request.approval_verification.recommended_next_action,
+      "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE"
+    );
+    assert.strictEqual(
+      result.request.approval_verification.recommended_next_action_reason_code,
+      "STALE_ARTIFACT_PROVENANCE_BLOCKER"
+    );
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (function submitRequestSurfacesCanaryDeployWarningsToOperatorSummary() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-warning-"));
   try {

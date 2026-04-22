@@ -546,33 +546,62 @@ function hasStaleArtifactProvenance(row, expectedFilename) {
   );
 }
 
+function hasStaleArtifactFreshness(row, maxAgeMinutes) {
+  const artifact = normalizeObject(row);
+  if (!artifact) return false;
+  const hasArtifactFields = !!(
+    trimOrNull(artifact.artifact_file) ||
+    trimOrNull(artifact.artifact_dir) ||
+    trimOrNull(artifact.artifact_filename) ||
+    Object.prototype.hasOwnProperty.call(artifact, "artifact_current_dir_match") ||
+    trimOrNull(artifact.generated_at) ||
+    trimOrNull(artifact.artifact_generated_at) ||
+    Object.prototype.hasOwnProperty.call(artifact, "artifact_generated_age_minutes")
+  );
+  if (!hasArtifactFields) return false;
+  const maxAge = Number(maxAgeMinutes);
+  const artifactGeneratedAgeMinutes = Number(artifact.artifact_generated_age_minutes);
+  return !(
+    !!trimOrNull(artifact.generated_at) &&
+    !!trimOrNull(artifact.artifact_generated_at) &&
+    Number.isFinite(maxAge) &&
+    maxAge > 0 &&
+    Number.isFinite(artifactGeneratedAgeMinutes) &&
+    artifactGeneratedAgeMinutes <= maxAge
+  );
+}
+
+function pushUnique(rows, value) {
+  if (!rows.includes(value)) rows.push(value);
+}
+
 function collectStaleArtifactProvenanceBlockers(summary, { mode = null } = {}) {
   const row = normalizeObject(summary);
   if (!row || !["CANARY", "LIVE"].includes(mode || "")) return [];
   const blockers = [];
-  if (mode === "LIVE" && hasStaleArtifactProvenance(
-    row.repair_firestore_canary_streak,
-    "v2_repair_queue_firestore_canary_streak_latest.json"
+  if (mode === "LIVE" && (
+    hasStaleArtifactProvenance(row.repair_firestore_canary_streak, "v2_repair_queue_firestore_canary_streak_latest.json") ||
+    hasStaleArtifactFreshness(row.repair_firestore_canary_streak, row.repair_firestore_canary_streak && row.repair_firestore_canary_streak.max_gap_minutes)
   )) {
-    blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK");
+    pushUnique(blockers, "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK");
   }
-  if (mode === "LIVE" && hasStaleArtifactProvenance(
-    row.production_entry_route_canary_streak,
-    "v2_production_entry_route_canary_streak_latest.json"
+  if (mode === "LIVE" && (
+    hasStaleArtifactProvenance(row.production_entry_route_canary_streak, "v2_production_entry_route_canary_streak_latest.json") ||
+    hasStaleArtifactFreshness(row.production_entry_route_canary_streak, row.production_entry_route_canary_streak && row.production_entry_route_canary_streak.max_gap_minutes)
   )) {
-    blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK");
+    pushUnique(blockers, "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK");
   }
-  if (hasStaleArtifactProvenance(
-    row.production_entry_protected_canary,
-    "v2_production_entry_protected_canary_latest.json"
-  )) {
-    blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_PROTECTED_CANARY");
+  if (
+    hasStaleArtifactProvenance(row.production_entry_protected_canary, "v2_production_entry_protected_canary_latest.json") ||
+    hasStaleArtifactFreshness(row.production_entry_protected_canary, MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES)
+  ) {
+    pushUnique(blockers, "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_PROTECTED_CANARY");
   }
-  if (mode === "LIVE" && hasStaleArtifactProvenance(
-    row.exit_runtime_canary_streak,
-    "v2_exit_runtime_canary_streak_latest.json"
+  if (mode === "LIVE" && (
+    hasStaleArtifactProvenance(row.exit_runtime_canary_streak, "v2_exit_runtime_canary_streak_latest.json") ||
+    hasStaleArtifactFreshness(row.exit_runtime_canary_streak, row.exit_runtime_canary_streak && row.exit_runtime_canary_streak.max_gap_minutes)
   )) {
-    blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:EXIT_RUNTIME_CANARY_STREAK");
+    pushUnique(blockers, "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:EXIT_RUNTIME_CANARY_STREAK");
   }
   return blockers;
 }
@@ -906,6 +935,7 @@ if (require.main === module) {
       hasFreshLongRunStreakCoverage,
       hasExitRuntimeCanaryStreak,
       hasStaleArtifactProvenance,
+      hasStaleArtifactFreshness,
       collectStaleArtifactProvenanceBlockers,
       buildAlertRetrySummary,
       hasAlertRetryAttention,

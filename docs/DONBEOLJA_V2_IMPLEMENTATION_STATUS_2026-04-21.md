@@ -2371,3 +2371,28 @@ V1 약점 재발 방지:
 1. V1에서는 보호주문 증거가 PASS여도 오래된 latest JSON인지 구분하지 못하면 실제 진입 보호 체인이 깨진 상태를 놓칠 수 있었다
 2. 이번 단계는 보호주문 canary도 long-run streak와 같은 수준의 current-dir provenance + generated freshness 계약으로 승격했다
 3. 따라서 오래된 no-exchange protected canary PASS 파일을 현재 artifact dir에 복사하는 방식으로 CANARY/LIVE 승격을 통과할 수 없다
+
+## 2026-04-22 Stale Generated Freshness Classification Contract
+
+추가 증거:
+
+1. `scripts/check-v2-promotion-deploy-decision.js`
+2. `scripts/submit-v2-promotion-cloudbuild.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `src/tests/check-v2-promotion-deploy-decision.test.js`
+5. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+6. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+7. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. stale artifact provenance는 이제 current-dir mismatch뿐 아니라 `generated_at`/`artifact_generated_at` 누락과 `artifact_generated_age_minutes` 초과도 포함한다
+2. protected entry canary freshness 초과는 submit 단계에서 `STALE_ARTIFACT_PROVENANCE` family로 먼저 분류되고, 권장 조치는 `DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE` 이다
+3. repair/production-route/exit-runtime streak freshness 초과도 LIVE deploy decision에서 stale artifact provenance blocker로 분리된다
+4. submit contract checker는 이 end-to-end fixture가 빠지면 `SUBMIT_CONTRACT_CHK_53` 으로 fail-closed 한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 오래된 latest artifact가 본체 런타임 결함처럼 보이거나, 반대로 본체가 정상인데 artifact 재생성만 필요한 상황을 구분하지 못했다
+2. 이번 단계는 generated freshness 실패를 stale artifact 계열로 분리해, operator가 보호주문 코드를 고치기 전에 fresh promotion pipeline 재실행부터 하도록 고정했다
+3. 따라서 stale PASS JSON 때문에 잘못된 원인 분석과 불필요한 본체 수정을 반복하는 경로를 줄인다

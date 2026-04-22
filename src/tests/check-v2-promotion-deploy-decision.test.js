@@ -557,6 +557,45 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
 })();
 
+(function liveWithStaleRepairFirestoreStreakGeneratedAtFailsClosedAsStaleArtifact() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.repair_firestore_canary_streak = {
+    ...bounded.repair_firestore_canary_streak,
+    artifact_generated_age_minutes: bounded.repair_firestore_canary_streak.max_gap_minutes + 1,
+  };
+  assert.strictEqual(deployDecision.__test.hasStaleArtifactFreshness(
+    bounded.repair_firestore_canary_streak,
+    bounded.repair_firestore_canary_streak.max_gap_minutes
+  ), true);
+  assert.deepStrictEqual(deployDecision.__test.collectStaleArtifactProvenanceBlockers(bounded, { mode: "LIVE" }), [
+    "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK",
+  ]);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__STALE_REPAIR_STREAK_GENERATED_AT",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__STALE_REPAIR_STREAK_GENERATED_AT",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__STALE_REPAIR_STREAK_GENERATED_AT",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK"));
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
+})();
+
 (function canaryWithoutProductionEntryProtectedCanaryFailsClosed() {
   const bounded = buildBoundedRuntimeSummaryFixture();
   delete bounded.production_entry_protected_canary;
@@ -632,7 +671,14 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     artifact_generated_age_minutes: deployDecision.__test.MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES + 1,
   };
   assert.strictEqual(deployDecision.__test.hasFreshProtectedCanaryArtifact(bounded.production_entry_protected_canary), false);
+  assert.strictEqual(deployDecision.__test.hasStaleArtifactFreshness(
+    bounded.production_entry_protected_canary,
+    deployDecision.__test.MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES
+  ), true);
   assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(bounded), false);
+  assert.deepStrictEqual(deployDecision.__test.collectStaleArtifactProvenanceBlockers(bounded, { mode: "CANARY" }), [
+    "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_PROTECTED_CANARY",
+  ]);
   const decision = deployDecision.__test.buildDeployDecision({
     pass: true,
     mode: "CANARY",
@@ -657,6 +703,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     productionCutoverAudit: buildProductionCutoverAuditFixture(),
   });
   assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_PROTECTED_CANARY"));
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED"));
 })();
 
