@@ -2506,3 +2506,30 @@ V1 약점 재발 방지:
 1. V1에서는 trail 상태가 전진했지만 거래소 stop refresh 성공 증거와 알림/outbox가 분리되는 문제가 반복됐다
 2. 이번 단계는 `TRAIL_ACTIVE` 라는 상태만으로 정상 판정하지 않고, native stop refresh evidence와 canonical transition evidence를 같은 canary/streak 체인에서 검증한다
 3. 따라서 trail truth가 먼저 승격되고 실제 보호 stop 증거가 뒤따르지 않는 회귀는 24시간 LIVE 승격 조건에서 차단된다
+
+## 2026-04-22 Protected Entry Canary Live Endpoint Probe
+
+추가 증거:
+
+1. `src/v2/productionEntryProtectedCanary.js`
+2. `scripts/generate-v2-unified-promotion-report.js`
+3. `scripts/check-v2-promotion-deploy-decision.js`
+4. `src/tests/v2-production-entry-protected-canary.test.js`
+5. `src/tests/generate-v2-unified-promotion-report.test.js`
+6. `src/tests/check-v2-promotion-deploy-decision.test.js`
+7. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+8. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. protected-entry canary는 이제 real route/kernel/protection activation proof와 별도로 LIVE endpoint no-exchange probe를 같은 artifact에 포함한다
+2. probe는 `DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED=1`, `DONBEOLJA_V2_CANARY_ONLY=0`, `confirm=EXECUTE_V2_LIVE_ENTRY`, `decision_mode=LIVE` 로 endpoint를 호출한다
+3. probe는 live transport resolution이 `V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY` 인지 확인하고, route가 호출됐는지 확인한다
+4. probe route는 stub으로 고정되어 실제 exchange submit/protection write를 수행하지 않으며 `exchange_write_performed=false` 를 artifact에 남긴다
+5. deploy decision은 `live_endpoint_probe_summary` 와 네 개의 `V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_*` check id가 모두 없으면 `DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED` 로 fail-closed 한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 내부 route나 audit script는 통과했지만 실제 운영 endpoint의 confirm/body/transport 계층이 깨져 보호주문 누락이 늦게 드러나는 문제가 있었다
+2. 이번 단계는 endpoint 계층과 route/protection 계층을 같은 protected-entry artifact에 묶어, 한쪽만 통과한 증거가 LIVE 승격에 쓰이는 경로를 차단한다
+3. no-exchange probe라 실제 주문 위험은 없지만, LIVE endpoint enable 조건과 transport resolution 경계는 promotion gate가 직접 검증한다

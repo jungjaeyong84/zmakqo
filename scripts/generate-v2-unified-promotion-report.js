@@ -382,6 +382,7 @@ function buildProductionEntryProtectedCanarySummary(canary) {
   const row = normalizeObject(canary);
   if (!row) return null;
   const summary = normalizeObject(row.route_result_summary);
+  const liveEndpointSummary = normalizeObject(row.live_endpoint_probe_summary);
   return Object.freeze({
     ok: row.ok === true,
     reason: trimOrNull(row.reason),
@@ -405,6 +406,19 @@ function buildProductionEntryProtectedCanarySummary(canary) {
     fail_n: normalizeNumber(row.fail_n),
     check_ids: Array.isArray(row.check_ids) ? row.check_ids.slice() : [],
     failed_check_ids: Array.isArray(row.failed_check_ids) ? row.failed_check_ids.slice() : [],
+    live_endpoint_probe_summary: liveEndpointSummary ? Object.freeze({
+      ok: liveEndpointSummary.ok === true,
+      reason: trimOrNull(liveEndpointSummary.reason),
+      endpoint_enabled: liveEndpointSummary.endpoint_enabled === true,
+      route_called: liveEndpointSummary.route_called === true,
+      transport_resolution_ok: liveEndpointSummary.transport_resolution_ok === true,
+      transport_reason: trimOrNull(liveEndpointSummary.transport_reason),
+      exchange_write_performed: liveEndpointSummary.exchange_write_performed === true,
+      decision_mode: trimOrNull(liveEndpointSummary.decision_mode),
+      runtime_enabled: liveEndpointSummary.runtime_enabled === true,
+      runtime_dry_run: liveEndpointSummary.runtime_dry_run === true,
+      runtime_canary_only: liveEndpointSummary.runtime_canary_only === true,
+    }) : null,
     route_result_summary: summary ? Object.freeze({
       ok: summary.ok === true,
       reason: trimOrNull(summary.reason),

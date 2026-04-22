@@ -1,7 +1,12 @@
 "use strict";
 
 const { buildReferenceNativeMlEvidencePack } = require("./replayFixtureFactory");
+const { buildOpenClawDecisionBundle } = require("./openclawControlPlane");
 const { runV2ProductionEntryRoute } = require("./productionEntryRoute");
+const {
+  LIVE_CONFIRM_PHRASE,
+  runV2ProductionEntryLiveEndpoint,
+} = require("./productionEntryLiveEndpoint");
 const { buildV2ProductionEntryLiveRequest } = require("./productionEntryLiveRequest");
 
 function trimOrNull(value) {
@@ -58,6 +63,41 @@ function buildDefaultSizing() {
     minQtyAbs: 0.001,
     stepSize: 0.001,
     allowMinOrderBump: false,
+  });
+}
+
+function buildDefaultLiveEndpointBundle({ createdAt } = {}) {
+  return buildOpenClawDecisionBundle({
+    signalSourceMode: "SERVER_NATIVE_ML_AI",
+    signalLineageId: "LINEAGE__ETHUSDT__V2_PROTECTED_CANARY_LIVE_ENDPOINT",
+    symbol: "ETHUSDT",
+    side: "LONG",
+    qualityScore: 0.78,
+    budgetCheckResult: "PASS",
+    minOrderCheckResult: "PASS",
+    decisionStatus: "APPROVED",
+    decisionMode: "LIVE",
+    recommendedAction: "APPROVE_ENTRY",
+    approved: true,
+    rationaleSummary: "protected canary live endpoint probe",
+    policyScope: "ETHUSDT_15M",
+    htfDirection: "LONG",
+    htfConfidence: 0.74,
+    timeframe: "15M",
+    featureSchemaVersion: "ml_features_v2",
+    featureValues: Object.freeze({
+      trend_bias: 0.74,
+      volatility_rank: 0.46,
+      volume_impulse: 0.63,
+    }),
+    proposalVerdict: "PASS",
+    rankScore: 0.77,
+    sizeRatio: 0.5,
+    riskBand: "MEDIUM",
+    featuresHash: "feat_hash_v2_protected_canary_live_endpoint_v1",
+    modelVersion: "openclaw-ml-v2",
+    decisionSummary: "protected canary live endpoint evidence complete",
+    createdAt,
   });
 }
 
@@ -140,7 +180,119 @@ function buildNoExchangeProtectionTransports({ nowIso, exchangeWriteLedger }) {
   });
 }
 
-function buildProtectedCanaryChecks({ request, routeResult, firestore, exchangeWriteLedger }) {
+function summarizeLiveEndpointProbe({ result, exchangeWriteLedger, request }) {
+  const row = asObject(result);
+  const runtime = asObject(row && row.runtime);
+  const transport = asObject(row && row.transport_resolution);
+  const requestBundle = asObject(request && request.body && request.body.bundle);
+  const decision = asObject(requestBundle && requestBundle.openclawDecision);
+  return Object.freeze({
+    ok: row && row.ok === true,
+    reason: trimOrNull(row && row.reason),
+    endpoint_enabled: row && row.endpoint_enabled === true,
+    route_called: row && row.route_called === true,
+    transport_resolution_ok: transport && transport.ok === true,
+    transport_reason: trimOrNull(transport && transport.reason),
+    exchange_write_performed: exchangeWriteLedger.exchange_write_performed === true,
+    decision_mode: trimOrNull(decision && decision.decision_mode),
+    runtime_enabled: runtime && runtime.enabled === true,
+    runtime_dry_run: runtime ? runtime.dry_run === true : null,
+    runtime_canary_only: runtime ? runtime.canary_only === true : null,
+  });
+}
+
+async function runProtectedCanaryLiveEndpointProbe({
+  env = process.env,
+  sizing = buildDefaultSizing(),
+  nowIso,
+  runLiveEndpoint = runV2ProductionEntryLiveEndpoint,
+} = {}) {
+  if (typeof runLiveEndpoint !== "function") throw new Error("RUN_LIVE_ENDPOINT_REQUIRED");
+  const startedAt = trimOrNull(nowIso) || new Date().toISOString();
+  const bundle = buildDefaultLiveEndpointBundle({ createdAt: startedAt });
+  const request = buildV2ProductionEntryLiveRequest({
+    bundle,
+    sizing,
+    confirm: LIVE_CONFIRM_PHRASE,
+    now: () => startedAt,
+  });
+  const exchangeWriteLedger = {
+    exchange_write_performed: false,
+    live_endpoint_route_called: false,
+  };
+  if (!request.ok) {
+    return Object.freeze({
+      ok: false,
+      reason: "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_REQUEST_BLOCKED",
+      summary: Object.freeze({
+        ok: false,
+        reason: trimOrNull(request.reason),
+        endpoint_enabled: false,
+        route_called: false,
+        transport_resolution_ok: false,
+        transport_reason: null,
+        exchange_write_performed: false,
+        decision_mode: null,
+        runtime_enabled: null,
+        runtime_dry_run: null,
+        runtime_canary_only: null,
+      }),
+    });
+  }
+
+  const endpointEnv = {
+    ...env,
+    DONBEOLJA_V2_ENABLED: "1",
+    DONBEOLJA_V2_DRY_RUN: "0",
+    DONBEOLJA_V2_CANARY_ONLY: "0",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
+  };
+  const result = await runLiveEndpoint({
+    env: endpointEnv,
+    body: request.body,
+    requestId: "REQ__NO_EXCHANGE__V2_PROTECTED_CANARY_LIVE_ENDPOINT",
+    buildLiveTransports: async () => Object.freeze({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+      entry_intent_id: trimOrNull(request.entrySizingDecision && request.entrySizingDecision.entry_intent_id),
+      symbol: trimOrNull(request.entrySizingDecision && request.entrySizingDecision.symbol),
+      side: trimOrNull(request.entrySizingDecision && request.entrySizingDecision.side),
+      entry_qty_abs: request.entrySizingDecision ? Number(request.entrySizingDecision.entry_qty_abs) : null,
+      live_cfg_summary: Object.freeze({
+        exchange: "BINANCEFUT",
+        symbol: trimOrNull(request.entrySizingDecision && request.entrySizingDecision.symbol),
+        live_enabled: true,
+        live_dry_run: false,
+        api_key_present: false,
+        api_secret_present: false,
+        reason: "NO_EXCHANGE_PROBE",
+      }),
+      entryTransport: Object.freeze({
+        submitEntryOrder: async () => { throw new Error("LIVE_ENDPOINT_PROBE_ROUTE_STUB_SHOULD_NOT_SUBMIT"); },
+      }),
+      protectionTransports: Object.freeze({
+        placeInitialSl: async () => { throw new Error("LIVE_ENDPOINT_PROBE_ROUTE_STUB_SHOULD_NOT_PLACE_SL"); },
+        placeInitialTp1: async () => { throw new Error("LIVE_ENDPOINT_PROBE_ROUTE_STUB_SHOULD_NOT_PLACE_TP1"); },
+      }),
+    }),
+    runProductionEntryRoute: async ({ bundle: routedBundle, entryTransport, protectionTransports }) => {
+      exchangeWriteLedger.live_endpoint_route_called = true;
+      if (!routedBundle || !entryTransport || !protectionTransports) {
+        return Object.freeze({ ok: false, reason: "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_ROUTE_INPUT_MISSING" });
+      }
+      return Object.freeze({ ok: true, reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED" });
+    },
+    now: () => startedAt,
+  });
+  const summary = summarizeLiveEndpointProbe({ result, exchangeWriteLedger, request });
+  return Object.freeze({
+    ok: summary.ok === true,
+    reason: summary.reason,
+    summary,
+  });
+}
+
+function buildProtectedCanaryChecks({ request, routeResult, firestore, exchangeWriteLedger, liveEndpointProbe }) {
   const kernelAudit = asObject(routeResult && routeResult.kernelResult && routeResult.kernelResult.kernelAudit);
   const submitterResult = asObject(routeResult && routeResult.kernelResult && routeResult.kernelResult.submitterResult);
   const protectionResult = asObject(submitterResult && submitterResult.protectionResult);
@@ -148,6 +300,7 @@ function buildProtectedCanaryChecks({ request, routeResult, firestore, exchangeW
   const protectionWriteResult = asObject(protectionResult && protectionResult.protectionWriteResult);
   const runtimeDoc = asObject(protectionWriteResult && protectionWriteResult.runtimeDoc);
   const entrySizingDecision = asObject(request && request.entrySizingDecision);
+  const liveEndpointSummary = asObject(liveEndpointProbe && liveEndpointProbe.summary);
   return Object.freeze([
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_REQUEST_SIZING_APPROVED", ok: entrySizingDecision && entrySizingDecision.ok === true && entrySizingDecision.status === "APPROVED" }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_ROUTE_OK", ok: routeResult && routeResult.ok === true }),
@@ -159,6 +312,10 @@ function buildProtectedCanaryChecks({ request, routeResult, firestore, exchangeW
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT", ok: !!trimOrNull(runtimeDoc && runtimeDoc.tp1_order_id) }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT", ok: Array.isArray(firestore && firestore.__v2_canary_commits) && firestore.__v2_canary_commits.length >= 2 }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE", ok: exchangeWriteLedger.exchange_write_performed === false }),
+    Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_PROBE_OK", ok: liveEndpointSummary && liveEndpointSummary.ok === true && liveEndpointSummary.reason === "V2_PRODUCTION_ENTRY_LIVE_EXECUTED_AND_PROTECTED" }),
+    Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_ROUTE_CALLED", ok: liveEndpointSummary && liveEndpointSummary.route_called === true }),
+    Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_TRANSPORTS_READY", ok: liveEndpointSummary && liveEndpointSummary.transport_resolution_ok === true && liveEndpointSummary.transport_reason === "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY" }),
+    Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_NO_EXCHANGE_WRITE", ok: liveEndpointSummary && liveEndpointSummary.exchange_write_performed === false }),
   ]);
 }
 
@@ -233,7 +390,8 @@ async function runV2ProductionEntryProtectedCanary({
     now: () => startedAt,
   });
 
-  const checks = buildProtectedCanaryChecks({ request, routeResult, firestore, exchangeWriteLedger });
+  const liveEndpointProbe = await runProtectedCanaryLiveEndpointProbe({ env, sizing, nowIso: startedAt });
+  const checks = buildProtectedCanaryChecks({ request, routeResult, firestore, exchangeWriteLedger, liveEndpointProbe });
   const failedChecks = checks.filter((row) => row.ok !== true);
   const kernelAudit = asObject(routeResult && routeResult.kernelResult && routeResult.kernelResult.kernelAudit);
   const submitterResult = asObject(routeResult && routeResult.kernelResult && routeResult.kernelResult.submitterResult);
@@ -254,6 +412,7 @@ async function runV2ProductionEntryProtectedCanary({
     entry_transport_called: exchangeWriteLedger.entry_submit_called === true,
     initial_sl_transport_called: exchangeWriteLedger.initial_sl_called === true,
     initial_tp1_transport_called: exchangeWriteLedger.initial_tp1_called === true,
+    live_endpoint_probe_summary: liveEndpointProbe.summary,
     memory_firestore_batch_commit_n: firestore.__v2_canary_commits.length,
     memory_firestore_write_n: firestore.__v2_canary_writes.length,
     check_n: checks.length,
@@ -287,7 +446,10 @@ module.exports = {
     asObject,
     createMemoryFirestore,
     buildDefaultSizing,
+    buildDefaultLiveEndpointBundle,
     summarizeSizingDecision,
+    summarizeLiveEndpointProbe,
+    runProtectedCanaryLiveEndpointProbe,
     collectRouteFailedChecks,
     buildNoExchangeEntryTransport,
     buildNoExchangeProtectionTransports,

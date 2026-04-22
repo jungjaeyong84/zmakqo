@@ -586,8 +586,9 @@ function hasProductionEntryProtectedCanary(summary) {
   const row = normalizeObject(summary);
   const canary = normalizeObject(row && row.production_entry_protected_canary);
   const routeSummary = normalizeObject(canary && canary.route_result_summary);
+  const liveEndpointSummary = normalizeObject(canary && canary.live_endpoint_probe_summary);
   const checkIds = new Set(ensureArray(canary && canary.check_ids).map(String).filter(Boolean));
-  if (!canary || !routeSummary) return false;
+  if (!canary || !routeSummary || !liveEndpointSummary) return false;
   return (
     canary.ok === true &&
     trimOrNull(canary.reason) === "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS" &&
@@ -616,12 +617,27 @@ function hasProductionEntryProtectedCanary(summary) {
     !!trimOrNull(routeSummary.protection_runtime_id) &&
     !!trimOrNull(routeSummary.sl_order_id) &&
     !!trimOrNull(routeSummary.tp1_order_id) &&
+    liveEndpointSummary.ok === true &&
+    trimOrNull(liveEndpointSummary.reason) === "V2_PRODUCTION_ENTRY_LIVE_EXECUTED_AND_PROTECTED" &&
+    liveEndpointSummary.endpoint_enabled === true &&
+    liveEndpointSummary.route_called === true &&
+    liveEndpointSummary.transport_resolution_ok === true &&
+    trimOrNull(liveEndpointSummary.transport_reason) === "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY" &&
+    liveEndpointSummary.exchange_write_performed === false &&
+    trimOrNull(liveEndpointSummary.decision_mode) === "LIVE" &&
+    liveEndpointSummary.runtime_enabled === true &&
+    liveEndpointSummary.runtime_dry_run === false &&
+    liveEndpointSummary.runtime_canary_only === false &&
     checkIds.has("V2_PROTECTED_ENTRY_CANARY_REQUEST_SIZING_APPROVED") &&
     checkIds.has("V2_PROTECTED_ENTRY_CANARY_ACTIVE_PROTECTED") &&
     checkIds.has("V2_PROTECTED_ENTRY_CANARY_SL_ORDER_PRESENT") &&
     checkIds.has("V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT") &&
     checkIds.has("V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT") &&
-    checkIds.has("V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE")
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_PROBE_OK") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_ROUTE_CALLED") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_TRANSPORTS_READY") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_NO_EXCHANGE_WRITE")
   );
 }
 

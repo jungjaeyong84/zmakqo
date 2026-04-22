@@ -112,8 +112,25 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
         "V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT",
         "V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT",
         "V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE",
+        "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_PROBE_OK",
+        "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_ROUTE_CALLED",
+        "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_TRANSPORTS_READY",
+        "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_NO_EXCHANGE_WRITE",
       ],
       failed_check_ids: [],
+      live_endpoint_probe_summary: {
+        ok: true,
+        reason: "V2_PRODUCTION_ENTRY_LIVE_EXECUTED_AND_PROTECTED",
+        endpoint_enabled: true,
+        route_called: true,
+        transport_resolution_ok: true,
+        transport_reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+        exchange_write_performed: false,
+        decision_mode: "LIVE",
+        runtime_enabled: true,
+        runtime_dry_run: false,
+        runtime_canary_only: false,
+      },
       route_result_summary: {
         ok: true,
         reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED",
@@ -317,6 +334,9 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     assert.ok(stored.bounded_runtime_summary.production_entry_protected_canary.generated_at);
     assert.ok(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_generated_at);
     assert.ok(Number.isFinite(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_generated_age_minutes));
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.live_endpoint_probe_summary.reason, "V2_PRODUCTION_ENTRY_LIVE_EXECUTED_AND_PROTECTED");
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.live_endpoint_probe_summary.transport_reason, "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY");
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.live_endpoint_probe_summary.exchange_write_performed, false);
     assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.reason, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS");
     assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.history_source, "FIRESTORE");
     assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.coverage_minutes, 1440);

@@ -262,8 +262,25 @@ function buildBoundedRuntimeSummaryFixture() {
         "V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT",
         "V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT",
         "V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE",
+        "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_PROBE_OK",
+        "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_ROUTE_CALLED",
+        "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_TRANSPORTS_READY",
+        "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_NO_EXCHANGE_WRITE",
       ],
       failed_check_ids: [],
+      live_endpoint_probe_summary: {
+        ok: true,
+        reason: "V2_PRODUCTION_ENTRY_LIVE_EXECUTED_AND_PROTECTED",
+        endpoint_enabled: true,
+        route_called: true,
+        transport_resolution_ok: true,
+        transport_reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+        exchange_write_performed: false,
+        decision_mode: "LIVE",
+        runtime_enabled: true,
+        runtime_dry_run: false,
+        runtime_canary_only: false,
+      },
       route_result_summary: {
         ok: true,
         reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED",
@@ -839,6 +856,41 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__CANARY__STALE_PROTECTED_CANARY",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionCutoverAudit: buildProductionCutoverAuditFixture(),
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED"));
+})();
+
+(function canaryWithMissingProtectedEntryLiveEndpointProbeFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.production_entry_protected_canary = {
+    ...bounded.production_entry_protected_canary,
+    live_endpoint_probe_summary: null,
+    check_ids: bounded.production_entry_protected_canary.check_ids.filter((id) => !id.includes("LIVE_ENDPOINT")),
+  };
+  assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__NO_PROTECTED_CANARY_ENDPOINT_PROBE",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__NO_PROTECTED_CANARY_ENDPOINT_PROBE",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__NO_PROTECTED_CANARY_ENDPOINT_PROBE",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,
