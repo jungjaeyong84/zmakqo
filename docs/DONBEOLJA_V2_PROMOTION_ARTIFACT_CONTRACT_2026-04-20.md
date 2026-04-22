@@ -1282,3 +1282,45 @@ LIVE submit은 `artifact_current_dir_match=true`, 기대 filename 일치, `gener
 
 이 중 하나라도 깨지면 submit wrapper는 해당 `SUBMIT_CHK_*` 를 실패시키고 `STALE_ARTIFACT_PROVENANCE` family로 분류해야 한다.
 즉, 오래된 readiness PASS JSON을 현재 artifact dir에 복사해 LIVE 승격을 통과시키는 경로는 허용하지 않는다.
+
+## LIVE evidence readiness summary contract
+
+`v2_live_evidence_readiness_latest.json` 은 LIVE 승격 직전에 운영자가 보는 단일 증거 요약이다.
+이 파일은 `scripts/check-v2-live-evidence-readiness.js` 가 현재 artifact dir의 `promotion-deploy-decision.json` 을 읽어 생성한다.
+
+필수 축:
+
+1. `production_runtime_chain`
+2. `repair_firestore_canary_streak`
+3. `production_entry_route_canary_streak`
+4. `exit_runtime_canary_streak`
+5. `production_entry_protected_canary`
+6. `openclaw_supreme_closed_loop`
+7. `live_evidence_temporal_coherence`
+
+필수 필드:
+
+1. `ok`
+2. `reason`
+3. `mode`
+4. `artifact_dir`
+5. `position_cycle_id`
+6. `deploy_decision_approved`
+7. `evidence_ready`
+8. `deploy_ready`
+9. `blockers`
+10. `deploy_decision_blockers`
+11. `failed_axis_ids`
+12. `submit_check_ids`
+13. `runbook_refs`
+14. `axes[]`
+15. `temporal_coherence`
+
+`ok=true` 는 `mode=LIVE`, 모든 axis PASS, `temporal_coherence.ok=true`, `promotion-deploy-decision.json.approved=true`, deploy decision blocker 0건일 때만 가능하다.
+각 실패 axis는 해당 `SUBMIT_CHK_*` 와 runbook 번호를 함께 내야 한다.
+예를 들어 exit runtime 24시간 streak가 없으면 `failed_axis_ids` 는 `exit_runtime_canary_streak`, `submit_check_ids` 는 `SUBMIT_CHK_21`, `runbook_refs` 는 `28` 을 포함해야 한다.
+temporal/cycle mismatch는 `SUBMIT_CHK_06`/`SUBMIT_CHK_07` 및 runbook `13E`/`30` 으로 역추적되어야 한다.
+
+이 artifact는 배포 승인 원천이 아니라 승인 판독용 summary다.
+원천 승인은 계속 `promotion-deploy-decision.json` 과 submit wrapper가 소유한다.
+다만 이 summary가 깨진 상태에서 LIVE를 수동 제출하면, 운영자는 어떤 계열 증거가 부족한지 알 수 없으므로 V1식 “PASS처럼 보이지만 실제로는 보호/exit/runtime 증거가 빠진 상태”로 간주한다.

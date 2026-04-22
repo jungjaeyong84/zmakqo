@@ -33,6 +33,7 @@ const FILES = Object.freeze({
   repairFirestoreStreakChecker: path.resolve(__dirname, "check-v2-repair-queue-firestore-canary-streak.js"),
   productionEntryRouteStreakChecker: path.resolve(__dirname, "check-v2-production-entry-route-canary-streak.js"),
   exitRuntimeStreakChecker: path.resolve(__dirname, "check-v2-exit-runtime-canary-streak.js"),
+  liveEvidenceReadinessChecker: path.resolve(__dirname, "check-v2-live-evidence-readiness.js"),
   productionRuntimeChainChecker: path.resolve(__dirname, "check-v2-production-runtime-chain.js"),
   productionRuntimeChainAudit: path.resolve(__dirname, "..", "src", "v2", "productionRuntimeChainAudit.js"),
 });
@@ -342,6 +343,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
   const repairFirestoreStreakCheckerText = readContractText(FILES.repairFirestoreStreakChecker);
   const productionEntryRouteStreakCheckerText = readContractText(FILES.productionEntryRouteStreakChecker);
   const exitRuntimeStreakCheckerText = readContractText(FILES.exitRuntimeStreakChecker);
+  const liveEvidenceReadinessCheckerText = readContractText(FILES.liveEvidenceReadinessChecker);
   const operatorSummaryText = readText(SHARED_FORMATTER_MODULE_PATH);
   const operatorAlertPreviewText = readText(SHARED_ALERT_PREVIEW_MODULE_PATH);
   const summary = buildFormatterFixtureResult();
@@ -2106,6 +2108,34 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         ? "deploy decision and submit wrapper now require the production runtime chain source audit as first-class approval evidence"
         : "production runtime chain audit must be a deploy decision blocker and submit approval evidence source, not only a package-level test",
       file: FILES.deployDecisionChecker,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_77",
+      label: "LIVE evidence readiness checker summarizes all deploy axes",
+      ok: packageJsonText.includes("check:v2-live-evidence-readiness")
+        && packageJsonText.includes("check-v2-live-evidence-readiness.test.js")
+        && liveEvidenceReadinessCheckerText.includes("V2_LIVE_EVIDENCE_READY")
+        && liveEvidenceReadinessCheckerText.includes("v2_live_evidence_readiness_latest.json")
+        && liveEvidenceReadinessCheckerText.includes("production_runtime_chain")
+        && liveEvidenceReadinessCheckerText.includes("repair_firestore_canary_streak")
+        && liveEvidenceReadinessCheckerText.includes("production_entry_route_canary_streak")
+        && liveEvidenceReadinessCheckerText.includes("exit_runtime_canary_streak")
+        && liveEvidenceReadinessCheckerText.includes("production_entry_protected_canary")
+        && liveEvidenceReadinessCheckerText.includes("openclaw_supreme_closed_loop")
+        && liveEvidenceReadinessCheckerText.includes("collectLiveEvidenceCycleConsistencyBlockers")
+        && liveEvidenceReadinessCheckerText.includes("collectLiveStreakTemporalCoherenceBlockers")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-live-evidence-readiness.test.js")).includes("missingExitRuntimeStreakFailsWithRunbook28")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-live-evidence-readiness.test.js")).includes("temporalMismatchFailsWithRunbook30")
+        && runbookText.includes("v2_live_evidence_readiness_latest.json")
+        && artifactContractText.includes("v2_live_evidence_readiness_latest.json")
+        && artifactContractText.includes("failed_axis_ids")
+        && artifactContractText.includes("temporal_coherence")
+        && readText(path.resolve(__dirname, "..", "docs", "DONBEOLJA_V2_IMPLEMENTATION_STATUS_2026-04-21.md")).includes("LIVE Evidence Readiness Checker"),
+      reason: liveEvidenceReadinessCheckerText.includes("V2_LIVE_EVIDENCE_READY")
+        && liveEvidenceReadinessCheckerText.includes("collectLiveStreakTemporalCoherenceBlockers")
+        ? "LIVE promotion now has a single diagnostic readiness artifact that maps missing evidence axes to submit checks and runbook refs"
+        : "LIVE promotion must expose one checker for production runtime, 24h streaks, protected entry, OpenClaw, and temporal coherence evidence",
+      file: FILES.liveEvidenceReadinessChecker,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

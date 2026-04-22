@@ -2604,3 +2604,33 @@ V1 약점 재발 방지:
 1. V1에서는 게이트성 테스트가 있어도 실제 deploy decision 승인 조건과 submit evidence source에서 빠져 우회될 수 있었다
 2. 이번 단계는 production runtime chain source audit를 deploy decision과 submit wrapper 양쪽에 직접 넣었다
 3. 따라서 entry/protection/fill/reducer/tick/trail/alert/watchdog/repair 본선 연결이 깨진 커밋은 test path뿐 아니라 실제 승격 승인 artifact에서도 차단된다
+
+## 2026-04-22 LIVE Evidence Readiness Checker
+
+추가 증거:
+
+1. `scripts/check-v2-live-evidence-readiness.js`
+2. `src/tests/check-v2-live-evidence-readiness.test.js`
+3. `package.json`
+4. `scripts/check-v2-promotion-submit-contract.js`
+5. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+6. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. LIVE 승격 증거는 이제 `v2_live_evidence_readiness_latest.json` 으로 한 번에 요약된다
+2. 이 checker는 `promotion-deploy-decision.json` 을 원천으로 읽고 production runtime chain, repair Firestore 24시간 streak, production entry route 24시간 streak, exit runtime 24시간 streak, protected entry canary, OpenClaw supreme closed-loop를 axis 단위로 분리한다
+3. 각 실패 axis는 `failed_axis_ids`, `submit_check_ids`, `runbook_refs` 로 다시 추적된다
+4. temporal/cycle coherence는 `collectLiveEvidenceCycleConsistencyBlockers` 와 `collectLiveStreakTemporalCoherenceBlockers` 를 재사용하므로 deploy decision과 operator diagnostic이 같은 blocker 판정을 공유한다
+5. `test:v2-promotion` 은 `check-v2-live-evidence-readiness.test.js` 를 실행하고, submit contract는 `SUBMIT_CONTRACT_CHK_77` 로 package, checker, test, runbook, artifact contract 연결을 다시 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 “왜 LIVE 승격이 막혔는지”가 deploy blocker, runbook, operator alert에 흩어져 운영자가 원인 계열을 빠르게 판별하기 어려웠다
+2. 이번 단계는 부족한 증거 축을 하나의 summary artifact에 모아, TP/보호주문/트레일링/repair/OpenClaw 계열 문제를 한눈에 분리한다
+3. approval source는 여전히 deploy decision과 submit wrapper가 소유하므로, diagnostic summary가 승인 우회 경로가 되는 위험은 만들지 않는다
+
+남은 한계:
+
+1. 이 checker는 실제 24시간 evidence를 새로 수집하지 않는다
+2. 실제 LIVE 승격 전에는 production entry route canary, exit runtime canary, repair Firestore canary, OpenClaw supreme closed-loop evidence가 같은 artifact dir/cycle에서 축적되어야 한다
