@@ -55,6 +55,9 @@ function buildTraceLines(trace) {
     || trimOrNull(row.recommended_next_action_reason_code) === "STALE_ARTIFACT_PROVENANCE_BLOCKER";
   const liveEvidenceCycleBlocker = blockerFamilies.includes("LIVE_EVIDENCE_CYCLE")
     || trimOrNull(row.recommended_next_action_reason_code) === "LIVE_EVIDENCE_CYCLE_BLOCKER";
+  const openClawSupremeBlocker = blockerFamilies.includes("OPENCLAW_SUPREME_CONTROL_PLANE")
+    || failedSubmitCheckIds.includes("SUBMIT_CHK_23")
+    || trimOrNull(row.recommended_next_action_reason_code) === "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER";
   const runbookReviewFailedCheckIds = Array.isArray(runbookReview && runbookReview.failed_check_ids)
     ? runbookReview.failed_check_ids.filter(Boolean)
     : [];
@@ -67,6 +70,7 @@ function buildTraceLines(trace) {
     `protected_entry_canary_blocker=${blockerFamilies.includes("PROTECTED_ENTRY_CANARY") || failedSubmitCheckIds.includes("SUBMIT_CHK_20A") ? "YES" : "NO"}`,
     `stale_artifact_provenance_blocker=${staleArtifactProvenanceBlocker ? "YES" : "NO"}`,
     `live_evidence_cycle_blocker=${liveEvidenceCycleBlocker ? "YES" : "NO"}`,
+    `openclaw_supreme_blocker=${openClawSupremeBlocker ? "YES" : "NO"}`,
     `alert_retry_attention=${row.alert_retry_attention_required === true ? "YES" : "NO"}`,
     `alert_runbook_refs=${alertRunbookRefs.length ? alertRunbookRefs.join(",") : "NONE"}`,
     `alert_failed=${Number.isFinite(Number(alertRetrySummary.failed_n)) ? Number(alertRetrySummary.failed_n) : 0}`,

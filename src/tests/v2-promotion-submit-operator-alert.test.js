@@ -156,6 +156,46 @@ const operatorSummary = require("../../scripts/lib/v2-promotion-operator-summary
   assert.ok(preview.sections[1].lines.includes("reason_code=LIVE_EVIDENCE_CYCLE_BLOCKER"));
 })();
 
+(function openClawSupremeBlockerIsVisibleInSummaryAndTrace() {
+  const summary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/openclaw-supreme-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__OPENCLAW_SUPREME__01",
+      submit_trace_summary: {
+        ok: false,
+        failed_submit_check_ids: ["SUBMIT_CHK_23"],
+        failed_runbook_checklist: ["31"],
+        blocker_families: ["OPENCLAW_SUPREME_CONTROL_PLANE"],
+        primary_blocker_family: "OPENCLAW_SUPREME_CONTROL_PLANE",
+        recommended_next_action: "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION",
+        recommended_next_action_reason_code: "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER",
+      },
+    },
+  });
+  const preview = alertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/openclaw-supreme-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__OPENCLAW_SUPREME__01",
+      operator_summary: summary,
+      submit_trace_summary: {
+        ok: false,
+        failed_submit_check_ids: ["SUBMIT_CHK_23"],
+        failed_runbook_checklist: ["31"],
+        blocker_families: ["OPENCLAW_SUPREME_CONTROL_PLANE"],
+        primary_blocker_family: "OPENCLAW_SUPREME_CONTROL_PLANE",
+        recommended_next_action: "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION",
+        recommended_next_action_reason_code: "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER",
+      },
+    },
+  });
+  assert.ok(summary.lines.includes("openclaw_supreme_blocker=YES"));
+  assert.ok(preview.sections[0].lines.includes("openclaw_supreme_blocker=YES"));
+  assert.ok(preview.sections[1].lines.includes("openclaw_supreme_blocker=YES"));
+  assert.ok(preview.sections[1].lines.includes("reason_code=OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER"));
+})();
+
 (function readyPreviewBuildsTelegramArgs() {
   const args = alertPreview.buildTelegramSummaryArgs({
     severity: "INFO",

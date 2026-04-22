@@ -341,6 +341,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
   const productionEntryRouteStreakCheckerText = readContractText(FILES.productionEntryRouteStreakChecker);
   const exitRuntimeStreakCheckerText = readContractText(FILES.exitRuntimeStreakChecker);
   const operatorSummaryText = readText(SHARED_FORMATTER_MODULE_PATH);
+  const operatorAlertPreviewText = readText(SHARED_ALERT_PREVIEW_MODULE_PATH);
   const summary = buildFormatterFixtureResult();
   const summaryPreview = operatorAlertPreview.buildOperatorAlertPreview({
     ok: false,
@@ -486,6 +487,40 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
   )
     ? liveEvidenceCyclePreview.sections[1].lines
     : [];
+  const openClawSupremeTrace = Object.freeze({
+    ok: false,
+    primary_blocker_family: "OPENCLAW_SUPREME_CONTROL_PLANE",
+    blocker_families: ["OPENCLAW_SUPREME_CONTROL_PLANE"],
+    failed_submit_check_ids: ["SUBMIT_CHK_23"],
+    failed_runbook_checklist: ["31"],
+    recommended_next_action: "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION",
+    recommended_next_action_reason: "OpenClaw supreme closed-loop evidence is missing or inconsistent",
+    recommended_next_action_reason_code: "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER",
+  });
+  const openClawSupremeSummary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/openclaw-supreme-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__OPENCLAW_SUPREME__01",
+      submit_trace_summary: openClawSupremeTrace,
+    },
+  });
+  const openClawSupremePreview = operatorAlertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/openclaw-supreme-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__OPENCLAW_SUPREME__01",
+      submit_trace_summary: openClawSupremeTrace,
+      operator_summary: openClawSupremeSummary,
+    },
+  });
+  const openClawSupremePreviewTraceLines = Array.isArray(
+    openClawSupremePreview.sections
+    && openClawSupremePreview.sections[1]
+    && openClawSupremePreview.sections[1].lines
+  )
+    ? openClawSupremePreview.sections[1].lines
+    : [];
   const staleSourceTrace = {
     ok: false,
     failed_submit_check_ids: ["SUBMIT_CHK_08"],
@@ -568,6 +603,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "protected_entry_canary_blocker=NO",
         "stale_artifact_provenance_blocker=NO",
         "live_evidence_cycle_blocker=NO",
+        "openclaw_supreme_blocker=NO",
         "alert_retry_attention=NO",
         "alert_runbook_refs=NONE",
         "alert_failed=0",
@@ -621,6 +657,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "protected_entry_canary_blocker=NO",
         "stale_artifact_provenance_blocker=NO",
         "live_evidence_cycle_blocker=NO",
+        "openclaw_supreme_blocker=NO",
         "alert_retry_attention=NO",
         "alert_runbook_refs=NONE",
         "alert_failed=0",
@@ -1920,6 +1957,12 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && artifactContractText.includes("producer_script=collect-v2-promotion-runtime-snapshot")
         && artifactContractText.includes("producer_scope=openclaw_supreme_control_plane")
         && artifactContractText.includes("has_openclaw_supreme_control_plane_blocker")
+        && artifactContractText.includes("openclaw_supreme_blocker=YES")
+        && runbookText.includes("openclaw_supreme_blocker=YES")
+        && operatorSummaryText.includes("openclaw_supreme_blocker=")
+        && operatorAlertPreviewText.includes("openclaw_supreme_blocker=")
+        && openClawSupremeSummary.lines.includes("openclaw_supreme_blocker=YES")
+        && openClawSupremePreviewTraceLines.includes("openclaw_supreme_blocker=YES")
         && submitWrapperText.includes("SUBMIT_CHK_23")
         && submitWrapperText.includes("hasOpenClawSupremeControlPlaneCoverage")
         && submitWrapperText.includes("openclaw_supreme_control_plane_closed_loop_required")
@@ -1948,11 +1991,13 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremeMissingLearnerFreshnessContractFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremeMissingCollectorProvenanceFailsClosed")
         && packageJsonText.includes("test:v2-openclaw-supreme-control-plane")
-        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitBlocksWithoutOpenClawSupremeClosedLoopEvidence"),
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitBlocksWithoutOpenClawSupremeClosedLoopEvidence")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("openclaw_supreme_blocker=YES")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-promotion-submit-operator-alert.test.js")).includes("openClawSupremeBlockerIsVisibleInSummaryAndTrace"),
       reason: submitWrapperText.includes("SUBMIT_CHK_23")
         && submitWrapperText.includes("hasOpenClawSupremeControlPlaneCoverage")
-        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitBlocksWithoutOpenClawSupremeClosedLoopEvidence")
-        ? "LIVE submit now blocks when OpenClaw world state, permit, outcome, and learner shadow closed-loop evidence is missing"
+        && openClawSupremePreviewTraceLines.includes("openclaw_supreme_blocker=YES")
+        ? "LIVE submit now blocks and operator-visible traces OpenClaw world state, permit, outcome, and learner shadow closed-loop evidence gaps"
         : "LIVE submit must expose SUBMIT_CHK_23/runbook 31 and fail closed without OpenClaw supreme closed-loop evidence",
       file: FILES.submitWrapper,
     }),

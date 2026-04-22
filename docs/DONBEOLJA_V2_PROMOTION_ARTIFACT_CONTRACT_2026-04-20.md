@@ -359,6 +359,10 @@ LIVE submit에서는 같은 line set 안에 `scheduler_traffic_ready`, `schedule
 
 즉, stale artifact provenance 차단이 발생했을 때 운영자는 bounded runtime 누락이나 보호주문 본체 오류가 아니라 current artifact cycle 재생성 문제임을 operator summary에서 바로 읽을 수 있어야 한다.
 
+같은 line set 안에는 `openclaw_supreme_blocker` 도 포함돼야 한다.
+
+즉, `SUBMIT_CHK_23` 차단이 발생했을 때 운영자는 scheduler/replay/protected entry 문제가 아니라 OpenClaw supreme closed-loop evidence 문제임을 operator summary와 alert preview에서 바로 읽을 수 있어야 한다.
+
 `operator_summary.text` 는 위 라인셋을 줄바꿈으로 결합한 transport-agnostic 정본 문자열이다.
 
 즉, 어떤 채널이든 `lines.join("\\n")` 를 다시 구현하지 말고 이 필드를 그대로 재사용해야 한다.
@@ -655,7 +659,7 @@ cloudbuild는 아래 원칙을 따른다.
 
 `SUBMIT_CHK_16` 실패는 `SCHEDULER_TRAFFIC_BLOCKER` 이며, 권장 행동은 `FIX_V2_SCHEDULER_TRAFFIC_CUTOVER_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER` 이다.
 
-`SUBMIT_CHK_23` 실패는 `OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER` 이며, 권장 행동은 `FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION` 이다. 이 문제는 replay나 scheduler 문제가 아니라 OpenClaw decision -> permit -> outcome -> learner shadow closed-loop evidence가 아직 닫히지 않았다는 뜻이므로 LIVE 제출을 금지한다.
+`SUBMIT_CHK_23` 실패는 `OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER` 이며, 권장 행동은 `FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION` 이다. 이 문제는 replay나 scheduler 문제가 아니라 OpenClaw decision -> permit -> outcome -> learner shadow closed-loop evidence가 아직 닫히지 않았다는 뜻이므로 LIVE 제출을 금지한다. 이 경우 `operator_summary.lines[]` 와 `operator_alert_preview.sections[].lines[]` 는 `openclaw_supreme_blocker=YES` 를 포함해야 한다.
 
 이 실패들은 `PRODUCTION_CUTOVER_BLOCKER` 로 묶지 않는다.
 

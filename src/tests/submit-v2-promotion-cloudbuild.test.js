@@ -2133,6 +2133,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
       result.request.submit_trace_summary.recommended_next_action_reason_code,
       "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER"
     );
+    assert.ok(result.request.operator_summary.lines.includes("openclaw_supreme_blocker=YES"));
+    assert.ok(result.request.operator_alert_preview.sections[0].lines.includes("openclaw_supreme_blocker=YES"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("openclaw_supreme_blocker=YES"));
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }
