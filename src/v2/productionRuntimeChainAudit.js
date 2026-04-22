@@ -3,6 +3,13 @@
 const fs = require("fs");
 const path = require("path");
 const { auditV2FillSyncCanonicalBoundary } = require("./fillSyncCanonicalBoundaryAudit");
+const {
+  functionCalls,
+  functionCallsAll,
+  hasCallExpression,
+  hasCodePattern,
+  sliceFunctionBlock,
+} = require("./sourceStructureAudit");
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -39,6 +46,97 @@ function buildTokenEvidence(source, tokens = []) {
   return Object.freeze(Object.fromEntries(tokens.map((token) => [token, text.includes(token)])));
 }
 
+function buildFunctionCallEvidence(source, functionName, callees = []) {
+  return Object.freeze({
+    function_name: functionName,
+    ...functionCalls(source, functionName, callees),
+  });
+}
+
+function hasProtectionDeadlineStructure(source) {
+  const deadlineBlock = sliceFunctionBlock(source, "withProtectionWriteDeadline");
+  const refreshBlock = sliceFunctionBlock(source, "buildBinanceRefreshNativeStopTransport");
+  const tp1Block = sliceFunctionBlock(source, "buildBinancePlaceOrReplaceTp1Transport");
+  const fullProtectionBlock = sliceFunctionBlock(source, "buildBinancePlaceOrReplaceFullProtectionTransport");
+  const slDeadlineN = (fullProtectionBlock.match(/BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED/g) || []).length;
+  const tp1DeadlineN = (fullProtectionBlock.match(/BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED/g) || []).length;
+  return (
+    hasCodePattern(deadlineBlock, /\bnew\s+AbortController\s*\(/) &&
+    hasCallExpression(deadlineBlock, "Promise.race") &&
+    hasCallExpression(deadlineBlock, "setTimeout") &&
+    hasCallExpression(deadlineBlock, "controller.abort") &&
+    /operation\s*\(\s*\{[\s\S]{0,180}signal:\s*controller\.signal/.test(deadlineBlock) &&
+    functionCallsAll(source, "buildBinanceRefreshNativeStopTransport", ["withProtectionWriteDeadline", "refreshNativeProtectionWithRetry"]) &&
+    /refreshNativeProtectionWithRetry\s*\(\s*\{[\s\S]{0,700}signal\s*,[\s\S]{0,80}abortSignal:\s*signal/.test(refreshBlock) &&
+    refreshBlock.includes("BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED") &&
+    functionCallsAll(source, "buildBinancePlaceOrReplaceTp1Transport", ["withProtectionWriteDeadline", "placeTakeProfitMarketOrder"]) &&
+    /placeTakeProfitMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(tp1Block) &&
+    tp1Block.includes("BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED") &&
+    functionCallsAll(source, "buildBinancePlaceOrReplaceFullProtectionTransport", ["withProtectionWriteDeadline", "placeStopMarketOrder", "placeTakeProfitMarketOrder"]) &&
+    /placeStopMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(fullProtectionBlock) &&
+    /placeTakeProfitMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(fullProtectionBlock) &&
+    slDeadlineN >= 1 &&
+    tp1DeadlineN >= 1
+  );
+}
+
+function buildProtectionDeadlineEvidence(source) {
+  const deadlineBlock = sliceFunctionBlock(source, "withProtectionWriteDeadline");
+  const refreshBlock = sliceFunctionBlock(source, "buildBinanceRefreshNativeStopTransport");
+  const tp1Block = sliceFunctionBlock(source, "buildBinancePlaceOrReplaceTp1Transport");
+  const fullProtectionBlock = sliceFunctionBlock(source, "buildBinancePlaceOrReplaceFullProtectionTransport");
+  return Object.freeze({
+    withProtectionWriteDeadline_has_abort_controller: hasCodePattern(deadlineBlock, /\bnew\s+AbortController\s*\(/),
+    withProtectionWriteDeadline_races_timeout: hasCallExpression(deadlineBlock, "Promise.race") && hasCallExpression(deadlineBlock, "setTimeout"),
+    withProtectionWriteDeadline_aborts_signal: hasCallExpression(deadlineBlock, "controller.abort"),
+    operation_receives_abort_signal: /operation\s*\(\s*\{[\s\S]{0,180}signal:\s*controller\.signal/.test(deadlineBlock),
+    refresh_native_stop_wrapped: functionCallsAll(source, "buildBinanceRefreshNativeStopTransport", ["withProtectionWriteDeadline", "refreshNativeProtectionWithRetry"]),
+    refresh_native_stop_signal_forwarded: /refreshNativeProtectionWithRetry\s*\(\s*\{[\s\S]{0,700}signal\s*,[\s\S]{0,80}abortSignal:\s*signal/.test(refreshBlock),
+    tp1_wrapped_and_signal_forwarded: functionCallsAll(source, "buildBinancePlaceOrReplaceTp1Transport", ["withProtectionWriteDeadline", "placeTakeProfitMarketOrder"])
+      && /placeTakeProfitMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(tp1Block),
+    full_protection_sl_wrapped_and_signal_forwarded: functionCallsAll(source, "buildBinancePlaceOrReplaceFullProtectionTransport", ["withProtectionWriteDeadline", "placeStopMarketOrder"])
+      && /placeStopMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(fullProtectionBlock),
+    full_protection_tp1_wrapped_and_signal_forwarded: functionCallsAll(source, "buildBinancePlaceOrReplaceFullProtectionTransport", ["withProtectionWriteDeadline", "placeTakeProfitMarketOrder"])
+      && /placeTakeProfitMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(fullProtectionBlock),
+  });
+}
+
+function hasRepairWriterLeaseStructure({ executorSource, runtimeSource }) {
+  const validateBlock = sliceFunctionBlock(executorSource, "validateProtectionWriterLease");
+  const validateDelegatedBlock = sliceFunctionBlock(executorSource, "validateDelegatedRepair");
+  const buildLeaseBlock = sliceFunctionBlock(runtimeSource, "buildProtectionWriterLease");
+  return (
+    validateBlock.includes("PROTECTION_WRITER_LEASE_REQUIRED") &&
+    validateBlock.includes("V2_PROTECTION_WRITER_EXCHANGE_WRITE") &&
+    validateBlock.includes("PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH") &&
+    validateBlock.includes("PROTECTION_WRITER_LEASE_PLACEMENT_ATTEMPT_MISMATCH") &&
+    validateBlock.includes("PROTECTION_WRITER_LEASE_COMMAND_TYPE_MISMATCH") &&
+    hasCallExpression(validateDelegatedBlock, "validateProtectionWriterLease") &&
+    buildLeaseBlock.includes("V2_PROTECTION_WRITER_EXCHANGE_WRITE") &&
+    buildLeaseBlock.includes("V2_SERVICES.PROTECTION_WRITER") &&
+    buildLeaseBlock.includes("V2_SERVICES.REPAIR_EXECUTOR") &&
+    buildLeaseBlock.includes("placement_attempt_id") &&
+    buildLeaseBlock.includes("command_type")
+  );
+}
+
+function buildRepairWriterLeaseEvidence({ executorSource, runtimeSource }) {
+  const validateBlock = sliceFunctionBlock(executorSource, "validateProtectionWriterLease");
+  const validateDelegatedBlock = sliceFunctionBlock(executorSource, "validateDelegatedRepair");
+  const buildLeaseBlock = sliceFunctionBlock(runtimeSource, "buildProtectionWriterLease");
+  return Object.freeze({
+    validate_lease_required: validateBlock.includes("PROTECTION_WRITER_LEASE_REQUIRED"),
+    validate_lease_scope: validateBlock.includes("V2_PROTECTION_WRITER_EXCHANGE_WRITE"),
+    validate_position_cycle_binding: validateBlock.includes("PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH"),
+    validate_placement_attempt_binding: validateBlock.includes("PROTECTION_WRITER_LEASE_PLACEMENT_ATTEMPT_MISMATCH"),
+    validate_command_type_binding: validateBlock.includes("PROTECTION_WRITER_LEASE_COMMAND_TYPE_MISMATCH"),
+    delegated_repair_calls_lease_validator: hasCallExpression(validateDelegatedBlock, "validateProtectionWriterLease"),
+    runtime_builds_protection_writer_lease: buildLeaseBlock.includes("V2_PROTECTION_WRITER_EXCHANGE_WRITE")
+      && buildLeaseBlock.includes("V2_SERVICES.PROTECTION_WRITER")
+      && buildLeaseBlock.includes("V2_SERVICES.REPAIR_EXECUTOR"),
+  });
+}
+
 function token(...parts) {
   return parts.join("");
 }
@@ -56,6 +154,7 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
   const repairDelegatedExecutor = readRepoFile("src/v2/repairDelegatedExecutor.js", sourceOverrides);
   const repairExecutionLedger = readRepoFile("src/v2/repairExecutionLedger.js", sourceOverrides);
   const binanceProtectionTransport = readRepoFile("src/v2/binanceProtectionTransport.js", sourceOverrides);
+  const watchdogRepairRuntime = readRepoFile("src/v2/watchdogRepairRuntime.js", sourceOverrides);
   const deployDecision = readRepoFile("scripts/check-v2-promotion-deploy-decision.js", sourceOverrides);
   const statusDoc = readRepoFile("docs/DONBEOLJA_V2_IMPLEMENTATION_STATUS_2026-04-21.md", sourceOverrides);
 
@@ -122,22 +221,6 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
     "buildCompletedRepairExecutionLedgerDoc",
     "requires_repair",
     "repair_command",
-  ];
-  const protectionWriteDeadlineTokens = [
-    "DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS",
-    "withProtectionWriteDeadline",
-    "new AbortController",
-    "signal,",
-    "BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED",
-    "BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED",
-    "BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED",
-    "BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED",
-  ];
-  const repairWriterLeaseTokens = [
-    "PROTECTION_WRITER_LEASE_REQUIRED",
-    "PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH",
-    "V2_PROTECTION_WRITER_EXCHANGE_WRITE",
-    "writerLease",
   ];
   const liveEvidenceTokens = [
     "MIN_LIVE_STREAK_COVERAGE_MINUTES",
@@ -230,15 +313,21 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
     ),
     buildCheck(
       "V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED",
-      hasEvery(binanceProtectionTransport, protectionWriteDeadlineTokens),
+      hasProtectionDeadlineStructure(binanceProtectionTransport),
       "Binance native protection writes must fail closed at execution time when REST calls exceed the protection write deadline",
-      buildTokenEvidence(binanceProtectionTransport, protectionWriteDeadlineTokens)
+      buildProtectionDeadlineEvidence(binanceProtectionTransport)
     ),
     buildCheck(
       "V2_PRODUCTION_CHAIN_REPAIR_WRITER_LEASE_REQUIRED",
-      hasEvery(`${repairDelegatedExecutor}\n${readRepoFile("src/v2/watchdogRepairRuntime.js", sourceOverrides)}`, repairWriterLeaseTokens),
+      hasRepairWriterLeaseStructure({
+        executorSource: repairDelegatedExecutor,
+        runtimeSource: watchdogRepairRuntime,
+      }),
       "delegated repair writes must carry a protection-writer exchange-write lease before any transport can run",
-      buildTokenEvidence(`${repairDelegatedExecutor}\n${readRepoFile("src/v2/watchdogRepairRuntime.js", sourceOverrides)}`, repairWriterLeaseTokens)
+      buildRepairWriterLeaseEvidence({
+        executorSource: repairDelegatedExecutor,
+        runtimeSource: watchdogRepairRuntime,
+      })
     ),
     buildCheck(
       "V2_PRODUCTION_CHAIN_24H_EVIDENCE_AND_OPENCLAW_SUPREME_GATED",
@@ -279,6 +368,11 @@ module.exports = {
     buildCheck,
     hasEvery,
     buildTokenEvidence,
+    buildFunctionCallEvidence,
+    hasProtectionDeadlineStructure,
+    buildProtectionDeadlineEvidence,
+    hasRepairWriterLeaseStructure,
+    buildRepairWriterLeaseEvidence,
     token,
   },
 };

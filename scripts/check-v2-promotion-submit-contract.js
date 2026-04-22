@@ -2309,6 +2309,26 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "V2 promotion must not contain hidden V2_PROMOTION_OVERRIDE bypass paths",
       file: FILES.artifactContract,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_81",
+      label: "V2 production audits reject string-only token spoofing",
+      ok: readText(path.resolve(__dirname, "..", "src", "v2", "sourceStructureAudit.js")).includes("maskNonCode")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "sourceStructureAudit.js")).includes("sliceFunctionBlock")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "sourceStructureAudit.js")).includes("hasCallExpression")
+        && readText(FILES.productionRuntimeChainAudit).includes("hasProtectionDeadlineStructure")
+        && readText(FILES.productionRuntimeChainAudit).includes("hasRepairWriterLeaseStructure")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "fillSyncCanonicalBoundaryAudit.js")).includes("functionCallsAll")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-runtime-chain-audit.test.js")).includes("stringOnlyProtectionDeadlineTokensFailClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-runtime-chain-audit.test.js")).includes("stringOnlyRepairWriterLeaseTokensFailClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-fill-sync-canonical-boundary-audit.test.js")).includes("stringOnlyBatchValidatorAndBackfillTokensDoNotPass")
+        && artifactContractText.includes("source-structure audit")
+        && runbookText.includes("source-structure audit"),
+      reason: readText(path.resolve(__dirname, "..", "src", "v2", "sourceStructureAudit.js")).includes("maskNonCode")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-runtime-chain-audit.test.js")).includes("stringOnlyProtectionDeadlineTokensFailClosed")
+        ? "production runtime and fill boundary audits now use function-block/call-expression checks and reject string-only token spoofing"
+        : "V2 audits must not pass when required tokens exist only inside strings or comments",
+      file: path.resolve(__dirname, "..", "src", "v2", "sourceStructureAudit.js"),
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

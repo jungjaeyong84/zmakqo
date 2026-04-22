@@ -78,6 +78,47 @@ function readRepoFile(relPath) {
   assert.ok(audit.failed_check_ids.includes("V2_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_EXPLICIT_ONLY"));
 })();
 
+(function stringOnlyBatchValidatorAndBackfillTokensDoNotPass() {
+  const fillSyncSource = `
+    function resolveLegacyCanonicalTp1WriteGate() {
+      const fake = "validateV2ShadowCanonicalBatchWrite";
+      return { ok: true };
+    }
+    function resolveLegacyCanonicalStopWriteGate() {
+      const fake = "validateV2ShadowCanonicalBatchWrite";
+      return { ok: true };
+    }
+    function resolveLegacyCanonicalExternalCloseWriteGate() {
+      const fake = "validateV2ShadowCanonicalBatchWrite";
+      return { ok: true };
+    }
+    function resolveLegacyCanonicalWriteDecision() {
+      const fake = "if (v2BatchWritten) V2_BATCH_CANONICAL_ALREADY_WRITTEN LEGACY_CANONICAL_BACKFILL_ENABLED LEGACY_CANONICAL_WRITE_ALLOWED";
+      return { ok: true, write: true };
+    }
+    const marker = "normalizeV2ExitFillEvidence V2_SHADOW_CANONICAL_BATCH_EVIDENCE_MISSING CANONICAL_EXIT_TRANSITIONS EXIT_RUNTIME_PROJECTIONS TRADE_ALERT_OUTBOX DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED hasV2CanonicalBatchWrittenGate";
+    const canonicalExitWriteAllowed = legacyCanonicalWriteDecision.write === true
+      && legacyCanonicalTp1Gate.ok === true
+      && legacyCanonicalStopGate.ok === true
+      && legacyCanonicalExternalCloseGate.ok === true;
+    async function recordCanonicalExitTransitionsForFill() {
+      return recordCanonicalExitTransitions({});
+    }
+    if (canonicalExitWriteAllowed) {
+      await recordCanonicalExitTransitionsForFill({});
+    }
+  `;
+  const audit = auditV2FillSyncCanonicalBoundary({
+    fillSyncSource,
+    shadowExitWriterSource: readRepoFile("src/v2/openclawShadowExitWriter.js"),
+  });
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_FILL_SYNC_TP1_LEGACY_GATE_REQUIRES_BATCH_EVIDENCE"));
+  assert.ok(audit.failed_check_ids.includes("V2_FILL_SYNC_STOP_LEGACY_GATE_REQUIRES_BATCH_EVIDENCE"));
+  assert.ok(audit.failed_check_ids.includes("V2_FILL_SYNC_EXTERNAL_LEGACY_GATE_REQUIRES_BATCH_EVIDENCE"));
+  assert.ok(audit.failed_check_ids.includes("V2_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_EXPLICIT_ONLY"));
+})();
+
 (function functionBlockSlicerFindsValidatorInsideGate() {
   const block = __test.sliceFunctionBlock(readRepoFile("src/services/binanceFuturesFillsSync.js"), "resolveLegacyCanonicalTp1WriteGate");
   assert.ok(block.includes("validateV2ShadowCanonicalBatchWrite"));

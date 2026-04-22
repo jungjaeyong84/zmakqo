@@ -172,6 +172,7 @@ npm run check:v2-canary-runbook
 3. promotion override is intentionally forbidden. `SUBMIT_CONTRACT_CHK_80` 은 submit/deploy 코드에 `V2_PROMOTION_OVERRIDE` bypass가 없는지 확인한다. false positive는 hidden override가 아니라 깨진 checker/artifact/runbook을 고쳐 재실행한다
 4. production OpenClaw permit TTL은 `DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES` 로 5~30분 사이에서만 조정한다. 기본 15분이며, expired permit은 재사용하지 않는다
 5. promotion latest artifact는 매 실행 overwrite 한다. freshness는 no-op skip이 아니라 `artifact_generated_at`, same artifact cycle, 30분 temporal skew 검증으로 증명한다
+6. `SUBMIT_CONTRACT_CHK_81` 은 source-structure audit이 문자열/주석 spoof를 거부하는지 확인한다. runtime-chain/fill-boundary audit은 단순 token grep이 아니라 function block, call expression, required condition 구조를 검사해야 한다
 
 실무 원칙:
 

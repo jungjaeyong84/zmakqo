@@ -83,11 +83,60 @@ function auditWithOverride(relPath, replacer) {
   assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED"));
 })();
 
+(function stringOnlyProtectionDeadlineTokensFailClosed() {
+  const audit = auditV2ProductionRuntimeChain({
+    sourceOverrides: {
+      "src/v2/binanceProtectionTransport.js": `
+        function withProtectionWriteDeadline(operation) {
+          const fake = "new AbortController signal, BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED";
+          return operation();
+        }
+        function buildBinanceRefreshNativeStopTransport() {
+          const fake = "withProtectionWriteDeadline refreshNativeProtectionWithRetry signal abortSignal";
+        }
+        function buildBinancePlaceOrReplaceTp1Transport() {
+          const fake = "withProtectionWriteDeadline placeTakeProfitMarketOrder signal";
+        }
+        function buildBinancePlaceOrReplaceFullProtectionTransport() {
+          const fake = "withProtectionWriteDeadline placeStopMarketOrder placeTakeProfitMarketOrder signal";
+        }
+      `,
+    },
+  });
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED"));
+})();
+
 (function missingRepairWriterLeaseFailsClosed() {
   const audit = auditWithOverride("src/v2/repairDelegatedExecutor.js", (source) => source.replace(
     /PROTECTION_WRITER_LEASE_REQUIRED/g,
     "PROTECTION_WRITER_LEASE_REMOVED"
   ));
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_REPAIR_WRITER_LEASE_REQUIRED"));
+})();
+
+(function stringOnlyRepairWriterLeaseTokensFailClosed() {
+  const audit = auditV2ProductionRuntimeChain({
+    sourceOverrides: {
+      "src/v2/repairDelegatedExecutor.js": `
+        function validateProtectionWriterLease() {
+          const fake = "PROTECTION_WRITER_LEASE_REQUIRED V2_PROTECTION_WRITER_EXCHANGE_WRITE PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH PROTECTION_WRITER_LEASE_PLACEMENT_ATTEMPT_MISMATCH PROTECTION_WRITER_LEASE_COMMAND_TYPE_MISMATCH";
+          return {};
+        }
+        function validateDelegatedRepair() {
+          const fake = "validateProtectionWriterLease";
+          return {};
+        }
+      `,
+      "src/v2/watchdogRepairRuntime.js": `
+        function buildProtectionWriterLease() {
+          const fake = "V2_PROTECTION_WRITER_EXCHANGE_WRITE V2_SERVICES.PROTECTION_WRITER V2_SERVICES.REPAIR_EXECUTOR placement_attempt_id command_type";
+          return {};
+        }
+      `,
+    },
+  });
   assert.strictEqual(audit.ok, false);
   assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_REPAIR_WRITER_LEASE_REQUIRED"));
 })();

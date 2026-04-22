@@ -2775,10 +2775,11 @@ V1 약점 재발 방지:
 4. 이번 단계는 V2 batch ownership 이후 legacy canonical overwrite를 env flag로도 열 수 없게 하여, explicit backfill을 V2 ownership이 없는 과거/복구 케이스로 제한한다
 5. OpenClaw 폐루프도 decision id만이 아니라 permit/outcome id까지 연결되어, 서로 다른 실행 증거를 조합한 PASS를 더 강하게 차단한다
 
-남은 한계:
+후속 보강:
 
-1. fill sync와 production runtime chain audit 자체는 여전히 source token 기반 검사를 포함한다
-2. 이번 단계는 그 약점을 promotion core behavior tests로 보완하지만, 장기적으로는 AST/호출그래프 기반 감사로 전환하는 것이 더 안전하다
+1. 2026-04-23 후속 커밋에서 `src/v2/sourceStructureAudit.js` 를 추가해 fill sync와 production runtime chain audit의 핵심 검사축을 function block / call expression / condition structure 기반으로 전환했다
+2. `v2-production-runtime-chain-audit.test.js` 와 `v2-fill-sync-canonical-boundary-audit.test.js` 는 필수 토큰이 문자열 안에만 있는 spoof fixture를 fail-closed로 검증한다
+3. 따라서 직전 감사의 "token grep이면 문자열/리네임으로 audit를 속일 수 있다"는 지적은 핵심 V2 promotion 축에서는 source-structure audit + behavior test 조합으로 닫혔다
 
 ## 2026-04-23 Protection Write Deadline / Repair Lease Hardening
 
@@ -2816,3 +2817,31 @@ V1 약점 재발 방지:
 4. 이번 단계는 repair가 exchange writer가 아니라 protection writer lease를 가진 delegated command만 실행한다는 계약을 코드와 테스트에 남긴다
 5. V1에서는 짧은 암묵 TTL과 오래된 artifact 재사용이 운영 판단을 흐릴 수 있었다. 이번 단계는 TTL을 bounded env contract로 만들고, artifact freshness를 skip이 아닌 최신 timestamp/cycle coherence로 증명한다
 6. promotion bypass는 의도적으로 두지 않는다. 오탐은 hidden override가 아니라 깨진 artifact/checker/runbook/code를 수정해 해결한다
+
+## 2026-04-23 Source Structure Audit Hardening
+
+추가 증거:
+
+1. `src/v2/sourceStructureAudit.js`
+2. `src/v2/fillSyncCanonicalBoundaryAudit.js`
+3. `src/v2/productionRuntimeChainAudit.js`
+4. `src/tests/v2-fill-sync-canonical-boundary-audit.test.js`
+5. `src/tests/v2-production-runtime-chain-audit.test.js`
+6. `scripts/check-v2-promotion-submit-contract.js`
+7. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+8. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. `sourceStructureAudit` 는 comments/strings를 mask하고 brace-aware function block을 추출한다
+2. fill sync audit은 legacy gate가 실제로 `validateV2ShadowCanonicalBatchWrite` 를 호출하는지, legacy backfill이 `if (v2BatchWritten)` 구조에서 `write:false` 로 닫히는지, reduced fill writer가 실제 alert/outbox builder를 호출하는지 검사한다
+3. production runtime chain audit은 protection deadline이 `AbortController`, `Promise.race`, `setTimeout`, `controller.abort`, `operation({ signal })` 구조를 갖는지 검사한다
+4. repair writer lease audit은 `validateProtectionWriterLease` 와 `buildProtectionWriterLease` 의 scope/service/cycle/attempt/command_type binding 구조를 검사한다
+5. string-only spoof fixture 3종이 추가되어 필수 토큰이 문자열에만 있어도 audit가 PASS하지 못한다
+6. submit contract는 `SUBMIT_CONTRACT_CHK_81` 로 source-structure audit과 spoof negative tests 존재를 강제한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 audit가 "문자열이 존재한다"는 증거를 실제 실행 구조와 혼동할 수 있었다
+2. 이번 단계는 핵심 V2 promotion 감사축을 "함수 내부에서 실제 호출/조건/abort 구조가 존재한다"는 증거로 승격했다
+3. 이로써 함수명 문자열을 남긴 채 본문을 약화하는 우회는 promotion gate에서 fail-closed 된다

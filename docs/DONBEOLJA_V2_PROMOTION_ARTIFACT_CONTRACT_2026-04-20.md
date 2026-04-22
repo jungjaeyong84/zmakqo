@@ -670,6 +670,7 @@ cloudbuild는 아래 원칙을 따른다.
 30. promotion override is intentionally forbidden. V2 promotion의 deploy/submit 경로에는 `V2_PROMOTION_OVERRIDE` 같은 bypass flag를 두지 않는다. false positive가 발생하면 artifact, checker, runbook, 코드 중 깨진 계열을 수정하고 다시 promotion pipeline을 실행해야 하며, hidden override로 LIVE 승격을 강행하지 않는다.
 31. production `OpenClawExecutionPermit` TTL은 `DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES` 로 조정 가능하지만 5~30분 범위로 clamp 된다. 기본값은 15분이며, Cloud Run cold start/일시 지연을 흡수하되 장시간 재사용은 막는다.
 32. promotion latest artifact는 no-op skip 없이 매 실행 overwrite 한다. stale/freshness 판정은 `artifact_generated_at`, `artifact_generated_age_minutes`, same artifact cycle, temporal skew로 수행하므로, 동일 입력이어도 최신 실행 증거를 갱신하지 않는 skip은 LIVE 승격 freshness 증명을 약화시키는 경로로 본다.
+33. production runtime/fill boundary audit은 source-structure audit을 사용해야 한다. `src/v2/sourceStructureAudit.js` 는 comments/strings를 mask한 뒤 function block과 call expression을 검사하고, `v2-production-runtime-chain-audit.test.js` 및 `v2-fill-sync-canonical-boundary-audit.test.js` 는 필수 토큰이 문자열 안에만 존재하는 spoof fixture를 fail-closed로 검증해야 한다.
 
 `SUBMIT_CHK_17` 실패는 `SCHEDULER_COLLECTOR_BLOCKER` 이며, 권장 행동은 `FIX_V2_SCHEDULER_COLLECTOR_IAM_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER` 이다.
 

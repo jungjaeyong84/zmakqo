@@ -1,5 +1,13 @@
 "use strict";
 
+const {
+  countCallExpressions,
+  functionCallsAll,
+  hasCallExpression,
+  hasCodePattern,
+  sliceFunctionBlock,
+} = require("./sourceStructureAudit");
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -14,29 +22,8 @@ function buildCheck(id, ok, reason, evidence = {}) {
   });
 }
 
-function countPattern(source, pattern) {
-  const text = String(source || "");
-  const regex = pattern instanceof RegExp
-    ? new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`)
-    : new RegExp(String(pattern || ""), "g");
-  return Array.from(text.matchAll(regex)).length;
-}
-
-function sliceFunctionBlock(source, functionName) {
-  const text = String(source || "");
-  const name = trimOrNull(functionName);
-  if (!name) return "";
-  const marker = `function ${name}`;
-  const start = text.indexOf(marker);
-  if (start < 0) return "";
-  const rest = text.slice(start + marker.length);
-  const next = rest.search(/\n(?:async\s+)?function\s+[A-Za-z0-9_]+\s*\(/);
-  return next >= 0 ? text.slice(start, start + marker.length + next) : text.slice(start);
-}
-
 function functionCallsBatchValidator(source, functionName) {
-  const block = sliceFunctionBlock(source, functionName);
-  return block.includes("validateV2ShadowCanonicalBatchWrite");
+  return functionCallsAll(source, functionName, ["validateV2ShadowCanonicalBatchWrite"]);
 }
 
 function hasAllRequiredBatchArtifacts(source) {
@@ -54,17 +41,18 @@ function reducedFillWriterReturnsOperatorEvidence(source) {
     && block.includes("alert_outbox_id:")
     && block.includes("write_mode: writeResult.write_mode")
     && block.includes("writes: batchWrites(writeResult)")
-    && block.includes("buildPersistedPreparedAlertOutbox")
-    && block.includes("deliverPreparedExitTransitionAlert");
+    && hasCallExpression(block, "buildPersistedPreparedAlertOutbox")
+    && hasCallExpression(block, "deliverPreparedExitTransitionAlert");
 }
 
 function legacyCanonicalBackfillIsExplicitOnly(source) {
   const block = sliceFunctionBlock(source, "resolveLegacyCanonicalWriteDecision");
-  return block.includes("if (v2BatchWritten)")
+  return hasCodePattern(block, /\bif\s*\(\s*v2BatchWritten\s*\)/)
     && block.includes("V2_BATCH_CANONICAL_ALREADY_WRITTEN")
     && block.includes("LEGACY_CANONICAL_BACKFILL_ENABLED")
     && block.includes("LEGACY_CANONICAL_WRITE_ALLOWED")
     && block.includes("legacy_backfill_enabled: isLegacyCanonicalBackfillEnabled(env)")
+    && /if\s*\(\s*v2BatchWritten\s*\)\s*\{[\s\S]{0,500}write:\s*false[\s\S]{0,500}V2_BATCH_CANONICAL_ALREADY_WRITTEN/.test(block)
     && String(source || "").includes("DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED");
 }
 
@@ -74,7 +62,7 @@ function auditV2FillSyncCanonicalBoundary({
 } = {}) {
   const fill = String(fillSyncSource || "");
   const writer = String(shadowExitWriterSource || "");
-  const directRecordCallN = countPattern(fill, /\brecordCanonicalExitTransitions\s*\(/);
+  const directRecordCallN = countCallExpressions(fill, "recordCanonicalExitTransitions");
   const checks = [
     buildCheck(
       "V2_FILL_SYNC_IMPORTS_EXIT_FILL_INGESTION",
@@ -125,7 +113,8 @@ function auditV2FillSyncCanonicalBoundary({
         && fill.includes("legacyCanonicalTp1Gate.ok === true")
         && fill.includes("legacyCanonicalStopGate.ok === true")
         && fill.includes("legacyCanonicalExternalCloseGate.ok === true")
-        && /if\s*\(\s*canonicalExitWriteAllowed\s*\)\s*\{[\s\S]{0,500}recordCanonicalExitTransitionsForFill/.test(fill),
+        && /if\s*\(\s*canonicalExitWriteAllowed\s*\)\s*\{[\s\S]{0,500}recordCanonicalExitTransitionsForFill/.test(fill)
+        && hasCallExpression(fill, "recordCanonicalExitTransitionsForFill"),
       "legacy canonical record call must stay behind the combined V2 shadow gate"
     ),
     buildCheck(
@@ -143,13 +132,14 @@ function auditV2FillSyncCanonicalBoundary({
     buildCheck(
       "V2_SHADOW_EXIT_WRITER_USES_BATCH_STORAGE",
       writer.includes("putV2DocsBatch")
+        && hasCallExpression(writer, "putV2DocsBatch")
         && writer.includes("commitCanonicalExitArtifacts")
         && !/\bputV2Doc\s*\(/.test(writer),
       "V2 shadow exit writer must write canonical artifacts through batch storage only"
     ),
     buildCheck(
       "V2_SHADOW_EXIT_WRITER_USES_EXIT_FILL_REDUCER",
-      writer.includes("reduceV2ExitFill")
+      hasCallExpression(writer, "reduceV2ExitFill")
         && writer.includes("commitReducedExitFillArtifacts"),
       "V2 shadow exit writer must reduce TP1/SL/TRAIL final/EXTERNAL fills through the canonical fill reducer"
     ),
@@ -182,7 +172,7 @@ module.exports = {
   __test: {
     trimOrNull,
     buildCheck,
-    countPattern,
+    countCallExpressions,
     sliceFunctionBlock,
     functionCallsBatchValidator,
     hasAllRequiredBatchArtifacts,
