@@ -1706,6 +1706,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH")
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH")
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH")
+        && cloudbuildWrapperText.includes("LIVE_STREAK_POSITION_CYCLE_MISMATCH")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("liveStreakPositionCycleMismatchIsLiveEvidenceCycleBlocker")
         && repairFirestoreStreakCheckerText.includes("position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null")
         && productionEntryRouteStreakCheckerText.includes("position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null")
         && exitRuntimeStreakCheckerText.includes("position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null")

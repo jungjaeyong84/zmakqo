@@ -723,10 +723,11 @@ function seedRunbookArtifacts(dir, cycleId) {
       "DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED",
       "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK",
       "DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH",
+      "DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH",
     ],
     warnings: [],
   });
-  assert.strictEqual(summary.blocker_summary.blocker_n, 7);
+  assert.strictEqual(summary.blocker_summary.blocker_n, 8);
   assert.strictEqual(summary.blocker_summary.top_blockers.length, 3);
   assert.strictEqual(summary.blocker_summary.has_provenance_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_stale_artifact_provenance_blocker, true);
@@ -790,6 +791,28 @@ function seedRunbookArtifacts(dir, cycleId) {
     cloudbuild.__test.buildContextBlockerFamilies(decision.blocker_summary),
     ["LIVE_EVIDENCE_CYCLE"]
   );
+})();
+
+(function liveStreakPositionCycleMismatchIsLiveEvidenceCycleBlocker() {
+  const summary = cloudbuild.__test.buildDeployDecisionSummary({
+    approved: false,
+    decision: "HOLD",
+    position_cycle_id: "PCY__READ__LIVE_STREAK",
+    blockers: [
+      "DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH:repair_firestore_canary_streak:expected=PCY__READ__LIVE_STREAK:actual=PCY__OTHER",
+    ],
+    warnings: [],
+  });
+  assert.strictEqual(summary.blocker_summary.has_live_evidence_cycle_blocker, true);
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextActionReasonCode(summary),
+    "LIVE_EVIDENCE_CYCLE_BLOCKER"
+  );
+  assert.deepStrictEqual(
+    cloudbuild.__test.buildContextBlockerFamilies(summary.blocker_summary),
+    ["LIVE_EVIDENCE_CYCLE"]
+  );
+  assert.ok(cloudbuild.__test.buildStatusLine(summary).includes("live_evidence_cycle=BLOCKED"));
 })();
 
 (function protectedEntryCanaryBlockerHasSpecificCloudbuildAction() {
