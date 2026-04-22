@@ -1889,7 +1889,7 @@ V1 약점 재발 방지:
 1. submit wrapper `SUBMIT_CHK_08` 은 이제 bounded artifact hash 일치, CloudBuild context와 deploy decision hash 일치, context `lineage_consistency_summary` 를 모두 요구한다
 2. `approval_verification.lineage_consistency_summary` 는 `bounded_lineage_ok`, `context_hash_matches_deploy_decision`, `context_lineage_ok` 를 분리해 보존한다
 3. 같은 summary는 `submit_trace_summary.lineage_consistency_summary` 로 이어지고, operator summary / alert preview trace에 `lineage_consistency`, `lineage_consistency_reason`, `lineage_bounded_ok`, `lineage_context_hash_match`, `lineage_context_ok` 로 노출된다
-4. submit contract는 이 노출 경로를 `SUBMIT_CONTRACT_CHK_45` 로 fail-closed 검사한다
+4. submit contract는 이 노출 경로를 `SUBMIT_CONTRACT_CHK_46` 로 fail-closed 검사한다
 
 V1 약점 재발 방지:
 
@@ -2128,3 +2128,26 @@ V1 약점 재발 방지:
 1. V1에서는 “증거 없음”과 “증거는 있지만 오래됨”이 같은 운영 조치로 묶여 원인 판독이 늦었다
 2. 이번 단계는 stale artifact를 독립 family로 승격해, 보호주문/route/repair 본체가 아니라 artifact cycle을 다시 만드는 문제임을 분리한다
 3. 따라서 stale latest 파일 때문에 실제 시스템 품질을 잘못 평가하거나 엉뚱한 본체 수정을 반복하는 경로를 줄인다
+
+## 2026-04-22 Stale Artifact Operator Trace
+
+추가 증거:
+
+1. `scripts/lib/v2-promotion-operator-summary.js`
+2. `scripts/lib/v2-promotion-submit-operator-alert.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+5. `src/tests/v2-promotion-submit-operator-alert.test.js`
+
+판정:
+
+1. `STALE_ARTIFACT_PROVENANCE` blocker family 또는 `STALE_ARTIFACT_PROVENANCE_BLOCKER` reason code가 있으면 operator summary는 `stale_artifact_provenance_blocker=YES` 를 표시한다
+2. Telegram/CLI preview trace section도 같은 `stale_artifact_provenance_blocker=YES` 라인을 표시한다
+3. submit contract는 이 라인이 formatter, alert preview, artifact contract 문서에 모두 남아 있는지 `SUBMIT_CONTRACT_CHK_39` 로 fail-closed 검사한다
+4. 기존 contract check id는 한 칸씩 뒤로 밀려 lineage consistency trace 검사는 `SUBMIT_CONTRACT_CHK_46` 이 됐다
+
+V1 약점 재발 방지:
+
+1. V1에서는 stale latest artifact와 실제 runtime 결함이 같은 bounded blocker처럼 보여 원인 판독이 늦었다
+2. 이번 단계는 최종 운영 메시지에서 stale artifact provenance를 별도 라인으로 올려, 본체 수정이 아니라 fresh promotion pipeline 재실행이 필요한 상황을 즉시 구분하게 한다
+3. 따라서 오래된 evidence 때문에 보호주문/route/repair 본체를 잘못 수정하는 운영 낭비와 원인 혼선을 줄인다

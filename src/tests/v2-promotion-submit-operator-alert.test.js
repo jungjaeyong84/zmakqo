@@ -2,6 +2,7 @@
 
 const assert = require("assert");
 const alertPreview = require("../../scripts/lib/v2-promotion-submit-operator-alert");
+const operatorSummary = require("../../scripts/lib/v2-promotion-operator-summary");
 
 (function blockedPreviewReusesOperatorSummaryLinesAndTrace() {
   const preview = alertPreview.buildOperatorAlertPreview({
@@ -64,6 +65,46 @@ const alertPreview = require("../../scripts/lib/v2-promotion-submit-operator-ale
   assert.ok(preview.sections[1].lines.includes("artifact_dir_coherence_flags=dir_resolved:NO|dir_cycle:YES|resolved_cycle:YES|context_cycle:YES"));
   assert.ok(preview.sections[1].lines.includes("artifact_dir_coherence_file=/tmp/v2/PCY__OPS__01/promotion-cloudbuild-context.json"));
   assert.ok(preview.sections[1].lines.includes("reason_code=PROVENANCE_OR_CONTRACT_BLOCKER"));
+})();
+
+(function staleArtifactProvenanceBlockerIsVisibleInSummaryAndTrace() {
+  const summary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/stale-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__STALE__01",
+      submit_trace_summary: {
+        ok: false,
+        failed_submit_check_ids: ["SUBMIT_CHK_11"],
+        failed_runbook_checklist: ["19"],
+        blocker_families: ["STALE_ARTIFACT_PROVENANCE", "BOUNDED_RUNTIME"],
+        primary_blocker_family: "STALE_ARTIFACT_PROVENANCE",
+        recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE",
+        recommended_next_action_reason_code: "STALE_ARTIFACT_PROVENANCE_BLOCKER",
+      },
+    },
+  });
+  const preview = alertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/stale-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__STALE__01",
+      operator_summary: summary,
+      submit_trace_summary: {
+        ok: false,
+        failed_submit_check_ids: ["SUBMIT_CHK_11"],
+        failed_runbook_checklist: ["19"],
+        blocker_families: ["STALE_ARTIFACT_PROVENANCE", "BOUNDED_RUNTIME"],
+        primary_blocker_family: "STALE_ARTIFACT_PROVENANCE",
+        recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE",
+        recommended_next_action_reason_code: "STALE_ARTIFACT_PROVENANCE_BLOCKER",
+      },
+    },
+  });
+  assert.ok(summary.lines.includes("stale_artifact_provenance_blocker=YES"));
+  assert.ok(preview.sections[0].lines.includes("stale_artifact_provenance_blocker=YES"));
+  assert.ok(preview.sections[1].lines.includes("stale_artifact_provenance_blocker=YES"));
+  assert.ok(preview.sections[1].lines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER"));
 })();
 
 (function readyPreviewBuildsTelegramArgs() {

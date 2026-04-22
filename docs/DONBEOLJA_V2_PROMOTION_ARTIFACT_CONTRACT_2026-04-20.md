@@ -314,6 +314,10 @@ LIVE submit에서는 같은 line set 안에 `scheduler_traffic_ready`, `schedule
 
 즉, `SUBMIT_CHK_01A` provenance 차단이 발생했을 때 운영자가 어느 self-check flag가 깨졌는지 확인하려고 raw context JSON을 먼저 열어야 하면 안 된다.
 
+같은 line set 안에는 `stale_artifact_provenance_blocker` 도 포함돼야 한다.
+
+즉, stale artifact provenance 차단이 발생했을 때 운영자는 bounded runtime 누락이나 보호주문 본체 오류가 아니라 current artifact cycle 재생성 문제임을 operator summary에서 바로 읽을 수 있어야 한다.
+
 `operator_summary.text` 는 위 라인셋을 줄바꿈으로 결합한 transport-agnostic 정본 문자열이다.
 
 즉, 어떤 채널이든 `lines.join("\\n")` 를 다시 구현하지 말고 이 필드를 그대로 재사용해야 한다.
@@ -371,6 +375,10 @@ LIVE submit에서는 `operator_alert_preview.sections[]` 의 trace section에도
 `operator_alert_preview.sections[]` 의 trace section에도 `artifact_dir_coherence`, `artifact_dir_coherence_reason`, `artifact_dir_coherence_flags`, `artifact_dir_coherence_file` 이 포함돼야 한다.
 
 즉, Telegram/CLI preview에서만 `SUBMIT_CHK_01A` 의 artifact dir self-check 원인이 사라지는 상태도 contract 위반이다.
+
+`operator_alert_preview.sections[]` 의 trace section에도 `stale_artifact_provenance_blocker` 가 포함돼야 한다.
+
+즉, Telegram/CLI preview에서 stale artifact provenance 문제가 generic bounded blocker로만 보이면 contract 위반이다.
 
 즉, scheduler/traffic cutover 증거가 실제 발송 preview에서 빠지는 상태도 contract 위반이다.
 

@@ -373,6 +373,40 @@ function evaluateSubmitContract() {
   )
     ? artifactDirCoherencePreview.sections[1].lines
     : [];
+  const staleArtifactProvenanceTrace = Object.freeze({
+    ok: false,
+    primary_blocker_family: "STALE_ARTIFACT_PROVENANCE",
+    blocker_families: ["STALE_ARTIFACT_PROVENANCE", "BOUNDED_RUNTIME"],
+    failed_submit_check_ids: ["SUBMIT_CHK_11"],
+    failed_runbook_checklist: ["19"],
+    recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE",
+    recommended_next_action_reason: "required canary or streak evidence is stale",
+    recommended_next_action_reason_code: "STALE_ARTIFACT_PROVENANCE_BLOCKER",
+  });
+  const staleArtifactProvenanceSummary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/stale-artifact-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__STALE__01",
+      submit_trace_summary: staleArtifactProvenanceTrace,
+    },
+  });
+  const staleArtifactProvenancePreview = operatorAlertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/stale-artifact-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__STALE__01",
+      submit_trace_summary: staleArtifactProvenanceTrace,
+      operator_summary: staleArtifactProvenanceSummary,
+    },
+  });
+  const staleArtifactProvenancePreviewTraceLines = Array.isArray(
+    staleArtifactProvenancePreview.sections
+    && staleArtifactProvenancePreview.sections[1]
+    && staleArtifactProvenancePreview.sections[1].lines
+  )
+    ? staleArtifactProvenancePreview.sections[1].lines
+    : [];
   const staleSourceTrace = {
     ok: false,
     failed_submit_check_ids: ["SUBMIT_CHK_08"],
@@ -453,6 +487,7 @@ function evaluateSubmitContract() {
         "status=BLOCKED",
         "primary_blocker_family=PROVENANCE",
         "protected_entry_canary_blocker=NO",
+        "stale_artifact_provenance_blocker=NO",
         "alert_retry_attention=NO",
         "alert_runbook_refs=NONE",
         "alert_failed=0",
@@ -503,6 +538,7 @@ function evaluateSubmitContract() {
         "status=BLOCKED",
         "primary_blocker_family=PROVENANCE",
         "protected_entry_canary_blocker=NO",
+        "stale_artifact_provenance_blocker=NO",
         "alert_retry_attention=NO",
         "alert_runbook_refs=NONE",
         "alert_failed=0",
@@ -1083,6 +1119,21 @@ function evaluateSubmitContract() {
     }),
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_39",
+      label: "operator summary and alert preserve stale artifact provenance blocker",
+      ok: staleArtifactProvenanceSummary.lines.includes("stale_artifact_provenance_blocker=YES")
+        && staleArtifactProvenanceSummary.lines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER")
+        && staleArtifactProvenancePreviewTraceLines.includes("stale_artifact_provenance_blocker=YES")
+        && staleArtifactProvenancePreviewTraceLines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER")
+        && artifactContractText.includes("stale_artifact_provenance_blocker"),
+      reason: staleArtifactProvenanceSummary.lines.includes("stale_artifact_provenance_blocker=YES")
+        && staleArtifactProvenancePreviewTraceLines.includes("stale_artifact_provenance_blocker=YES")
+        && artifactContractText.includes("stale_artifact_provenance_blocker")
+        ? "operator summary and alert preserve stale artifact provenance blocker as a first-class line"
+        : "operator summary and alert must expose stale artifact provenance blocker explicitly",
+      file: SHARED_FORMATTER_MODULE_PATH,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_40",
       label: "package and CloudBuild require V2 promotion test path",
       ok: packageJsonText.includes('"test:v2-promotion"')
         && packageJsonText.includes("check:v2-promotion-submit-contract")
@@ -1095,7 +1146,7 @@ function evaluateSubmitContract() {
       file: FILES.packageJson,
     }),
     buildCheck({
-      id: "SUBMIT_CONTRACT_CHK_40",
+      id: "SUBMIT_CONTRACT_CHK_41",
       label: "LIVE approval contract flags require true values",
       ok: submitWrapperText.includes("mustBeLiveTrue")
         && submitWrapperText.includes("upper(promotionMode) === \"LIVE\"")
@@ -1108,7 +1159,7 @@ function evaluateSubmitContract() {
       file: FILES.submitWrapper,
     }),
     buildCheck({
-      id: "SUBMIT_CONTRACT_CHK_41",
+      id: "SUBMIT_CONTRACT_CHK_42",
       label: "artifact dir cycle checks use exact path segment matching",
       ok: cloudbuildWrapperText.includes("function pathHasExactSegment")
         && runbookCheckerText.includes("function pathHasExactSegment")
@@ -1126,7 +1177,7 @@ function evaluateSubmitContract() {
       file: FILES.cloudbuildWrapper,
     }),
     buildCheck({
-      id: "SUBMIT_CONTRACT_CHK_42",
+      id: "SUBMIT_CONTRACT_CHK_43",
       label: "operator alert preview has stale-source fingerprint",
       ok: staleSourcePreview.source_fingerprint_version === "V2_PROMOTION_OPERATOR_ALERT_PREVIEW_SHA256_V1"
         && trimOrNull(staleSourcePreview.source_fingerprint)
@@ -1140,7 +1191,7 @@ function evaluateSubmitContract() {
       file: SHARED_ALERT_PREVIEW_MODULE_PATH,
     }),
     buildCheck({
-      id: "SUBMIT_CONTRACT_CHK_43",
+      id: "SUBMIT_CONTRACT_CHK_44",
       label: "runbook verifier has separate LIVE scheduler collector preflight check",
       ok: runbookCheckerText.includes("CHK_24A")
         && runbookCheckerText.includes("hasSchedulerTrafficCollectorPreflightPlan")
@@ -1153,7 +1204,7 @@ function evaluateSubmitContract() {
       file: FILES.runbookChecker,
     }),
     buildCheck({
-      id: "SUBMIT_CONTRACT_CHK_44",
+      id: "SUBMIT_CONTRACT_CHK_45",
       label: "context SUBMIT_CHK_08 uses lineage consistency summary",
       ok: cloudbuildWrapperText.includes("lineage_consistency_summary")
         && cloudbuildWrapperText.includes("buildLineageConsistencySummary")
@@ -1166,7 +1217,7 @@ function evaluateSubmitContract() {
       file: FILES.cloudbuildWrapper,
     }),
     buildCheck({
-      id: "SUBMIT_CONTRACT_CHK_45",
+      id: "SUBMIT_CONTRACT_CHK_46",
       label: "submit SUBMIT_CHK_08 exposes lineage consistency to operator trace",
       ok: submitWrapperText.includes("context_hash_matches_deploy_decision")
         && submitWrapperText.includes("hasContextLineageConsistency")
