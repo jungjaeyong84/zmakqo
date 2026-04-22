@@ -359,11 +359,11 @@ LIVE submit에서는 같은 line set 안에 `scheduler_traffic_ready`, `schedule
 
 동시에 이 포맷의 구현 정본도 하나여야 한다.
 
-즉, 채널 구현은 `/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/v2-promotion-operator-summary.js` 를 직접 재사용해야 하며, 각 채널이 `operator_summary` 조립 로직을 다시 구현하면 안 된다.
+즉, 채널 구현은 `scripts/lib/v2-promotion-operator-summary.js` 를 직접 재사용해야 하며, 각 채널이 `operator_summary` 조립 로직을 다시 구현하면 안 된다.
 
 이 원칙은 문서 원칙으로만 두지 않는다.
 
-즉, `/Users/jeongjaeyong/Projects/donbeolja/scripts/check-v2-promotion-submit-contract.js` 가 이 포맷터 참조와 submit wrapper 재정의 금지를 fail-closed 로 검사해야 한다.
+즉, `scripts/check-v2-promotion-submit-contract.js` 가 이 포맷터 참조와 submit wrapper 재정의 금지를 fail-closed 로 검사해야 한다.
 
 즉, operator가 `approval_verification.checks[]` 를 펼치기 전에 submit 차단 계열과 다시 볼 runbook 번호를 top-level에서 즉시 읽을 수 있어야 한다.
 
@@ -417,11 +417,11 @@ LIVE submit에서는 `operator_alert_preview.sections[]` 의 trace section에도
 
 즉, scheduler/traffic cutover 증거가 실제 발송 preview에서 빠지는 상태도 contract 위반이다.
 
-즉, 실제 운영 채널은 submit request를 읽고 제목/본문을 다시 조립하는 것이 아니라, `/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/v2-promotion-submit-operator-alert.js` 가 만든 preview를 그대로 재사용해야 한다.
+즉, 실제 운영 채널은 submit request를 읽고 제목/본문을 다시 조립하는 것이 아니라, `scripts/lib/v2-promotion-submit-operator-alert.js` 가 만든 preview를 그대로 재사용해야 한다.
 
 실제 전송 wrapper도 이 preview를 다시 가공하지 않고 renderer 결과를 그대로 `sendKoreanTelegramSummary` 에 넘겨야 한다.
 
-즉, `/Users/jeongjaeyong/Projects/donbeolja/scripts/send-v2-promotion-submit-operator-alert.js` 는 `/Users/jeongjaeyong/Projects/donbeolja/scripts/render-v2-promotion-submit-operator-alert.js` 를 먼저 호출한 뒤 그 결과만 전송해야 한다.
+즉, `scripts/send-v2-promotion-submit-operator-alert.js` 는 `scripts/render-v2-promotion-submit-operator-alert.js` 를 먼저 호출한 뒤 그 결과만 전송해야 한다.
 
 동시에 submit request에는 마지막 전송 시도 결과도 같이 남아야 한다.
 

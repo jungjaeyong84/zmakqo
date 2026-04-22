@@ -6,8 +6,10 @@ const path = require("path");
 const operatorSummary = require("./lib/v2-promotion-operator-summary");
 const operatorAlertPreview = require("./lib/v2-promotion-submit-operator-alert");
 
-const SHARED_FORMATTER_MODULE_PATH = "/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/v2-promotion-operator-summary.js";
-const SHARED_ALERT_PREVIEW_MODULE_PATH = "/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/v2-promotion-submit-operator-alert.js";
+const SHARED_FORMATTER_DOC_PATH = "scripts/lib/v2-promotion-operator-summary.js";
+const SHARED_ALERT_PREVIEW_DOC_PATH = "scripts/lib/v2-promotion-submit-operator-alert.js";
+const SHARED_FORMATTER_MODULE_PATH = path.resolve(__dirname, "lib", "v2-promotion-operator-summary.js");
+const SHARED_ALERT_PREVIEW_MODULE_PATH = path.resolve(__dirname, "lib", "v2-promotion-submit-operator-alert.js");
 
 const FILES = Object.freeze({
   artifactContract: path.resolve(__dirname, "..", "docs", "DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md"),
@@ -523,8 +525,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_01",
       label: "artifact contract references shared operator summary formatter",
-      ok: artifactContractText.includes(SHARED_FORMATTER_MODULE_PATH),
-      reason: artifactContractText.includes(SHARED_FORMATTER_MODULE_PATH)
+      ok: artifactContractText.includes(SHARED_FORMATTER_DOC_PATH),
+      reason: artifactContractText.includes(SHARED_FORMATTER_DOC_PATH)
         ? "artifact contract points to shared formatter module"
         : "artifact contract must point to shared formatter module",
       file: FILES.artifactContract,
@@ -532,8 +534,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_02",
       label: "runbook references shared operator summary formatter",
-      ok: runbookText.includes(SHARED_FORMATTER_MODULE_PATH),
-      reason: runbookText.includes(SHARED_FORMATTER_MODULE_PATH)
+      ok: runbookText.includes(SHARED_FORMATTER_DOC_PATH),
+      reason: runbookText.includes(SHARED_FORMATTER_DOC_PATH)
         ? "runbook points to shared formatter module"
         : "runbook must point to shared formatter module",
       file: FILES.runbook,
@@ -783,8 +785,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_09",
       label: "artifact contract references shared operator alert preview module",
-      ok: artifactContractText.includes(SHARED_ALERT_PREVIEW_MODULE_PATH),
-      reason: artifactContractText.includes(SHARED_ALERT_PREVIEW_MODULE_PATH)
+      ok: artifactContractText.includes(SHARED_ALERT_PREVIEW_DOC_PATH),
+      reason: artifactContractText.includes(SHARED_ALERT_PREVIEW_DOC_PATH)
         ? "artifact contract points to shared operator alert preview module"
         : "artifact contract must point to shared operator alert preview module",
       file: FILES.artifactContract,
@@ -792,8 +794,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_10",
       label: "runbook references shared operator alert preview module",
-      ok: runbookText.includes(SHARED_ALERT_PREVIEW_MODULE_PATH),
-      reason: runbookText.includes(SHARED_ALERT_PREVIEW_MODULE_PATH)
+      ok: runbookText.includes(SHARED_ALERT_PREVIEW_DOC_PATH),
+      reason: runbookText.includes(SHARED_ALERT_PREVIEW_DOC_PATH)
         ? "runbook points to shared operator alert preview module"
         : "runbook must point to shared operator alert preview module",
       file: FILES.runbook,

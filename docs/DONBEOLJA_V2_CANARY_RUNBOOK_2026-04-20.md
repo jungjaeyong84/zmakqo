@@ -385,13 +385,13 @@ CLI stdout/stderr 에서도 같은 `submit_trace_summary` 구조가 보여야 �
 
 즉, 발송 직전에 `lines.join("\\n")` 를 다시 구현하는 작은 차이조차도 다시 drift 지점이 되지 않게 해야 한다.
 
-같은 이유로 채널 구현은 `/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/v2-promotion-operator-summary.js` 를 기준 포맷터로 재사용해야 한다.
+같은 이유로 채널 구현은 `scripts/lib/v2-promotion-operator-summary.js` 를 기준 포맷터로 재사용해야 한다.
 
-이 조건이 깨지면 `/Users/jeongjaeyong/Projects/donbeolja/scripts/check-v2-promotion-submit-contract.js` 가 즉시 fail 되어야 한다.
+이 조건이 깨지면 `scripts/check-v2-promotion-submit-contract.js` 가 즉시 fail 되어야 한다.
 
 실제 운영 채널 전송 직전에는 `promotion-cloudbuild-submit-request.json.operator_alert_preview` 를 우선 사용해야 한다.
 
-즉, 제목/심각도/section 구성도 `/Users/jeongjaeyong/Projects/donbeolja/scripts/lib/v2-promotion-submit-operator-alert.js` 정본을 그대로 재사용해야 하며, 채널에서 다시 조립하지 않는다.
+즉, 제목/심각도/section 구성도 `scripts/lib/v2-promotion-submit-operator-alert.js` 정본을 그대로 재사용해야 하며, 채널에서 다시 조립하지 않는다.
 
 `READY_WITH_DEPLOY_WARNING` 상태도 이 규칙의 예외가 아니다.
 
@@ -401,9 +401,9 @@ LIVE submit에서 `promotion-cloudbuild-context.json.live_cutover_readiness_summ
 
 즉, LIVE 전환 env plan이 Cloud Build context에는 있는데 최종 CLI/Telegram 직전 요약에서는 보이지 않는 상태를 허용하지 않는다.
 
-`/Users/jeongjaeyong/Projects/donbeolja/scripts/check-v2-promotion-submit-contract.js` 는 이 조건을 operator summary와 alert preview trace 양쪽에서 모두 검사해야 한다.
+`scripts/check-v2-promotion-submit-contract.js` 는 이 조건을 operator summary와 alert preview trace 양쪽에서 모두 검사해야 한다.
 
-실제 전송은 `/Users/jeongjaeyong/Projects/donbeolja/scripts/send-v2-promotion-submit-operator-alert.js` wrapper만 사용한다.
+실제 전송은 `scripts/send-v2-promotion-submit-operator-alert.js` wrapper만 사용한다.
 
 즉, 운영자가 전송 직전에 title/body를 다시 만들지 않고, preview -> render -> send 한 경로만 사용해야 한다.
 
