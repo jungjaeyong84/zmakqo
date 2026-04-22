@@ -371,6 +371,7 @@ function buildExitRuntimeCanaryStreakSummary(streak) {
     native_refresh_unhealthy_n: normalizeNumber(row.native_refresh_unhealthy_n),
     unprotected_window_violation_n: normalizeNumber(row.unprotected_window_violation_n),
     alert_silent_drop_n: normalizeNumber(row.alert_silent_drop_n),
+    trail_activation_evidence_gap_n: normalizeNumber(row.trail_activation_evidence_gap_n),
     blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
   });
 }

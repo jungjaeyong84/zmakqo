@@ -105,6 +105,7 @@ function buildHealthyExitRuntimeCanaryPayload(generatedAt) {
     native_refresh_unhealthy_n: 0,
     unprotected_window_violation_n: 0,
     alert_silent_drop_n: 0,
+    trail_activation_evidence_gap_n: 0,
     fail_n: 0,
     failed_check_ids: [],
   };

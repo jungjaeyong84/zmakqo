@@ -2478,3 +2478,31 @@ V1 약점 재발 방지:
 1. V1에서는 검증 스크립트가 있어도 최종 promotion test path에서 빠져 회귀가 늦게 드러나는 문제가 있었다
 2. 이번 단계는 fill sync 단일 writer 경계를 promotion test path와 submit contract 양쪽에 고정했다
 3. 따라서 legacy canonical backfill 예외가 다시 일반 fallback처럼 쓰이는 회귀는 단위 테스트, static audit, submit contract에서 동시에 드러난다
+
+## 2026-04-22 Trail Activation Runtime Evidence Chain
+
+추가 증거:
+
+1. `src/v2/exitRuntimeCanary.js`
+2. `src/v2/exitRuntimeCanaryHistory.js`
+3. `scripts/check-v2-exit-runtime-canary-streak.js`
+4. `scripts/check-v2-promotion-deploy-decision.js`
+5. `scripts/generate-v2-unified-promotion-report.js`
+6. `src/tests/v2-exit-runtime-canary.test.js`
+7. `src/tests/check-v2-exit-runtime-canary-streak.test.js`
+8. `src/tests/check-v2-promotion-deploy-decision.test.js`
+
+판정:
+
+1. exit runtime canary는 `TRAIL_ACTIVE` 상태에서 `TRAIL_ACTIVATED` transition alert만 보지 않는다
+2. `TRAIL_ACTIVATED` transition의 `source_exchange_evidence.evidence_kind=TRAIL_ACTIVATION` 을 요구한다
+3. protection runtime의 `last_exchange_evidence.evidence_kind=TRAIL_ACTIVATION` 과 `native_refresh_status=OK` 를 요구한다
+4. protection runtime의 `native_stop_price` 와 exit runtime projection의 `native_stop_price` 가 일치해야 한다
+5. 위 세 조건 중 하나라도 깨지면 `trail_activation_evidence_gap_n` 이 증가하고, streak checker는 `EXIT_RUNTIME_CANARY_STREAK:TRAIL_ACTIVATION_EVIDENCE_GAP` 로 fail-closed 한다
+6. deploy decision은 `trail_activation_evidence_gap_n=0` 과 `long_run_quality_summary.defect_counts.trail_activation_evidence_gap_n=0` 이 숫자까지 일치할 때만 LIVE streak를 인정한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 trail 상태가 전진했지만 거래소 stop refresh 성공 증거와 알림/outbox가 분리되는 문제가 반복됐다
+2. 이번 단계는 `TRAIL_ACTIVE` 라는 상태만으로 정상 판정하지 않고, native stop refresh evidence와 canonical transition evidence를 같은 canary/streak 체인에서 검증한다
+3. 따라서 trail truth가 먼저 승격되고 실제 보호 stop 증거가 뒤따르지 않는 회귀는 24시간 LIVE 승격 조건에서 차단된다

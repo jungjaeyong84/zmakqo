@@ -21,6 +21,7 @@ function buildHealthyArtifact(generatedAt = "2026-04-21T07:00:00.000Z") {
     native_refresh_unhealthy_n: 0,
     unprotected_window_violation_n: 0,
     alert_silent_drop_n: 0,
+    trail_activation_evidence_gap_n: 0,
     blockers: [],
     query_budget: {
       active_position_limit: 25,
@@ -90,6 +91,7 @@ function buildFakeDb() {
   assert.strictEqual(doc.native_refresh_unhealthy_n, 0);
   assert.strictEqual(doc.unprotected_window_violation_n, 0);
   assert.strictEqual(doc.alert_silent_drop_n, 0);
+  assert.strictEqual(doc.trail_activation_evidence_gap_n, 0);
   assert.strictEqual(doc.generated_at_ms, Date.parse("2026-04-21T07:00:00.000Z"));
   assert.strictEqual(doc.artifact_snapshot.exchange_write_performed, false);
 })();

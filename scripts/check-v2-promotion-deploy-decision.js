@@ -511,6 +511,7 @@ function hasExitRuntimeCanaryStreak(summary) {
     Number(streak.native_refresh_unhealthy_n || 0) === 0 &&
     Number(streak.unprotected_window_violation_n || 0) === 0 &&
     Number(streak.alert_silent_drop_n || 0) === 0 &&
+    Number(streak.trail_activation_evidence_gap_n || 0) === 0 &&
     hasExitRuntimeCollectorExecutionSummary(streak) &&
     hasExitRuntimeLongRunQualitySummary(streak) &&
     hasFreshLongRunStreakCoverage(streak) &&
@@ -550,6 +551,7 @@ function hasExitRuntimeLongRunQualitySummary(streak) {
       "native_refresh_unhealthy_n",
       "unprotected_window_violation_n",
       "alert_silent_drop_n",
+      "trail_activation_evidence_gap_n",
     ]) &&
     Number.isFinite(maxGapMinutes) &&
     maxGapMinutes > 0 &&
@@ -561,6 +563,7 @@ function hasExitRuntimeLongRunQualitySummary(streak) {
     Number(defectCounts.native_refresh_unhealthy_n || 0) === 0 &&
     Number(defectCounts.unprotected_window_violation_n || 0) === 0 &&
     Number(defectCounts.alert_silent_drop_n || 0) === 0 &&
+    Number(defectCounts.trail_activation_evidence_gap_n || 0) === 0 &&
     ensureArray(quality.blockers).length === 0
   );
 }

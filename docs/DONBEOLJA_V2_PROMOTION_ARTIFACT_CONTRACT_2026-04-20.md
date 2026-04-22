@@ -930,6 +930,7 @@ export 결과:
 2. `binanceFuturesFillsSync`의 실제 fill evidence와 누적 TP1 수량이 target을 닫았을 때만 artifact에 포함돼야 한다
 3. split fill 중간 상태는 transition 미발행이 정상이며, artifact도 이를 mismatch가 아니라 pending evidence로 해석해야 한다
 4. `TRAIL_ACTIVATED` shadow transition은 `binanceTickExit`의 실제 native stop refresh success와 `chosen_stop_source=TRAIL`이 동시에 확인될 때만 artifact에 포함돼야 한다
+   또한 exit runtime canary는 `TRAIL_ACTIVE` 상태에서 `TRAIL_ACTIVATED` transition의 `source_exchange_evidence.evidence_kind=TRAIL_ACTIVATION`, protection runtime의 `last_exchange_evidence.evidence_kind=TRAIL_ACTIVATION`, projection/runtime native stop price 일치를 모두 확인해야 한다. 누락 시 `trail_activation_evidence_gap_n` 으로 24시간 streak와 LIVE deploy decision을 fail-closed 한다.
 5. `SL_HIT` / `TRAIL_HIT` shadow transition은 `binanceFuturesFillsSync`의 실제 full-exit stop fill만 받아야 하며, 최종 event 분류는 raw event string보다 V2 projection stage를 우선해야 한다
 6. runtime snapshot에는 watchdog terminal mismatch issue(`TERMINAL_TRANSITION_MISSING`, `TERMINAL_PROJECTION_MISMATCH`, `TERMINAL_STAGE_WITH_ACTIVE_POSITION`)가 포함돼야 하며, gate는 이를 warning이 아니라 blocker로 다뤄야 한다
 

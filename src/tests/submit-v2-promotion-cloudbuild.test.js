@@ -273,6 +273,7 @@ function seedBoundedSubmitArtifacts(
         native_refresh_unhealthy_n: 0,
         unprotected_window_violation_n: 0,
         alert_silent_drop_n: 0,
+        trail_activation_evidence_gap_n: 0,
         collector_execution_summary: {
           status: "PASS",
           scheduler_job_id: "v2_exit_runtime_canary",
@@ -302,6 +303,7 @@ function seedBoundedSubmitArtifacts(
             native_refresh_unhealthy_n: 0,
             unprotected_window_violation_n: 0,
             alert_silent_drop_n: 0,
+            trail_activation_evidence_gap_n: 0,
           },
           blockers: [],
         },

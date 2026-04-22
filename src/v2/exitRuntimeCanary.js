@@ -22,6 +22,18 @@ function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
+function toNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function numbersMatch(left, right, epsilon = 1e-8) {
+  const a = toNumber(left);
+  const b = toNumber(right);
+  return a != null && b != null && Math.abs(a - b) <= epsilon;
+}
+
 function parsePositiveInt(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
@@ -208,6 +220,38 @@ function buildPositionCanaryChecks({ row, config }) {
     position_cycle_id: positionCycleId,
     stage,
   }));
+  const trailTransition = findTransition(transitions, "TRAIL_ACTIVATED");
+  if (stage === "TRAIL_ACTIVE") {
+    const transitionEvidence = trailTransition && trailTransition.source_exchange_evidence && typeof trailTransition.source_exchange_evidence === "object"
+      ? trailTransition.source_exchange_evidence
+      : null;
+    const runtimeEvidence = runtime.last_exchange_evidence && typeof runtime.last_exchange_evidence === "object"
+      ? runtime.last_exchange_evidence
+      : null;
+    checks.push(Object.freeze({
+      id: "EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_PRESENT",
+      ok: !!trailTransition && upper(transitionEvidence && transitionEvidence.evidence_kind) === "TRAIL_ACTIVATION",
+      position_cycle_id: positionCycleId,
+      transition_event: "TRAIL_ACTIVATED",
+      canonical_transition_id: trimOrNull(trailTransition && trailTransition.canonical_transition_id),
+      evidence_kind: upper(transitionEvidence && transitionEvidence.evidence_kind),
+    }));
+    checks.push(Object.freeze({
+      id: "EXIT_RUNTIME_CANARY_TRAIL_PROTECTION_EVIDENCE_PRESENT",
+      ok: upper(runtimeEvidence && runtimeEvidence.evidence_kind) === "TRAIL_ACTIVATION"
+        && upper(runtime.native_refresh_status) === "OK",
+      position_cycle_id: positionCycleId,
+      evidence_kind: upper(runtimeEvidence && runtimeEvidence.evidence_kind),
+      native_refresh_status: upper(runtime.native_refresh_status),
+    }));
+    checks.push(Object.freeze({
+      id: "EXIT_RUNTIME_CANARY_TRAIL_NATIVE_STOP_MATCHES_PROJECTION",
+      ok: numbersMatch(runtime.native_stop_price, projection.native_stop_price),
+      position_cycle_id: positionCycleId,
+      runtime_native_stop_price: toNumber(runtime.native_stop_price),
+      projection_native_stop_price: toNumber(projection.native_stop_price),
+    }));
+  }
   const lastGapMs = Number(runtime.last_gap_ms);
   checks.push(Object.freeze({
     id: "EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_WITHIN_LIMIT",
@@ -245,6 +289,11 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
   const nativeUnhealthy = failed.filter((check) => check.id === "EXIT_RUNTIME_CANARY_NATIVE_REFRESH_HEALTHY").length;
   const unprotectedWindow = failed.filter((check) => check.id === "EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_WITHIN_LIMIT" || check.id === "EXIT_RUNTIME_CANARY_NO_UNPROTECTED_ACTIVE_POSITION").length;
   const alertSilentDrop = failed.filter((check) => check.id.endsWith("_TRANSITION_ALERT_SENT")).length;
+  const trailActivationEvidenceGap = failed.filter((check) => [
+    "EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_PRESENT",
+    "EXIT_RUNTIME_CANARY_TRAIL_PROTECTION_EVIDENCE_PRESENT",
+    "EXIT_RUNTIME_CANARY_TRAIL_NATIVE_STOP_MATCHES_PROJECTION",
+  ].includes(check.id)).length;
   const blockers = [];
   if (activeQueryLimitReached) blockers.push("EXIT_RUNTIME_CANARY_ACTIVE_QUERY_LIMIT_REACHED");
   if (idSet.has("EXIT_RUNTIME_CANARY_PROJECTION_MISSING")) blockers.push("EXIT_RUNTIME_CANARY_PROJECTION_MISSING");
@@ -253,6 +302,7 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
   if (nativeUnhealthy > 0) blockers.push("EXIT_RUNTIME_CANARY_NATIVE_REFRESH_UNHEALTHY");
   if (unprotectedWindow > 0) blockers.push("EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_VIOLATION");
   if (alertSilentDrop > 0) blockers.push("EXIT_RUNTIME_CANARY_ALERT_SILENT_DROP");
+  if (trailActivationEvidenceGap > 0) blockers.push("EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_GAP");
   for (const id of failedIds) {
     if (id.includes("QUERY_LIMIT_REACHED") && !blockers.includes(id)) blockers.push(id);
   }
@@ -262,6 +312,7 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
     native_refresh_unhealthy_n: nativeUnhealthy,
     unprotected_window_violation_n: unprotectedWindow,
     alert_silent_drop_n: alertSilentDrop,
+    trail_activation_evidence_gap_n: trailActivationEvidenceGap,
     blockers: Object.freeze(blockers),
   });
 }
@@ -286,6 +337,7 @@ function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false,
     native_refresh_unhealthy_n: summary.native_refresh_unhealthy_n,
     unprotected_window_violation_n: summary.unprotected_window_violation_n,
     alert_silent_drop_n: summary.alert_silent_drop_n,
+    trail_activation_evidence_gap_n: summary.trail_activation_evidence_gap_n,
     check_n: checks.length,
     fail_n: failedChecks.length,
     check_ids: Object.freeze(checks.map((check) => check.id)),
@@ -312,6 +364,9 @@ function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false,
         sl_order_present: hasPlacedOrder(runtime, "sl_order_id", "sl_order_status"),
         tp1_order_present: hasPlacedOrder(runtime, "tp1_order_id", "tp1_order_status"),
         native_stop_price: Number(runtime.native_stop_price) || null,
+        trail_activation_evidence_present: upper(projection.stage) === "TRAIL_ACTIVE"
+          ? !!findTransition(asArray(row && row.transitions), "TRAIL_ACTIVATED")
+          : null,
       });
     })),
     checks: Object.freeze(checks),
@@ -342,6 +397,8 @@ module.exports = {
   __test: {
     trimOrNull,
     upper,
+    toNumber,
+    numbersMatch,
     parsePositiveInt,
     parseNonNegativeNumber,
     hasPlacedOrder,

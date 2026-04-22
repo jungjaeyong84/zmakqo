@@ -120,6 +120,7 @@ function isHealthyExitRuntimeCanaryRow(row) {
     numberField(payload, "native_refresh_unhealthy_n") === 0 &&
     numberField(payload, "unprotected_window_violation_n") === 0 &&
     numberField(payload, "alert_silent_drop_n") === 0 &&
+    numberField(payload, "trail_activation_evidence_gap_n") === 0 &&
     !raw.includes("apiKey") &&
     !raw.includes("apiSecret") &&
     !raw.includes("BINANCE_SECRET") &&
@@ -162,6 +163,7 @@ function buildLongRunQualitySummary({
   nativeRefreshUnhealthyN,
   unprotectedWindowViolationN,
   alertSilentDropN,
+  trailActivationEvidenceGapN,
   blockers,
 } = {}) {
   return Object.freeze({
@@ -181,6 +183,7 @@ function buildLongRunQualitySummary({
       native_refresh_unhealthy_n: Number(nativeRefreshUnhealthyN) || 0,
       unprotected_window_violation_n: Number(unprotectedWindowViolationN) || 0,
       alert_silent_drop_n: Number(alertSilentDropN) || 0,
+      trail_activation_evidence_gap_n: Number(trailActivationEvidenceGapN) || 0,
     }),
     blockers: Object.freeze(Array.isArray(blockers) ? blockers.slice() : []),
   });
@@ -253,6 +256,7 @@ function evaluateExitRuntimeCanaryStreak({
   const nativeRefreshUnhealthyN = sumCounter(rowsInWindow, "native_refresh_unhealthy_n");
   const unprotectedWindowViolationN = sumCounter(rowsInWindow, "unprotected_window_violation_n");
   const alertSilentDropN = sumCounter(rowsInWindow, "alert_silent_drop_n");
+  const trailActivationEvidenceGapN = sumCounter(rowsInWindow, "trail_activation_evidence_gap_n");
   const positionCycleIds = extractHealthyPositionCycleIds(healthyRows);
   const blockers = [];
   if (config.requireFirestoreSource === true && normalizedHistorySource !== "FIRESTORE") {
@@ -270,6 +274,7 @@ function evaluateExitRuntimeCanaryStreak({
   if (nativeRefreshUnhealthyN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:NATIVE_REFRESH_UNHEALTHY");
   if (unprotectedWindowViolationN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:UNPROTECTED_WINDOW");
   if (alertSilentDropN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:ALERT_SILENT_DROP");
+  if (trailActivationEvidenceGapN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:TRAIL_ACTIVATION_EVIDENCE_GAP");
   const ok = blockers.length === 0;
   const qualitySummary = buildLongRunQualitySummary({
     ok,
@@ -284,6 +289,7 @@ function evaluateExitRuntimeCanaryStreak({
     nativeRefreshUnhealthyN,
     unprotectedWindowViolationN,
     alertSilentDropN,
+    trailActivationEvidenceGapN,
     blockers,
   });
   const collectorExecutionSummary = buildCollectorExecutionSummary({
@@ -324,6 +330,7 @@ function evaluateExitRuntimeCanaryStreak({
     native_refresh_unhealthy_n: nativeRefreshUnhealthyN,
     unprotected_window_violation_n: unprotectedWindowViolationN,
     alert_silent_drop_n: alertSilentDropN,
+    trail_activation_evidence_gap_n: trailActivationEvidenceGapN,
     collector_execution_summary: collectorExecutionSummary,
     long_run_quality_summary: qualitySummary,
     blockers: Object.freeze(blockers),

@@ -1399,7 +1399,13 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "run-v2-promotion-pipeline.js")).includes("refreshExitRuntimeCanaryStreak")
         && readText(path.resolve(__dirname, "run-v2-promotion-pipeline.js")).includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE")
         && exitRuntimeStreakCheckerText.includes("EXIT_RUNTIME_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED")
+        && exitRuntimeStreakCheckerText.includes("EXIT_RUNTIME_CANARY_STREAK:TRAIL_ACTIVATION_EVIDENCE_GAP")
         && exitRuntimeStreakCheckerText.includes("long_run_quality_summary")
+        && artifactContractText.includes("trail_activation_evidence_gap_n")
+        && runbookText.includes("trail_activation_evidence_gap_n")
+        && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_PRESENT")
+        && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_TRAIL_PROTECTION_EVIDENCE_PRESENT")
+        && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_TRAIL_NATIVE_STOP_MATCHES_PROJECTION")
         && readText(path.resolve(__dirname, "check-v2-promotion-deploy-decision.js")).includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithJsonlExitRuntimeStreakStillFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithStaleExitRuntimeStreakProvenanceFailsClosed"),
@@ -1425,6 +1431,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_NATIVE_REFRESH_UNHEALTHY")
         && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_VIOLATION")
         && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_ALERT_SILENT_DROP")
+        && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_GAP")
         && !exitRuntimeCanaryModuleText.includes("listV2Docs("),
       reason: packageJsonText.includes('"run:v2-exit-runtime-canary"')
         && exitRuntimeCanaryRunnerText.includes("persistExitRuntimeCanaryHistory")

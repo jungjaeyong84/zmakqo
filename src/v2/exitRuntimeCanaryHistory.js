@@ -85,6 +85,7 @@ function buildExitRuntimeCanaryHistoryDoc({
     native_refresh_unhealthy_n: Number(source.native_refresh_unhealthy_n) || 0,
     unprotected_window_violation_n: Number(source.unprotected_window_violation_n) || 0,
     alert_silent_drop_n: Number(source.alert_silent_drop_n) || 0,
+    trail_activation_evidence_gap_n: Number(source.trail_activation_evidence_gap_n) || 0,
     artifact_snapshot: Object.freeze(snapshot),
   });
 }

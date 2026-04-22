@@ -146,6 +146,7 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
       native_refresh_unhealthy_n: 0,
       unprotected_window_violation_n: 0,
       alert_silent_drop_n: 0,
+      trail_activation_evidence_gap_n: 0,
       blockers: [],
     }, null, 2), "utf8");
     fs.writeFileSync(path.join(dir, "promotion-runtime-manifest.json"), JSON.stringify({

@@ -57,6 +57,9 @@ function transition(event, id = `CET__${event}`) {
     position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__ABC",
     transition_event: event,
     next_stage: event === "TRAIL_ACTIVATED" ? "TRAIL_ACTIVE" : "TP1_DONE",
+    source_exchange_evidence: event === "TRAIL_ACTIVATED"
+      ? { evidence_kind: "TRAIL_ACTIVATION", raw_payload: { execution_type: "AMENDMENT" } }
+      : null,
   };
 }
 
@@ -147,8 +150,12 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
   const trail = transition("TRAIL_ACTIVATED", "CET__TRAIL");
   const artifact = evaluateExitRuntimeCanaryState({
     rows: [stateRow({
-      projectionDoc: projection({ stage: "TRAIL_ACTIVE", tp1_done: true, trail_active: true }),
-      runtimeDoc: runtime({ tp1_order_id: null, native_stop_price: 2410 }),
+      projectionDoc: projection({ stage: "TRAIL_ACTIVE", tp1_done: true, trail_active: true, native_stop_price: 2410 }),
+      runtimeDoc: runtime({
+        tp1_order_id: null,
+        native_stop_price: 2410,
+        last_exchange_evidence: { evidence_kind: "TRAIL_ACTIVATION", raw_payload: { execution_type: "AMENDMENT" } },
+      }),
       transitions: [tp1, trail],
       outboxes: [outbox("CET__TP1"), outbox("CET__TRAIL")],
     })],
@@ -156,6 +163,29 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
   });
   assert.strictEqual(artifact.ok, true);
   assert.strictEqual(artifact.alert_silent_drop_n, 0);
+  assert.strictEqual(artifact.trail_activation_evidence_gap_n, 0);
+})();
+
+(function trailActiveRequiresNativeRefreshEvidenceChain() {
+  const tp1 = transition("TP1_REACHED", "CET__TP1");
+  const trail = {
+    ...transition("TRAIL_ACTIVATED", "CET__TRAIL"),
+    source_exchange_evidence: null,
+  };
+  const artifact = evaluateExitRuntimeCanaryState({
+    rows: [stateRow({
+      projectionDoc: projection({ stage: "TRAIL_ACTIVE", tp1_done: true, trail_active: true, native_stop_price: 2410 }),
+      runtimeDoc: runtime({ tp1_order_id: null, native_stop_price: 2410 }),
+      transitions: [tp1, trail],
+      outboxes: [outbox("CET__TP1"), outbox("CET__TRAIL")],
+    })],
+    config: resolveExitRuntimeCanaryConfig({}),
+  });
+  assert.strictEqual(artifact.ok, false);
+  assert.strictEqual(artifact.trail_activation_evidence_gap_n, 2);
+  assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_PRESENT"));
+  assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_TRAIL_PROTECTION_EVIDENCE_PRESENT"));
+  assert.ok(artifact.blockers.includes("EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_GAP"));
 })();
 
 function buildFakeDb(seed) {
