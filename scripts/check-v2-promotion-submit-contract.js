@@ -1469,8 +1469,10 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && packageJsonText.includes("check-v2-repair-queue-firestore-canary-streak.test.js")
         && packageJsonText.includes("check-v2-promotion-deploy-decision.test.js")
         && productionEntryRouteStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && productionEntryRouteStreakCheckerText.includes("position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null")
         && productionEntryRouteStreakCheckerText.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED")
         && exitRuntimeStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && exitRuntimeStreakCheckerText.includes("position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null")
         && exitRuntimeStreakCheckerText.includes("EXIT_RUNTIME_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED")
         && unifiedPromotionReportGeneratorText.includes("artifact_generated_age_minutes")
         && unifiedPromotionReportGeneratorText.includes("artifact_generated_at")
@@ -1702,12 +1704,29 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       label: "deploy decision enforces LIVE evidence cycle consistency",
       ok: deployDecisionCheckerText.includes("collectLiveEvidenceCycleConsistencyBlockers")
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH")
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH")
+        && repairFirestoreStreakCheckerText.includes("position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null")
+        && productionEntryRouteStreakCheckerText.includes("position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null")
+        && exitRuntimeStreakCheckerText.includes("position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveEvidenceCycleMismatchFailsClosed")
-        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveProtectedEntryPositionCycleMismatchFailsClosed"),
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveStreakPositionCycleMismatchFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveProtectedEntryPositionCycleMismatchFailsClosed")
+        && artifactContractText.includes("DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH")
+        && runbookText.includes("DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH"),
       reason: deployDecisionCheckerText.includes("collectLiveEvidenceCycleConsistencyBlockers")
         ? "LIVE promotion now fails closed when long-run canaries and protected-entry proof point at different artifact or position cycles"
-        : "LIVE promotion must not approve when evidence artifacts or protected-entry position lineage are from different cycles",
+        : "LIVE promotion must not approve when evidence artifacts, streak position lineage, or protected-entry position lineage are from different cycles",
+      file: FILES.deployDecisionChecker,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_64",
+      label: "repair evidence summary requires concrete order evidence",
+      ok: deployDecisionCheckerText.includes("orderEvidenceCount > 0")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithRepairCompletionButNoOrderEvidenceFailsClosed"),
+      reason: deployDecisionCheckerText.includes("orderEvidenceCount > 0")
+        ? "repair request completion cannot satisfy promotion evidence without concrete SL/TP1 order evidence"
+        : "promotion must not accept repair completion summaries that omit concrete exchange order evidence",
       file: FILES.deployDecisionChecker,
     }),
   ];

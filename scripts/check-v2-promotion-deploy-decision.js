@@ -361,6 +361,7 @@ function hasRepairEvidenceSummary(summary) {
     ledgerCount > 0 &&
     completionCount > 0 &&
     evidenceCount > 0 &&
+    orderEvidenceCount > 0 &&
     Array.isArray(repair.runbook_refs) &&
     repair.runbook_refs.length > 0 &&
     normalizeObject(repair.latest_completion) != null
@@ -624,10 +625,31 @@ function collectLiveEvidenceCycleConsistencyBlockers(summary, { mode = null, pos
     blockers.push("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH");
   }
 
+  const expectedPositionCycleId = trimOrNull(positionCycleId);
+  const streakRows = [
+    row.repair_firestore_canary_streak,
+    row.production_entry_route_canary_streak,
+    row.exit_runtime_canary_streak,
+  ].map(normalizeObject).filter(Boolean);
+  const streakPositionCycleIds = Array.from(new Set(
+    streakRows.map((entry) => trimOrNull(entry && (
+      entry.position_cycle_id ||
+      entry.selected_position_cycle_id ||
+      entry.latest_position_cycle_id
+    ))).filter(Boolean)
+  ));
+  if (
+    streakRows.length !== 3 ||
+    !expectedPositionCycleId ||
+    streakPositionCycleIds.length !== 1 ||
+    streakPositionCycleIds[0] !== expectedPositionCycleId
+  ) {
+    blockers.push("DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH");
+  }
+
   const protectedCanary = normalizeObject(row.production_entry_protected_canary);
   const routeSummary = normalizeObject(protectedCanary && protectedCanary.route_result_summary);
   const protectedPositionCycleId = trimOrNull(routeSummary && routeSummary.position_cycle_id);
-  const expectedPositionCycleId = trimOrNull(positionCycleId);
   if (!protectedPositionCycleId || !expectedPositionCycleId || protectedPositionCycleId !== expectedPositionCycleId) {
     blockers.push("DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH");
   }

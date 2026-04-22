@@ -102,6 +102,7 @@ function buildBoundedRuntimeSummaryFixture() {
     repair_firestore_canary_streak: {
       ok: true,
       reason: "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS",
+      position_cycle_id: "PCY__CANARY__01",
       artifact_file: "/tmp/dbj-v2-artifacts/v2_repair_queue_firestore_canary_streak_latest.json",
       artifact_dir: "/tmp/dbj-v2-artifacts",
       artifact_filename: "v2_repair_queue_firestore_canary_streak_latest.json",
@@ -124,6 +125,7 @@ function buildBoundedRuntimeSummaryFixture() {
     production_entry_route_canary_streak: {
       ok: true,
       reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+      position_cycle_id: "PCY__CANARY__01",
       artifact_file: "/tmp/dbj-v2-artifacts/v2_production_entry_route_canary_streak_latest.json",
       artifact_dir: "/tmp/dbj-v2-artifacts",
       artifact_filename: "v2_production_entry_route_canary_streak_latest.json",
@@ -147,6 +149,7 @@ function buildBoundedRuntimeSummaryFixture() {
     exit_runtime_canary_streak: {
       ok: true,
       reason: "V2_EXIT_RUNTIME_CANARY_STREAK_PASS",
+      position_cycle_id: "PCY__CANARY__01",
       artifact_file: "/tmp/dbj-v2-artifacts/v2_exit_runtime_canary_streak_latest.json",
       artifact_dir: "/tmp/dbj-v2-artifacts",
       artifact_filename: "v2_exit_runtime_canary_streak_latest.json",
@@ -268,6 +271,9 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
 
 function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
   const summary = JSON.parse(JSON.stringify(buildBoundedRuntimeSummaryFixture()));
+  summary.repair_firestore_canary_streak.position_cycle_id = positionCycleId;
+  summary.production_entry_route_canary_streak.position_cycle_id = positionCycleId;
+  summary.exit_runtime_canary_streak.position_cycle_id = positionCycleId;
   summary.production_entry_protected_canary.route_result_summary.position_cycle_id = positionCycleId;
   return summary;
 }
@@ -1213,6 +1219,54 @@ function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_EVIDENCE_SUMMARY_REQUIRED"));
 })();
 
+(function canaryWithRepairCompletionButNoOrderEvidenceFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.repair_evidence_summary = {
+    ok: true,
+    repair_request_n: 1,
+    repair_execution_ledger_n: 1,
+    completion_ledger_n: 1,
+    completion_evidence_n: 1,
+    completed_success_n: 1,
+    completed_failed_n: 0,
+    missing_completion_evidence_n: 0,
+    runbook_refs: ["RQ_RBK_01"],
+    order_evidence_n: 0,
+    latest_completion: {
+      repair_execution_ledger_id: "REL__NO_ORDER_EVIDENCE",
+      exit_repair_request_id: "RRQ__NO_ORDER_EVIDENCE",
+      execution_status: "COMPLETED_SUCCESS",
+      issue_code: "TP1_ORDER_MISSING",
+      command_type: "PLACE_OR_REPLACE_TP1",
+      recorded_at: "2026-04-22T12:00:00.000Z",
+    },
+  };
+  assert.strictEqual(deployDecision.__test.hasRepairEvidenceSummary(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__REPAIR_NO_ORDER_EVIDENCE",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__REPAIR_NO_ORDER_EVIDENCE",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__REPAIR_NO_ORDER_EVIDENCE",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_EVIDENCE_SUMMARY_REQUIRED"));
+})();
+
 (function canaryWithoutOpenClawExecutionAuditLedgerWriteFailsClosed() {
   const bounded = buildBoundedRuntimeSummaryFixture();
   bounded.openclaw_execution_audit_ledger_write = {
@@ -1654,6 +1708,38 @@ function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH"));
+})();
+
+(function liveStreakPositionCycleMismatchFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__STREAK_EXPECTED");
+  bounded.exit_runtime_canary_streak.position_cycle_id = "PCY__LIVE__STREAK_OTHER";
+  assert.deepStrictEqual(deployDecision.__test.collectLiveEvidenceCycleConsistencyBlockers(bounded, {
+    mode: "LIVE",
+    positionCycleId: "PCY__LIVE__STREAK_EXPECTED",
+  }), ["DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH"]);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__STREAK_EXPECTED",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__STREAK_EXPECTED",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__STREAK_EXPECTED",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH"));
 })();
 
 (function liveProtectedEntryPositionCycleMismatchFailsClosed() {

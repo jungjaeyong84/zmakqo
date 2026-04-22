@@ -12,6 +12,7 @@ function buildHealthyPayload(generatedAt) {
     reason: "V2_REPAIR_QUEUE_FIRESTORE_CANARY_HEALTHY",
     canary_mode: "FIRESTORE_BACKED_SHADOW_REPAIR_REQUEST_GENERATION",
     generated_at: generatedAt,
+    position_cycle_id: "PCY__REPAIR_CANARY",
     firestore_write_performed: true,
     exchange_write_performed: false,
     service_status: "HEALTHY",
@@ -78,6 +79,8 @@ function buildHistory(rows) {
   });
   assert.strictEqual(report.ok, true);
   assert.strictEqual(report.generated_at, "2026-04-21T12:00:00.000Z");
+  assert.strictEqual(report.position_cycle_id, "PCY__REPAIR_CANARY");
+  assert.strictEqual(report.position_cycle_id_n, 1);
   assert.strictEqual(report.healthy_run_n, 13);
   assert.strictEqual(report.firestore_evidence_missing_n, 0);
   assert.strictEqual(report.blockers.length, 0);

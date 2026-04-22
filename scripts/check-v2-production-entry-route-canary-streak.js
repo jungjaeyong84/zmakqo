@@ -135,6 +135,17 @@ function isHealthyProductionEntryRouteCanaryRow(row) {
   );
 }
 
+function extractHealthyPositionCycleIds(rows) {
+  const ids = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
+    const summary = payload.route_result_summary && typeof payload.route_result_summary === "object" ? payload.route_result_summary : {};
+    const id = trimOrNull(summary.position_cycle_id || payload.position_cycle_id);
+    if (id) ids.add(id);
+  }
+  return Object.freeze(Array.from(ids));
+}
+
 function evaluateProductionEntryRouteCanaryStreak({
   history,
   config = resolveStreakConfig({}),
@@ -166,6 +177,7 @@ function evaluateProductionEntryRouteCanaryStreak({
     ? Math.max(0, (healthyRows[healthyRows.length - 1].generated_ms - healthyRows[0].generated_ms) / 60000)
     : 0;
   const blockers = [];
+  const positionCycleIds = extractHealthyPositionCycleIds(healthyRows);
   if (config.requireFirestoreSource === true && normalizedHistorySource !== "FIRESTORE") {
     blockers.push("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED");
   }
@@ -183,6 +195,8 @@ function evaluateProductionEntryRouteCanaryStreak({
       ? "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"
       : "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_BLOCKED",
     generated_at: new Date(Number(nowMs)).toISOString(),
+    position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null,
+    position_cycle_id_n: positionCycleIds.length,
     history_source: normalizedHistorySource,
     history_file: trimOrNull(historyFile),
     firestore_source_required: config.requireFirestoreSource === true,
@@ -295,6 +309,7 @@ if (require.main === module) {
       resolveHistorySource,
       toMs,
       isHealthyProductionEntryRouteCanaryRow,
+      extractHealthyPositionCycleIds,
     },
   };
 }

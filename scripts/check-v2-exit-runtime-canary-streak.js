@@ -127,6 +127,24 @@ function isHealthyExitRuntimeCanaryRow(row) {
   );
 }
 
+function extractHealthyPositionCycleIds(rows) {
+  const ids = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
+    const topLevelId = trimOrNull(payload.position_cycle_id || payload.selected_position_cycle_id);
+    if (topLevelId) {
+      ids.add(topLevelId);
+      continue;
+    }
+    const summaries = Array.isArray(payload.position_summaries) ? payload.position_summaries : [];
+    if (summaries.length === 1) {
+      const id = trimOrNull(summaries[0] && summaries[0].position_cycle_id);
+      if (id) ids.add(id);
+    }
+  }
+  return Object.freeze(Array.from(ids));
+}
+
 function sumCounter(rows, field) {
   return rows.reduce((sum, row) => sum + numberField(row && row.payload, field), 0);
 }
@@ -202,6 +220,7 @@ function evaluateExitRuntimeCanaryStreak({
   const nativeRefreshUnhealthyN = sumCounter(rowsInWindow, "native_refresh_unhealthy_n");
   const unprotectedWindowViolationN = sumCounter(rowsInWindow, "unprotected_window_violation_n");
   const alertSilentDropN = sumCounter(rowsInWindow, "alert_silent_drop_n");
+  const positionCycleIds = extractHealthyPositionCycleIds(healthyRows);
   const blockers = [];
   if (config.requireFirestoreSource === true && normalizedHistorySource !== "FIRESTORE") {
     blockers.push("EXIT_RUNTIME_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED");
@@ -240,6 +259,8 @@ function evaluateExitRuntimeCanaryStreak({
       ? "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"
       : "V2_EXIT_RUNTIME_CANARY_STREAK_BLOCKED",
     generated_at: new Date(Number(nowMs)).toISOString(),
+    position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null,
+    position_cycle_id_n: positionCycleIds.length,
     history_source: normalizedHistorySource,
     history_file: trimOrNull(historyFile),
     firestore_source_required: config.requireFirestoreSource === true,
@@ -365,6 +386,7 @@ if (require.main === module) {
       toMs,
       numberField,
       isHealthyExitRuntimeCanaryRow,
+      extractHealthyPositionCycleIds,
       buildLongRunQualitySummary,
     },
   };

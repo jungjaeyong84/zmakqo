@@ -14,6 +14,7 @@ function buildHealthyPayload(generatedAt) {
     canary_mode: "LIVE_EXIT_RUNTIME_OBSERVATION",
     exchange_write_performed: false,
     generated_at: generatedAt,
+    position_cycle_id: "PCY__EXIT_RUNTIME__CANARY",
     active_position_n: 2,
     tp1_missing_n: 0,
     native_refresh_unhealthy_n: 0,
@@ -85,6 +86,8 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.ok, true);
   assert.strictEqual(report.reason, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS");
   assert.strictEqual(report.generated_at, "2026-04-22T12:00:00.000Z");
+  assert.strictEqual(report.position_cycle_id, "PCY__EXIT_RUNTIME__CANARY");
+  assert.strictEqual(report.position_cycle_id_n, 1);
   assert.strictEqual(report.healthy_run_n, 13);
   assert.strictEqual(report.coverage_minutes, 1440);
   assert.strictEqual(report.tp1_missing_n, 0);

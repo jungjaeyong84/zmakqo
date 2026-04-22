@@ -148,6 +148,25 @@ function isHealthyFirestoreCanaryRow(row) {
   );
 }
 
+function extractHealthyPositionCycleIds(rows) {
+  const ids = new Set();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
+    const topLevelId = trimOrNull(payload.position_cycle_id || payload.selected_position_cycle_id);
+    if (topLevelId) {
+      ids.add(topLevelId);
+      continue;
+    }
+    for (const seed of ensureArray(payload.seed_writes)) {
+      if (trimOrNull(seed && seed.collectionKey) === "POSITION_CYCLES") {
+        const id = trimOrNull(seed.docId || seed.doc_id || seed.position_cycle_id);
+        if (id) ids.add(id);
+      }
+    }
+  }
+  return Object.freeze(Array.from(ids));
+}
+
 function evaluateFirestoreCanaryStreak({
   history,
   config = resolveStreakConfig({}),
@@ -185,6 +204,7 @@ function evaluateFirestoreCanaryStreak({
     ? Math.max(0, (healthyRows[healthyRows.length - 1].generated_ms - healthyRows[0].generated_ms) / 60000)
     : 0;
   const blockers = [];
+  const positionCycleIds = extractHealthyPositionCycleIds(healthyRows);
   if ((parsed.invalid_lines || []).length > 0) blockers.push("FIRESTORE_CANARY_STREAK:INVALID_JSONL");
   if (firestoreEvidenceMissingN > 0) blockers.push("FIRESTORE_CANARY_STREAK:FIRESTORE_EVIDENCE_MISSING");
   if (healthyRows.length < Number(config.minRunCount)) blockers.push("FIRESTORE_CANARY_STREAK:MIN_RUN_COUNT");
@@ -200,6 +220,8 @@ function evaluateFirestoreCanaryStreak({
       ? "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"
       : "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_BLOCKED",
     generated_at: new Date(Number(nowMs)).toISOString(),
+    position_cycle_id: positionCycleIds.length === 1 ? positionCycleIds[0] : null,
+    position_cycle_id_n: positionCycleIds.length,
     history_file: trimOrNull(historyFile),
     lookback_hours: Number(config.lookbackHours),
     min_run_count: Number(config.minRunCount),
@@ -280,6 +302,7 @@ if (require.main === module) {
       toMs,
       hasFirestoreBackedRepairEvidence,
       isHealthyFirestoreCanaryRow,
+      extractHealthyPositionCycleIds,
     },
   };
 }
