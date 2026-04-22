@@ -1263,7 +1263,7 @@ LIVE 승격에서는 `required_env_exact_match_n >= 2`, `required_env_mismatch_n
 
 ## LIVE readiness artifact freshness contract
 
-LIVE readiness artifact 4종도 long-run streak/protected entry canary와 같은 freshness 계약을 따른다.
+LIVE readiness artifact 5종도 long-run streak/protected entry canary와 같은 freshness 계약을 따른다.
 
 대상:
 
@@ -1271,6 +1271,7 @@ LIVE readiness artifact 4종도 long-run streak/protected entry canary와 같은
 2. `v2_production_cutover_readiness_latest.json`
 3. `v2_scheduler_traffic_collector_preflight_latest.json`
 4. `v2_scheduler_traffic_cutover_readiness_latest.json`
+5. `v2_live_evidence_readiness_latest.json`
 
 각 summary는 `promotion-cloudbuild-context.json` 과 `promotion-cloudbuild-submit-request.json.submit_trace_summary` 에 아래 필드를 보존해야 한다.
 
@@ -1293,6 +1294,7 @@ LIVE submit은 `artifact_current_dir_match=true`, 기대 filename 일치, `gener
 `v2_live_evidence_readiness_latest.json` 은 LIVE 승격 직전에 운영자가 보는 단일 증거 요약이다.
 이 파일은 `scripts/check-v2-live-evidence-readiness.js` 가 현재 artifact dir의 `promotion-deploy-decision.json` 을 읽어 생성한다.
 LIVE cloudbuild wrapper는 이 파일을 자동 생성하고 같은 내용을 `promotion-cloudbuild-context.json.live_evidence_readiness_summary` 와 `live_evidence_readiness_file` 에 보존해야 한다.
+runbook verifier는 이 artifact와 CloudBuild context summary/file이 같은 파일과 같은 `position_cycle_id` 를 가리키는지 `CHK_13G` 에서 먼저 검증해야 한다.
 최종 submit wrapper는 이를 `promotion-cloudbuild-submit-request.json.submit_trace_summary.live_evidence_readiness_summary`, `operator_summary.live_evidence_readiness_summary`, `operator_alert_preview.sections[]` 까지 전달해야 하며, 누락/만료/실패 시 `SUBMIT_CHK_24` 로 LIVE submit을 차단한다.
 
 필수 축:

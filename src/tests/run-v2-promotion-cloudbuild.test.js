@@ -1746,6 +1746,45 @@ function seedRunbookArtifacts(dir, cycleId) {
         position_cycle_id: cycleId,
       },
     };
+    const liveEvidenceReadinessFile = path.join(dir, cloudbuild.__test.LIVE_EVIDENCE_READINESS_FILENAME);
+    const liveEvidenceReadiness = {
+      ok: true,
+      reason: "V2_LIVE_EVIDENCE_READY",
+      mode: "LIVE",
+      artifact_dir: dir,
+      position_cycle_id: cycleId,
+      deploy_decision_approved: true,
+      evidence_ready: true,
+      deploy_ready: true,
+      blocker_n: 0,
+      blockers: [],
+      deploy_decision_blockers: [],
+      failed_axis_n: 0,
+      failed_axis_ids: [],
+      submit_check_ids: [],
+      runbook_refs: [],
+      axes: [
+        { id: "production_runtime_chain", ok: true },
+        { id: "repair_firestore_canary_streak", ok: true },
+        { id: "production_entry_route_canary_streak", ok: true },
+        { id: "exit_runtime_canary_streak", ok: true },
+        { id: "production_entry_protected_canary", ok: true },
+        { id: "openclaw_supreme_closed_loop", ok: true },
+      ],
+      temporal_coherence: {
+        ok: true,
+        blockers: [],
+      },
+      output_file: liveEvidenceReadinessFile,
+      file: liveEvidenceReadinessFile,
+      artifact_file: liveEvidenceReadinessFile,
+      artifact_filename: "v2_live_evidence_readiness_latest.json",
+      artifact_current_dir_match: true,
+      generated_at: new Date().toISOString(),
+      artifact_generated_at: new Date().toISOString(),
+      artifact_generated_age_minutes: 15,
+    };
+    fs.writeFileSync(liveEvidenceReadinessFile, JSON.stringify(liveEvidenceReadiness, null, 2), "utf8");
     const cutover = cloudbuild.__test.generateLiveCutoverReadiness(plan, deployApproval);
     assert.strictEqual(cutover.required, true);
     assert.strictEqual(cutover.reason, "LIVE_CUTOVER_READINESS_PASS");
@@ -1826,6 +1865,8 @@ function seedRunbookArtifacts(dir, cycleId) {
       schedulerTrafficCollectorPreflightFile: schedulerTrafficCutover.collector_preflight_file,
       schedulerTrafficCutoverReadiness: schedulerTrafficCutover.report,
       schedulerTrafficCutoverReadinessFile: schedulerTrafficCutover.output_file,
+      liveEvidenceReadiness,
+      liveEvidenceReadinessFile,
     });
     const contextWithSchedulerTraffic = JSON.parse(fs.readFileSync(contextFileWithSchedulerTraffic, "utf8"));
     assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_file, schedulerTrafficCutover.output_file);
@@ -1856,6 +1897,9 @@ function seedRunbookArtifacts(dir, cycleId) {
     const schedulerTrafficCollectorCheck = result.review.checks.find((row) => row.id === "CHK_24A");
     assert.ok(schedulerTrafficCollectorCheck);
     assert.strictEqual(schedulerTrafficCollectorCheck.status, "PASS");
+    const liveEvidenceReadinessCheck = result.review.checks.find((row) => row.id === "CHK_13G");
+    assert.ok(liveEvidenceReadinessCheck);
+    assert.strictEqual(liveEvidenceReadinessCheck.status, "PASS");
   } finally {
     try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }

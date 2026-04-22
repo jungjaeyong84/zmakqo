@@ -265,6 +265,48 @@ function buildSchedulerTrafficCollectorPreflightFixture(filePath = null) {
   };
 }
 
+function buildLiveEvidenceReadinessFixture(filePath = null, cycleId = "PCY__RUNBOOK__LIVE_CUTOVER") {
+  const outputFile = filePath || `/tmp/${cycleId}/v2_live_evidence_readiness_latest.json`;
+  return {
+    ok: true,
+    reason: "V2_LIVE_EVIDENCE_READY",
+    mode: "LIVE",
+    artifact_dir: path.dirname(outputFile),
+    position_cycle_id: cycleId,
+    deploy_decision_approved: true,
+    evidence_ready: true,
+    deploy_ready: true,
+    blocker_n: 0,
+    blockers: [],
+    deploy_decision_blockers: [],
+    failed_axis_n: 0,
+    failed_axis_ids: [],
+    submit_check_ids: [],
+    runbook_refs: [],
+    axes: [
+      { id: "production_runtime_chain", ok: true },
+      { id: "repair_firestore_canary_streak", ok: true },
+      { id: "production_entry_route_canary_streak", ok: true },
+      { id: "exit_runtime_canary_streak", ok: true },
+      { id: "production_entry_protected_canary", ok: true },
+      { id: "openclaw_supreme_closed_loop", ok: true },
+    ],
+    temporal_coherence: {
+      id: "live_evidence_temporal_coherence",
+      ok: true,
+      blockers: [],
+    },
+    output_file: outputFile,
+    file: outputFile,
+    artifact_file: outputFile,
+    artifact_filename: "v2_live_evidence_readiness_latest.json",
+    artifact_current_dir_match: true,
+    generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_age_minutes: 15,
+  };
+}
+
 function buildEntryBoundaryAuditFixture() {
   return {
     ok: true,
@@ -745,6 +787,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       production_cutover_audit: buildProductionCutoverAuditFixture(),
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
     });
+    const liveEvidenceReadinessFile = path.join(dir, "v2_live_evidence_readiness_latest.json");
     writeJson(dir, "promotion-cloudbuild-context.json", {
       position_cycle_id: cycleId,
       artifact_dir: dir,
@@ -772,6 +815,8 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
         ...buildSchedulerTrafficCutoverReadinessFixture(),
         blocker_n: 0,
       },
+      live_evidence_readiness_file: liveEvidenceReadinessFile,
+      live_evidence_readiness_summary: buildLiveEvidenceReadinessFixture(liveEvidenceReadinessFile, cycleId),
       deploy_decision_summary: {
         lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
         bounded_runtime_summary: {
@@ -793,6 +838,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     writeJson(dir, "v2_production_cutover_readiness_latest.json", buildProductionCutoverReadinessFixture());
     writeJson(dir, "v2_scheduler_traffic_collector_preflight_latest.json", buildSchedulerTrafficCollectorPreflightFixture(path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json")));
     writeJson(dir, "v2_scheduler_traffic_cutover_readiness_latest.json", buildSchedulerTrafficCutoverReadinessFixture());
+    writeJson(dir, "v2_live_evidence_readiness_latest.json", buildLiveEvidenceReadinessFixture(liveEvidenceReadinessFile, cycleId));
 
     const result = runbookCheck.runCanaryRunbookCheck({
       V2_PROMOTION_ARTIFACT_DIR: dir,
@@ -811,6 +857,9 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     const schedulerTrafficCollectorCheck = result.review.checks.find((row) => row.id === "CHK_24A");
     assert.ok(schedulerTrafficCollectorCheck);
     assert.strictEqual(schedulerTrafficCollectorCheck.status, "PASS");
+    const liveEvidenceReadinessCheck = result.review.checks.find((row) => row.id === "CHK_13G");
+    assert.ok(liveEvidenceReadinessCheck);
+    assert.strictEqual(liveEvidenceReadinessCheck.status, "PASS");
     const readinessFreshnessCheck = result.review.checks.find((row) => row.id === "CHK_24B");
     assert.ok(readinessFreshnessCheck);
     assert.strictEqual(readinessFreshnessCheck.status, "PASS");
@@ -826,6 +875,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     const dir = path.join(root, cycleId);
     fs.mkdirSync(dir, { recursive: true });
     const collectorFile = path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json");
+    const liveEvidenceReadinessFile = path.join(dir, "v2_live_evidence_readiness_latest.json");
     const badCollector = {
       ...buildSchedulerTrafficCollectorPreflightFixture(collectorFile),
       required_env_exact_match_n: 1,
@@ -848,12 +898,15 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
         scheduler_traffic_collector_preflight_summary: badCollector,
         scheduler_traffic_cutover_readiness_file: path.join(dir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
         scheduler_traffic_cutover_readiness_summary: buildSchedulerTrafficCutoverReadinessFixture(),
+        live_evidence_readiness_file: liveEvidenceReadinessFile,
+        live_evidence_readiness_summary: buildLiveEvidenceReadinessFixture(liveEvidenceReadinessFile, cycleId),
       },
     });
     writeJson(dir, "v2_repair_live_cutover_readiness_latest.json", buildLiveCutoverReadinessFixture());
     writeJson(dir, "v2_production_cutover_readiness_latest.json", buildProductionCutoverReadinessFixture());
     writeJson(dir, "v2_scheduler_traffic_collector_preflight_latest.json", badCollector);
     writeJson(dir, "v2_scheduler_traffic_cutover_readiness_latest.json", buildSchedulerTrafficCutoverReadinessFixture());
+    writeJson(dir, "v2_live_evidence_readiness_latest.json", buildLiveEvidenceReadinessFixture(liveEvidenceReadinessFile, cycleId));
 
     const result = runbookCheck.runCanaryRunbookCheck({
       V2_PROMOTION_ARTIFACT_DIR: dir,
@@ -873,6 +926,57 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-live-readiness-stale-"));
   try {
     const cycleId = "PCY__RUNBOOK__LIVE_READINESS_STALE";
+    const dir = path.join(root, cycleId);
+    fs.mkdirSync(dir, { recursive: true });
+    const liveEvidenceReadinessFile = path.join(dir, "v2_live_evidence_readiness_latest.json");
+    seedMinimalRunbookArtifacts(dir, cycleId, {
+      deployDecisionPatch: { mode: "LIVE" },
+      contextPatch: {
+        live_cutover_readiness_file: path.join(dir, "v2_repair_live_cutover_readiness_latest.json"),
+        live_cutover_readiness_summary: buildLiveCutoverReadinessFixture(),
+        production_cutover_readiness_file: path.join(dir, "v2_production_cutover_readiness_latest.json"),
+        production_cutover_readiness_summary: {
+          ok: true,
+          reason: "V2_PRODUCTION_CUTOVER_READINESS_PASS",
+          blocker_n: 0,
+          guard_reason: "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
+          legacy_webhook_blocked: true,
+        },
+        scheduler_traffic_collector_preflight_file: path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json"),
+        scheduler_traffic_collector_preflight_summary: buildSchedulerTrafficCollectorPreflightFixture(path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json")),
+        scheduler_traffic_cutover_readiness_file: path.join(dir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
+        scheduler_traffic_cutover_readiness_summary: buildSchedulerTrafficCutoverReadinessFixture(),
+        live_evidence_readiness_file: liveEvidenceReadinessFile,
+        live_evidence_readiness_summary: buildLiveEvidenceReadinessFixture(liveEvidenceReadinessFile, cycleId),
+      },
+    });
+    writeJson(dir, "v2_repair_live_cutover_readiness_latest.json", buildLiveCutoverReadinessFixture());
+    writeJson(dir, "v2_production_cutover_readiness_latest.json", {
+      ...buildProductionCutoverReadinessFixture(),
+      artifact_generated_age_minutes: runbookCheck.__test.MAX_LIVE_READINESS_ARTIFACT_AGE_MINUTES + 1,
+    });
+    writeJson(dir, "v2_scheduler_traffic_collector_preflight_latest.json", buildSchedulerTrafficCollectorPreflightFixture(path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json")));
+    writeJson(dir, "v2_scheduler_traffic_cutover_readiness_latest.json", buildSchedulerTrafficCutoverReadinessFixture());
+    writeJson(dir, "v2_live_evidence_readiness_latest.json", buildLiveEvidenceReadinessFixture(liveEvidenceReadinessFile, cycleId));
+
+    const result = runbookCheck.runCanaryRunbookCheck({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
+    });
+    assert.strictEqual(result.review.ok, false);
+    const readinessFreshnessCheck = result.review.checks.find((row) => row.id === "CHK_24B");
+    assert.ok(readinessFreshnessCheck);
+    assert.strictEqual(readinessFreshnessCheck.status, "FAIL");
+    assert.strictEqual(readinessFreshnessCheck.field, "v2_repair_live_cutover_readiness_latest.json,v2_production_cutover_readiness_latest.json,v2_scheduler_traffic_collector_preflight_latest.json,v2_scheduler_traffic_cutover_readiness_latest.json,v2_live_evidence_readiness_latest.json");
+  } finally {
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(async function runbookCheckFailsLiveModeWithoutLiveEvidenceReadinessSummary() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-live-evidence-missing-"));
+  try {
+    const cycleId = "PCY__RUNBOOK__LIVE_EVIDENCE_MISSING";
     const dir = path.join(root, cycleId);
     fs.mkdirSync(dir, { recursive: true });
     seedMinimalRunbookArtifacts(dir, cycleId, {
@@ -895,10 +999,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       },
     });
     writeJson(dir, "v2_repair_live_cutover_readiness_latest.json", buildLiveCutoverReadinessFixture());
-    writeJson(dir, "v2_production_cutover_readiness_latest.json", {
-      ...buildProductionCutoverReadinessFixture(),
-      artifact_generated_age_minutes: runbookCheck.__test.MAX_LIVE_READINESS_ARTIFACT_AGE_MINUTES + 1,
-    });
+    writeJson(dir, "v2_production_cutover_readiness_latest.json", buildProductionCutoverReadinessFixture());
     writeJson(dir, "v2_scheduler_traffic_collector_preflight_latest.json", buildSchedulerTrafficCollectorPreflightFixture(path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json")));
     writeJson(dir, "v2_scheduler_traffic_cutover_readiness_latest.json", buildSchedulerTrafficCutoverReadinessFixture());
 
@@ -907,10 +1008,10 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
     });
     assert.strictEqual(result.review.ok, false);
-    const readinessFreshnessCheck = result.review.checks.find((row) => row.id === "CHK_24B");
-    assert.ok(readinessFreshnessCheck);
-    assert.strictEqual(readinessFreshnessCheck.status, "FAIL");
-    assert.strictEqual(readinessFreshnessCheck.field, "v2_repair_live_cutover_readiness_latest.json,v2_production_cutover_readiness_latest.json,v2_scheduler_traffic_collector_preflight_latest.json,v2_scheduler_traffic_cutover_readiness_latest.json");
+    const liveEvidenceReadinessCheck = result.review.checks.find((row) => row.id === "CHK_13G");
+    assert.ok(liveEvidenceReadinessCheck);
+    assert.strictEqual(liveEvidenceReadinessCheck.status, "FAIL");
+    assert.strictEqual(liveEvidenceReadinessCheck.field, "live_evidence_readiness_summary,live_evidence_readiness_file,failed_axis_ids,submit_check_ids,runbook_refs,temporal_coherence");
   } finally {
     try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }

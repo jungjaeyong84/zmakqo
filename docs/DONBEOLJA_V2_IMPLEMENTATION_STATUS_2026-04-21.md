@@ -2685,3 +2685,26 @@ V1 약점 재발 방지:
 1. V1에서는 진단 artifact와 실제 제출/알림 계층이 분리되어, 운영자는 마지막 단계에서 어떤 증거 축이 빠졌는지 다시 추적해야 했다
 2. 이번 단계는 CloudBuild context에서 만든 LIVE evidence readiness를 최종 submit request, operator summary, Telegram preview 직전까지 같은 필드명으로 운반한다
 3. 따라서 “검사는 했지만 최종 제출자가 보지 않는다”는 V1식 관측성 단절을 줄인다
+
+## 2026-04-23 LIVE Evidence Readiness Runbook Verifier
+
+추가 증거:
+
+1. `scripts/check-v2-canary-runbook.js`
+2. `src/tests/check-v2-canary-runbook.test.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+5. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. runbook verifier가 이제 `v2_live_evidence_readiness_latest.json` 을 1급 readiness artifact로 읽는다
+2. LIVE mode에서는 `CHK_13G` 가 artifact와 `promotion-cloudbuild-context.json.live_evidence_readiness_summary/file` 의 파일 경로, position cycle, PASS 상태, failed axis, temporal coherence를 직접 대조한다
+3. `CHK_24B` freshness 검증 대상도 readiness artifact 4종에서 5종으로 확장되어 live evidence readiness summary 자체가 stale latest 재사용 경로가 될 수 없다
+4. submit contract `SUBMIT_CONTRACT_CHK_77` 은 checker, runbook verifier, tests, docs, submit wrapper가 `SUBMIT_CHK_24` / runbook `13G` 계약을 같이 유지하는지 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 최종 submit gate와 운영 runbook이 다른 레이어를 보고 있어, 운영자는 사전 점검에서 통과처럼 보이는 artifact가 마지막 제출에서 막히는 상황을 겪을 수 있었다
+2. 이번 단계는 LIVE evidence readiness를 runbook verifier, CloudBuild context, submit wrapper가 모두 같은 artifact/file/position cycle로 검증하게 만들어 문서-검증-제출 간 drift를 줄인다
+3. 단, 실제 24시간 canary evidence를 새로 만드는 기능은 아니다. 실제 LIVE 전에는 production entry route, exit runtime, repair Firestore, OpenClaw supreme closed-loop 증거가 같은 artifact dir에서 fresh하게 축적되어야 한다

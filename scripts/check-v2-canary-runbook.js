@@ -14,6 +14,7 @@ const LIVE_READINESS_ARTIFACT_REQUIREMENTS = Object.freeze([
   Object.freeze({ key: "productionCutoverReadiness", filename: "v2_production_cutover_readiness_latest.json" }),
   Object.freeze({ key: "schedulerTrafficCollectorPreflight", filename: "v2_scheduler_traffic_collector_preflight_latest.json" }),
   Object.freeze({ key: "schedulerTrafficCutoverReadiness", filename: "v2_scheduler_traffic_cutover_readiness_latest.json" }),
+  Object.freeze({ key: "liveEvidenceReadiness", filename: "v2_live_evidence_readiness_latest.json" }),
 ]);
 const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
   SUBMIT_CHK_01A: Object.freeze(["artifact_dir", "resolved_artifact_dir", "artifact_dir_coherence", "position_cycle_id"]),
@@ -640,6 +641,75 @@ function hasSchedulerTrafficCollectorPreflightPlan({ preflight = null, cloudbuil
   );
 }
 
+function isReadyLiveEvidenceReadinessPayload(value) {
+  const row = value && typeof value === "object" ? value : null;
+  const temporal = row && row.temporal_coherence && typeof row.temporal_coherence === "object"
+    ? row.temporal_coherence
+    : null;
+  const failedAxisIds = Array.isArray(row && row.failed_axis_ids) ? row.failed_axis_ids : [];
+  const blockers = Array.isArray(row && row.blockers) ? row.blockers : [];
+  const deployDecisionBlockers = Array.isArray(row && row.deploy_decision_blockers) ? row.deploy_decision_blockers : [];
+  const submitCheckIds = Array.isArray(row && row.submit_check_ids) ? row.submit_check_ids : [];
+  const runbookRefs = Array.isArray(row && row.runbook_refs) ? row.runbook_refs : [];
+  const axisN = Array.isArray(row && row.axes)
+    ? row.axes.length
+    : Number.isFinite(Number(row && row.axis_n))
+      ? Number(row.axis_n)
+      : 0;
+  return !!(
+    row &&
+    row.ok === true &&
+    trimOrNull(row.reason) === "V2_LIVE_EVIDENCE_READY" &&
+    trimOrNull(row.mode) === "LIVE" &&
+    row.deploy_decision_approved === true &&
+    row.evidence_ready === true &&
+    row.deploy_ready === true &&
+    Number(row.blocker_n || 0) === 0 &&
+    blockers.length === 0 &&
+    deployDecisionBlockers.length === 0 &&
+    Number(row.failed_axis_n || 0) === 0 &&
+    failedAxisIds.length === 0 &&
+    submitCheckIds.length === 0 &&
+    runbookRefs.length === 0 &&
+    temporal &&
+    temporal.ok === true &&
+    (!Array.isArray(temporal.blockers) || temporal.blockers.length === 0) &&
+    axisN >= 6
+  );
+}
+
+function hasLiveEvidenceReadinessPlan({ readiness = null, cloudbuildContext = null } = {}) {
+  const artifact = readiness && typeof readiness === "object" ? readiness : null;
+  const context = cloudbuildContext && typeof cloudbuildContext === "object" ? cloudbuildContext : null;
+  const summary = context && context.live_evidence_readiness_summary && typeof context.live_evidence_readiness_summary === "object"
+    ? context.live_evidence_readiness_summary
+    : null;
+  const contextFile = resolvePathOrNull(context && context.live_evidence_readiness_file);
+  const summaryFile = resolvePathOrNull(summary && summary.file);
+  const artifactFile = resolvePathOrNull(
+    artifact && (artifact.output_file || artifact.artifact_file || artifact.file)
+  );
+  const contextCycleId = trimOrNull(context && context.position_cycle_id);
+  const artifactCycleId = trimOrNull(artifact && artifact.position_cycle_id);
+  const summaryCycleId = trimOrNull(summary && summary.position_cycle_id);
+  return !!(
+    artifact &&
+    summary &&
+    isReadyLiveEvidenceReadinessPayload(artifact) &&
+    isReadyLiveEvidenceReadinessPayload(summary) &&
+    hasFreshCurrentReadinessArtifact(artifact, "v2_live_evidence_readiness_latest.json") &&
+    hasFreshCurrentReadinessArtifact(summary, "v2_live_evidence_readiness_latest.json") &&
+    contextFile &&
+    summaryFile &&
+    artifactFile &&
+    contextFile === summaryFile &&
+    contextFile === artifactFile &&
+    contextCycleId &&
+    artifactCycleId === contextCycleId &&
+    summaryCycleId === contextCycleId
+  );
+}
+
 function hasFreshCurrentReadinessArtifact(artifact, expectedFilename) {
   const row = artifact && typeof artifact === "object" && artifact.payload && typeof artifact.payload === "object"
     ? artifact.payload
@@ -683,6 +753,7 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
   const productionCutoverReadiness = artifacts.productionCutoverReadiness && artifacts.productionCutoverReadiness.payload;
   const schedulerTrafficCollectorPreflight = artifacts.schedulerTrafficCollectorPreflight && artifacts.schedulerTrafficCollectorPreflight.payload;
   const schedulerTrafficCutoverReadiness = artifacts.schedulerTrafficCutoverReadiness && artifacts.schedulerTrafficCutoverReadiness.payload;
+  const liveEvidenceReadiness = artifacts.liveEvidenceReadiness && artifacts.liveEvidenceReadiness.payload;
 
   checks.push(buildCheck({
     id: "CHK_01",
@@ -1029,6 +1100,19 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
   }));
 
   const deployMode = String(deployDecision && deployDecision.mode || "").trim().toUpperCase();
+  if (deployMode === "LIVE" || artifacts.liveEvidenceReadiness || cloudbuildContext.live_evidence_readiness_summary) {
+    checks.push(buildCheck({
+      id: "CHK_13G",
+      label: "LIVE evidence readiness summary is artifact-backed and submit-visible",
+      status: hasLiveEvidenceReadinessPlan({ readiness: liveEvidenceReadiness, cloudbuildContext }) ? "PASS" : "FAIL",
+      reason: hasLiveEvidenceReadinessPlan({ readiness: liveEvidenceReadiness, cloudbuildContext })
+        ? "LIVE evidence readiness artifact and CloudBuild context summary prove all LIVE evidence axes are ready"
+        : "LIVE evidence readiness artifact is missing, failed, stale, not context-linked, or not submit-visible",
+      file: artifacts.liveEvidenceReadiness ? artifacts.liveEvidenceReadiness.filePath : path.join(artifactDir, "v2_live_evidence_readiness_latest.json"),
+      field: "live_evidence_readiness_summary,live_evidence_readiness_file,failed_axis_ids,submit_check_ids,runbook_refs,temporal_coherence",
+    }));
+  }
+
   if (deployMode === "LIVE" || artifacts.liveCutoverReadiness) {
     checks.push(buildCheck({
       id: "CHK_20",
@@ -1090,7 +1174,7 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
         ? "LIVE readiness artifacts have current-dir provenance and bounded generated freshness"
         : "LIVE readiness artifacts must be current-dir matched with generated_at/artifact_generated_at and artifact_generated_age_minutes <= 180",
       file: artifactDir,
-      field: "v2_repair_live_cutover_readiness_latest.json,v2_production_cutover_readiness_latest.json,v2_scheduler_traffic_collector_preflight_latest.json,v2_scheduler_traffic_cutover_readiness_latest.json",
+      field: "v2_repair_live_cutover_readiness_latest.json,v2_production_cutover_readiness_latest.json,v2_scheduler_traffic_collector_preflight_latest.json,v2_scheduler_traffic_cutover_readiness_latest.json,v2_live_evidence_readiness_latest.json",
     }));
   }
 
@@ -1130,6 +1214,7 @@ function runCanaryRunbookCheck(env = process.env) {
     productionCutoverReadiness: readOptionalArtifact(artifactDir, "v2_production_cutover_readiness_latest.json"),
     schedulerTrafficCollectorPreflight: readOptionalArtifact(artifactDir, "v2_scheduler_traffic_collector_preflight_latest.json"),
     schedulerTrafficCutoverReadiness: readOptionalArtifact(artifactDir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
+    liveEvidenceReadiness: readOptionalArtifact(artifactDir, "v2_live_evidence_readiness_latest.json"),
   });
   const review = evaluateRunbookReview({
     artifactDir,
@@ -1217,6 +1302,8 @@ if (require.main === module) {
       hasProductionCutoverReadinessPlan,
       hasSchedulerTrafficCollectorPreflightPlan,
       hasSchedulerTrafficCutoverReadinessPlan,
+      isReadyLiveEvidenceReadinessPayload,
+      hasLiveEvidenceReadinessPlan,
       hasFreshCurrentReadinessArtifact,
       hasFreshLiveReadinessArtifacts,
       MAX_LIVE_READINESS_ARTIFACT_AGE_MINUTES,
