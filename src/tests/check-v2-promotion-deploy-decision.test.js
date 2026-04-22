@@ -119,6 +119,17 @@ function buildBoundedRuntimeSummaryFixture() {
         latest_evaluated_at: "2026-04-22T00:01:00.000Z",
         blockers: [],
       },
+      collector_execution_summary: {
+        status: "PASS",
+        producer_script: "collect-v2-promotion-runtime-snapshot",
+        producer_scope: "openclaw_supreme_control_plane",
+        source: "V2_FIRESTORE_COLLECTOR",
+        position_cycle_id: "PCY__CANARY__01",
+        openclaw_decision_id: "OCDV2__CANARY__01",
+        collected_at: "2026-04-22T00:02:00.000Z",
+        exchange_write_performed: false,
+        blockers: [],
+      },
       lineage_consistency_summary: {
         ok: true,
         expected_openclaw_decision_id: "OCDV2__CANARY__01",
@@ -386,6 +397,7 @@ function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
   summary.exit_runtime_canary_streak.position_cycle_id = positionCycleId;
   summary.production_entry_protected_canary.route_result_summary.position_cycle_id = positionCycleId;
   summary.openclaw_supreme_control_plane_summary.lineage_consistency_summary.expected_position_cycle_id = positionCycleId;
+  summary.openclaw_supreme_control_plane_summary.collector_execution_summary.position_cycle_id = positionCycleId;
   return summary;
 }
 
@@ -2243,6 +2255,34 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__OPENCLAW_MISSING_FRESHNESS",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED"));
+})();
+
+(function liveOpenClawSupremeMissingCollectorProvenanceFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__OPENCLAW_MISSING_COLLECTOR");
+  delete bounded.openclaw_supreme_control_plane_summary.collector_execution_summary;
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__OPENCLAW_MISSING_COLLECTOR",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__OPENCLAW_MISSING_COLLECTOR",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__OPENCLAW_MISSING_COLLECTOR",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

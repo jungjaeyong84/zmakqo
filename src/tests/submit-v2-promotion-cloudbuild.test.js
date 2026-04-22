@@ -203,6 +203,17 @@ function seedBoundedSubmitArtifacts(
           latest_evaluated_at: "2026-04-22T00:01:00.000Z",
           blockers: [],
         },
+        collector_execution_summary: {
+          status: "PASS",
+          producer_script: "collect-v2-promotion-runtime-snapshot",
+          producer_scope: "openclaw_supreme_control_plane",
+          source: "V2_FIRESTORE_COLLECTOR",
+          position_cycle_id: "PCY__SUBMIT",
+          openclaw_decision_id: "OCDV2__SUBMIT",
+          collected_at: "2026-04-22T00:02:00.000Z",
+          exchange_write_performed: false,
+          blockers: [],
+        },
         lineage_consistency_summary: {
           ok: true,
           expected_openclaw_decision_id: "OCDV2__SUBMIT",

@@ -491,12 +491,16 @@ function buildOpenClawSupremeControlPlaneSummary({
   learnerShadowEvaluations = [],
   expectedOpenClawDecisionId = null,
   expectedPositionCycleId = null,
+  collectorExecutionSummary = null,
   nowMs = Date.now(),
   maxLearnerEvaluationAgeMinutes = 1440,
 } = {}) {
   const permits = Array.isArray(executionPermits) ? executionPermits : [];
   const adjudications = Array.isArray(outcomeAdjudications) ? outcomeAdjudications : [];
   const learnerRows = Array.isArray(learnerShadowEvaluations) ? learnerShadowEvaluations : [];
+  const collector = collectorExecutionSummary && typeof collectorExecutionSummary === "object"
+    ? collectorExecutionSummary
+    : null;
   const currentMs = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
   const maxLearnerAgeMs = Math.max(1, Number(maxLearnerEvaluationAgeMinutes) || 1440) * 60_000;
   const expectedDecisionId = trimOrNull(expectedOpenClawDecisionId);
@@ -523,6 +527,18 @@ function buildOpenClawSupremeControlPlaneSummary({
     .filter(Boolean)
     .sort()
     .pop() || null;
+  const collectorOk = !!(
+    collector &&
+    trimOrNull(collector.status) === "PASS" &&
+    trimOrNull(collector.producer_script) === "collect-v2-promotion-runtime-snapshot" &&
+    trimOrNull(collector.producer_scope) === "openclaw_supreme_control_plane" &&
+    trimOrNull(collector.source) === "V2_FIRESTORE_COLLECTOR" &&
+    trimOrNull(collector.position_cycle_id) === expectedCycleId &&
+    trimOrNull(collector.openclaw_decision_id) === expectedDecisionId &&
+    trimOrNull(collector.collected_at) &&
+    collector.exchange_write_performed === false &&
+    (!Array.isArray(collector.blockers) || collector.blockers.length === 0)
+  );
   const permitLineageMatches = permits.filter((row) => {
     const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
     const worldOk = !expectedWorldStateHash || trimOrNull(row && row.world_state_hash) === expectedWorldStateHash;
@@ -555,6 +571,7 @@ function buildOpenClawSupremeControlPlaneSummary({
   if (!learnerRows.length) blockers.push("OPENCLAW_LEARNER_SHADOW_EVALUATION_REQUIRED");
   if (liveAppliedCount > 0) blockers.push("OPENCLAW_LEARNER_LIVE_APPLICATION_FORBIDDEN");
   if (staleEvaluationCount > 0) blockers.push("OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE");
+  if (!collectorOk) blockers.push("OPENCLAW_SUPREME_COLLECTOR_PROVENANCE_REQUIRED");
   blockers.push(...lineageBlockers);
   return Object.freeze({
     ok: blockers.length === 0,
@@ -581,6 +598,19 @@ function buildOpenClawSupremeControlPlaneSummary({
             ...(staleEvaluationCount === 0 ? [] : ["OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE"]),
           ],
     }),
+    collector_execution_summary: collector
+      ? Object.freeze({
+          status: trimOrNull(collector.status),
+          producer_script: trimOrNull(collector.producer_script),
+          producer_scope: trimOrNull(collector.producer_scope),
+          source: trimOrNull(collector.source),
+          position_cycle_id: trimOrNull(collector.position_cycle_id),
+          openclaw_decision_id: trimOrNull(collector.openclaw_decision_id),
+          collected_at: trimOrNull(collector.collected_at),
+          exchange_write_performed: collector.exchange_write_performed === true,
+          blockers: Array.isArray(collector.blockers) ? collector.blockers.slice() : [],
+        })
+      : null,
     lineage_consistency_summary: Object.freeze({
       ok: lineageBlockers.length === 0,
       expected_openclaw_decision_id: expectedDecisionId,
@@ -981,6 +1011,7 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
     repairRequests,
     repairExecutionLedgers,
   });
+  const collectedAt = new Date().toISOString();
   const openclawSupremeControlPlaneSummary = buildOpenClawSupremeControlPlaneSummary({
     worldState,
     executionPermits,
@@ -988,6 +1019,17 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
     learnerShadowEvaluations,
     expectedOpenClawDecisionId: nativeDecisionId,
     expectedPositionCycleId: cfg.positionCycleId,
+    collectorExecutionSummary: {
+      status: "PASS",
+      producer_script: "collect-v2-promotion-runtime-snapshot",
+      producer_scope: "openclaw_supreme_control_plane",
+      source: "V2_FIRESTORE_COLLECTOR",
+      position_cycle_id: cfg.positionCycleId,
+      openclaw_decision_id: nativeDecisionId,
+      collected_at: collectedAt,
+      exchange_write_performed: false,
+      blockers: [],
+    },
   });
   const openclawExecutionSeparationAudit = evaluateOpenClawExecutionSeparation({
     bundle: {
@@ -1027,7 +1069,7 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
   return Object.freeze({
     snapshotMeta: Object.freeze({
       source: "V2_FIRESTORE_COLLECTOR",
-      collected_at: new Date().toISOString(),
+      collected_at: collectedAt,
       position_cycle_id: cfg.positionCycleId,
       native_signal_intent_id: nativeSignalIntentId,
       native_openclaw_decision_id: nativeDecisionId,

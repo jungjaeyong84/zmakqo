@@ -52,6 +52,21 @@ function buildBundle(overrides = {}) {
   });
 }
 
+function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
+  return {
+    status: "PASS",
+    producer_script: "collect-v2-promotion-runtime-snapshot",
+    producer_scope: "openclaw_supreme_control_plane",
+    source: "V2_FIRESTORE_COLLECTOR",
+    position_cycle_id: positionCycle.position_cycle_id,
+    openclaw_decision_id: bundle.openclawDecision.openclaw_decision_id,
+    collected_at: "2026-04-22T01:02:00.000Z",
+    exchange_write_performed: false,
+    blockers: [],
+    ...overrides,
+  };
+}
+
 (function worldStateHashIsDeterministicAndCollectionMapped() {
   const left = buildOpenClawWorldState({
     env: { DONBEOLJA_V2_COLLECTION_PREFIX: "dbjv2__" },
@@ -215,6 +230,7 @@ function buildBundle(overrides = {}) {
     learnerShadowEvaluations: [evaluation],
     expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
     expectedPositionCycleId: positionCycle.position_cycle_id,
+    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle),
     nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
   });
   assert.strictEqual(summary.ok, true);
@@ -224,6 +240,7 @@ function buildBundle(overrides = {}) {
   assert.strictEqual(summary.lineage_consistency_summary.learner_lineage_mismatch_n, 0);
   assert.strictEqual(summary.learner_shadow_summary.max_observed_evaluation_age_minutes, 1);
   assert.strictEqual(summary.learner_shadow_summary.latest_evaluated_at, "2026-04-22T01:01:00.000Z");
+  assert.strictEqual(summary.collector_execution_summary.producer_script, "collect-v2-promotion-runtime-snapshot");
 
   const mismatchedLearner = {
     ...evaluation,
@@ -236,6 +253,7 @@ function buildBundle(overrides = {}) {
     learnerShadowEvaluations: [mismatchedLearner],
     expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
     expectedPositionCycleId: positionCycle.position_cycle_id,
+    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle),
     nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
   });
   assert.strictEqual(broken.ok, false);
@@ -278,6 +296,7 @@ function buildBundle(overrides = {}) {
     learnerShadowEvaluations: [staleEvaluation],
     expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
     expectedPositionCycleId: positionCycle.position_cycle_id,
+    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle),
     nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
     maxLearnerEvaluationAgeMinutes: 1440,
   });
@@ -290,6 +309,47 @@ function buildBundle(overrides = {}) {
   assert.strictEqual(summary.learner_shadow_summary.latest_evaluated_at, "2026-04-20T01:00:00.000Z");
   assert.ok(summary.blockers.includes("OPENCLAW_EXECUTION_PERMIT_VALIDATION_REQUIRED"));
   assert.ok(summary.blockers.includes("OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE"));
+})();
+
+(function supremeSummaryRejectsMissingCollectorProvenance() {
+  const bundle = buildBundle();
+  const worldState = buildOpenClawWorldState({
+    mode: "CANARY",
+    generatedAt: "2026-04-22T00:00:00.000Z",
+  });
+  const permit = issueOpenClawExecutionPermit({
+    bundle,
+    worldState,
+    approvalReason: "TEST_PERMIT",
+    issuedAt: "2026-04-22T00:00:00.000Z",
+    ttlMinutes: 120,
+  });
+  const positionCycle = {
+    position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__SUPREME_NO_COLLECTOR",
+  };
+  const adjudication = adjudicateOpenClawOutcome({
+    bundle,
+    positionCycle,
+    realizedExitEvent: "TP1_REACHED",
+    realizedPnl: 0.02,
+    adjudicatedAt: "2026-04-22T01:00:00.000Z",
+  });
+  const evaluation = buildOpenClawLearnerShadowEvaluation({
+    adjudication,
+    evaluatedAt: "2026-04-22T01:01:00.000Z",
+  });
+  const summary = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
+    worldState,
+    executionPermits: [permit],
+    outcomeAdjudications: [adjudication],
+    learnerShadowEvaluations: [evaluation],
+    expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
+    expectedPositionCycleId: positionCycle.position_cycle_id,
+    nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
+  });
+  assert.strictEqual(summary.ok, false);
+  assert.strictEqual(summary.collector_execution_summary, null);
+  assert.ok(summary.blockers.includes("OPENCLAW_SUPREME_COLLECTOR_PROVENANCE_REQUIRED"));
 })();
 
 console.log("V2_OPENCLAW_SUPREME_CONTROL_PLANE_TEST_OK");

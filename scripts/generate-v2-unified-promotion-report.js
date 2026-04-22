@@ -438,6 +438,7 @@ function buildOpenClawSupremeControlPlaneSummary(summary) {
   if (!row) return null;
   const learner = normalizeObject(row.learner_shadow_summary);
   const lineage = normalizeObject(row.lineage_consistency_summary);
+  const collector = normalizeObject(row.collector_execution_summary);
   return Object.freeze({
     ok: row.ok === true,
     world_state_n: normalizeNumber(row.world_state_n),
@@ -457,6 +458,17 @@ function buildOpenClawSupremeControlPlaneSummary(summary) {
       max_observed_evaluation_age_minutes: normalizeNumber(learner.max_observed_evaluation_age_minutes),
       latest_evaluated_at: trimOrNull(learner.latest_evaluated_at),
       blockers: Array.isArray(learner.blockers) ? learner.blockers.slice() : [],
+    }) : null,
+    collector_execution_summary: collector ? Object.freeze({
+      status: trimOrNull(collector.status),
+      producer_script: trimOrNull(collector.producer_script),
+      producer_scope: trimOrNull(collector.producer_scope),
+      source: trimOrNull(collector.source),
+      position_cycle_id: trimOrNull(collector.position_cycle_id),
+      openclaw_decision_id: trimOrNull(collector.openclaw_decision_id),
+      collected_at: trimOrNull(collector.collected_at),
+      exchange_write_performed: collector.exchange_write_performed === true,
+      blockers: Array.isArray(collector.blockers) ? collector.blockers.slice() : [],
     }) : null,
     lineage_consistency_summary: lineage ? Object.freeze({
       ok: lineage.ok === true,

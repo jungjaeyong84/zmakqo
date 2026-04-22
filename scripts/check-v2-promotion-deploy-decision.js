@@ -388,6 +388,7 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
   if (!supreme) return false;
   const learner = normalizeObject(supreme.learner_shadow_summary);
   const lineage = normalizeObject(supreme.lineage_consistency_summary);
+  const collector = normalizeObject(supreme.collector_execution_summary);
   const maxLearnerAgeMinutes = Number(learner && learner.max_evaluation_age_minutes);
   const maxObservedLearnerAgeMinutes = Number(learner && learner.max_observed_evaluation_age_minutes);
   return (
@@ -412,12 +413,22 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
     maxObservedLearnerAgeMinutes >= 0 &&
     maxObservedLearnerAgeMinutes <= maxLearnerAgeMinutes &&
     !!trimOrNull(learner.latest_evaluated_at) &&
+    collector &&
+    trimOrNull(collector.status) === "PASS" &&
+    trimOrNull(collector.producer_script) === "collect-v2-promotion-runtime-snapshot" &&
+    trimOrNull(collector.producer_scope) === "openclaw_supreme_control_plane" &&
+    trimOrNull(collector.source) === "V2_FIRESTORE_COLLECTOR" &&
+    collector.exchange_write_performed === false &&
+    !!trimOrNull(collector.collected_at) &&
+    ensureArray(collector.blockers).length === 0 &&
     lineage &&
     lineage.ok === true &&
     !!trimOrNull(lineage.expected_openclaw_decision_id) &&
     !!trimOrNull(lineage.expected_position_cycle_id) &&
     !!trimOrNull(lineage.expected_world_state_hash) &&
     trimOrNull(lineage.expected_world_state_hash) === trimOrNull(supreme.latest_world_state_hash) &&
+    trimOrNull(collector.position_cycle_id) === trimOrNull(lineage.expected_position_cycle_id) &&
+    trimOrNull(collector.openclaw_decision_id) === trimOrNull(lineage.expected_openclaw_decision_id) &&
     Number(lineage.permit_lineage_mismatch_n || 0) === 0 &&
     Number(lineage.outcome_lineage_mismatch_n || 0) === 0 &&
     Number(lineage.learner_lineage_mismatch_n || 0) === 0 &&
