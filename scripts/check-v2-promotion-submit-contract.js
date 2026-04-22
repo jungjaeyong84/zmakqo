@@ -1394,6 +1394,11 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       id: "SUBMIT_CONTRACT_CHK_51",
       label: "LIVE streak artifacts require generated freshness provenance",
       ok: repairFirestoreStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && repairFirestoreStreakCheckerText.includes("hasFirestoreBackedRepairEvidence")
+        && repairFirestoreStreakCheckerText.includes("FIRESTORE_CANARY_STREAK:FIRESTORE_EVIDENCE_MISSING")
+        && deployDecisionCheckerText.includes("firestore_evidence_missing_n")
+        && packageJsonText.includes("check-v2-repair-queue-firestore-canary-streak.test.js")
+        && packageJsonText.includes("check-v2-promotion-deploy-decision.test.js")
         && productionEntryRouteStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
         && productionEntryRouteStreakCheckerText.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED")
         && exitRuntimeStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
@@ -1404,6 +1409,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && artifactContractText.includes("artifact_generated_age_minutes")
         && runbookText.includes("artifact_generated_age_minutes"),
       reason: repairFirestoreStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && repairFirestoreStreakCheckerText.includes("hasFirestoreBackedRepairEvidence")
         && unifiedPromotionReportGeneratorText.includes("artifact_generated_age_minutes")
         && deployDecisionCheckerText.includes("artifact_generated_age_minutes")
         ? "LIVE streak evidence now proves both 24h history coverage and current artifact freshness"

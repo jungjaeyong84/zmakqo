@@ -393,6 +393,7 @@ function hasRepairFirestoreCanaryStreak(summary) {
     streak.artifact_current_dir_match === true &&
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
     Number(streak.unhealthy_run_n) === 0 &&
+    Number(streak.firestore_evidence_missing_n || 0) === 0 &&
     Number(streak.invalid_line_n) === 0 &&
     hasFreshLongRunStreakCoverage(streak) &&
     ensureArray(streak.blockers).length === 0

@@ -79,9 +79,49 @@ function parseHistoryFile(filePath) {
   });
 }
 
+function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function toMs(value) {
   const ms = Date.parse(String(value || "").trim());
   return Number.isFinite(ms) ? ms : null;
+}
+
+function hasFirestoreBackedRepairEvidence(payload) {
+  const row = payload && typeof payload === "object" ? payload : {};
+  const seedWrites = ensureArray(row.seed_writes);
+  const seedKeys = new Set(seedWrites.map((entry) => trimOrNull(entry && entry.collectionKey)).filter(Boolean));
+  const hasRequiredSeedWrites = [
+    "POSITION_CYCLES",
+    "EXIT_RUNTIME_PROJECTIONS",
+    "PROTECTION_RUNTIME",
+    "REPAIR_REQUESTS",
+  ].every((key) => seedKeys.has(key));
+  const completionAttempts = ensureArray(row.completion_attempts);
+  const hasSuccessfulCompletionEvidence = completionAttempts.some((attempt) => {
+    const ledger = attempt && attempt.completion_ledger && typeof attempt.completion_ledger === "object"
+      ? attempt.completion_ledger
+      : {};
+    const result = ledger.result_snapshot && typeof ledger.result_snapshot === "object"
+      ? ledger.result_snapshot
+      : {};
+    const repairEvidence = result.repair_evidence_summary && typeof result.repair_evidence_summary === "object"
+      ? result.repair_evidence_summary
+      : {};
+    return (
+      attempt && attempt.ok === true &&
+      trimOrNull(ledger.execution_status) === "COMPLETED_SUCCESS" &&
+      trimOrNull(ledger.repair_execution_ledger_id) &&
+      ensureArray(repairEvidence.order_evidence).length > 0
+    );
+  });
+  return (
+    Number(row.seed_write_n) >= 4 &&
+    hasRequiredSeedWrites &&
+    Number(row.refresh_call_n) >= 1 &&
+    hasSuccessfulCompletionEvidence
+  );
 }
 
 function isHealthyFirestoreCanaryRow(row) {
@@ -100,6 +140,7 @@ function isHealthyFirestoreCanaryRow(row) {
     Number(summary.delegated_repair_n) === 1 &&
     Number(summary.completion_success_n) === 1 &&
     Number(summary.completion_failed_n) === 0 &&
+    hasFirestoreBackedRepairEvidence(payload) &&
     !raw.includes("apiKey") &&
     !raw.includes("apiSecret") &&
     !raw.includes("canary-key") &&
@@ -125,6 +166,14 @@ function evaluateFirestoreCanaryStreak({
     .sort((left, right) => left.generated_ms - right.generated_ms);
   const healthyRows = rowsInWindow.filter(isHealthyFirestoreCanaryRow);
   const unhealthyRows = rowsInWindow.filter((row) => !isHealthyFirestoreCanaryRow(row));
+  const firestoreEvidenceMissingN = rowsInWindow.filter((row) => {
+    const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
+    return (
+      payload.ok === true &&
+      payload.reason === "V2_REPAIR_QUEUE_FIRESTORE_CANARY_HEALTHY" &&
+      !hasFirestoreBackedRepairEvidence(payload)
+    );
+  }).length;
   const gaps = [];
   for (let index = 1; index < healthyRows.length; index += 1) {
     gaps.push((healthyRows[index].generated_ms - healthyRows[index - 1].generated_ms) / 60000);
@@ -137,6 +186,7 @@ function evaluateFirestoreCanaryStreak({
     : 0;
   const blockers = [];
   if ((parsed.invalid_lines || []).length > 0) blockers.push("FIRESTORE_CANARY_STREAK:INVALID_JSONL");
+  if (firestoreEvidenceMissingN > 0) blockers.push("FIRESTORE_CANARY_STREAK:FIRESTORE_EVIDENCE_MISSING");
   if (healthyRows.length < Number(config.minRunCount)) blockers.push("FIRESTORE_CANARY_STREAK:MIN_RUN_COUNT");
   if (unhealthyRows.length > 0) blockers.push("FIRESTORE_CANARY_STREAK:UNHEALTHY_ROW_IN_WINDOW");
   if (latestAgeMinutes == null || latestAgeMinutes > Number(config.maxGapMinutes)) blockers.push("FIRESTORE_CANARY_STREAK:LATEST_STALE");
@@ -157,6 +207,7 @@ function evaluateFirestoreCanaryStreak({
     row_n: rowsInWindow.length,
     healthy_run_n: healthyRows.length,
     unhealthy_run_n: unhealthyRows.length,
+    firestore_evidence_missing_n: firestoreEvidenceMissingN,
     invalid_line_n: (parsed.invalid_lines || []).length,
     latest_age_minutes: latestAgeMinutes,
     coverage_minutes: coverageMinutes,
@@ -216,6 +267,7 @@ if (require.main === module) {
     runCheck,
     evaluateFirestoreCanaryStreak,
     parseHistoryFile,
+    ensureArray,
     __test: {
       OUTPUT_FILENAME,
       HISTORY_FILENAME,
@@ -226,6 +278,7 @@ if (require.main === module) {
       resolveOutputFile,
       resolveStreakConfig,
       toMs,
+      hasFirestoreBackedRepairEvidence,
       isHealthyFirestoreCanaryRow,
     },
   };

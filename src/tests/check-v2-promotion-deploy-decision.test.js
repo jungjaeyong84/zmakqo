@@ -114,6 +114,7 @@ function buildBoundedRuntimeSummaryFixture() {
       min_run_count: 12,
       max_gap_minutes: 180,
       unhealthy_run_n: 0,
+      firestore_evidence_missing_n: 0,
       invalid_line_n: 0,
       latest_age_minutes: 15,
       coverage_minutes: 1440,
@@ -504,6 +505,38 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__NO_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveRepairFirestoreStreakRequiresDeepFirestoreEvidence() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.repair_firestore_canary_streak = {
+    ...bounded.repair_firestore_canary_streak,
+    firestore_evidence_missing_n: 1,
+  };
+  assert.strictEqual(deployDecision.__test.hasRepairFirestoreCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__REPAIR_STREAK_EVIDENCE_MISSING",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__REPAIR_STREAK_EVIDENCE_MISSING",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__REPAIR_STREAK_EVIDENCE_MISSING",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

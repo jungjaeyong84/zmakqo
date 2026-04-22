@@ -126,6 +126,30 @@ function buildHealthyRepairFirestoreCanaryPayload(generatedAt) {
       completion_success_n: 1,
       completion_failed_n: 0,
     },
+    seed_write_n: 4,
+    seed_writes: [
+      { collectionKey: "POSITION_CYCLES", docId: "PCY__REPAIR_STREAK__CANARY" },
+      { collectionKey: "EXIT_RUNTIME_PROJECTIONS", docId: "ERP__REPAIR_STREAK__CANARY" },
+      { collectionKey: "PROTECTION_RUNTIME", docId: "PRT__REPAIR_STREAK__CANARY" },
+      { collectionKey: "REPAIR_REQUESTS", docId: "RQR__REPAIR_STREAK__CANARY" },
+    ],
+    refresh_call_n: 1,
+    completion_attempts: [
+      {
+        ok: true,
+        completion_ledger: {
+          repair_execution_ledger_id: "RQLEDGER__COMPLETED_SUCCESS__REPAIR_STREAK",
+          execution_status: "COMPLETED_SUCCESS",
+          result_snapshot: {
+            repair_evidence_summary: {
+              order_evidence: [
+                { leg: "SL", order_id: "STOP__REPAIR_STREAK", order_status: "PLACED" },
+              ],
+            },
+          },
+        },
+      },
+    ],
   };
 }
 
@@ -455,6 +479,7 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
     assert.strictEqual(storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.artifact_dir, dir);
     assert.strictEqual(storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.artifact_filename, "v2_repair_queue_firestore_canary_streak_latest.json");
     assert.strictEqual(storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.artifact_current_dir_match, true);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.firestore_evidence_missing_n, 0);
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
     try { fs.rmSync(externalStreakFile, { force: true }); } catch (_) {}

@@ -22,6 +22,30 @@ function buildHealthyPayload(generatedAt) {
       completion_success_n: 1,
       completion_failed_n: 0,
     },
+    seed_write_n: 4,
+    seed_writes: [
+      { collectionKey: "POSITION_CYCLES", docId: "PCY__CANARY" },
+      { collectionKey: "EXIT_RUNTIME_PROJECTIONS", docId: "ERP__CANARY" },
+      { collectionKey: "PROTECTION_RUNTIME", docId: "PRT__CANARY" },
+      { collectionKey: "REPAIR_REQUESTS", docId: "RQR__CANARY" },
+    ],
+    refresh_call_n: 1,
+    completion_attempts: [
+      {
+        ok: true,
+        completion_ledger: {
+          repair_execution_ledger_id: "RQLEDGER__COMPLETED_SUCCESS__CANARY",
+          execution_status: "COMPLETED_SUCCESS",
+          result_snapshot: {
+            repair_evidence_summary: {
+              order_evidence: [
+                { leg: "SL", order_id: "STOP__CANARY", order_status: "PLACED" },
+              ],
+            },
+          },
+        },
+      },
+    ],
   };
 }
 
@@ -55,7 +79,35 @@ function buildHistory(rows) {
   assert.strictEqual(report.ok, true);
   assert.strictEqual(report.generated_at, "2026-04-21T12:00:00.000Z");
   assert.strictEqual(report.healthy_run_n, 13);
+  assert.strictEqual(report.firestore_evidence_missing_n, 0);
   assert.strictEqual(report.blockers.length, 0);
+})();
+
+(function streakFailsWhenFirestoreBackedExecutionEvidenceIsMissing() {
+  const nowMs = Date.parse("2026-04-21T12:00:00.000Z");
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    const payload = buildHealthyPayload(new Date(nowMs - hour * 60 * 60000).toISOString());
+    rows.push({
+      ...payload,
+      seed_write_n: undefined,
+      seed_writes: undefined,
+      refresh_call_n: undefined,
+      completion_attempts: undefined,
+    });
+  }
+  const report = checker.evaluateFirestoreCanaryStreak({
+    history: buildHistory(rows),
+    config: {
+      lookbackHours: 24,
+      minRunCount: 12,
+      maxGapMinutes: 180,
+    },
+    nowMs,
+  });
+  assert.strictEqual(report.ok, false);
+  assert.strictEqual(report.firestore_evidence_missing_n, 13);
+  assert.ok(report.blockers.includes("FIRESTORE_CANARY_STREAK:FIRESTORE_EVIDENCE_MISSING"));
 })();
 
 (function streakFailsOnSingleLatestOnlyEvidence() {

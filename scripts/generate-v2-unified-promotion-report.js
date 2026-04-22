@@ -302,6 +302,7 @@ function buildRepairFirestoreCanaryStreakSummary(streak) {
     row_n: normalizeNumber(row.row_n),
     healthy_run_n: normalizeNumber(row.healthy_run_n),
     unhealthy_run_n: normalizeNumber(row.unhealthy_run_n),
+    firestore_evidence_missing_n: normalizeNumber(row.firestore_evidence_missing_n),
     invalid_line_n: normalizeNumber(row.invalid_line_n),
     latest_age_minutes: normalizeNumber(row.latest_age_minutes),
     coverage_minutes: normalizeNumber(row.coverage_minutes),
