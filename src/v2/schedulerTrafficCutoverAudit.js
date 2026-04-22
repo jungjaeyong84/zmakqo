@@ -50,7 +50,10 @@ function buildCheck({ id, ok, reason, expected = null, actual = null }) {
 
 function requiredOpenClawJobIds() {
   return Object.freeze(
-    normalizeArray(manifest.OPENCLAW_CRON_JOBS)
+    [
+      ...normalizeArray(manifest.OPENCLAW_CRON_JOBS),
+      ...normalizeArray(manifest.OPENCLAW_CLOUD_SCHEDULER_JOBS),
+    ]
       .filter((job) => trimOrNull(job && job.criticality) === "HIGH")
       .map((job) => trimOrNull(job && job.job_id))
       .filter(Boolean)
@@ -60,7 +63,10 @@ function requiredOpenClawJobIds() {
 
 function presentEnabledOpenClawJobIds(state) {
   return Object.freeze(
-    normalizeArray(state && state.openclaw_cron_jobs)
+    [
+      ...normalizeArray(state && state.openclaw_cron_jobs),
+      ...normalizeArray(state && state.openclaw_cloud_scheduler_jobs),
+    ]
       .filter((job) => job && job.enabled === true)
       .map((job) => trimOrNull(job.job_id) || trimOrNull(job.name) || trimOrNull(job.label))
       .filter(Boolean)
@@ -147,6 +153,30 @@ function summarizeServices(state) {
   );
 }
 
+function summarizeCloudSchedulerJobs(state) {
+  return Object.freeze(
+    normalizeArray(state && state.openclaw_cloud_scheduler_jobs)
+      .map((job) => normalizeObject(job))
+      .filter(Boolean)
+      .map((job) => Object.freeze({
+        job_id: trimOrNull(job.job_id),
+        scheduler_name: trimOrNull(job.scheduler_name || job.name),
+        enabled: job.enabled === true,
+        criticality: trimOrNull(job.criticality),
+        state: trimOrNull(job.state),
+        expected_http_path: trimOrNull(job.expected_http_path),
+        actual_http_path: trimOrNull(job.actual_http_path || job.http_path || job.target),
+        path_match: job.path_match === true,
+        expected_schedule: trimOrNull(job.expected_schedule),
+        actual_schedule: trimOrNull(job.actual_schedule || job.schedule),
+        schedule_match: job.schedule_match === true,
+        expected_time_zone: trimOrNull(job.expected_time_zone),
+        actual_time_zone: trimOrNull(job.actual_time_zone || job.time_zone),
+        time_zone_match: job.time_zone_match === true,
+      }))
+  );
+}
+
 function auditV2SchedulerTrafficCutoverReadiness(env = process.env) {
   let state = null;
   let parseError = null;
@@ -219,6 +249,7 @@ function auditV2SchedulerTrafficCutoverReadiness(env = process.env) {
     required_openclaw_job_ids: requiredOpenClawJobIds(),
     missing_openclaw_job_ids: missingOpenClawJobs,
     active_legacy_scheduler_jobs: activeLegacyJobs,
+    openclaw_cloud_scheduler_jobs: summarizeCloudSchedulerJobs(row),
     cloud_run_services: summarizeServices(row),
     checks: Object.freeze(checks),
   });
@@ -241,5 +272,6 @@ module.exports = {
     missingRequiredOpenClawJobIds,
     activeLegacySchedulerJobs,
     summarizeServices,
+    summarizeCloudSchedulerJobs,
   },
 };

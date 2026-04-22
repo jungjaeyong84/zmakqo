@@ -905,6 +905,7 @@ function extractSchedulerTrafficCutoverReadinessSummaryFromArtifacts(artifacts =
     active_legacy_scheduler_job_n: Number.isFinite(Number(summary.active_legacy_scheduler_job_n))
       ? Number(summary.active_legacy_scheduler_job_n)
       : 0,
+    openclaw_cloud_scheduler_jobs: Object.freeze(Array.isArray(summary.openclaw_cloud_scheduler_jobs) ? summary.openclaw_cloud_scheduler_jobs.slice() : []),
     cloud_run_services: Object.freeze(Array.isArray(summary.cloud_run_services) ? summary.cloud_run_services.slice() : []),
     file: trimOrNull(cloudbuildContext && cloudbuildContext.scheduler_traffic_cutover_readiness_file),
   });
@@ -1010,6 +1011,7 @@ function hasProductionCutoverReadinessSummary(summary) {
 function hasSchedulerTrafficCutoverReadinessSummary(summary) {
   const row = normalizeObject(summary);
   const cloudRunServices = Array.isArray(row && row.cloud_run_services) ? row.cloud_run_services : [];
+  const cloudSchedulerJobs = Array.isArray(row && row.openclaw_cloud_scheduler_jobs) ? row.openclaw_cloud_scheduler_jobs : [];
   return !!(
     row &&
     row.ok === true &&
@@ -1018,6 +1020,8 @@ function hasSchedulerTrafficCutoverReadinessSummary(summary) {
     trimOrNull(row.scheduler_sot) === "OPENCLAW_CRON" &&
     Array.isArray(row.missing_openclaw_job_ids) &&
     row.missing_openclaw_job_ids.length === 0 &&
+    cloudSchedulerJobs.some((job) => trimOrNull(job && job.job_id) === "v2_exit_runtime_canary" && job.enabled === true) &&
+    cloudSchedulerJobs.some((job) => trimOrNull(job && job.job_id) === "v2_production_entry_route_canary" && job.enabled === true) &&
     Number(row.active_legacy_scheduler_job_n || 0) === 0 &&
     cloudRunServices.length >= 2 &&
     cloudRunServices.every((service) => (

@@ -139,11 +139,21 @@ function collectCloudSchedulerJobs({ projectId, region, env = process.env, execF
     const name = trimOrNull(job && job.name);
     const shortName = name ? name.split("/").pop() : null;
     const httpTarget = normalizeObject(job && job.httpTarget) || {};
+    const target = trimOrNull(httpTarget.uri) || trimOrNull(job && job.schedule);
+    let httpPath = null;
+    try {
+      httpPath = target ? `${new URL(target).pathname}${new URL(target).search}` : null;
+    } catch (_error) {
+      httpPath = target;
+    }
     return Object.freeze({
       job_id: shortName,
       name: shortName,
       label: trimOrNull(job && job.description) || shortName,
-      target: trimOrNull(httpTarget.uri) || trimOrNull(job && job.schedule),
+      target,
+      http_path: httpPath,
+      schedule: trimOrNull(job && job.schedule),
+      time_zone: trimOrNull(job && job.timeZone),
       enabled: trimOrNull(job && job.state) !== "PAUSED",
       active: trimOrNull(job && job.state) !== "PAUSED",
       state: trimOrNull(job && job.state),
@@ -164,6 +174,45 @@ function buildOpenClawCronJobs(env = process.env) {
       active: enabled,
       scheduler_sot: trimOrNull(job && job.scheduler_sot) || manifest.OPENCLAW_SCHEDULER_SOT,
       criticality: trimOrNull(job && job.criticality),
+    });
+  }));
+}
+
+function buildOpenClawCloudSchedulerJobs({ cloudSchedulerJobs = [] } = {}) {
+  const actualRows = normalizeArray(cloudSchedulerJobs);
+  return Object.freeze(normalizeArray(manifest.OPENCLAW_CLOUD_SCHEDULER_JOBS).map((job) => {
+    const schedulerName = trimOrNull(job && job.scheduler_name);
+    const actual = actualRows.find((row) => (
+      trimOrNull(row && row.name) === schedulerName ||
+      trimOrNull(row && row.job_id) === schedulerName
+    )) || null;
+    const expectedPath = trimOrNull(job && job.http_path);
+    const actualPath = trimOrNull(actual && actual.http_path) || trimOrNull(actual && actual.target);
+    const expectedSchedule = trimOrNull(job && job.scheduler_schedule);
+    const actualSchedule = trimOrNull(actual && actual.schedule);
+    const expectedTimeZone = trimOrNull(job && job.scheduler_time_zone);
+    const actualTimeZone = trimOrNull(actual && actual.time_zone);
+    const pathMatch = !!actual && !!expectedPath && (actualPath === expectedPath || String(actual && actual.target || "").includes(expectedPath));
+    const scheduleMatch = !!actual && (!expectedSchedule || actualSchedule === expectedSchedule);
+    const timeZoneMatch = !!actual && (!expectedTimeZone || actualTimeZone === expectedTimeZone);
+    const enabled = !!actual && actual.enabled === true && pathMatch && scheduleMatch && timeZoneMatch;
+    return Object.freeze({
+      job_id: trimOrNull(job && job.job_id),
+      scheduler_name: schedulerName,
+      name: schedulerName,
+      enabled,
+      active: enabled,
+      state: trimOrNull(actual && actual.state),
+      criticality: trimOrNull(job && job.criticality),
+      expected_http_path: expectedPath,
+      actual_http_path: actualPath,
+      path_match: pathMatch,
+      expected_schedule: expectedSchedule,
+      actual_schedule: actualSchedule,
+      schedule_match: scheduleMatch,
+      expected_time_zone: expectedTimeZone,
+      actual_time_zone: actualTimeZone,
+      time_zone_match: timeZoneMatch,
     });
   }));
 }
@@ -200,6 +249,7 @@ function collectV2SchedulerTrafficState(options = {}) {
     project_id: projectId,
     region,
     openclaw_cron_jobs: buildOpenClawCronJobs(env),
+    openclaw_cloud_scheduler_jobs: buildOpenClawCloudSchedulerJobs({ cloudSchedulerJobs }),
     legacy_scheduler_jobs: buildLegacySchedulerJobs({ cloudSchedulerJobs, env }),
     cloud_run_services: Object.freeze(serviceNames.map((name) => collectCloudRunService(name, { projectId, region, env, execFileSync }))),
   });
@@ -214,6 +264,7 @@ module.exports = {
   collectCloudRunService,
   collectCloudSchedulerJobs,
   buildOpenClawCronJobs,
+  buildOpenClawCloudSchedulerJobs,
   buildLegacySchedulerJobs,
   collectV2SchedulerTrafficState,
   __test: {
@@ -231,6 +282,7 @@ module.exports = {
     collectCloudRunService,
     collectCloudSchedulerJobs,
     buildOpenClawCronJobs,
+    buildOpenClawCloudSchedulerJobs,
     buildLegacySchedulerJobs,
   },
 };

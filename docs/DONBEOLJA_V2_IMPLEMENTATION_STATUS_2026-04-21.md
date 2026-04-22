@@ -2295,3 +2295,30 @@ V1 약점 재발 방지:
 1. V1에서는 watcher/report producer가 있어도 실제 scheduler 또는 배포 env에 연결되지 않아 장기 증거가 비는 일이 발생할 수 있었다
 2. 이번 단계는 producer, scheduler route, scheduler manifest, CloudBuild substitution, Cloud Run env, submit substitution을 하나의 계약으로 묶었다
 3. 따라서 LIVE gate가 24시간 exit runtime canary streak를 요구하면서 실제 운영에서는 history가 쌓이지 않는 공백을 promotion 전에 차단한다
+
+## 2026-04-22 Scheduler Traffic Cloud Scheduler Required Job Contract
+
+추가 증거:
+
+1. `src/v2/schedulerTrafficStateCollector.js`
+2. `src/v2/schedulerTrafficCutoverAudit.js`
+3. `scripts/run-v2-promotion-cloudbuild.js`
+4. `scripts/submit-v2-promotion-cloudbuild.js`
+5. `scripts/check-v2-canary-runbook.js`
+6. `scripts/check-v2-promotion-submit-contract.js`
+7. `src/tests/v2-scheduler-traffic-cutover-audit.test.js`
+8. `src/tests/v2-scheduler-traffic-state-collector.test.js`
+
+판정:
+
+1. scheduler traffic state는 이제 launchd `openclaw_cron_jobs` 와 Cloud Scheduler `openclaw_cloud_scheduler_jobs` 를 분리 보존한다
+2. LIVE scheduler cutover readiness의 `required_openclaw_job_ids` 는 launchd HIGH job뿐 아니라 Cloud Scheduler HIGH job도 포함한다
+3. `v2_production_entry_route_canary`, `v2_exit_runtime_canary`, `openclaw_agent_calibration` 이 없거나 disabled/path/schedule/timezone mismatch면 `SCHED_TRAFFIC_CHK_03` 으로 fail-closed 된다
+4. `run-v2-promotion-cloudbuild` 는 `openclaw_cloud_scheduler_jobs` 를 context summary로 보존하고, submit wrapper/runbook verifier는 두 V2 canary Cloud Scheduler job이 enabled인지 다시 확인한다
+5. submit contract checker는 이 연결이 빠지면 `SUBMIT_CONTRACT_CHK_50` 으로 fail-closed 한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 local scheduler와 Cloud Scheduler가 다른 truth처럼 움직여도 최종 readiness가 한쪽만 보는 위험이 있었다
+2. 이번 단계는 manifest의 Cloud Scheduler HIGH job을 LIVE cutover 필수 evidence로 승격했다
+3. 따라서 exit runtime canary producer가 route/env에 연결되어 있어도 실제 Cloud Scheduler job이 없거나 잘못된 endpoint를 호출하면 LIVE 승격이 막힌다

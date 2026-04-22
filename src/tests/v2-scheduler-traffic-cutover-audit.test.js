@@ -13,6 +13,56 @@ function buildPassingState() {
       { job_id: "v2_repair_queue_service", enabled: true },
       { job_id: "openclaw_daily_cycle", enabled: true },
     ],
+    openclaw_cloud_scheduler_jobs: [
+      {
+        job_id: "openclaw_agent_calibration",
+        scheduler_name: "openclaw-calibration",
+        enabled: true,
+        criticality: "HIGH",
+        state: "ENABLED",
+        expected_http_path: "/api/openclaw/cron/calibration",
+        actual_http_path: "/api/openclaw/cron/calibration",
+        path_match: true,
+        expected_schedule: "15 6 * * *",
+        actual_schedule: "15 6 * * *",
+        schedule_match: true,
+        expected_time_zone: "Asia/Seoul",
+        actual_time_zone: "Asia/Seoul",
+        time_zone_match: true,
+      },
+      {
+        job_id: "v2_production_entry_route_canary",
+        scheduler_name: "v2-production-entry-route-canary",
+        enabled: true,
+        criticality: "HIGH",
+        state: "ENABLED",
+        expected_http_path: "/api/openclaw/cron/v2-production-entry-route-canary",
+        actual_http_path: "/api/openclaw/cron/v2-production-entry-route-canary",
+        path_match: true,
+        expected_schedule: "5 * * * *",
+        actual_schedule: "5 * * * *",
+        schedule_match: true,
+        expected_time_zone: "Asia/Seoul",
+        actual_time_zone: "Asia/Seoul",
+        time_zone_match: true,
+      },
+      {
+        job_id: "v2_exit_runtime_canary",
+        scheduler_name: "v2-exit-runtime-canary",
+        enabled: true,
+        criticality: "HIGH",
+        state: "ENABLED",
+        expected_http_path: "/api/openclaw/cron/v2-exit-runtime-canary",
+        actual_http_path: "/api/openclaw/cron/v2-exit-runtime-canary",
+        path_match: true,
+        expected_schedule: "35 * * * *",
+        actual_schedule: "35 * * * *",
+        schedule_match: true,
+        expected_time_zone: "Asia/Seoul",
+        actual_time_zone: "Asia/Seoul",
+        time_zone_match: true,
+      },
+    ],
     legacy_scheduler_jobs: [
       { label: "com.jaeyong.donbeolja.tick", enabled: false, active: false, target: "/scheduler/tick" },
     ],
@@ -51,6 +101,8 @@ function buildPassingState() {
   assert.deepStrictEqual(report.failed_check_ids, []);
   assert.deepStrictEqual(report.missing_openclaw_job_ids, []);
   assert.deepStrictEqual(report.active_legacy_scheduler_jobs, []);
+  assert.ok(report.required_openclaw_job_ids.includes("v2_exit_runtime_canary"));
+  assert.ok(report.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_exit_runtime_canary" && job.path_match === true));
 })();
 
 (function missingStateFailsClosed() {
@@ -75,6 +127,31 @@ function buildPassingState() {
   assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_CHK_05"));
   assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_CHK_07"));
   assert.strictEqual(report.active_legacy_scheduler_jobs.length, 1);
+})();
+
+(function missingCloudSchedulerCanaryFailsClosed() {
+  const state = buildPassingState();
+  state.openclaw_cloud_scheduler_jobs = state.openclaw_cloud_scheduler_jobs.filter((job) => job.job_id !== "v2_exit_runtime_canary");
+  const report = audit.auditV2SchedulerTrafficCutoverReadiness({
+    DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: JSON.stringify(state),
+  });
+  assert.strictEqual(report.ok, false);
+  assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_CHK_03"));
+  assert.ok(report.missing_openclaw_job_ids.includes("v2_exit_runtime_canary"));
+})();
+
+(function wrongCloudSchedulerPathFailsClosed() {
+  const state = buildPassingState();
+  const job = state.openclaw_cloud_scheduler_jobs.find((row) => row.job_id === "v2_exit_runtime_canary");
+  job.enabled = false;
+  job.actual_http_path = "/api/openclaw/cron/wrong";
+  job.path_match = false;
+  const report = audit.auditV2SchedulerTrafficCutoverReadiness({
+    DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: JSON.stringify(state),
+  });
+  assert.strictEqual(report.ok, false);
+  assert.ok(report.missing_openclaw_job_ids.includes("v2_exit_runtime_canary"));
+  assert.strictEqual(report.openclaw_cloud_scheduler_jobs.find((row) => row.job_id === "v2_exit_runtime_canary").path_match, false);
 })();
 
 (function checkScriptWritesArtifact() {

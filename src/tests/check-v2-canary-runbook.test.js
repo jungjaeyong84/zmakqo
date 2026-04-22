@@ -188,6 +188,10 @@ function buildSchedulerTrafficCutoverReadinessFixture() {
     missing_openclaw_job_ids: [],
     active_legacy_scheduler_jobs: [],
     active_legacy_scheduler_job_n: 0,
+    openclaw_cloud_scheduler_jobs: [
+      { job_id: "v2_production_entry_route_canary", enabled: true, path_match: true, schedule_match: true, time_zone_match: true },
+      { job_id: "v2_exit_runtime_canary", enabled: true, path_match: true, schedule_match: true, time_zone_match: true },
+    ],
     cloud_run_services: [
       {
         name: "donbeolja",

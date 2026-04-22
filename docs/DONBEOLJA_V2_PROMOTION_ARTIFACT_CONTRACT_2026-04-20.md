@@ -1149,3 +1149,19 @@ preflight는 아래를 dry-run으로 확인한다.
 
 이 계약은 producer-only 상태를 금지한다.
 즉, `run:v2-exit-runtime-canary` 가 존재해도 scheduler route, manifest, CloudBuild env, submit substitution 중 하나가 빠지면 LIVE promotion evidence로 인정하지 않는다.
+
+## Scheduler traffic Cloud Scheduler evidence contract
+
+`scheduler_traffic_cutover_readiness_summary` 는 아래 필드를 보존해야 한다.
+
+1. `required_openclaw_job_ids`
+2. `missing_openclaw_job_ids`
+3. `openclaw_cloud_scheduler_jobs`
+4. `active_legacy_scheduler_job_n`
+5. `cloud_run_services`
+
+LIVE mode에서 `required_openclaw_job_ids` 는 launchd manifest의 HIGH job과 `OPENCLAW_CLOUD_SCHEDULER_JOBS` 의 HIGH job을 모두 포함해야 한다.
+`openclaw_cloud_scheduler_jobs` 는 최소 `v2_production_entry_route_canary` 와 `v2_exit_runtime_canary` 를 포함해야 하며, 두 job 모두 `enabled=true` 여야 한다.
+
+Cloud Scheduler job은 존재만으로 충분하지 않다.
+`path_match`, `schedule_match`, `time_zone_match` 가 true일 때만 enabled evidence로 인정한다.

@@ -39,6 +39,7 @@ async function main(env = process.env) {
     region: state.region,
     cloud_run_service_n: Array.isArray(state.cloud_run_services) ? state.cloud_run_services.length : 0,
     openclaw_cron_job_n: Array.isArray(state.openclaw_cron_jobs) ? state.openclaw_cron_jobs.length : 0,
+    openclaw_cloud_scheduler_job_n: Array.isArray(state.openclaw_cloud_scheduler_jobs) ? state.openclaw_cloud_scheduler_jobs.length : 0,
     legacy_scheduler_job_n: Array.isArray(state.legacy_scheduler_jobs) ? state.legacy_scheduler_jobs.length : 0,
     output_file: outputFile,
     state_json: outputFile ? null : JSON.stringify(state),

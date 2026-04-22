@@ -463,6 +463,7 @@ function hasSchedulerTrafficCutoverReadinessPlan({ readiness = null, cloudbuildC
     : null;
   const summary = artifact || contextSummary;
   const cloudRunServices = Array.isArray(summary && summary.cloud_run_services) ? summary.cloud_run_services : [];
+  const cloudSchedulerJobs = Array.isArray(summary && summary.openclaw_cloud_scheduler_jobs) ? summary.openclaw_cloud_scheduler_jobs : [];
   return !!(
     summary &&
     summary.ok === true &&
@@ -471,6 +472,8 @@ function hasSchedulerTrafficCutoverReadinessPlan({ readiness = null, cloudbuildC
     trimOrNull(summary.scheduler_sot) === "OPENCLAW_CRON" &&
     Array.isArray(summary.missing_openclaw_job_ids) &&
     summary.missing_openclaw_job_ids.length === 0 &&
+    cloudSchedulerJobs.some((job) => trimOrNull(job && job.job_id) === "v2_exit_runtime_canary" && job.enabled === true) &&
+    cloudSchedulerJobs.some((job) => trimOrNull(job && job.job_id) === "v2_production_entry_route_canary" && job.enabled === true) &&
     Number(summary.active_legacy_scheduler_job_n || 0) === 0 &&
     cloudRunServices.length >= 2 &&
     cloudRunServices.every((service) => (

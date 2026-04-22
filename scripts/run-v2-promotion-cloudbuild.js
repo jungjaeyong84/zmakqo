@@ -773,6 +773,7 @@ function buildSchedulerTrafficCutoverReadinessSummary(readiness) {
     required_openclaw_job_ids: Array.isArray(row.required_openclaw_job_ids) ? row.required_openclaw_job_ids.slice() : [],
     missing_openclaw_job_ids: Array.isArray(row.missing_openclaw_job_ids) ? row.missing_openclaw_job_ids.slice() : [],
     active_legacy_scheduler_job_n: Array.isArray(row.active_legacy_scheduler_jobs) ? row.active_legacy_scheduler_jobs.length : 0,
+    openclaw_cloud_scheduler_jobs: Array.isArray(row.openclaw_cloud_scheduler_jobs) ? row.openclaw_cloud_scheduler_jobs.slice() : [],
     cloud_run_services: Array.isArray(row.cloud_run_services) ? row.cloud_run_services.slice() : [],
   });
 }

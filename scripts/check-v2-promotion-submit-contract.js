@@ -1338,6 +1338,25 @@ function evaluateSubmitContract() {
         : "exit runtime canary producer must not exist without scheduler and CloudBuild runtime wiring",
       file: FILES.openclawCronRoutes,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_50",
+      label: "scheduler traffic cutover requires Cloud Scheduler canary jobs",
+      ok: cloudbuildWrapperText.includes("openclaw_cloud_scheduler_jobs")
+        && submitWrapperText.includes("openclaw_cloud_scheduler_jobs")
+        && submitWrapperText.includes("v2_exit_runtime_canary")
+        && submitWrapperText.includes("v2_production_entry_route_canary")
+        && runbookCheckerText.includes("openclaw_cloud_scheduler_jobs")
+        && runbookCheckerText.includes("v2_exit_runtime_canary")
+        && runbookCheckerText.includes("v2_production_entry_route_canary")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCutoverAudit.js")).includes("OPENCLAW_CLOUD_SCHEDULER_JOBS")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficStateCollector.js")).includes("buildOpenClawCloudSchedulerJobs"),
+      reason: cloudbuildWrapperText.includes("openclaw_cloud_scheduler_jobs")
+        && submitWrapperText.includes("v2_exit_runtime_canary")
+        && runbookCheckerText.includes("v2_production_entry_route_canary")
+        ? "scheduler traffic readiness verifies required Cloud Scheduler canary jobs as part of LIVE cutover"
+        : "scheduler traffic readiness must not only verify launchd jobs; required Cloud Scheduler canary jobs must be explicit evidence",
+      file: path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCutoverAudit.js"),
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

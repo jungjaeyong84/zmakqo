@@ -575,3 +575,23 @@ Checklist 28의 `exit_runtime_canary_streak` 는 producer가 실제 운영 스�
 
 이 항목 중 하나라도 빠지면 24시간 streak는 신뢰 가능한 LIVE evidence가 아니다.
 이 경우 runbook 28을 통과시키지 말고 OpenClaw cron/CloudBuild wiring부터 복구한다.
+
+## Scheduler traffic Cloud Scheduler evidence addendum
+
+Runbook checklist 24는 이제 `missing_openclaw_job_ids=[]` 만 보는 것이 아니라 `openclaw_cloud_scheduler_jobs` evidence도 포함한다.
+
+필수 Cloud Scheduler HIGH job:
+
+1. `openclaw_agent_calibration`
+2. `v2_production_entry_route_canary`
+3. `v2_exit_runtime_canary`
+
+각 job은 아래가 모두 맞아야 한다.
+
+1. `enabled=true`
+2. `path_match=true`
+3. `schedule_match=true`
+4. `time_zone_match=true`
+
+특히 `v2_exit_runtime_canary` 가 빠지면 24시간 exit runtime streak가 장기 운영 증거가 아니라 수동/일회성 artifact가 된다.
+그 경우 checklist 24와 28은 모두 LIVE 승격 불가로 판정한다.
