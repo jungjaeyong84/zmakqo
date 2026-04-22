@@ -1072,8 +1072,8 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     required: true,
     ok: false,
     checks: [
-      { id: "SUBMIT_CHK_03", ok: false },
-      { id: "SUBMIT_CHK_08", ok: false },
+      { id: "SUBMIT_CHK_03", ok: false, reason: "bounded runtime summary incomplete", file: "/tmp/deploy.json", field: "bounded_runtime_summary" },
+      { id: "SUBMIT_CHK_08", ok: false, reason: "lineage consistency failed", file: "/tmp/context.json", field: "lineage_consistency_summary" },
     ],
     blocker_summary: {
       blocker_n: 2,
@@ -1089,6 +1089,17 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(summary.required, true);
   assert.strictEqual(summary.ok, false);
   assert.deepStrictEqual(summary.failed_submit_check_ids, ["SUBMIT_CHK_03", "SUBMIT_CHK_08"]);
+  assert.strictEqual(summary.failed_submit_check_details.length, 2);
+  assert.deepStrictEqual(summary.failed_submit_check_details[0], {
+    id: "SUBMIT_CHK_03",
+    summary: "bounded runtime summary complete",
+    runbook_checklist: ["8"],
+    reason: "bounded runtime summary incomplete",
+    file: "/tmp/deploy.json",
+    field: "bounded_runtime_summary",
+  });
+  assert.deepStrictEqual(summary.failed_submit_check_details[1].runbook_checklist, ["16", "17"]);
+  assert.strictEqual(summary.failed_submit_check_details[1].reason, "lineage consistency failed");
   assert.deepStrictEqual(summary.failed_runbook_checklist, ["8", "16", "17"]);
   assert.deepStrictEqual(summary.blocker_families, ["PROVENANCE", "BOUNDED_RUNTIME"]);
   assert.strictEqual(summary.primary_blocker_family, "PROVENANCE");
@@ -1175,6 +1186,14 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
         ok: false,
         primary_blocker_family: "PROVENANCE",
         failed_submit_check_ids: ["SUBMIT_CHK_08"],
+        failed_submit_check_details: [{
+          id: "SUBMIT_CHK_08",
+          summary: "lineage hashes consistent across bounded artifacts",
+          runbook_checklist: ["16", "17"],
+          reason: "lineage consistency failed",
+          file: "/tmp/v2/PCY__OPS__01/promotion-cloudbuild-context.json",
+          field: "lineage_consistency_summary",
+        }],
         failed_runbook_checklist: ["16", "17"],
         recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
         recommended_next_action_reason: "bounded lineage or approval contract integrity failed",
@@ -1198,6 +1217,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.ok(summary.lines.includes("alert_failed=0"));
   assert.ok(summary.lines.includes("alert_pending=0"));
   assert.ok(summary.lines.includes("failed_submit_checks=SUBMIT_CHK_08"));
+  assert.ok(summary.lines.includes("failed_submit_check_details=SUBMIT_CHK_08[lineage hashes consistent across bounded artifacts;RUNBOOK:16,17;reason:lineage consistency failed]"));
   assert.ok(summary.lines.includes("runbook_checklist=16,17"));
 })();
 

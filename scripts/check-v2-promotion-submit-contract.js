@@ -551,6 +551,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "lineage_context_hash_match=NO",
         "lineage_context_ok=YES",
         "failed_submit_checks=SUBMIT_CHK_08",
+        "failed_submit_check_details=NONE",
         "runbook_checklist=16,17",
         "next_action=DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
         "reason_code=PROVENANCE_OR_CONTRACT_BLOCKER",
@@ -602,6 +603,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "lineage_context_hash_match=NO",
         "lineage_context_ok=YES",
         "failed_submit_checks=SUBMIT_CHK_08",
+        "failed_submit_check_details=NONE",
         "runbook_checklist=16,17",
         "next_action=DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
         "reason_code=PROVENANCE_OR_CONTRACT_BLOCKER",
@@ -1579,6 +1581,26 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         ? "deploy decision and runbook verifier now block selector/candidate/preflight position cycle drift before submit"
         : "deploy decision and runbook verifier must not approve when selector, candidate, and selected preflight point to different position cycles",
       file: FILES.deployDecisionChecker,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_61",
+      label: "submit trace carries actionable failed check details",
+      ok: submitWrapperText.includes("failed_submit_check_details")
+        && submitWrapperText.includes("collectSubmitCheckTraceDetails")
+        && submitTraceText.includes("buildSubmitCheckTraceDetail")
+        && submitTraceText.includes("collectSubmitCheckTraceDetails")
+        && submitTraceText.includes("formatSubmitCheckDetails")
+        && readText(path.resolve(__dirname, "..", "scripts", "lib", "v2-promotion-operator-summary.js")).includes('require("./v2-promotion-submit-trace")')
+        && readText(path.resolve(__dirname, "..", "scripts", "lib", "v2-promotion-operator-summary.js")).includes("failed_submit_check_details=")
+        && readText(path.resolve(__dirname, "..", "scripts", "lib", "v2-promotion-submit-operator-alert.js")).includes('require("./v2-promotion-submit-trace")')
+        && readText(path.resolve(__dirname, "..", "scripts", "lib", "v2-promotion-submit-operator-alert.js")).includes("failed_submit_check_details=")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("failed_submit_check_details[0]")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-promotion-submit-operator-alert.test.js")).includes("failed_submit_check_details=SUBMIT_CHK_08"),
+      reason: submitWrapperText.includes("failed_submit_check_details")
+        && submitTraceText.includes("collectSubmitCheckTraceDetails")
+        ? "submit blockers now carry id, meaning, runbook checklist, reason, file, and field into operator summary and alert preview"
+        : "submit blockers must be actionable without manually cross-referencing SUBMIT_CHK ids",
+      file: FILES.submitWrapper,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

@@ -25,6 +25,14 @@ const operatorSummary = require("../../scripts/lib/v2-promotion-operator-summary
       },
       submit_trace_summary: {
         failed_submit_check_ids: ["SUBMIT_CHK_08"],
+        failed_submit_check_details: [{
+          id: "SUBMIT_CHK_08",
+          summary: "lineage hashes consistent across bounded artifacts",
+          runbook_checklist: ["16", "17"],
+          reason: "lineage consistency failed",
+          file: "/tmp/v2/PCY__OPS__01/promotion-cloudbuild-context.json",
+          field: "lineage_consistency_summary",
+        }],
         failed_runbook_checklist: ["16", "17"],
         blocker_families: ["PROVENANCE"],
         primary_blocker_family: "PROVENANCE",
@@ -55,6 +63,7 @@ const operatorSummary = require("../../scripts/lib/v2-promotion-operator-summary
     "primary_blocker_family=PROVENANCE",
   ]);
   assert.ok(preview.sections[1].lines.includes("failed_submit_checks=SUBMIT_CHK_08"));
+  assert.ok(preview.sections[1].lines.includes("failed_submit_check_details=SUBMIT_CHK_08[lineage hashes consistent across bounded artifacts;RUNBOOK:16,17;reason:lineage consistency failed]"));
   assert.ok(preview.sections[1].lines.includes("runbook_checklist=16,17"));
   assert.ok(preview.sections[1].lines.includes("alert_retry_attention=NO"));
   assert.ok(preview.sections[1].lines.includes("alert_runbook_refs=NONE"));

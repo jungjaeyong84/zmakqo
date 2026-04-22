@@ -162,12 +162,62 @@ function collectSubmitCheckIdsForRunbookChecklist(checklist) {
   );
 }
 
+function buildSubmitCheckTraceDetail(check) {
+  const row = check && typeof check === "object" ? check : null;
+  const id = trimOrNull(row && row.id);
+  if (!id) return null;
+  const trace = getSubmitTrace(id);
+  const docRefs = row && row.doc_refs && typeof row.doc_refs === "object" ? row.doc_refs : null;
+  const runbookChecklist = Array.isArray(docRefs && docRefs.runbook_checklist)
+    ? docRefs.runbook_checklist
+    : getRunbookChecklistForSubmitCheck(id);
+  return Object.freeze({
+    id,
+    summary: trimOrNull(trace && trace.summary) || "unmapped submit check",
+    runbook_checklist: Object.freeze(
+      (Array.isArray(runbookChecklist) ? runbookChecklist : [])
+        .map((value) => trimOrNull(value))
+        .filter(Boolean)
+    ),
+    reason: trimOrNull(row && row.reason),
+    file: trimOrNull(row && row.file),
+    field: trimOrNull(row && row.field),
+  });
+}
+
+function collectSubmitCheckTraceDetails(checks) {
+  return Object.freeze(
+    (Array.isArray(checks) ? checks : [])
+      .map((row) => buildSubmitCheckTraceDetail(row))
+      .filter(Boolean)
+  );
+}
+
+function formatSubmitCheckDetails(details) {
+  const rows = Array.isArray(details) ? details : [];
+  if (!rows.length) return "NONE";
+  return rows
+    .map((row) => {
+      const id = trimOrNull(row && row.id) || "UNKNOWN";
+      const summary = trimOrNull(row && row.summary) || "unmapped submit check";
+      const runbookChecklist = Array.isArray(row && row.runbook_checklist)
+        ? row.runbook_checklist.map((value) => trimOrNull(value)).filter(Boolean)
+        : [];
+      const reason = trimOrNull(row && row.reason);
+      return `${id}[${summary};RUNBOOK:${runbookChecklist.length ? runbookChecklist.join(",") : "NONE"}${reason ? `;reason:${reason}` : ""}]`;
+    })
+    .join("|");
+}
+
 module.exports = {
   TRACE_INDEX,
   getSubmitTrace,
   getRunbookChecklistForSubmitCheck,
   collectRunbookChecklist,
   collectSubmitCheckIdsForRunbookChecklist,
+  buildSubmitCheckTraceDetail,
+  collectSubmitCheckTraceDetails,
+  formatSubmitCheckDetails,
   __test: {
     trimOrNull,
   },

@@ -1,5 +1,7 @@
 "use strict";
 
+const submitTrace = require("./v2-promotion-submit-trace");
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -29,6 +31,7 @@ function buildArtifactDirCoherenceFlags(summary) {
 function buildOperatorSummaryLines(summary) {
   const row = normalizeObject(summary) || {};
   const failedSubmitCheckIds = Array.isArray(row.failed_submit_check_ids) ? row.failed_submit_check_ids.filter(Boolean) : [];
+  const failedSubmitCheckDetails = Array.isArray(row.failed_submit_check_details) ? row.failed_submit_check_details : [];
   const failedRunbookChecklist = Array.isArray(row.failed_runbook_checklist) ? row.failed_runbook_checklist.filter(Boolean) : [];
   const blockerFamilies = Array.isArray(row.blocker_families) ? row.blocker_families.filter(Boolean) : [];
   const alertRunbookRefs = Array.isArray(row.alert_runbook_refs) ? row.alert_runbook_refs.filter(Boolean) : [];
@@ -90,6 +93,7 @@ function buildOperatorSummaryLines(summary) {
     `lineage_context_hash_match=${lineageConsistency ? yesNoNa(lineageConsistency.context_hash_matches_deploy_decision) : "N/A"}`,
     `lineage_context_ok=${lineageConsistency ? yesNoNa(lineageConsistency.context_lineage_ok) : "N/A"}`,
     `failed_submit_checks=${failedSubmitCheckIds.length ? failedSubmitCheckIds.join(",") : "NONE"}`,
+    `failed_submit_check_details=${submitTrace.formatSubmitCheckDetails(failedSubmitCheckDetails)}`,
     `runbook_checklist=${failedRunbookChecklist.length ? failedRunbookChecklist.join(",") : "NONE"}`,
     `next_action=${trimOrNull(row.recommended_next_action) || "NONE"}`,
     `reason_code=${trimOrNull(row.recommended_next_action_reason_code) || "NONE"}`,
@@ -113,6 +117,10 @@ function buildOperatorSummary(result) {
     (Array.isArray(trace && trace.failed_submit_check_ids) ? trace.failed_submit_check_ids : [])
       .map((value) => trimOrNull(value))
       .filter(Boolean)
+  );
+  const failedSubmitCheckDetails = Object.freeze(
+    (Array.isArray(trace && trace.failed_submit_check_details) ? trace.failed_submit_check_details : [])
+      .filter((value) => value && typeof value === "object")
   );
   const failedRunbookChecklist = Object.freeze(
     (Array.isArray(trace && trace.failed_runbook_checklist) ? trace.failed_runbook_checklist : [])
@@ -190,6 +198,7 @@ function buildOperatorSummary(result) {
     artifact_dir_coherence_summary: artifactDirCoherenceSummary,
     lineage_consistency_summary: lineageConsistencySummary,
     failed_submit_check_ids: failedSubmitCheckIds,
+    failed_submit_check_details: failedSubmitCheckDetails,
     failed_runbook_checklist: failedRunbookChecklist,
     recommended_next_action: recommendedNextAction,
     recommended_next_action_reason: recommendedNextActionReason,
@@ -217,6 +226,7 @@ function buildOperatorSummary(result) {
     artifact_dir_coherence_summary: artifactDirCoherenceSummary,
     lineage_consistency_summary: lineageConsistencySummary,
     failed_submit_check_ids: failedSubmitCheckIds,
+    failed_submit_check_details: failedSubmitCheckDetails,
     failed_runbook_checklist: failedRunbookChecklist,
     recommended_next_action: recommendedNextAction,
     recommended_next_action_reason: recommendedNextActionReason,
@@ -237,5 +247,6 @@ module.exports = {
     normalizeObject,
     yesNoNa,
     buildArtifactDirCoherenceFlags,
+    formatSubmitCheckDetails: submitTrace.formatSubmitCheckDetails,
   },
 };

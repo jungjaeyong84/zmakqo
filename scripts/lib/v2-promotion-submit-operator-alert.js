@@ -1,6 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
+const submitTrace = require("./v2-promotion-submit-trace");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -31,6 +32,7 @@ function buildArtifactDirCoherenceFlags(summary) {
 function buildTraceLines(trace) {
   const row = normalizeObject(trace) || {};
   const failedSubmitCheckIds = Array.isArray(row.failed_submit_check_ids) ? row.failed_submit_check_ids.filter(Boolean) : [];
+  const failedSubmitCheckDetails = Array.isArray(row.failed_submit_check_details) ? row.failed_submit_check_details : [];
   const failedRunbookChecklist = Array.isArray(row.failed_runbook_checklist) ? row.failed_runbook_checklist.filter(Boolean) : [];
   const blockerFamilies = Array.isArray(row.blocker_families) ? row.blocker_families.filter(Boolean) : [];
   const alertRunbookRefs = Array.isArray(row.alert_runbook_refs) ? row.alert_runbook_refs.filter(Boolean) : [];
@@ -56,6 +58,7 @@ function buildTraceLines(trace) {
     : [];
   return Object.freeze([
     `failed_submit_checks=${failedSubmitCheckIds.length ? failedSubmitCheckIds.join(",") : "NONE"}`,
+    `failed_submit_check_details=${submitTrace.formatSubmitCheckDetails(failedSubmitCheckDetails)}`,
     `runbook_checklist=${failedRunbookChecklist.length ? failedRunbookChecklist.join(",") : "NONE"}`,
     `blocker_families=${blockerFamilies.length ? blockerFamilies.join(",") : "NONE"}`,
     `primary_blocker_family=${trimOrNull(row.primary_blocker_family) || "NONE"}`,
@@ -190,6 +193,7 @@ module.exports = {
     normalizeObject,
     yesNoNa,
     buildArtifactDirCoherenceFlags,
+    formatSubmitCheckDetails: submitTrace.formatSubmitCheckDetails,
     buildTraceLines,
     stableStringify,
     buildPreviewSourceFingerprint,

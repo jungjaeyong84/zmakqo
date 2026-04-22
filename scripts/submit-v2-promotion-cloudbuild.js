@@ -1207,6 +1207,7 @@ function buildSubmitTraceSummary(approvalVerification) {
       required: false,
       ok: true,
       failed_submit_check_ids: Object.freeze([]),
+      failed_submit_check_details: Object.freeze([]),
       failed_runbook_checklist: Object.freeze([]),
       blocker_families: Object.freeze([]),
       primary_blocker_family: null,
@@ -1235,6 +1236,7 @@ function buildSubmitTraceSummary(approvalVerification) {
   const failedSubmitCheckIds = Object.freeze(
     failedChecks.map((entry) => trimOrNull(entry.id)).filter(Boolean)
   );
+  const failedSubmitCheckDetails = submitTrace.collectSubmitCheckTraceDetails(failedChecks);
   const blockerFamilies = buildSubmitTraceFamilies(row.blocker_summary);
   const alertRetrySummary = normalizeObject(row.alert_retry_summary);
   const deployWarningSummary = normalizeObject(row.deploy_warning_summary);
@@ -1250,6 +1252,7 @@ function buildSubmitTraceSummary(approvalVerification) {
     required: row.required === true,
     ok: row.ok === true,
     failed_submit_check_ids: failedSubmitCheckIds,
+    failed_submit_check_details: failedSubmitCheckDetails,
     failed_runbook_checklist: submitTrace.collectRunbookChecklist(failedSubmitCheckIds),
     blocker_families: blockerFamilies,
     primary_blocker_family: blockerFamilies[0] || null,
