@@ -1462,6 +1462,26 @@ function evaluateSubmitContract() {
         : "LIVE submit must not rely on safe CloudBuild defaults for V2 enabled/dry-run/canary-only/cutover flags",
       file: FILES.submitWrapper,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_56",
+      label: "submit wrapper independently gates production runtime config",
+      ok: submitWrapperText.includes("productionRuntimeConfigAudit")
+        && submitWrapperText.includes("auditWorkspaceV2ProductionRuntimeConfigContract")
+        && submitWrapperText.includes("SUBMIT_CHK_22")
+        && submitWrapperText.includes("has_production_runtime_config_blocker")
+        && submitTraceText.includes("SUBMIT_CHK_22")
+        && runbookText.includes("| 29 | `SUBMIT_CHK_22`")
+        && runbookText.includes("| `SUBMIT_CHK_22` | `29` | V2 production runtime config contract complete |")
+        && artifactContractText.includes("approval_evidence_sources.production_runtime_config_contract")
+        && artifactContractText.includes("approval_verification.production_runtime_config_summary")
+        && artifactContractText.includes("submit_trace_summary.production_runtime_config_summary")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("submitRequestBlocksWhenProductionRuntimeConfigContractFails"),
+      reason: submitWrapperText.includes("SUBMIT_CHK_22")
+        && submitTraceText.includes("SUBMIT_CHK_22")
+        ? "submit wrapper now re-runs production runtime config audit and maps failures to runbook 29"
+        : "submit wrapper must not rely only on CloudBuild validation for production runtime config contract",
+      file: FILES.submitWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

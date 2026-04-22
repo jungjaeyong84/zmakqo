@@ -7,6 +7,7 @@ const path = require("path");
 const submit = require("../../scripts/submit-v2-promotion-cloudbuild");
 const renderer = require("../../scripts/render-v2-promotion-submit-operator-alert");
 const deployDecisionCheck = require("../../scripts/check-v2-promotion-deploy-decision");
+const productionRuntimeConfigAudit = require("../v2/productionRuntimeConfigAudit");
 
 const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
   version: "V2_PROMOTION_SELECTOR_LINEAGE_SHA256_V1",
@@ -533,6 +534,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, true);
+  assert.strictEqual(request.approval_contract.production_runtime_config_contract_required, true);
   assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
@@ -552,6 +554,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.entry_boundary_audit.field, "entry_boundary_audit");
   assert.strictEqual(request.approval_evidence_sources.fill_sync_canonical_boundary_audit.field, "fill_sync_canonical_boundary_audit");
   assert.strictEqual(request.approval_evidence_sources.production_cutover_audit.field, "production_cutover_audit");
+  assert.strictEqual(request.approval_evidence_sources.production_runtime_config_contract.field, "auditWorkspaceV2ProductionRuntimeConfigContract");
   assert.strictEqual(request.approval_evidence_sources.production_live_entry_sizing_contract.field, "production_cutover_audit.contract.checks");
   assert.strictEqual(request.approval_evidence_sources.openclaw_execution_audit_ledger_write.field, "bounded_runtime_summary.openclaw_execution_audit_ledger_write");
   assert.strictEqual(request.approval_evidence_sources.repair_firestore_canary_streak, null);
@@ -605,6 +608,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, true);
+  assert.strictEqual(request.approval_contract.production_runtime_config_contract_required, true);
   assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
@@ -780,6 +784,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.production_entry_protected_canary_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.scheduler_traffic_cutover_readiness_summary_required, true);
+  assert.strictEqual(request.approval_contract.production_runtime_config_contract_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, true);
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "0");
@@ -811,6 +816,10 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(
     request.approval_evidence_sources.production_entry_protected_canary.field,
     "bounded_runtime_summary.production_entry_protected_canary"
+  );
+  assert.strictEqual(
+    request.approval_evidence_sources.production_runtime_config_contract.field,
+    "auditWorkspaceV2ProductionRuntimeConfigContract"
   );
   assert.strictEqual(
     request.approval_evidence_sources.live_cutover_readiness_summary.field,
@@ -880,6 +889,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, false);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, false);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, false);
+  assert.strictEqual(request.approval_contract.production_runtime_config_contract_required, false);
   assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, false);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.runbook_review_pass_required, false);
@@ -952,6 +962,23 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     submit.__test.buildVerificationRecommendedActionReasonCode(summary),
     "PRODUCTION_CUTOVER_BLOCKER"
   );
+})();
+
+(function verificationSummaryMapsProductionRuntimeConfigFailureToAction() {
+  const summary = submit.__test.buildVerificationSummary([
+    { id: "SUBMIT_CHK_22", ok: false, reason: "V2 production runtime config contract is missing or failed" },
+  ]);
+  assert.strictEqual(summary.blocker_n, 1);
+  assert.strictEqual(summary.has_production_runtime_config_blocker, true);
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedAction(summary),
+    "FIX_V2_PRODUCTION_RUNTIME_CONFIG_AND_RECHECK_SUBMIT"
+  );
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedActionReasonCode(summary),
+    "PRODUCTION_RUNTIME_CONFIG_BLOCKER"
+  );
+  assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["PRODUCTION_RUNTIME_CONFIG"]);
 })();
 
 (function verificationSummaryMapsProductionLiveEntrySizingFailureToAction() {
@@ -1276,10 +1303,12 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(payload.approval_contract.entry_boundary_audit_required, true);
     assert.strictEqual(payload.approval_contract.fill_sync_canonical_boundary_audit_required, true);
     assert.strictEqual(payload.approval_contract.runbook_review_pass_required, true);
+    assert.strictEqual(payload.approval_contract.production_runtime_config_contract_required, true);
     assert.strictEqual(payload.approval_evidence_sources.required, true);
     assert.strictEqual(payload.approval_evidence_sources.runtime_chain_audit_summary.field, "bounded_runtime_summary.runtime_chain_audit_summary");
     assert.strictEqual(payload.approval_evidence_sources.entry_boundary_audit.field, "entry_boundary_audit");
     assert.strictEqual(payload.approval_evidence_sources.fill_sync_canonical_boundary_audit.field, "fill_sync_canonical_boundary_audit");
+    assert.strictEqual(payload.approval_evidence_sources.production_runtime_config_contract.field, "auditWorkspaceV2ProductionRuntimeConfigContract");
     assert.strictEqual(payload.approval_evidence_sources.recommended_next_action.expected_value, "PROCEED_WITH_SUBMIT_WRAPPER");
     assert.strictEqual(payload.approval_verification.required, true);
     assert.strictEqual(payload.approval_verification.ok, true);
@@ -1326,8 +1355,70 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.ok(runtimeChainCheck);
     assert.strictEqual(runtimeChainCheck.ok, true);
     assert.deepStrictEqual(runtimeChainCheck.doc_refs.runbook_checklist, ["14A"]);
+    const runtimeConfigCheck = payload.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_22");
+    assert.ok(runtimeConfigCheck);
+    assert.strictEqual(runtimeConfigCheck.ok, true);
+    assert.deepStrictEqual(runtimeConfigCheck.doc_refs.runbook_checklist, ["29"]);
+    assert.strictEqual(payload.approval_verification.production_runtime_config_summary.ok, true);
+    assert.strictEqual(payload.submit_trace_summary.production_runtime_config_summary.ok, true);
     assert.strictEqual(payload.submit_enabled, false);
   } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function submitRequestBlocksWhenProductionRuntimeConfigContractFails() {
+  const originalAudit = productionRuntimeConfigAudit.auditWorkspaceV2ProductionRuntimeConfigContract;
+  productionRuntimeConfigAudit.auditWorkspaceV2ProductionRuntimeConfigContract = () => ({
+    ok: false,
+    reason: "V2_PRODUCTION_RUNTIME_CONFIG_CONTRACT_BLOCKED",
+    check_n: 2,
+    fail_n: 1,
+    failed_check_ids: ["CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_V2_CUTOVER_ENV"],
+    checks: [
+      { id: "CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_V2_CUTOVER_ENV", ok: false },
+    ],
+  });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-runtime-config-blocked-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__RUNTIME_CONFIG_BLOCKED");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__RUNTIME_CONFIG_BLOCKED");
+
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__RUNTIME_CONFIG_BLOCKED",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_BLOCKED");
+    const runtimeConfigCheck = result.request.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_22");
+    assert.ok(runtimeConfigCheck);
+    assert.strictEqual(runtimeConfigCheck.ok, false);
+    assert.deepStrictEqual(runtimeConfigCheck.doc_refs.runbook_checklist, ["29"]);
+    assert.strictEqual(result.request.approval_verification.production_runtime_config_summary.ok, false);
+    assert.deepStrictEqual(
+      result.request.approval_verification.production_runtime_config_summary.failed_check_ids,
+      ["CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_V2_CUTOVER_ENV"]
+    );
+    assert.strictEqual(result.request.approval_verification.blocker_summary.has_production_runtime_config_blocker, true);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_submit_check_ids, ["SUBMIT_CHK_22"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_runbook_checklist, ["29"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.blocker_families, ["PRODUCTION_RUNTIME_CONFIG"]);
+    assert.strictEqual(result.request.submit_trace_summary.primary_blocker_family, "PRODUCTION_RUNTIME_CONFIG");
+    assert.strictEqual(
+      result.request.approval_verification.recommended_next_action,
+      "FIX_V2_PRODUCTION_RUNTIME_CONFIG_AND_RECHECK_SUBMIT"
+    );
+    assert.strictEqual(
+      result.request.approval_verification.recommended_next_action_reason_code,
+      "PRODUCTION_RUNTIME_CONFIG_BLOCKER"
+    );
+  } finally {
+    productionRuntimeConfigAudit.auditWorkspaceV2ProductionRuntimeConfigContract = originalAudit;
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }
 })();

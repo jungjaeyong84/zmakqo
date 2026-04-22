@@ -218,6 +218,7 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 21. `approval_evidence_sources.lineage_hash_sources`
 22. `approval_evidence_sources.candidate_selection` (auto-select path만)
 23. `approval_evidence_sources.resolved_artifact_dir`
+24. `approval_evidence_sources.production_runtime_config_contract`
 
 submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도 같이 남아야 한다.
 
@@ -234,6 +235,7 @@ submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도
 9. `approval_verification.recommended_next_action_reason`
 10. `approval_verification.recommended_next_action_reason_code`
 11. `approval_verification.lineage_hashes`
+12. `approval_verification.production_runtime_config_summary`
 
 동시에 submit request top-level에는 사람이 바로 읽는 `submit_trace_summary` 도 같이 남아야 한다.
 
@@ -258,6 +260,7 @@ submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도
 17. `submit_trace_summary.recommended_next_action`
 18. `submit_trace_summary.recommended_next_action_reason`
 19. `submit_trace_summary.recommended_next_action_reason_code`
+20. `submit_trace_summary.production_runtime_config_summary`
 
 `submit_trace_summary.deploy_warning_summary` 는 최소한 `warning_n`, `top_warnings`, `has_live_readiness_warning`, `has_repair_firestore_canary_streak_warning`, `has_production_entry_route_canary_streak_warning` 를 포함해야 한다. repair streak warning은 runbook 19, production entry route streak warning은 runbook 26으로 역추적 가능해야 한다.
 
@@ -606,10 +609,11 @@ cloudbuild는 아래 원칙을 따른다.
 19. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
 20. LIVE mode에서는 `scheduler_traffic_cutover_readiness_summary` 가 `V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run service readiness를 증명해야 하며, 위반 시 `SUBMIT_CHK_16`/runbook 24로 fail-closed 된다
 21. LIVE mode에서는 `run:v2-exit-runtime-canary` 가 생산한 Firestore history를 기반으로 `bounded_runtime_summary.exit_runtime_canary_streak` 이 `V2_EXIT_RUNTIME_CANARY_STREAK_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_21`/runbook 28로 fail-closed 된다
-22. LIVE wrapper가 live cutover, production cutover, scheduler traffic 단계 중 어디서 실패하더라도 `promotion-cloudbuild-context.json` 은 직전까지 생성된 readiness summary와 실패 summary를 보존해야 한다
-22. wrapper가 runbook review 단계에서 실패하더라도 `promotion-cloudbuild-context.json` 은 `runbook_review_summary.ok=false`, `failed_check_ids`, `top_failed_checks[]`, `runbook_review_file` 을 보존해야 한다
-23. runbook review가 필수 artifact 누락/JSON 파싱 오류 등으로 review 생성 전에 throw 되더라도 context에는 synthetic `CHK_RUNBOOK_REVIEW_THROWN` 이 남아야 한다
-24. submit wrapper의 operator summary와 operator alert preview는 `runbook_review`, `runbook_review_failures`, `runbook_review_failed_checks`, `runbook_review_file` 을 같은 line set으로 노출해야 한다
+22. bounded canary/live submit wrapper는 `auditWorkspaceV2ProductionRuntimeConfigContract` 를 직접 실행해 CloudBuild deploy env와 promotion runtime env forwarding 계약을 다시 검증해야 하며, 위반 시 `SUBMIT_CHK_22`/runbook 29로 fail-closed 된다
+23. LIVE wrapper가 live cutover, production cutover, scheduler traffic 단계 중 어디서 실패하더라도 `promotion-cloudbuild-context.json` 은 직전까지 생성된 readiness summary와 실패 summary를 보존해야 한다
+24. wrapper가 runbook review 단계에서 실패하더라도 `promotion-cloudbuild-context.json` 은 `runbook_review_summary.ok=false`, `failed_check_ids`, `top_failed_checks[]`, `runbook_review_file` 을 보존해야 한다
+25. runbook review가 필수 artifact 누락/JSON 파싱 오류 등으로 review 생성 전에 throw 되더라도 context에는 synthetic `CHK_RUNBOOK_REVIEW_THROWN` 이 남아야 한다
+26. submit wrapper의 operator summary와 operator alert preview는 `runbook_review`, `runbook_review_failures`, `runbook_review_failed_checks`, `runbook_review_file` 을 같은 line set으로 노출해야 한다
 
 `SUBMIT_CHK_17` 실패는 `SCHEDULER_COLLECTOR_BLOCKER` 이며, 권장 행동은 `FIX_V2_SCHEDULER_COLLECTOR_IAM_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER` 이다.
 

@@ -8,6 +8,7 @@ const cloudbuildRuntime = require("./run-v2-promotion-cloudbuild");
 const submitContractCheck = require("./check-v2-promotion-submit-contract");
 const deployDecisionCheck = require("./check-v2-promotion-deploy-decision");
 const runbookCheck = require("./check-v2-canary-runbook");
+const productionRuntimeConfigAudit = require("../src/v2/productionRuntimeConfigAudit");
 const operatorAlertPreview = require("./lib/v2-promotion-submit-operator-alert");
 const operatorSummary = require("./lib/v2-promotion-operator-summary");
 const submitTrace = require("./lib/v2-promotion-submit-trace");
@@ -140,6 +141,7 @@ function buildVerificationSummary(checks) {
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
   const hasProductionCutoverBlocker = ids.some((id) => ["SUBMIT_CHK_14", "SUBMIT_CHK_15"].includes(id));
+  const hasProductionRuntimeConfigBlocker = ids.some((id) => id === "SUBMIT_CHK_22");
   const hasProductionLiveEntrySizingBlocker = ids.some((id) => id === "SUBMIT_CHK_20");
   const hasProductionEntryProtectedCanaryBlocker = ids.some((id) => id === "SUBMIT_CHK_20A");
   const hasSchedulerTrafficBlocker = ids.some((id) => id === "SUBMIT_CHK_16");
@@ -156,6 +158,7 @@ function buildVerificationSummary(checks) {
     has_entry_boundary_blocker: hasEntryBoundaryBlocker,
     has_fill_sync_canonical_boundary_blocker: hasFillSyncCanonicalBoundaryBlocker,
     has_production_cutover_blocker: hasProductionCutoverBlocker,
+    has_production_runtime_config_blocker: hasProductionRuntimeConfigBlocker,
     has_production_live_entry_sizing_blocker: hasProductionLiveEntrySizingBlocker,
     has_production_entry_protected_canary_blocker: hasProductionEntryProtectedCanaryBlocker,
     has_scheduler_traffic_blocker: hasSchedulerTrafficBlocker,
@@ -176,6 +179,7 @@ function buildVerificationRecommendedAction(summary) {
   if (row.has_entry_boundary_blocker) return "FIX_V2_ENTRY_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_fill_sync_canonical_boundary_blocker) return "FIX_V2_FILL_SYNC_CANONICAL_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_production_cutover_blocker) return "FIX_V2_PRODUCTION_CUTOVER_AND_RECHECK_DEPLOY_DECISION";
+  if (row.has_production_runtime_config_blocker) return "FIX_V2_PRODUCTION_RUNTIME_CONFIG_AND_RECHECK_SUBMIT";
   if (row.has_production_live_entry_sizing_blocker) return "FIX_V2_PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_scheduler_collector_blocker) return "FIX_V2_SCHEDULER_COLLECTOR_IAM_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER";
   if (row.has_scheduler_traffic_blocker) return "FIX_V2_SCHEDULER_TRAFFIC_CUTOVER_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER";
@@ -210,6 +214,9 @@ function buildVerificationRecommendedActionReason(summary) {
   }
   if (row.has_production_cutover_blocker) {
     return "V2 production cutover guard audit failed";
+  }
+  if (row.has_production_runtime_config_blocker) {
+    return "V2 production runtime config contract failed";
   }
   if (row.has_production_live_entry_sizing_blocker) {
     return "V2 production live entry sizing contract failed";
@@ -257,6 +264,9 @@ function buildVerificationRecommendedActionReasonCode(summary) {
   }
   if (row.has_production_cutover_blocker) {
     return "PRODUCTION_CUTOVER_BLOCKER";
+  }
+  if (row.has_production_runtime_config_blocker) {
+    return "PRODUCTION_RUNTIME_CONFIG_BLOCKER";
   }
   if (row.has_production_live_entry_sizing_blocker) {
     return "PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_BLOCKER";
@@ -408,6 +418,7 @@ function buildApprovalContract(plan) {
       entry_boundary_audit_required: false,
       fill_sync_canonical_boundary_audit_required: false,
       production_cutover_audit_required: false,
+      production_runtime_config_contract_required: false,
       production_live_entry_sizing_contract_required: false,
       production_cutover_readiness_summary_required: false,
       scheduler_traffic_collector_preflight_summary_required: false,
@@ -438,6 +449,7 @@ function buildApprovalContract(plan) {
     entry_boundary_audit_required: true,
     fill_sync_canonical_boundary_audit_required: true,
     production_cutover_audit_required: true,
+    production_runtime_config_contract_required: true,
     production_live_entry_sizing_contract_required: true,
     production_cutover_readiness_summary_required: row.promotionMode === "LIVE",
     scheduler_traffic_collector_preflight_summary_required: row.promotionMode === "LIVE",
@@ -475,8 +487,9 @@ function buildApprovalEvidenceSources(plan) {
       entry_boundary_audit: null,
       fill_sync_canonical_boundary_audit: null,
       production_cutover_audit: null,
+      production_runtime_config_contract: null,
       production_live_entry_sizing_contract: null,
-     production_cutover_readiness_summary: null,
+      production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
       production_entry_route_canary_streak: null,
@@ -525,6 +538,11 @@ function buildApprovalEvidenceSources(plan) {
       file: "promotion-deploy-decision.json",
       field: "production_cutover_audit",
       note: "ok=true, reason=V2_PRODUCTION_CUTOVER_AUDIT_PASS, route guard import/apply/outcome checks pass",
+    }),
+    production_runtime_config_contract: buildEvidenceRef({
+      file: "cloudbuild.yaml",
+      field: "auditWorkspaceV2ProductionRuntimeConfigContract",
+      note: "submit wrapper must independently verify CloudBuild deploy env and promotion runtime env forwarding before submit",
     }),
     production_live_entry_sizing_contract: buildEvidenceRef({
       file: "promotion-deploy-decision.json",
@@ -658,6 +676,7 @@ function hasRequiredApprovalContract(contract, { promotionMode = null } = {}) {
     row.entry_boundary_audit_required === true &&
     row.fill_sync_canonical_boundary_audit_required === true &&
     row.production_cutover_audit_required === true &&
+    row.production_runtime_config_contract_required === true &&
     row.production_live_entry_sizing_contract_required === true &&
     mustBeLiveTrue(row, "production_cutover_readiness_summary_required", liveRequired) &&
     mustBeLiveTrue(row, "scheduler_traffic_collector_preflight_summary_required", liveRequired) &&
@@ -801,6 +820,7 @@ function buildSubmitTraceFamilies(summary) {
   if (row.has_entry_boundary_blocker) families.push("ENTRY_BOUNDARY");
   if (row.has_fill_sync_canonical_boundary_blocker) families.push("FILL_SYNC_CANONICAL_BOUNDARY");
   if (row.has_production_cutover_blocker) families.push("PRODUCTION_CUTOVER");
+  if (row.has_production_runtime_config_blocker) families.push("PRODUCTION_RUNTIME_CONFIG");
   if (row.has_production_live_entry_sizing_blocker) families.push("ENTRY_SIZING");
   if (row.has_scheduler_collector_blocker) families.push("SCHEDULER_COLLECTOR");
   if (row.has_scheduler_traffic_blocker) families.push("SCHEDULER_TRAFFIC");
@@ -1064,6 +1084,22 @@ function extractRunbookReviewSummaryFromArtifacts(artifacts = {}) {
   });
 }
 
+function summarizeProductionRuntimeConfigAudit(audit) {
+  const row = normalizeObject(audit);
+  if (!row) return null;
+  return Object.freeze({
+    ok: row.ok === true,
+    reason: trimOrNull(row.reason),
+    check_n: Number.isFinite(Number(row.check_n)) ? Number(row.check_n) : 0,
+    fail_n: Number.isFinite(Number(row.fail_n)) ? Number(row.fail_n) : 0,
+    failed_check_ids: Object.freeze(
+      (Array.isArray(row.failed_check_ids) ? row.failed_check_ids : [])
+        .map((value) => trimOrNull(value))
+        .filter(Boolean)
+    ),
+  });
+}
+
 function hasLiveCutoverReadinessSummary(summary) {
   const row = normalizeObject(summary);
   return !!(
@@ -1184,6 +1220,7 @@ function buildSubmitTraceSummary(approvalVerification) {
       production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
+      production_runtime_config_summary: null,
       runbook_review_summary: null,
       artifact_dir_coherence_summary: null,
       lineage_consistency_summary: null,
@@ -1205,6 +1242,7 @@ function buildSubmitTraceSummary(approvalVerification) {
   const productionCutoverReadinessSummary = normalizeObject(row.production_cutover_readiness_summary);
   const schedulerTrafficCollectorPreflightSummary = normalizeObject(row.scheduler_traffic_collector_preflight_summary);
   const schedulerTrafficCutoverReadinessSummary = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
+  const productionRuntimeConfigSummary = normalizeObject(row.production_runtime_config_summary);
   const runbookReviewSummary = normalizeObject(row.runbook_review_summary);
   const artifactDirCoherenceSummary = normalizeObject(row.artifact_dir_coherence_summary);
   const lineageConsistencySummary = normalizeObject(row.lineage_consistency_summary);
@@ -1225,6 +1263,7 @@ function buildSubmitTraceSummary(approvalVerification) {
     production_cutover_readiness_summary: productionCutoverReadinessSummary,
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
+    production_runtime_config_summary: productionRuntimeConfigSummary,
     runbook_review_summary: runbookReviewSummary,
     artifact_dir_coherence_summary: artifactDirCoherenceSummary,
     lineage_consistency_summary: lineageConsistencySummary,
@@ -1255,6 +1294,7 @@ function buildApprovalVerification(request) {
       production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
+      production_runtime_config_summary: null,
       runbook_review_summary: null,
       artifact_dir_coherence_summary: null,
       lineage_consistency_summary: null,
@@ -1299,6 +1339,7 @@ function buildApprovalVerification(request) {
       production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
+      production_runtime_config_summary: null,
       runbook_review_summary: null,
       artifact_dir_coherence_summary: null,
       lineage_consistency_summary: null,
@@ -1333,6 +1374,8 @@ function buildApprovalVerification(request) {
   const productionCutoverReadinessSummary = extractProductionCutoverReadinessSummaryFromArtifacts(artifacts);
   const schedulerTrafficCollectorPreflightSummary = extractSchedulerTrafficCollectorPreflightSummaryFromArtifacts(artifacts);
   const schedulerTrafficCutoverReadinessSummary = extractSchedulerTrafficCutoverReadinessSummaryFromArtifacts(artifacts);
+  const productionRuntimeConfigAuditResult = productionRuntimeConfigAudit.auditWorkspaceV2ProductionRuntimeConfigContract();
+  const productionRuntimeConfigSummary = summarizeProductionRuntimeConfigAudit(productionRuntimeConfigAuditResult);
   const runbookReviewSummary = extractRunbookReviewSummaryFromArtifacts(artifacts);
   const artifactDirCoherenceSummary = buildArtifactDirCoherenceSummary({
     cloudbuildContext,
@@ -1365,6 +1408,7 @@ function buildApprovalVerification(request) {
       "approval_contract.entry_boundary_audit_required",
       "approval_contract.fill_sync_canonical_boundary_audit_required",
       "approval_contract.production_cutover_audit_required",
+      "approval_contract.production_runtime_config_contract_required",
       "approval_contract.production_live_entry_sizing_contract_required",
       "approval_contract.production_cutover_readiness_summary_required",
       "approval_contract.scheduler_traffic_cutover_readiness_summary_required",
@@ -1516,6 +1560,23 @@ function buildApprovalVerification(request) {
     artifactContract: [
       "approval_contract.production_cutover_audit_required",
       "approval_evidence_sources.production_cutover_audit",
+    ],
+  }));
+
+  checks.push(withDocRefs(buildVerificationCheck({
+    id: "SUBMIT_CHK_22",
+    label: "V2 production runtime config contract complete",
+    ok: productionRuntimeConfigAuditResult && productionRuntimeConfigAuditResult.ok === true,
+    reason: productionRuntimeConfigAuditResult && productionRuntimeConfigAuditResult.ok === true
+      ? "V2 production runtime config contract passed"
+      : "V2 production runtime config contract is missing or failed",
+    file: path.resolve(__dirname, "..", "cloudbuild.yaml"),
+    field: "auditWorkspaceV2ProductionRuntimeConfigContract",
+  }), {
+    runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_22"),
+    artifactContract: [
+      "approval_contract.production_runtime_config_contract_required",
+      "approval_evidence_sources.production_runtime_config_contract",
     ],
   }));
 
@@ -1877,6 +1938,7 @@ function buildApprovalVerification(request) {
     production_cutover_readiness_summary: productionCutoverReadinessSummary,
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
+    production_runtime_config_summary: productionRuntimeConfigSummary,
     runbook_review_summary: runbookReviewSummary,
     artifact_dir_coherence_summary: artifactDirCoherenceSummary,
     lineage_consistency_summary: lineageConsistencySummary,

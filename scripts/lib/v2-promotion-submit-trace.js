@@ -47,6 +47,11 @@ const TRACE_INDEX = Object.freeze([
     summary: "V2 production cutover audit complete",
   }),
   Object.freeze({
+    id: "SUBMIT_CHK_22",
+    runbookChecklist: Object.freeze(["29"]),
+    summary: "V2 production runtime config contract complete",
+  }),
+  Object.freeze({
     id: "SUBMIT_CHK_20",
     runbookChecklist: Object.freeze(["27"]),
     summary: "V2 production live entry sizing contract complete",
