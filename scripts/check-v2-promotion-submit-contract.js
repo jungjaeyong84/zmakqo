@@ -1904,6 +1904,32 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "LIVE long-run streaks must include collector_execution_summary and deploy decision must fail closed on missing or drifted producer evidence",
       file: FILES.deployDecisionChecker,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_71",
+      label: "LIVE submit requires OpenClaw supreme closed-loop evidence",
+      ok: runbookText.includes("| `SUBMIT_CHK_23` | `31` | LIVE OpenClaw supreme control plane closed loop complete |")
+        && runbookText.includes("| 31 | `SUBMIT_CHK_23`")
+        && artifactContractText.includes("approval_contract.openclaw_supreme_control_plane_closed_loop_required")
+        && artifactContractText.includes("approval_evidence_sources.openclaw_supreme_control_plane_closed_loop")
+        && artifactContractText.includes("bounded_runtime_summary.openclaw_supreme_control_plane_summary")
+        && artifactContractText.includes("has_openclaw_supreme_control_plane_blocker")
+        && submitWrapperText.includes("SUBMIT_CHK_23")
+        && submitWrapperText.includes("hasOpenClawSupremeControlPlaneCoverage")
+        && submitWrapperText.includes("openclaw_supreme_control_plane_closed_loop_required")
+        && submitWrapperText.includes("OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER")
+        && submitTraceText.includes("SUBMIT_CHK_23")
+        && submitTraceText.includes("runbookChecklist: Object.freeze([\"31\"])")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED")
+        && deployDecisionCheckerText.includes("hasOpenClawSupremeControlPlaneCoverage")
+        && packageJsonText.includes("test:v2-openclaw-supreme-control-plane")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitBlocksWithoutOpenClawSupremeClosedLoopEvidence"),
+      reason: submitWrapperText.includes("SUBMIT_CHK_23")
+        && submitWrapperText.includes("hasOpenClawSupremeControlPlaneCoverage")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitBlocksWithoutOpenClawSupremeClosedLoopEvidence")
+        ? "LIVE submit now blocks when OpenClaw world state, permit, outcome, and learner shadow closed-loop evidence is missing"
+        : "LIVE submit must expose SUBMIT_CHK_23/runbook 31 and fail closed without OpenClaw supreme closed-loop evidence",
+      file: FILES.submitWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

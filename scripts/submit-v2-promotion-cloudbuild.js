@@ -166,6 +166,13 @@ function buildVerificationSummary(checks) {
   const hasProductionRuntimeConfigBlocker = ids.some((id) => id === "SUBMIT_CHK_22");
   const hasProductionLiveEntrySizingBlocker = ids.some((id) => id === "SUBMIT_CHK_20");
   const hasProductionEntryProtectedCanaryBlocker = ids.some((id) => id === "SUBMIT_CHK_20A");
+  const hasOpenClawSupremeControlPlaneBlocker = ids.some((id) => id === "SUBMIT_CHK_23")
+    || deployBlockers.some((row) => {
+      const text = row.toUpperCase();
+      return text.includes("OPENCLAW_SUPREME_CONTROL_PLANE") ||
+        text.includes("SUPREME_CONTROL_PLANE") ||
+        text.includes("CLOSED_LOOP");
+    });
   const hasSchedulerTrafficBlocker = ids.some((id) => id === "SUBMIT_CHK_16");
   const hasSchedulerCollectorBlocker = ids.some((id) => id === "SUBMIT_CHK_17");
   const hasRunbookBlocker = ids.some((id) => id === "SUBMIT_CHK_05");
@@ -184,6 +191,7 @@ function buildVerificationSummary(checks) {
     has_production_runtime_config_blocker: hasProductionRuntimeConfigBlocker,
     has_production_live_entry_sizing_blocker: hasProductionLiveEntrySizingBlocker,
     has_production_entry_protected_canary_blocker: hasProductionEntryProtectedCanaryBlocker,
+    has_openclaw_supreme_control_plane_blocker: hasOpenClawSupremeControlPlaneBlocker,
     has_scheduler_traffic_blocker: hasSchedulerTrafficBlocker,
     has_scheduler_collector_blocker: hasSchedulerCollectorBlocker,
     has_runbook_blocker: hasRunbookBlocker,
@@ -199,6 +207,7 @@ function buildVerificationRecommendedAction(summary) {
   if (row.has_stale_artifact_provenance_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
   if (row.has_live_evidence_cycle_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
   if (row.has_production_entry_protected_canary_blocker) return "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION";
+  if (row.has_openclaw_supreme_control_plane_blocker) return "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_bounded_runtime_blocker) return "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_entry_boundary_blocker) return "FIX_V2_ENTRY_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_fill_sync_canonical_boundary_blocker) return "FIX_V2_FILL_SYNC_CANONICAL_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
@@ -229,6 +238,9 @@ function buildVerificationRecommendedActionReason(summary) {
   }
   if (row.has_production_entry_protected_canary_blocker) {
     return "protected entry canary failed; production entry must prove SL and TP1 protection before submit";
+  }
+  if (row.has_openclaw_supreme_control_plane_blocker) {
+    return "OpenClaw closed-loop control evidence is missing or failed for LIVE submit";
   }
   if (row.has_bounded_runtime_blocker) {
     return "bounded runtime or evidence snapshot coverage failed";
@@ -282,6 +294,9 @@ function buildVerificationRecommendedActionReasonCode(summary) {
   }
   if (row.has_production_entry_protected_canary_blocker) {
     return "PROTECTED_ENTRY_CANARY_BLOCKER";
+  }
+  if (row.has_openclaw_supreme_control_plane_blocker) {
+    return "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER";
   }
   if (row.has_bounded_runtime_blocker) {
     return "BOUNDED_RUNTIME_BLOCKER";
@@ -453,6 +468,7 @@ function buildApprovalContract(plan) {
       production_cutover_audit_required: false,
       production_runtime_config_contract_required: false,
       production_live_entry_sizing_contract_required: false,
+      openclaw_supreme_control_plane_closed_loop_required: false,
       production_cutover_readiness_summary_required: false,
       scheduler_traffic_collector_preflight_summary_required: false,
       scheduler_traffic_cutover_readiness_summary_required: false,
@@ -484,6 +500,7 @@ function buildApprovalContract(plan) {
     production_cutover_audit_required: true,
     production_runtime_config_contract_required: true,
     production_live_entry_sizing_contract_required: true,
+    openclaw_supreme_control_plane_closed_loop_required: row.promotionMode === "LIVE",
     production_cutover_readiness_summary_required: row.promotionMode === "LIVE",
     scheduler_traffic_collector_preflight_summary_required: row.promotionMode === "LIVE",
     scheduler_traffic_cutover_readiness_summary_required: row.promotionMode === "LIVE",
@@ -522,6 +539,7 @@ function buildApprovalEvidenceSources(plan) {
       production_cutover_audit: null,
       production_runtime_config_contract: null,
       production_live_entry_sizing_contract: null,
+      openclaw_supreme_control_plane_closed_loop: null,
       production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
@@ -582,6 +600,13 @@ function buildApprovalEvidenceSources(plan) {
       field: "production_cutover_audit.contract.checks",
       note: "live endpoint resolves sizing-backed transports before route and transports require approved entrySizingDecision",
     }),
+    openclaw_supreme_control_plane_closed_loop: row.promotionMode === "LIVE"
+      ? buildEvidenceRef({
+          file: "promotion-deploy-decision.json",
+          field: "bounded_runtime_summary.openclaw_supreme_control_plane_summary",
+          note: "LIVE requires world state hash, validated execution permit, outcome adjudication, and shadow-only learner evaluation coverage",
+        })
+      : null,
     production_cutover_readiness_summary: row.promotionMode === "LIVE"
       ? buildEvidenceRef({
           file: "promotion-cloudbuild-context.json",
@@ -711,6 +736,7 @@ function hasRequiredApprovalContract(contract, { promotionMode = null } = {}) {
     row.production_cutover_audit_required === true &&
     row.production_runtime_config_contract_required === true &&
     row.production_live_entry_sizing_contract_required === true &&
+    mustBeLiveTrue(row, "openclaw_supreme_control_plane_closed_loop_required", liveRequired) &&
     mustBeLiveTrue(row, "production_cutover_readiness_summary_required", liveRequired) &&
     mustBeLiveTrue(row, "scheduler_traffic_collector_preflight_summary_required", liveRequired) &&
     mustBeLiveTrue(row, "scheduler_traffic_cutover_readiness_summary_required", liveRequired) &&
@@ -856,6 +882,7 @@ function buildSubmitTraceFamilies(summary) {
   if (row.has_production_cutover_blocker) families.push("PRODUCTION_CUTOVER");
   if (row.has_production_runtime_config_blocker) families.push("PRODUCTION_RUNTIME_CONFIG");
   if (row.has_production_live_entry_sizing_blocker) families.push("ENTRY_SIZING");
+  if (row.has_openclaw_supreme_control_plane_blocker) families.push("OPENCLAW_SUPREME_CONTROL_PLANE");
   if (row.has_scheduler_collector_blocker) families.push("SCHEDULER_COLLECTOR");
   if (row.has_scheduler_traffic_blocker) families.push("SCHEDULER_TRAFFIC");
   if (row.has_runbook_blocker) families.push("RUNBOOK");
@@ -1506,6 +1533,7 @@ function buildApprovalVerification(request) {
       "approval_contract.production_cutover_audit_required",
       "approval_contract.production_runtime_config_contract_required",
       "approval_contract.production_live_entry_sizing_contract_required",
+      "approval_contract.openclaw_supreme_control_plane_closed_loop_required",
       "approval_contract.production_cutover_readiness_summary_required",
       "approval_contract.scheduler_traffic_cutover_readiness_summary_required",
       "approval_contract.openclaw_execution_audit_ledger_write_required",
@@ -1709,6 +1737,25 @@ function buildApprovalVerification(request) {
       "approval_evidence_sources.openclaw_execution_audit_ledger_write",
     ],
   }));
+
+  if (row.approval_contract && row.approval_contract.openclaw_supreme_control_plane_closed_loop_required === true) {
+    checks.push(withDocRefs(buildVerificationCheck({
+      id: "SUBMIT_CHK_23",
+      label: "OpenClaw supreme control plane closed loop complete",
+      ok: deployDecisionCheck.__test.hasOpenClawSupremeControlPlaneCoverage(deployDecision && deployDecision.bounded_runtime_summary),
+      reason: deployDecisionCheck.__test.hasOpenClawSupremeControlPlaneCoverage(deployDecision && deployDecision.bounded_runtime_summary)
+        ? "OpenClaw supreme control plane closed-loop evidence complete"
+        : "OpenClaw supreme control plane closed-loop evidence is missing or failed",
+      file: artifacts.deployDecision && artifacts.deployDecision.filePath,
+      field: "bounded_runtime_summary.openclaw_supreme_control_plane_summary",
+    }), {
+      runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_23"),
+      artifactContract: [
+        "approval_contract.openclaw_supreme_control_plane_closed_loop_required",
+        "approval_evidence_sources.openclaw_supreme_control_plane_closed_loop",
+      ],
+    }));
+  }
 
   if (row.approval_contract && row.approval_contract.repair_firestore_canary_streak_required === true) {
     const hasStaleRepairStreak = staleArtifactBlockers.some((value) => String(value).includes("REPAIR_FIRESTORE_CANARY_STREAK"));
