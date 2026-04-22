@@ -1156,6 +1156,46 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["BOUNDED_RUNTIME", "CONTEXT"]);
 })();
 
+(function lineageContractMismatchIsProvenanceSubmitBlocker() {
+  const summary = submit.__test.buildVerificationSummary([
+    {
+      id: "SUBMIT_CHK_07",
+      ok: false,
+      reason: "cloudbuild blocker count must be zero: DEPLOY_DECISION:LINEAGE_CONTRACT_MISMATCH",
+    },
+  ]);
+  assert.strictEqual(summary.has_provenance_blocker, true);
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedAction(summary),
+    "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT"
+  );
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedActionReasonCode(summary),
+    "PROVENANCE_OR_CONTRACT_BLOCKER"
+  );
+  assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["PROVENANCE", "CONTEXT"]);
+})();
+
+(function runtimeChainAuditRequiredIsBoundedRuntimeSubmitBlocker() {
+  const summary = submit.__test.buildVerificationSummary([
+    {
+      id: "SUBMIT_CHK_07",
+      ok: false,
+      reason: "cloudbuild blocker count must be zero: DEPLOY_DECISION:RUNTIME_CHAIN_AUDIT_REQUIRED",
+    },
+  ]);
+  assert.strictEqual(summary.has_bounded_runtime_blocker, true);
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedAction(summary),
+    "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION"
+  );
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedActionReasonCode(summary),
+    "BOUNDED_RUNTIME_BLOCKER"
+  );
+  assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["BOUNDED_RUNTIME", "CONTEXT"]);
+})();
+
 (function cliResultPayloadExposesTopLevelSubmitTrace() {
   const payload = submit.__test.buildCliResultPayload({
     ok: false,

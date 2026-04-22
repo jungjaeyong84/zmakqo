@@ -836,6 +836,48 @@ function seedRunbookArtifacts(dir, cycleId) {
   );
 })();
 
+(function lineageContractMismatchIsProvenanceBlocker() {
+  const summary = cloudbuild.__test.buildDeployDecisionSummary({
+    approved: false,
+    decision: "HOLD",
+    position_cycle_id: "PCY__READ__LINEAGE",
+    blockers: [
+      "DEPLOY_DECISION:LINEAGE_CONTRACT_MISMATCH",
+    ],
+    warnings: [],
+  });
+  assert.strictEqual(summary.blocker_summary.has_provenance_blocker, true);
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextActionReasonCode(summary),
+    "PROVENANCE_BLOCKER"
+  );
+  assert.deepStrictEqual(
+    cloudbuild.__test.buildContextBlockerFamilies(summary.blocker_summary),
+    ["PROVENANCE"]
+  );
+})();
+
+(function runtimeChainAuditRequiredIsBoundedRuntimeBlocker() {
+  const summary = cloudbuild.__test.buildDeployDecisionSummary({
+    approved: false,
+    decision: "HOLD",
+    position_cycle_id: "PCY__READ__RUNTIME_CHAIN",
+    blockers: [
+      "DEPLOY_DECISION:RUNTIME_CHAIN_AUDIT_REQUIRED",
+    ],
+    warnings: [],
+  });
+  assert.strictEqual(summary.blocker_summary.has_bounded_runtime_blocker, true);
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextActionReasonCode(summary),
+    "BOUNDED_RUNTIME_BLOCKER"
+  );
+  assert.deepStrictEqual(
+    cloudbuild.__test.buildContextBlockerFamilies(summary.blocker_summary),
+    ["BOUNDED_RUNTIME"]
+  );
+})();
+
 (function protectedEntryCanaryBlockerHasSpecificCloudbuildAction() {
   const decision = {
     approved: false,

@@ -82,6 +82,12 @@ function summarizeBlockers(blockers) {
   const normalized = rows
     .map((row) => trimOrNull(row))
     .filter(Boolean);
+  const hasLineageContractBlocker = normalized.some((row) => (
+    row.includes("LINEAGE_CONTRACT") ||
+    row.includes("POSITION_CYCLE_ID_REQUIRED") ||
+    row.includes("SELECTOR_META_POSITION_CYCLE") ||
+    row.includes("SELECTOR_CANDIDATE_POSITION_CYCLE")
+  ));
   const hasLiveEvidenceCycleBlocker = normalized.some((row) => (
     row.includes("LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH") ||
     row.includes("LIVE_STREAK_POSITION_CYCLE_MISMATCH") ||
@@ -90,7 +96,7 @@ function summarizeBlockers(blockers) {
   return Object.freeze({
     blocker_n: normalized.length,
     top_blockers: normalized.slice(0, 3),
-    has_provenance_blocker: normalized.some((row) => row.includes("PROVENANCE:")),
+    has_provenance_blocker: hasLineageContractBlocker || normalized.some((row) => row.includes("PROVENANCE:")),
     has_stale_artifact_provenance_blocker: normalized.some((row) => row.includes("STALE_ARTIFACT_PROVENANCE")),
     has_live_evidence_cycle_blocker: hasLiveEvidenceCycleBlocker,
     has_watchdog_blocker: normalized.some((row) => row.includes("WATCHDOG")),
@@ -98,7 +104,10 @@ function summarizeBlockers(blockers) {
     has_bounded_runtime_blocker: normalized.some((row) => (
       row.includes("BOUNDED_RUNTIME") ||
       row.includes("EVIDENCE_SNAPSHOT") ||
-      row.includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED")
+      row.includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED") ||
+      row.includes("RUNTIME_CHAIN_AUDIT_REQUIRED") ||
+      row.includes("OPENCLAW_EXECUTION_SEPARATION_REQUIRED") ||
+      row.includes("OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_REQUIRED")
     )),
     has_production_entry_protected_canary_blocker: normalized.some((row) => row.includes("PRODUCTION_ENTRY_PROTECTED_CANARY")),
     has_entry_boundary_blocker: normalized.some((row) => row.includes("ENTRY_BOUNDARY")),

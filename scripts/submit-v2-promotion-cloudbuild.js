@@ -133,6 +133,13 @@ function buildVerificationSummary(checks) {
   const deployBlockers = rows
     .map((row) => trimOrNull(row && row.reason))
     .filter(Boolean);
+  const hasDeployLineageContractBlocker = deployBlockers.some((row) => {
+    const text = row.toUpperCase();
+    return text.includes("LINEAGE_CONTRACT") ||
+      text.includes("POSITION_CYCLE_ID_REQUIRED") ||
+      text.includes("SELECTOR_META_POSITION_CYCLE") ||
+      text.includes("SELECTOR_CANDIDATE_POSITION_CYCLE");
+  });
   const hasStaleArtifactProvenanceBlocker = deployBlockers.some((row) => (
     row.toUpperCase().includes("STALE_ARTIFACT_PROVENANCE") ||
     row.toUpperCase().includes("STALE ARTIFACT PROVENANCE")
@@ -144,7 +151,15 @@ function buildVerificationSummary(checks) {
     row.toUpperCase().includes("LIVE_EVIDENCE_CYCLE")
   ));
   const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19", "SUBMIT_CHK_20A", "SUBMIT_CHK_21"].includes(id))
-    || deployBlockers.some((row) => row.toUpperCase().includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED"));
+    || deployBlockers.some((row) => {
+      const text = row.toUpperCase();
+      return text.includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED") ||
+        text.includes("RUNTIME_CHAIN_AUDIT_REQUIRED") ||
+        text.includes("OPENCLAW_EXECUTION_SEPARATION_REQUIRED") ||
+        text.includes("OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_REQUIRED") ||
+        text.includes("BOUNDED_RUNTIME_SUMMARY_REQUIRED") ||
+        text.includes("EVIDENCE_SNAPSHOT_SUMMARY_REQUIRED");
+    });
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
   const hasProductionCutoverBlocker = ids.some((id) => ["SUBMIT_CHK_14", "SUBMIT_CHK_15"].includes(id));
@@ -159,7 +174,7 @@ function buildVerificationSummary(checks) {
   return Object.freeze({
     blocker_n: failed.length,
     top_failures: topFailures,
-    has_provenance_blocker: hasProvenanceBlocker,
+    has_provenance_blocker: hasProvenanceBlocker || hasDeployLineageContractBlocker,
     has_stale_artifact_provenance_blocker: hasStaleArtifactProvenanceBlocker,
     has_live_evidence_cycle_blocker: hasLiveEvidenceCycleBlocker,
     has_bounded_runtime_blocker: hasBoundedRuntimeBlocker,

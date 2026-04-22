@@ -1739,6 +1739,23 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "promotion must not accept or misclassify repair completion summaries that omit concrete exchange order evidence",
       file: FILES.deployDecisionChecker,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_65",
+      label: "lineage and runtime-chain deploy blockers are classified",
+      ok: cloudbuildWrapperText.includes("LINEAGE_CONTRACT")
+        && cloudbuildWrapperText.includes("RUNTIME_CHAIN_AUDIT_REQUIRED")
+        && submitWrapperText.includes("LINEAGE_CONTRACT")
+        && submitWrapperText.includes("RUNTIME_CHAIN_AUDIT_REQUIRED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("lineageContractMismatchIsProvenanceBlocker")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("runtimeChainAuditRequiredIsBoundedRuntimeBlocker")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("lineageContractMismatchIsProvenanceSubmitBlocker")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("runtimeChainAuditRequiredIsBoundedRuntimeSubmitBlocker"),
+      reason: cloudbuildWrapperText.includes("LINEAGE_CONTRACT")
+        && submitWrapperText.includes("RUNTIME_CHAIN_AUDIT_REQUIRED")
+        ? "lineage contract blockers now route to provenance repair, and runtime-chain blockers route to bounded runtime evidence regeneration"
+        : "deploy submit wrappers must not leave lineage or runtime-chain blockers as generic context/manual review failures",
+      file: FILES.cloudbuildWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
