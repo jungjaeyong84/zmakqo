@@ -10,6 +10,31 @@ const contractCheck = require("../../scripts/check-v2-promotion-submit-contract"
   assert.ok(result.check_n >= 6);
 })();
 
+(function schedulerBindingContractFailsWhenPromotionScriptIsMissing() {
+  const packageJsonText = contractCheck.__test.readText(contractCheck.__test.FILES.packageJson)
+    .replace(/,\n    "test:v2-openclaw-scheduler-binding": "node src\/tests\/openclaw-cron-routes\.test\.js && node src\/tests\/openclaw-cron-manifest\.test\.js"/, "")
+    .replace(" && npm run test:v2-openclaw-scheduler-binding", "");
+  const result = contractCheck.__test.evaluateSubmitContract({
+    textOverrides: {
+      [contractCheck.__test.FILES.packageJson]: packageJsonText,
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_49"));
+})();
+
+(function schedulerBindingContractFailsWhenExitRuntimeCronRouteIsMissing() {
+  const routeText = contractCheck.__test.readText(contractCheck.__test.FILES.openclawCronRoutes)
+    .replaceAll("/api/openclaw/cron/v2-exit-runtime-canary", "/api/openclaw/cron/v2-exit-runtime-disabled");
+  const result = contractCheck.__test.evaluateSubmitContract({
+    textOverrides: {
+      [contractCheck.__test.FILES.openclawCronRoutes]: routeText,
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_49"));
+})();
+
 (function formatterFixtureProducesCanonicalBlockedHeadline() {
   const summary = contractCheck.__test.buildFormatterFixtureResult();
   assert.strictEqual(summary.status, "BLOCKED");

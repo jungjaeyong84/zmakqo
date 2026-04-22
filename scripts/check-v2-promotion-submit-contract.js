@@ -296,25 +296,30 @@ function buildDeployWarningAlertPreviewFixtureResult() {
   });
 }
 
-function evaluateSubmitContract() {
-  const artifactContractText = readText(FILES.artifactContract);
-  const runbookText = readText(FILES.runbook);
-  const runbookCheckerText = readText(FILES.runbookChecker);
-  const cloudbuildWrapperText = readText(FILES.cloudbuildWrapper);
-  const submitWrapperText = readText(FILES.submitWrapper);
-  const submitTraceText = readText(FILES.submitTrace);
-  const packageJsonText = readText(FILES.packageJson);
-  const cloudbuildText = readText(FILES.cloudbuild);
-  const openclawCronRoutesText = readText(FILES.openclawCronRoutes);
-  const openclawCronManifestText = readText(FILES.openclawCronManifest);
-  const productionRuntimeConfigAuditText = readText(FILES.productionRuntimeConfigAudit);
-  const exitRuntimeCanaryRunnerText = readText(FILES.exitRuntimeCanaryRunner);
-  const exitRuntimeCanaryModuleText = readText(FILES.exitRuntimeCanaryModule);
-  const unifiedPromotionReportGeneratorText = readText(FILES.unifiedPromotionReportGenerator);
-  const deployDecisionCheckerText = readText(FILES.deployDecisionChecker);
-  const repairFirestoreStreakCheckerText = readText(FILES.repairFirestoreStreakChecker);
-  const productionEntryRouteStreakCheckerText = readText(FILES.productionEntryRouteStreakChecker);
-  const exitRuntimeStreakCheckerText = readText(FILES.exitRuntimeStreakChecker);
+function evaluateSubmitContract({ textOverrides = {} } = {}) {
+  const overrides = new Map(Object.entries(textOverrides || {}).map(([filePath, value]) => [path.resolve(filePath), String(value)]));
+  const readContractText = (filePath) => {
+    const resolved = path.resolve(filePath);
+    return overrides.has(resolved) ? overrides.get(resolved) : readText(resolved);
+  };
+  const artifactContractText = readContractText(FILES.artifactContract);
+  const runbookText = readContractText(FILES.runbook);
+  const runbookCheckerText = readContractText(FILES.runbookChecker);
+  const cloudbuildWrapperText = readContractText(FILES.cloudbuildWrapper);
+  const submitWrapperText = readContractText(FILES.submitWrapper);
+  const submitTraceText = readContractText(FILES.submitTrace);
+  const packageJsonText = readContractText(FILES.packageJson);
+  const cloudbuildText = readContractText(FILES.cloudbuild);
+  const openclawCronRoutesText = readContractText(FILES.openclawCronRoutes);
+  const openclawCronManifestText = readContractText(FILES.openclawCronManifest);
+  const productionRuntimeConfigAuditText = readContractText(FILES.productionRuntimeConfigAudit);
+  const exitRuntimeCanaryRunnerText = readContractText(FILES.exitRuntimeCanaryRunner);
+  const exitRuntimeCanaryModuleText = readContractText(FILES.exitRuntimeCanaryModule);
+  const unifiedPromotionReportGeneratorText = readContractText(FILES.unifiedPromotionReportGenerator);
+  const deployDecisionCheckerText = readContractText(FILES.deployDecisionChecker);
+  const repairFirestoreStreakCheckerText = readContractText(FILES.repairFirestoreStreakChecker);
+  const productionEntryRouteStreakCheckerText = readContractText(FILES.productionEntryRouteStreakChecker);
+  const exitRuntimeStreakCheckerText = readContractText(FILES.exitRuntimeStreakChecker);
   const operatorSummaryText = readText(SHARED_FORMATTER_MODULE_PATH);
   const summary = buildFormatterFixtureResult();
   const summaryPreview = operatorAlertPreview.buildOperatorAlertPreview({
@@ -1338,6 +1343,8 @@ function evaluateSubmitContract() {
         && readText(path.resolve(__dirname, "..", "src", "tests", "openclaw-cron-routes.test.js")).includes("POST /api/openclaw/cron/v2-exit-runtime-canary")
         && readText(path.resolve(__dirname, "..", "src", "tests", "openclaw-cron-manifest.test.js")).includes("v2_exit_runtime_canary")
         && readText(path.resolve(__dirname, "..", "src", "tests", "openclaw-cron-manifest.test.js")).includes("LIVE_EXIT_RUNTIME_OBSERVATION")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-submit-contract.test.js")).includes("schedulerBindingContractFailsWhenPromotionScriptIsMissing")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-submit-contract.test.js")).includes("schedulerBindingContractFailsWhenExitRuntimeCronRouteIsMissing")
         && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
         && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED")
         && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE")
