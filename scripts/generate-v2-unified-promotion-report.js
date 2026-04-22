@@ -453,6 +453,7 @@ function buildOpenClawSupremeControlPlaneSummary(summary) {
       shadow_only_n: normalizeNumber(learner.shadow_only_n),
       live_applied_n: normalizeNumber(learner.live_applied_n),
       stale_evaluation_n: normalizeNumber(learner.stale_evaluation_n),
+      max_evaluation_age_minutes: normalizeNumber(learner.max_evaluation_age_minutes),
       blockers: Array.isArray(learner.blockers) ? learner.blockers.slice() : [],
     }) : null,
     lineage_consistency_summary: lineage ? Object.freeze({

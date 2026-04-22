@@ -114,6 +114,7 @@ function buildBoundedRuntimeSummaryFixture() {
         shadow_only_n: 1,
         live_applied_n: 0,
         stale_evaluation_n: 0,
+        max_evaluation_age_minutes: 1440,
         blockers: [],
       },
       lineage_consistency_summary: {
@@ -2179,6 +2180,38 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__OPENCLAW_LINEAGE",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED"));
+})();
+
+(function liveOpenClawSupremeStaleLearnerEvidenceFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__OPENCLAW_STALE_LEARNER");
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.ok = false;
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.stale_evaluation_n = 1;
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.blockers = [
+    "OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE",
+  ];
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__OPENCLAW_STALE_LEARNER",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__OPENCLAW_STALE_LEARNER",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__OPENCLAW_STALE_LEARNER",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

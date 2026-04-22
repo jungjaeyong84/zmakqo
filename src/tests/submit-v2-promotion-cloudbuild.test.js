@@ -198,6 +198,7 @@ function seedBoundedSubmitArtifacts(
           shadow_only_n: 1,
           live_applied_n: 0,
           stale_evaluation_n: 0,
+          max_evaluation_age_minutes: 1440,
           blockers: [],
         },
         lineage_consistency_summary: {

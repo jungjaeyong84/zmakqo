@@ -120,7 +120,7 @@ function buildBundle(overrides = {}) {
     worldState,
     approvalReason: "TEST_PERMIT",
     issuedAt: "2026-04-22T00:00:00.000Z",
-    ttlMinutes: 5,
+    ttlMinutes: 120,
   });
   const validation = validateOpenClawExecutionPermit({
     permit,
@@ -192,7 +192,7 @@ function buildBundle(overrides = {}) {
     worldState,
     approvalReason: "TEST_PERMIT",
     issuedAt: "2026-04-22T00:00:00.000Z",
-    ttlMinutes: 5,
+    ttlMinutes: 120,
   });
   const positionCycle = {
     position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__SUPREME",
@@ -215,6 +215,7 @@ function buildBundle(overrides = {}) {
     learnerShadowEvaluations: [evaluation],
     expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
     expectedPositionCycleId: positionCycle.position_cycle_id,
+    nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
   });
   assert.strictEqual(summary.ok, true);
   assert.strictEqual(summary.lineage_consistency_summary.ok, true);
@@ -233,11 +234,58 @@ function buildBundle(overrides = {}) {
     learnerShadowEvaluations: [mismatchedLearner],
     expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
     expectedPositionCycleId: positionCycle.position_cycle_id,
+    nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
   });
   assert.strictEqual(broken.ok, false);
   assert.strictEqual(broken.lineage_consistency_summary.ok, false);
   assert.strictEqual(broken.lineage_consistency_summary.learner_lineage_mismatch_n, 1);
   assert.ok(broken.blockers.includes("OPENCLAW_LEARNER_OUTCOME_LINEAGE_MISMATCH"));
+})();
+
+(function supremeSummaryRejectsExpiredPermitAndStaleLearnerEvidence() {
+  const bundle = buildBundle();
+  const worldState = buildOpenClawWorldState({
+    mode: "CANARY",
+    generatedAt: "2026-04-22T00:00:00.000Z",
+  });
+  const expiredPermit = issueOpenClawExecutionPermit({
+    bundle,
+    worldState,
+    approvalReason: "TEST_PERMIT",
+    issuedAt: "2026-04-22T00:00:00.000Z",
+    ttlMinutes: 5,
+  });
+  const positionCycle = {
+    position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__SUPREME_STALE",
+  };
+  const adjudication = adjudicateOpenClawOutcome({
+    bundle,
+    positionCycle,
+    realizedExitEvent: "TP1_REACHED",
+    realizedPnl: 0.02,
+    adjudicatedAt: "2026-04-22T01:00:00.000Z",
+  });
+  const staleEvaluation = buildOpenClawLearnerShadowEvaluation({
+    adjudication,
+    evaluatedAt: "2026-04-20T01:00:00.000Z",
+  });
+  const summary = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
+    worldState,
+    executionPermits: [expiredPermit],
+    outcomeAdjudications: [adjudication],
+    learnerShadowEvaluations: [staleEvaluation],
+    expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
+    expectedPositionCycleId: positionCycle.position_cycle_id,
+    nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
+    maxLearnerEvaluationAgeMinutes: 1440,
+  });
+  assert.strictEqual(summary.ok, false);
+  assert.strictEqual(summary.permit_validation_pass_n, 0);
+  assert.strictEqual(summary.permit_validation_fail_n, 1);
+  assert.strictEqual(summary.learner_shadow_summary.ok, false);
+  assert.strictEqual(summary.learner_shadow_summary.stale_evaluation_n, 1);
+  assert.ok(summary.blockers.includes("OPENCLAW_EXECUTION_PERMIT_VALIDATION_REQUIRED"));
+  assert.ok(summary.blockers.includes("OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE"));
 })();
 
 console.log("V2_OPENCLAW_SUPREME_CONTROL_PLANE_TEST_OK");

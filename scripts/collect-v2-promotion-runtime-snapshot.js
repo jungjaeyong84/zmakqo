@@ -491,14 +491,26 @@ function buildOpenClawSupremeControlPlaneSummary({
   learnerShadowEvaluations = [],
   expectedOpenClawDecisionId = null,
   expectedPositionCycleId = null,
+  nowMs = Date.now(),
+  maxLearnerEvaluationAgeMinutes = 1440,
 } = {}) {
   const permits = Array.isArray(executionPermits) ? executionPermits : [];
   const adjudications = Array.isArray(outcomeAdjudications) ? outcomeAdjudications : [];
   const learnerRows = Array.isArray(learnerShadowEvaluations) ? learnerShadowEvaluations : [];
+  const currentMs = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const maxLearnerAgeMs = Math.max(1, Number(maxLearnerEvaluationAgeMinutes) || 1440) * 60_000;
   const expectedDecisionId = trimOrNull(expectedOpenClawDecisionId);
   const expectedCycleId = trimOrNull(expectedPositionCycleId);
   const expectedWorldStateHash = trimOrNull(worldState && worldState.world_state_hash);
   const adjudicationIds = new Set(adjudications.map((row) => trimOrNull(row && row.openclaw_outcome_adjudication_id)).filter(Boolean));
+  const isPermitFresh = (row) => {
+    const expiresMs = parseIsoMs(row && row.expires_at);
+    return expiresMs != null && expiresMs > currentMs;
+  };
+  const isLearnerFresh = (row) => {
+    const evaluatedMs = parseIsoMs(row && row.evaluated_at);
+    return evaluatedMs != null && evaluatedMs <= currentMs && (currentMs - evaluatedMs) <= maxLearnerAgeMs;
+  };
   const permitLineageMatches = permits.filter((row) => {
     const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
     const worldOk = !expectedWorldStateHash || trimOrNull(row && row.world_state_hash) === expectedWorldStateHash;
@@ -515,9 +527,10 @@ function buildOpenClawSupremeControlPlaneSummary({
     const sourceOk = adjudicationIds.has(trimOrNull(row && row.openclaw_outcome_adjudication_id));
     return decisionOk && cycleOk && sourceOk;
   }).length;
-  const validationPassCount = permits.filter((row) => upper(row && row.permit_status) === "ISSUED" && trimOrNull(row && row.world_state_hash)).length;
+  const validationPassCount = permits.filter((row) => upper(row && row.permit_status) === "ISSUED" && trimOrNull(row && row.world_state_hash) && isPermitFresh(row)).length;
   const liveAppliedCount = learnerRows.filter((row) => row && row.shadow_only === false).length;
   const shadowOnlyCount = learnerRows.filter((row) => row && row.shadow_only === true).length;
+  const staleEvaluationCount = learnerRows.filter((row) => !isLearnerFresh(row)).length;
   const lineageBlockers = [];
   if (expectedDecisionId && permitLineageMatches < permits.length) lineageBlockers.push("OPENCLAW_PERMIT_DECISION_OR_WORLD_STATE_LINEAGE_MISMATCH");
   if (expectedCycleId && outcomeLineageMatches < adjudications.length) lineageBlockers.push("OPENCLAW_OUTCOME_POSITION_OR_DECISION_LINEAGE_MISMATCH");
@@ -529,6 +542,7 @@ function buildOpenClawSupremeControlPlaneSummary({
   if (!adjudications.length) blockers.push("OPENCLAW_OUTCOME_ADJUDICATION_REQUIRED");
   if (!learnerRows.length) blockers.push("OPENCLAW_LEARNER_SHADOW_EVALUATION_REQUIRED");
   if (liveAppliedCount > 0) blockers.push("OPENCLAW_LEARNER_LIVE_APPLICATION_FORBIDDEN");
+  if (staleEvaluationCount > 0) blockers.push("OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE");
   blockers.push(...lineageBlockers);
   return Object.freeze({
     ok: blockers.length === 0,
@@ -540,14 +554,18 @@ function buildOpenClawSupremeControlPlaneSummary({
     outcome_adjudication_n: adjudications.length,
     outcome_unadjudicated_n: adjudications.length > 0 ? 0 : 1,
     learner_shadow_summary: Object.freeze({
-      ok: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0,
+      ok: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0 && staleEvaluationCount === 0,
       evaluation_n: learnerRows.length,
       shadow_only_n: shadowOnlyCount,
       live_applied_n: liveAppliedCount,
-      stale_evaluation_n: 0,
-      blockers: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0
+      stale_evaluation_n: staleEvaluationCount,
+      max_evaluation_age_minutes: maxLearnerEvaluationAgeMinutes,
+      blockers: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0 && staleEvaluationCount === 0
         ? []
-        : ["OPENCLAW_LEARNER_SHADOW_ONLY_REQUIRED"],
+        : [
+            ...(learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0 ? [] : ["OPENCLAW_LEARNER_SHADOW_ONLY_REQUIRED"]),
+            ...(staleEvaluationCount === 0 ? [] : ["OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE"]),
+          ],
     }),
     lineage_consistency_summary: Object.freeze({
       ok: lineageBlockers.length === 0,
