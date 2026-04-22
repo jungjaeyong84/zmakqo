@@ -58,6 +58,7 @@ function summarizeBlockers(blockers) {
     has_watchdog_blocker: normalized.some((row) => row.includes("WATCHDOG")),
     has_candidate_selection_blocker: normalized.some((row) => row.includes("CANDIDATE_SELECTION")),
     has_bounded_runtime_blocker: normalized.some((row) => row.includes("BOUNDED_RUNTIME") || row.includes("EVIDENCE_SNAPSHOT")),
+    has_production_entry_protected_canary_blocker: normalized.some((row) => row.includes("PRODUCTION_ENTRY_PROTECTED_CANARY")),
     has_entry_boundary_blocker: normalized.some((row) => row.includes("ENTRY_BOUNDARY")),
     has_production_cutover_blocker: normalized.some((row) => row.includes("PRODUCTION_CUTOVER")),
   });
@@ -149,6 +150,9 @@ function buildRecommendedNextAction(summary) {
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
     return "RECHECK_SELECTED_POSITION_CYCLE_AND_RERUN_CANARY_FLOW";
   }
+  if (blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker) {
+    return "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION";
+  }
   if (blockerSummary && blockerSummary.has_bounded_runtime_blocker) {
     return "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION";
   }
@@ -177,6 +181,9 @@ function buildRecommendedNextActionReason(summary) {
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
     return "candidate selection blocker detected; selected cycle and approved cycle must be revalidated";
   }
+  if (blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker) {
+    return "protected entry canary blocker detected; production entry must prove SL and TP1 protection before promotion";
+  }
   if (blockerSummary && blockerSummary.has_bounded_runtime_blocker) {
     return "bounded runtime blocker detected; required selector/collector/exporter evidence is incomplete";
   }
@@ -202,6 +209,9 @@ function buildRecommendedNextActionReasonCode(summary) {
   }
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
     return "CANDIDATE_SELECTION_BLOCKER";
+  }
+  if (blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker) {
+    return "PROTECTED_ENTRY_CANARY_BLOCKER";
   }
   if (blockerSummary && blockerSummary.has_bounded_runtime_blocker) {
     return "BOUNDED_RUNTIME_BLOCKER";
@@ -351,6 +361,7 @@ function buildContextBlockerFamilies(summary) {
   const families = [];
   if (row.has_provenance_blocker) families.push("PROVENANCE");
   if (row.has_candidate_selection_blocker) families.push("CANDIDATE_SELECTION");
+  if (row.has_production_entry_protected_canary_blocker) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker) families.push("BOUNDED_RUNTIME");
   if (row.has_entry_boundary_blocker) families.push("ENTRY_BOUNDARY");
   if (row.has_production_cutover_blocker) families.push("PRODUCTION_CUTOVER");

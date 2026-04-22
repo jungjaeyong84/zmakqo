@@ -57,6 +57,7 @@ function buildTraceLines(trace) {
     `runbook_checklist=${failedRunbookChecklist.length ? failedRunbookChecklist.join(",") : "NONE"}`,
     `blocker_families=${blockerFamilies.length ? blockerFamilies.join(",") : "NONE"}`,
     `primary_blocker_family=${trimOrNull(row.primary_blocker_family) || "NONE"}`,
+    `protected_entry_canary_blocker=${blockerFamilies.includes("PROTECTED_ENTRY_CANARY") || failedSubmitCheckIds.includes("SUBMIT_CHK_20A") ? "YES" : "NO"}`,
     `alert_retry_attention=${row.alert_retry_attention_required === true ? "YES" : "NO"}`,
     `alert_runbook_refs=${alertRunbookRefs.length ? alertRunbookRefs.join(",") : "NONE"}`,
     `alert_failed=${Number.isFinite(Number(alertRetrySummary.failed_n)) ? Number(alertRetrySummary.failed_n) : 0}`,

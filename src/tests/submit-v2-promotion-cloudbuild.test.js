@@ -813,6 +813,24 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["ENTRY_SIZING"]);
 })();
 
+(function verificationSummaryMapsProtectedEntryCanaryFailureToAction() {
+  const summary = submit.__test.buildVerificationSummary([
+    { id: "SUBMIT_CHK_20A", ok: false, reason: "V2 production protected entry canary is missing or failed" },
+  ]);
+  assert.strictEqual(summary.blocker_n, 1);
+  assert.strictEqual(summary.has_production_entry_protected_canary_blocker, true);
+  assert.strictEqual(summary.has_bounded_runtime_blocker, true);
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedAction(summary),
+    "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION"
+  );
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedActionReasonCode(summary),
+    "PROTECTED_ENTRY_CANARY_BLOCKER"
+  );
+  assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["PROTECTED_ENTRY_CANARY", "BOUNDED_RUNTIME"]);
+})();
+
 (function verificationSummarySeparatesSchedulerCollectorAndTrafficFailures() {
   const collectorSummary = submit.__test.buildVerificationSummary([
     { id: "SUBMIT_CHK_17", ok: false, reason: "collector preflight missing" },
@@ -1209,6 +1227,46 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(
       result.request.approval_verification.recommended_next_action,
       "FIX_V2_PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_AND_RECHECK_DEPLOY_DECISION"
+    );
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function submitRequestBlocksWhenProtectedEntryCanaryIsMissing() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-protected-canary-blocked-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__PROTECTED_CANARY_BLOCKED");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__PROTECTED_CANARY_BLOCKED");
+    const deployDecisionPath = path.join(artifactDir, "promotion-deploy-decision.json");
+    const deployDecision = JSON.parse(fs.readFileSync(deployDecisionPath, "utf8"));
+    delete deployDecision.bounded_runtime_summary.production_entry_protected_canary;
+    writeJson(deployDecisionPath, deployDecision);
+
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__PROTECTED_CANARY_BLOCKED",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.ok, false);
+    const protectedCanaryCheck = result.request.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_20A");
+    assert.ok(protectedCanaryCheck);
+    assert.strictEqual(protectedCanaryCheck.ok, false);
+    assert.deepStrictEqual(protectedCanaryCheck.doc_refs.runbook_checklist, ["27A"]);
+    assert.strictEqual(result.request.approval_verification.blocker_summary.has_production_entry_protected_canary_blocker, true);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_submit_check_ids, ["SUBMIT_CHK_20A"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_runbook_checklist, ["27A"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.blocker_families, ["PROTECTED_ENTRY_CANARY", "BOUNDED_RUNTIME"]);
+    assert.strictEqual(result.request.submit_trace_summary.primary_blocker_family, "PROTECTED_ENTRY_CANARY");
+    assert.strictEqual(result.request.operator_summary.primary_blocker_family, "PROTECTED_ENTRY_CANARY");
+    assert.ok(result.request.operator_summary.lines.includes("protected_entry_canary_blocker=YES"));
+    assert.strictEqual(
+      result.request.approval_verification.recommended_next_action,
+      "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION"
     );
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}

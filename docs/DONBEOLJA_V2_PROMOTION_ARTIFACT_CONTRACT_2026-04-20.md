@@ -137,6 +137,7 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 4. `has_watchdog_blocker`
 5. `has_candidate_selection_blocker`
 6. `has_bounded_runtime_blocker`
+7. `has_production_entry_protected_canary_blocker`
 
 `promotion-cloudbuild-submit-request.json` 에도 runbook review 정책이 같이 남아야 한다.
 
@@ -439,10 +440,13 @@ submit request의 `approval_evidence_sources.lineage_hash_sources` 는 이 hash�
 5. `has_runbook_blocker`
 6. `has_context_blocker`
 7. `has_candidate_selection_blocker`
+8. `has_production_entry_protected_canary_blocker`
 
 `approval_verification.recommended_next_action` 과 `approval_verification.recommended_next_action_reason` 도 같이 남아야 한다.
 
 즉, submit이 차단됐을 때 operator가 raw check 배열을 다 읽기 전에 어떤 계열 문제인지와 다음 행동을 즉시 복원할 수 있어야 한다.
+
+특히 `SUBMIT_CHK_20A` 실패는 단순 bounded runtime 누락이 아니라 `PROTECTED_ENTRY_CANARY` 계열로 먼저 드러나야 한다. 이 필드는 production entry가 SL/TP1 보호주문 체인을 증명하지 못했다는 의미이므로, `recommended_next_action` 은 `FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION` 이어야 한다.
 
 동시에 각 check는 runbook checklist 번호와 artifact contract 필드명을 직접 가리켜야 한다.
 

@@ -1978,3 +1978,30 @@ V1 약점 재발 방지:
 1. V1에서는 route/gate 통과와 보호주문 실제 활성화가 분리되어, 진입 후 보호주문 누락을 watchdog 경고로 뒤늦게 발견했다
 2. 이번 단계는 promotion 실행마다 no-exchange 방식으로 submitter/protection activation/runtime write 체인을 실제로 통과시킨다
 3. 따라서 V2에서는 route만 정상이고 SL/TP1 보호주문 체인이 깨진 상태로 CANARY/LIVE 제출되는 경로를 fail-closed 한다
+
+## 2026-04-22 Protected Entry Canary Blocker Family
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-cloudbuild.js`
+2. `scripts/submit-v2-promotion-cloudbuild.js`
+3. `scripts/lib/v2-promotion-operator-summary.js`
+4. `scripts/lib/v2-promotion-submit-operator-alert.js`
+5. `src/tests/run-v2-promotion-cloudbuild.test.js`
+6. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+7. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+8. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. `DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED` 는 이제 `has_production_entry_protected_canary_blocker=true` 로 별도 분류된다
+2. `SUBMIT_CHK_20A` 실패는 `PROTECTED_ENTRY_CANARY` family로 먼저 노출되고, bounded runtime family는 보조 신호로만 남는다
+3. recommended action은 `FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION` 으로 고정된다
+4. operator summary와 Telegram preview trace는 `protected_entry_canary_blocker=YES` 를 표시한다
+5. runbook checklist `27A` 는 submit trace, artifact contract, operator summary가 같은 문제를 가리키는지 확인한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 보호주문 누락이 일반 TP/stop 상태 오류와 섞여 원인 판독이 늦었다
+2. 이번 단계는 보호주문 체인 실패를 별도 blocker family로 승격해 운영자가 “SL/TP1 보호주문 증명 실패”를 즉시 읽게 만든다
+3. 따라서 보호주문 문제를 bounded runtime 재생성으로만 처리하다가 실제 원인 수정을 놓치는 경로를 줄인다

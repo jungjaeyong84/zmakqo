@@ -588,15 +588,43 @@ function seedRunbookArtifacts(dir, cycleId) {
       "DEPLOY_DECISION:CANDIDATE_SELECTION_POSITION_CYCLE_MISMATCH",
       "REPLAY:WATCHDOG_FAIL:WATCHDOG_ISSUES_PRESENT:TERMINAL_PROJECTION_MISMATCH",
       "DEPLOY_DECISION:BOUNDED_RUNTIME_SUMMARY_REQUIRED",
+      "DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED",
     ],
     warnings: [],
   });
-  assert.strictEqual(summary.blocker_summary.blocker_n, 4);
+  assert.strictEqual(summary.blocker_summary.blocker_n, 5);
   assert.strictEqual(summary.blocker_summary.top_blockers.length, 3);
   assert.strictEqual(summary.blocker_summary.has_provenance_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_watchdog_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_candidate_selection_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_bounded_runtime_blocker, true);
+  assert.strictEqual(summary.blocker_summary.has_production_entry_protected_canary_blocker, true);
+})();
+
+(function protectedEntryCanaryBlockerHasSpecificCloudbuildAction() {
+  const decision = {
+    approved: false,
+    blocker_summary: {
+      blocker_n: 1,
+      has_provenance_blocker: false,
+      has_candidate_selection_blocker: false,
+      has_production_entry_protected_canary_blocker: true,
+      has_bounded_runtime_blocker: false,
+      has_watchdog_blocker: false,
+    },
+  };
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextAction(decision),
+    "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION"
+  );
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextActionReasonCode(decision),
+    "PROTECTED_ENTRY_CANARY_BLOCKER"
+  );
+  assert.deepStrictEqual(
+    cloudbuild.__test.buildContextBlockerFamilies(decision.blocker_summary),
+    ["PROTECTED_ENTRY_CANARY"]
+  );
 })();
 
 (function warningSummaryClassifiesBothLiveReadinessStreakWarnings() {

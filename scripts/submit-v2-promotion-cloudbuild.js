@@ -102,6 +102,7 @@ function buildVerificationSummary(checks) {
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
   const hasProductionCutoverBlocker = ids.some((id) => ["SUBMIT_CHK_14", "SUBMIT_CHK_15"].includes(id));
   const hasProductionLiveEntrySizingBlocker = ids.some((id) => id === "SUBMIT_CHK_20");
+  const hasProductionEntryProtectedCanaryBlocker = ids.some((id) => id === "SUBMIT_CHK_20A");
   const hasSchedulerTrafficBlocker = ids.some((id) => id === "SUBMIT_CHK_16");
   const hasSchedulerCollectorBlocker = ids.some((id) => id === "SUBMIT_CHK_17");
   const hasRunbookBlocker = ids.some((id) => id === "SUBMIT_CHK_05");
@@ -116,6 +117,7 @@ function buildVerificationSummary(checks) {
     has_fill_sync_canonical_boundary_blocker: hasFillSyncCanonicalBoundaryBlocker,
     has_production_cutover_blocker: hasProductionCutoverBlocker,
     has_production_live_entry_sizing_blocker: hasProductionLiveEntrySizingBlocker,
+    has_production_entry_protected_canary_blocker: hasProductionEntryProtectedCanaryBlocker,
     has_scheduler_traffic_blocker: hasSchedulerTrafficBlocker,
     has_scheduler_collector_blocker: hasSchedulerCollectorBlocker,
     has_runbook_blocker: hasRunbookBlocker,
@@ -128,6 +130,7 @@ function buildVerificationRecommendedAction(summary) {
   const row = normalizeObject(summary);
   if (!row || Number(row.blocker_n) === 0) return "PROCEED_WITH_SUBMIT_WRAPPER";
   if (row.has_provenance_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT";
+  if (row.has_production_entry_protected_canary_blocker) return "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_bounded_runtime_blocker) return "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_entry_boundary_blocker) return "FIX_V2_ENTRY_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_fill_sync_canonical_boundary_blocker) return "FIX_V2_FILL_SYNC_CANONICAL_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
@@ -148,6 +151,9 @@ function buildVerificationRecommendedActionReason(summary) {
   }
   if (row.has_provenance_blocker) {
     return "bounded lineage or approval contract integrity failed";
+  }
+  if (row.has_production_entry_protected_canary_blocker) {
+    return "protected entry canary failed; production entry must prove SL and TP1 protection before submit";
   }
   if (row.has_bounded_runtime_blocker) {
     return "bounded runtime or evidence snapshot coverage failed";
@@ -189,6 +195,9 @@ function buildVerificationRecommendedActionReasonCode(summary) {
   }
   if (row.has_provenance_blocker) {
     return "PROVENANCE_OR_CONTRACT_BLOCKER";
+  }
+  if (row.has_production_entry_protected_canary_blocker) {
+    return "PROTECTED_ENTRY_CANARY_BLOCKER";
   }
   if (row.has_bounded_runtime_blocker) {
     return "BOUNDED_RUNTIME_BLOCKER";
@@ -703,6 +712,7 @@ function buildSubmitTraceFamilies(summary) {
   if (!row) return Object.freeze([]);
   const families = [];
   if (row.has_provenance_blocker) families.push("PROVENANCE");
+  if (row.has_production_entry_protected_canary_blocker) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker) families.push("BOUNDED_RUNTIME");
   if (row.has_entry_boundary_blocker) families.push("ENTRY_BOUNDARY");
   if (row.has_fill_sync_canonical_boundary_blocker) families.push("FILL_SYNC_CANONICAL_BOUNDARY");

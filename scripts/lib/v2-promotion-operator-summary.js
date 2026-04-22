@@ -30,6 +30,7 @@ function buildOperatorSummaryLines(summary) {
   const row = normalizeObject(summary) || {};
   const failedSubmitCheckIds = Array.isArray(row.failed_submit_check_ids) ? row.failed_submit_check_ids.filter(Boolean) : [];
   const failedRunbookChecklist = Array.isArray(row.failed_runbook_checklist) ? row.failed_runbook_checklist.filter(Boolean) : [];
+  const blockerFamilies = Array.isArray(row.blocker_families) ? row.blocker_families.filter(Boolean) : [];
   const alertRunbookRefs = Array.isArray(row.alert_runbook_refs) ? row.alert_runbook_refs.filter(Boolean) : [];
   const deployWarningRunbookChecklist = Array.isArray(row.deploy_warning_runbook_checklist) ? row.deploy_warning_runbook_checklist.filter(Boolean) : [];
   const deployTopWarnings = Array.isArray(row.deploy_top_warnings) ? row.deploy_top_warnings.filter(Boolean) : [];
@@ -47,6 +48,7 @@ function buildOperatorSummaryLines(summary) {
     trimOrNull(row.headline) || "SUBMIT_STATUS_UNKNOWN",
     `status=${trimOrNull(row.status) || "UNKNOWN"}`,
     `primary_blocker_family=${trimOrNull(row.primary_blocker_family) || "NONE"}`,
+    `protected_entry_canary_blocker=${blockerFamilies.includes("PROTECTED_ENTRY_CANARY") || failedSubmitCheckIds.includes("SUBMIT_CHK_20A") ? "YES" : "NO"}`,
     `alert_retry_attention=${row.alert_retry_attention_required === true ? "YES" : "NO"}`,
     `alert_runbook_refs=${alertRunbookRefs.length ? alertRunbookRefs.join(",") : "NONE"}`,
     `alert_failed=${Number.isFinite(Number(row.alert_failed_n)) ? Number(row.alert_failed_n) : 0}`,
@@ -168,6 +170,7 @@ function buildOperatorSummary(result) {
     status,
     headline,
     primary_blocker_family: primaryBlockerFamily,
+    blocker_families: Array.isArray(trace && trace.blocker_families) ? trace.blocker_families : [],
     alert_retry_attention_required: alertAttentionRequired,
     alert_runbook_refs: alertRunbookRefs,
     alert_failed_n: alertRetrySummary && alertRetrySummary.failed_n,
