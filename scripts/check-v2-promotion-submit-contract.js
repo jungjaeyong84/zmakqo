@@ -2045,6 +2045,22 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "OpenClaw supreme CloudBuild context blockers must not be hidden inside the generic submit evidence contract",
       file: FILES.cloudbuildWrapper,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_74",
+      label: "submit wrapper rejects stale CloudBuild deploy summaries",
+      ok: submitWrapperText.includes("hasCloudbuildContextDeployDecisionSummaryMatch")
+        && submitWrapperText.includes("cloudbuild deploy decision summary drifted from current deploy decision")
+        && submitWrapperText.includes("LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH")
+        && cloudbuildWrapperText.includes("LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH")
+        && runbookText.includes("context의 deploy decision 요약이 현재 `promotion-deploy-decision.json`에서 재계산한 deploy 상태/카운터/계열 요약과 같고")
+        && artifactContractText.includes("context에 들어 있는 `deploy_decision_summary` 를 신뢰만 하지 않고")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("approvalVerificationRejectsCloudbuildContextDeployDecisionSummaryDrift"),
+      reason: submitWrapperText.includes("hasCloudbuildContextDeployDecisionSummaryMatch")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("approvalVerificationRejectsCloudbuildContextDeployDecisionSummaryDrift")
+        ? "submit wrapper now recomputes deploy summary from the current deploy decision and rejects stale context summaries"
+        : "submit wrapper must not approve a stale promotion-cloudbuild-context.json when promotion-deploy-decision.json has changed",
+      file: FILES.submitWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

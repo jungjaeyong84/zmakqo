@@ -91,7 +91,8 @@ function summarizeBlockers(blockers) {
   const hasLiveEvidenceCycleBlocker = normalized.some((row) => (
     row.includes("LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH") ||
     row.includes("LIVE_STREAK_POSITION_CYCLE_MISMATCH") ||
-    row.includes("LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH")
+    row.includes("LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH") ||
+    row.includes("LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH")
   ));
   return Object.freeze({
     blocker_n: normalized.length,

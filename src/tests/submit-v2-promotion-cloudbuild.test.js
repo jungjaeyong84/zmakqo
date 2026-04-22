@@ -462,7 +462,12 @@ function seedBoundedSubmitArtifacts(
       scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     } : {}),
     deploy_decision_summary: {
+      approved: true,
+      decision: "APPROVE_DEPLOY",
+      position_cycle_id: cycleId,
       lineage_contract_hash: contextLineageHash || LINEAGE_CONTRACT_FIXTURE.hash,
+      blocker_n: 0,
+      warning_n: deployWarnings.length,
       ...(alertRetrySummary ? { alert_retry_summary: alertRetrySummary } : {}),
       warning_summary: {
         warning_n: deployWarnings.length,
@@ -476,6 +481,17 @@ function seedBoundedSubmitArtifacts(
       },
       blocker_summary: {
         blocker_n: 0,
+        top_blockers: [],
+        has_provenance_blocker: false,
+        has_stale_artifact_provenance_blocker: false,
+        has_live_evidence_cycle_blocker: false,
+        has_watchdog_blocker: false,
+        has_candidate_selection_blocker: false,
+        has_bounded_runtime_blocker: false,
+        has_production_entry_protected_canary_blocker: false,
+        has_openclaw_supreme_control_plane_blocker: false,
+        has_entry_boundary_blocker: false,
+        has_production_cutover_blocker: false,
       },
     },
   });
@@ -891,6 +907,45 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
       submit.__test.buildVerificationRecommendedAction(verification.blocker_summary),
       "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT"
     );
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function approvalVerificationRejectsCloudbuildContextDeployDecisionSummaryDrift() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-context-deploy-drift-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CONTEXT_DEPLOY_DRIFT");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CONTEXT_DEPLOY_DRIFT");
+    const deployDecisionFile = path.join(artifactDir, "promotion-deploy-decision.json");
+    const deployDecision = JSON.parse(fs.readFileSync(deployDecisionFile, "utf8"));
+    writeJson(deployDecisionFile, {
+      ...deployDecision,
+      approved: false,
+      decision: "HOLD",
+      blockers: ["DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH"],
+    });
+    const request = submit.__test.buildSubmitRequest({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CONTEXT_DEPLOY_DRIFT",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    });
+    const verification = submit.__test.buildApprovalVerification(request);
+    assert.strictEqual(verification.ok, false);
+    const contextCheck = verification.checks.find((row) => row.id === "SUBMIT_CHK_07");
+    assert.ok(contextCheck);
+    assert.strictEqual(contextCheck.ok, false);
+    assert.ok(contextCheck.reason.includes("cloudbuild deploy decision summary drifted from current deploy decision"));
+    assert.ok(contextCheck.reason.includes("DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH"));
+    assert.strictEqual(verification.blocker_summary.has_live_evidence_cycle_blocker, true);
+    const trace = submit.__test.buildSubmitTraceSummary(verification);
+    assert.ok(trace.failed_submit_check_ids.includes("SUBMIT_CHK_07"));
+    assert.ok(trace.blocker_families.includes("LIVE_EVIDENCE_CYCLE"));
+    assert.strictEqual(trace.primary_blocker_family, "LIVE_EVIDENCE_CYCLE");
+    assert.strictEqual(trace.recommended_next_action, "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE");
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

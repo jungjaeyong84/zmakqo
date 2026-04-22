@@ -38,6 +38,7 @@ optional review artifact:
 `checks[]` 는 checklist id, file, field, pass/fail/skip, reason을 함께 남겨야 한다.
 
 `promotion-cloudbuild-context.json` 은 제출 직전 wrapper 관점의 마지막 provenance 요약을 남겨야 한다.
+최종 submit wrapper는 context에 들어 있는 `deploy_decision_summary` 를 신뢰만 하지 않고, 같은 artifact dir의 현재 `promotion-deploy-decision.json` 에서 deploy summary를 다시 계산해 `approved`, `decision`, `position_cycle_id`, `blocker_n`, `warning_n`, `blocker_summary`, `warning_summary` 가 같은지 검증해야 한다. 둘이 다르면 stale context 또는 deploy decision 교체로 보고 `SUBMIT_CHK_07` 로 fail-closed 한다. lineage hash 일치는 `SUBMIT_CHK_08` 이 별도로 담당한다.
 
 최소 포함 항목:
 

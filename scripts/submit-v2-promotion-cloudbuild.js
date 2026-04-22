@@ -148,6 +148,7 @@ function buildVerificationSummary(checks) {
     row.toUpperCase().includes("LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH") ||
     row.toUpperCase().includes("LIVE_STREAK_POSITION_CYCLE_MISMATCH") ||
     row.toUpperCase().includes("LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH") ||
+    row.toUpperCase().includes("LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH") ||
     row.toUpperCase().includes("LIVE_EVIDENCE_CYCLE")
   ));
   const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19", "SUBMIT_CHK_20A", "SUBMIT_CHK_21"].includes(id))
@@ -1306,6 +1307,42 @@ function mergeRunbookChecklist(...lists) {
   }));
 }
 
+function arraysEqual(left, right) {
+  const a = Array.isArray(left) ? left.map((value) => trimOrNull(value)).filter(Boolean) : [];
+  const b = Array.isArray(right) ? right.map((value) => trimOrNull(value)).filter(Boolean) : [];
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
+function hasCloudbuildContextDeployDecisionSummaryMatch({ cloudbuildContext = null, deployDecision = null } = {}) {
+  const contextSummary = normalizeObject(cloudbuildContext && cloudbuildContext.deploy_decision_summary);
+  const currentSummary = cloudbuildRuntime.__test.buildDeployDecisionSummary(deployDecision);
+  if (!contextSummary || !currentSummary) return false;
+  const contextBlockers = normalizeObject(contextSummary.blocker_summary);
+  const currentBlockers = normalizeObject(currentSummary.blocker_summary);
+  const contextWarnings = normalizeObject(contextSummary.warning_summary);
+  const currentWarnings = normalizeObject(currentSummary.warning_summary);
+  return (
+    contextSummary.approved === currentSummary.approved &&
+    trimOrNull(contextSummary.decision) === trimOrNull(currentSummary.decision) &&
+    trimOrNull(contextSummary.position_cycle_id) === trimOrNull(currentSummary.position_cycle_id) &&
+    Number(contextSummary.blocker_n || 0) === Number(currentSummary.blocker_n || 0) &&
+    Number(contextSummary.warning_n || 0) === Number(currentSummary.warning_n || 0) &&
+    !!contextBlockers &&
+    !!currentBlockers &&
+    Number(contextBlockers.blocker_n || 0) === Number(currentBlockers.blocker_n || 0) &&
+    arraysEqual(contextBlockers.top_blockers, currentBlockers.top_blockers) &&
+    contextBlockers.has_live_evidence_cycle_blocker === currentBlockers.has_live_evidence_cycle_blocker &&
+    contextBlockers.has_stale_artifact_provenance_blocker === currentBlockers.has_stale_artifact_provenance_blocker &&
+    contextBlockers.has_provenance_blocker === currentBlockers.has_provenance_blocker &&
+    contextBlockers.has_openclaw_supreme_control_plane_blocker === currentBlockers.has_openclaw_supreme_control_plane_blocker &&
+    !!contextWarnings &&
+    !!currentWarnings &&
+    Number(contextWarnings.warning_n || 0) === Number(currentWarnings.warning_n || 0) &&
+    arraysEqual(contextWarnings.top_warnings, currentWarnings.top_warnings)
+  );
+}
+
 function buildSubmitTraceSummary(approvalVerification) {
   const row = normalizeObject(approvalVerification);
   if (!row) {
@@ -1991,15 +2028,29 @@ function buildApprovalVerification(request) {
   const topCloudbuildBlockers = Array.isArray(cloudbuildBlockerSummary && cloudbuildBlockerSummary.top_blockers)
     ? cloudbuildBlockerSummary.top_blockers.map((value) => trimOrNull(value)).filter(Boolean)
     : [];
+  const deployDecisionSummaryMatchesContext = hasCloudbuildContextDeployDecisionSummaryMatch({
+    cloudbuildContext,
+    deployDecision,
+  });
+  const currentDeployDecisionSummary = cloudbuildRuntime.__test.buildDeployDecisionSummary(deployDecision);
+  const currentTopDeployBlockers = Array.isArray(
+    currentDeployDecisionSummary
+    && currentDeployDecisionSummary.blocker_summary
+    && currentDeployDecisionSummary.blocker_summary.top_blockers
+  )
+    ? currentDeployDecisionSummary.blocker_summary.top_blockers.map((value) => trimOrNull(value)).filter(Boolean)
+    : [];
   checks.push(withDocRefs(buildVerificationCheck({
     id: "SUBMIT_CHK_07",
-    label: "cloudbuild blocker count is zero",
-    ok: blockerN === 0,
-    reason: blockerN === 0
-      ? "cloudbuild blocker count is zero"
-      : `cloudbuild blocker count must be zero${topCloudbuildBlockers.length ? `: ${topCloudbuildBlockers.join("|")}` : ""}`,
+    label: "cloudbuild deploy decision summary matches current deploy decision and has zero blockers",
+    ok: blockerN === 0 && deployDecisionSummaryMatchesContext,
+    reason: blockerN === 0 && deployDecisionSummaryMatchesContext
+      ? "cloudbuild deploy decision summary matches current deploy decision and blocker count is zero"
+      : (!deployDecisionSummaryMatchesContext
+        ? `cloudbuild deploy decision summary drifted from current deploy decision${currentTopDeployBlockers.length ? `: ${currentTopDeployBlockers.join("|")}` : ""}`
+        : `cloudbuild blocker count must be zero${topCloudbuildBlockers.length ? `: ${topCloudbuildBlockers.join("|")}` : ""}`),
     file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
-    field: "deploy_decision_summary.blocker_summary.blocker_n",
+    field: "deploy_decision_summary",
   }), {
     runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_07"),
     artifactContract: ["approval_evidence_sources.blocker_summary"],
@@ -2475,6 +2526,7 @@ if (require.main === module) {
       resolvePathOrNull,
       pathHasExactSegment,
       hasResolvedArtifactDirCoherence,
+      hasCloudbuildContextDeployDecisionSummaryMatch,
       buildArtifactDirCoherenceSummary,
       mustBeLiveTrue,
       hasRequiredApprovalContract,
