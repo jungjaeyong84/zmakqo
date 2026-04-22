@@ -2287,7 +2287,7 @@ V1 약점 재발 방지:
 1. `run:v2-exit-runtime-canary` 는 이제 `/api/openclaw/cron/v2-exit-runtime-canary` 로 OpenClaw cron에서 호출 가능해야 한다
 2. 해당 endpoint는 `requireSchedulerToken` 을 통과해야 하며, route timeout label은 `v2_exit_runtime_canary` 로 추적된다
 3. Cloud Scheduler manifest에는 `v2_exit_runtime_canary` job이 `35 * * * *` / `Asia/Seoul` 로 등록되어야 한다
-4. CloudBuild substitution과 main/exit-worker runtime env는 `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE` 를 모두 전달해야 한다
+4. CloudBuild substitution과 main/exit-worker runtime env는 `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE` 를 모두 전달해야 한다
 5. submit wrapper는 CANARY/LIVE promotion에서 exit runtime canary history를 Firestore-backed 모드로 제출한다
 6. submit contract checker는 producer가 scheduler와 CloudBuild runtime env에 연결되지 않으면 `SUBMIT_CONTRACT_CHK_49` 로 fail-closed 한다
 

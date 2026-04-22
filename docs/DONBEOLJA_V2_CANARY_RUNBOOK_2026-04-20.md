@@ -225,6 +225,11 @@ LIVE 전환 전에는 별도로 `npm run check:v2-production-runtime-config` 도
 10. `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED`
 11. `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED`
 12. `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE`
+13. `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE`
+14. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`
+15. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`
+16. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`
+17. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE`
 
 즉, `SUBMIT_CHK_15` 가 LIVE readiness를 증명해도 Cloud Build deploy env가 이 값을 서비스에 전달하지 못하면 cutover는 금지된다.
 
@@ -288,6 +293,11 @@ Cloud Build에서는 개별 script를 직접 조합하지 않는다.
 5. `_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED=1`
 6. `_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED=1`
 7. `_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE=FIRESTORE`
+8. `_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE=1`
+9. `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED=1`
+10. `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED=1`
+11. `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE=FIRESTORE`
+12. `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE=1`
 
 권장 사항:
 
@@ -297,7 +307,7 @@ Cloud Build에서는 개별 script를 직접 조합하지 않는다.
 4. bounded explicit cycle 경로에서는 wrapper가 `check:v2-canary-runbook` 을 자동 실행하고 `promotion-runbook-review.json.ok = true` 가 아니면 즉시 실패한다
 5. auto-select 경로에서는 runtime이 먼저 candidate를 선택한 뒤 `<requested-artifact-dir>/<selected-position-cycle-id>` 로 bounded artifact dir를 finalize 하고, 그 final dir 기준으로 wrapper가 `check:v2-canary-runbook` 을 자동 실행해야 한다
 6. `submit:v2-promotion-cloudbuild` 는 bounded CANARY/LIVE 제출 request에서 `_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=1` 을 자동 설정한다
-7. `submit:v2-promotion-cloudbuild` 는 bounded CANARY/LIVE 제출 request에서 production entry route canary Firestore write/read/source env를 자동으로 `1/1/FIRESTORE` 로 설정한다
+7. `submit:v2-promotion-cloudbuild` 는 bounded CANARY/LIVE 제출 request에서 production entry route와 exit runtime canary Firestore write/read/source/require env를 자동으로 `1/1/FIRESTORE/1` 로 설정한다
 8. promotion pipeline은 unified report 생성 직전에 `v2_repair_queue_firestore_canary_streak_latest.json` 를 artifact dir 안에 다시 생성하므로, submit 판단은 외부 latest 파일이 아니라 해당 승격 실행에서 갱신한 repair streak를 읽어야 한다
 9. LIVE 제출은 `bounded_runtime_summary.repair_firestore_canary_streak` 이 24시간 Firestore-backed repair canary streak pass를 증명해야 하며, CANARY에서는 같은 증거가 없으면 warning으로만 남긴다
 10. promotion pipeline은 unified report 생성 직전에 `v2_production_entry_route_canary_streak_latest.json` 를 artifact dir 안에 다시 생성하므로, submit 판단은 외부 latest 파일이 아니라 해당 승격 실행에서 갱신한 production route streak를 읽어야 한다
@@ -584,8 +594,8 @@ Checklist 28의 `exit_runtime_canary_streak` 는 producer가 실제 운영 스�
 1. OpenClaw cron route: `POST /api/openclaw/cron/v2-exit-runtime-canary`
 2. route guard: `requireSchedulerToken`
 3. scheduler manifest job id: `v2_exit_runtime_canary`
-4. CloudBuild substitution: `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`
-5. Cloud Run env: `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`
+4. CloudBuild substitution: `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`, `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE`
+5. Cloud Run env: `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE`
 6. submit contract: `SUBMIT_CONTRACT_CHK_49`
 7. promotion CI: `test:v2-openclaw-scheduler-binding`
 

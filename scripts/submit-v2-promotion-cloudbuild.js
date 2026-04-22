@@ -373,6 +373,7 @@ function buildSubstitutions(plan) {
   const requiresOpenClawExecutionAuditLedgerWrite = ["CANARY_FLOW", "PIPELINE"].includes(row.mode)
     && ["CANARY", "LIVE"].includes(row.promotionMode);
   const enablesProductionEntryRouteCanaryFirestore = ["CANARY", "LIVE"].includes(row.promotionMode);
+  const requiresCanaryStreakFirestore = enablesProductionEntryRouteCanaryFirestore;
   return Object.freeze({
     _V2_PROMOTION_CANARY_FLOW_ENABLED: row.mode === "CANARY_FLOW" ? "1" : "0",
     _V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED: row.canaryAutoSelectEnabled ? "1" : "0",
@@ -393,9 +394,11 @@ function buildSubstitutions(plan) {
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED) || "0"),
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED) || "0"),
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE) || "JSONL"),
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE: requiresCanaryStreakFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE) || "0"),
     _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED) || "0"),
     _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED) || "0"),
     _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE) || "JSONL"),
+    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE: requiresCanaryStreakFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE) || "0"),
   });
 }
 
