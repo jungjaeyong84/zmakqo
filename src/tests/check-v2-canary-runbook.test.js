@@ -386,12 +386,19 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     writeJson(dir, "promotion-deploy-decision.json", {
       approved: true,
       position_cycle_id: cycleId,
+      selector_meta: {
+        position_cycle_id: cycleId,
+        lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+      },
       entry_boundary_audit: buildEntryBoundaryAuditFixture(),
       fill_sync_canonical_boundary_audit: buildFillSyncCanonicalBoundaryAuditFixture(),
       production_cutover_audit: buildProductionCutoverAuditFixture(),
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
       candidate_selection_summary: {
         selected_position_cycle_id: cycleId,
+        selected_preflight: {
+          position_cycle_id: cycleId,
+        },
         selection_contract: {
           ok: true,
           scan_limit_respected: true,
@@ -453,6 +460,59 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     assert.ok(artifactDirCheck);
     assert.strictEqual(artifactDirCheck.status, "PASS");
     assert.ok(fs.existsSync(path.join(dir, "promotion-runbook-review.json")));
+  } finally {
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(async function runbookCheckFailsWhenPromotionPositionLineageDrifts() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-position-lineage-drift-"));
+  try {
+    const cycleId = "PCY__RUNBOOK__POSITION_LINEAGE_A";
+    const dir = path.join(root, cycleId);
+    fs.mkdirSync(dir, { recursive: true });
+    seedMinimalRunbookArtifacts(dir, cycleId, {
+      deployDecisionPatch: {
+        selector_meta: {
+          position_cycle_id: "PCY__RUNBOOK__POSITION_LINEAGE_B",
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
+        candidate_selection_summary: {
+          selected_position_cycle_id: cycleId,
+          selected_preflight: {
+            position_cycle_id: cycleId,
+          },
+          selection_contract: {
+            ok: true,
+            scan_limit_respected: true,
+            recent_window_enforced: true,
+            selected_candidate_present: true,
+            selected_preflight_ok: true,
+            selected_runtime_chain_ok: true,
+            selected_cycle_matches_preflight: true,
+            selected_cycle_matches_collector_env: true,
+            selected_snapshot_counts_exact: true,
+          },
+        },
+      },
+    });
+    const result = runbookCheck.runCanaryRunbookCheck({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
+    });
+    assert.strictEqual(result.review.ok, false);
+    assert.strictEqual(runbookCheck.__test.hasPromotionPositionLineageConsistency({
+      position_cycle_id: cycleId,
+      selector_meta: { position_cycle_id: "PCY__RUNBOOK__POSITION_LINEAGE_B" },
+      candidate_selection_summary: {
+        selected_position_cycle_id: cycleId,
+        selected_preflight: { position_cycle_id: cycleId },
+      },
+    }), false);
+    const candidateCheck = result.review.checks.find((row) => row.id === "CHK_09");
+    assert.ok(candidateCheck);
+    assert.strictEqual(candidateCheck.status, "FAIL");
+    assert.strictEqual(candidateCheck.field, "selector_meta.position_cycle_id,candidate_selection_summary.selected_position_cycle_id,candidate_selection_summary.selected_preflight.position_cycle_id,position_cycle_id");
   } finally {
     try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
@@ -1088,12 +1148,19 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     writeJson(dir, "promotion-deploy-decision.json", {
       approved: true,
       position_cycle_id: cycleId,
+      selector_meta: {
+        position_cycle_id: cycleId,
+        lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+      },
       entry_boundary_audit: buildEntryBoundaryAuditFixture(),
       fill_sync_canonical_boundary_audit: buildFillSyncCanonicalBoundaryAuditFixture(),
       production_cutover_audit: buildProductionCutoverAuditFixture(),
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
       candidate_selection_summary: {
         selected_position_cycle_id: cycleId,
+        selected_preflight: {
+          position_cycle_id: cycleId,
+        },
       },
     });
     writeJson(dir, "promotion-cloudbuild-context.json", {
@@ -1170,12 +1237,19 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     writeJson(dir, "promotion-deploy-decision.json", {
       approved: true,
       position_cycle_id: cycleId,
+      selector_meta: {
+        position_cycle_id: cycleId,
+        lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+      },
       entry_boundary_audit: buildEntryBoundaryAuditFixture(),
       fill_sync_canonical_boundary_audit: buildFillSyncCanonicalBoundaryAuditFixture(),
       production_cutover_audit: buildProductionCutoverAuditFixture(),
       bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
       candidate_selection_summary: {
         selected_position_cycle_id: cycleId,
+        selected_preflight: {
+          position_cycle_id: cycleId,
+        },
         selection_contract: {
           ok: true,
           scan_limit_respected: true,

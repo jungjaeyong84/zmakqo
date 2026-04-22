@@ -1564,17 +1564,20 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       id: "SUBMIT_CONTRACT_CHK_60",
       label: "deploy decision enforces promotion position lineage consistency",
       ok: deployDecisionCheckerText.includes("buildPromotionPositionLineageBlockers")
+        && runbookCheckerText.includes("hasPromotionPositionLineageConsistency")
+        && runbookCheckerText.includes("selector_meta.position_cycle_id,candidate_selection_summary.selected_position_cycle_id,candidate_selection_summary.selected_preflight.position_cycle_id,position_cycle_id")
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH")
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH")
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:SELECTOR_CANDIDATE_POSITION_CYCLE_MISMATCH")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithSelectorMetaPositionMismatchFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithSelectedPreflightPositionMismatchFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-canary-runbook.test.js")).includes("runbookCheckFailsWhenPromotionPositionLineageDrifts")
         && artifactContractText.includes("SELECTOR_META_POSITION_CYCLE_MISMATCH")
         && runbookText.includes("SELECTOR_META_POSITION_CYCLE_MISMATCH"),
       reason: deployDecisionCheckerText.includes("buildPromotionPositionLineageBlockers")
-        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithSelectorMetaPositionMismatchFailsClosed")
-        ? "deploy decision now blocks selector/candidate/preflight position cycle drift before submit"
-        : "deploy decision must not approve when selector, candidate, and selected preflight point to different position cycles",
+        && runbookCheckerText.includes("hasPromotionPositionLineageConsistency")
+        ? "deploy decision and runbook verifier now block selector/candidate/preflight position cycle drift before submit"
+        : "deploy decision and runbook verifier must not approve when selector, candidate, and selected preflight point to different position cycles",
       file: FILES.deployDecisionChecker,
     }),
   ];

@@ -55,7 +55,7 @@ npm run check:v2-canary-runbook
    submit trace-back: `SUBMIT_CHK_02`
 8. `promotion-deploy-decision.json.bounded_runtime_summary` 핵심 필드가 모두 존재하는가
    submit trace-back: `SUBMIT_CHK_03`
-9. `promotion-deploy-decision.json.candidate_selection_summary.selected_position_cycle_id` 와 최종 `position_cycle_id` 가 같은가
+9. `promotion-deploy-decision.json.selector_meta.position_cycle_id`, `candidate_selection_summary.selected_position_cycle_id`, `candidate_selection_summary.selected_preflight.position_cycle_id`, 최종 `position_cycle_id` 가 같은가
 10. `promotion-cloudbuild-context.json.final_status_line` 이 `APPROVE_DEPLOY` 로 시작하는가
 11. `promotion-cloudbuild-context.json.recommended_next_action = PROCEED_WITH_SUBMIT_WRAPPER` 인가
    submit trace-back: `SUBMIT_CHK_06`

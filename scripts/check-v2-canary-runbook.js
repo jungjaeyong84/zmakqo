@@ -127,6 +127,33 @@ function hasCandidateSelectionContract(summary) {
   );
 }
 
+function hasPromotionPositionLineageConsistency(deployDecision) {
+  const row = deployDecision && typeof deployDecision === "object" ? deployDecision : null;
+  const candidate = row && row.candidate_selection_summary && typeof row.candidate_selection_summary === "object"
+    ? row.candidate_selection_summary
+    : null;
+  if (!row || !candidate) return false;
+  const selectedPreflight = candidate.selected_preflight && typeof candidate.selected_preflight === "object"
+    ? candidate.selected_preflight
+    : null;
+  const selectorMeta = row.selector_meta && typeof row.selector_meta === "object"
+    ? row.selector_meta
+    : null;
+  const deployCycleId = trimOrNull(row.position_cycle_id);
+  const selectorCycleId = trimOrNull(selectorMeta && selectorMeta.position_cycle_id);
+  const candidateCycleId = trimOrNull(candidate.selected_position_cycle_id);
+  const selectedPreflightCycleId = trimOrNull(selectedPreflight && selectedPreflight.position_cycle_id);
+  return !!(
+    deployCycleId &&
+    selectorCycleId &&
+    candidateCycleId &&
+    selectedPreflightCycleId &&
+    selectorCycleId === deployCycleId &&
+    candidateCycleId === deployCycleId &&
+    selectedPreflightCycleId === deployCycleId
+  );
+}
+
 function hasConsistentLineageContract({ preflight = null, runtimeManifest = null, deployDecision = null } = {}) {
   const preflightLineage = preflight && typeof preflight.lineage_contract === "object" ? preflight.lineage_contract : null;
   const manifestLineage = runtimeManifest && runtimeManifest.snapshot_meta && typeof runtimeManifest.snapshot_meta === "object"
@@ -747,17 +774,15 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
 
   const candidateSummary = deployDecision && deployDecision.candidate_selection_summary;
   if (candidateSummary && typeof candidateSummary === "object") {
-    const candidateCycleId = trimOrNull(candidateSummary.selected_position_cycle_id);
-    const deployCycleId = trimOrNull(deployDecision && deployDecision.position_cycle_id);
     checks.push(buildCheck({
       id: "CHK_09",
-      label: "candidate selection cycle matches deploy cycle",
-      status: candidateCycleId && deployCycleId && candidateCycleId === deployCycleId ? "PASS" : "FAIL",
-      reason: candidateCycleId && deployCycleId && candidateCycleId === deployCycleId
-        ? "candidate selection cycle matches deploy cycle"
-        : "candidate selection cycle mismatch",
+      label: "promotion position lineage is consistent",
+      status: hasPromotionPositionLineageConsistency(deployDecision) ? "PASS" : "FAIL",
+      reason: hasPromotionPositionLineageConsistency(deployDecision)
+        ? "selector, candidate, selected preflight, and deploy cycle match"
+        : "selector, candidate, selected preflight, or deploy cycle mismatch",
       file: artifacts.deployDecision.filePath,
-      field: "candidate_selection_summary.selected_position_cycle_id,position_cycle_id",
+      field: "selector_meta.position_cycle_id,candidate_selection_summary.selected_position_cycle_id,candidate_selection_summary.selected_preflight.position_cycle_id,position_cycle_id",
     }));
     checks.push(buildCheck({
       id: "CHK_15",
@@ -772,7 +797,7 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
   } else {
     checks.push(buildCheck({
       id: "CHK_09",
-      label: "candidate selection cycle matches deploy cycle",
+      label: "promotion position lineage is consistent",
       status: "SKIP",
       reason: "explicit cycle path has no candidate selection summary",
       file: artifacts.deployDecision.filePath,
@@ -1013,6 +1038,7 @@ if (require.main === module) {
       hasProductionCutoverAudit,
       hasProductionLiveEntrySizingContract,
       hasCandidateSelectionContract,
+      hasPromotionPositionLineageConsistency,
       hasConsistentLineageContract,
       hasContextLineageHashMatch,
       hasContextLineageConsistency,
