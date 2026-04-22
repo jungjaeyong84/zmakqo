@@ -1332,6 +1332,12 @@ function evaluateSubmitContract() {
         && openclawCronRoutesText.includes("v2_exit_runtime_canary")
         && openclawCronManifestText.includes("v2_exit_runtime_canary")
         && openclawCronManifestText.includes("/api/openclaw/cron/v2-exit-runtime-canary")
+        && packageJsonText.includes('"test:v2-openclaw-scheduler-binding"')
+        && packageJsonText.includes("npm run test:v2-openclaw-scheduler-binding")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "openclaw-cron-routes.test.js")).includes("run-v2-exit-runtime-canary")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "openclaw-cron-routes.test.js")).includes("POST /api/openclaw/cron/v2-exit-runtime-canary")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "openclaw-cron-manifest.test.js")).includes("v2_exit_runtime_canary")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "openclaw-cron-manifest.test.js")).includes("LIVE_EXIT_RUNTIME_OBSERVATION")
         && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
         && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED")
         && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE")
@@ -1340,12 +1346,15 @@ function evaluateSubmitContract() {
         && submitWrapperText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE")
         && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
         && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED")
-        && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE"),
+        && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE")
+        && runbookText.includes("test:v2-openclaw-scheduler-binding")
+        && artifactContractText.includes("test:v2-openclaw-scheduler-binding"),
       reason: openclawCronRoutesText.includes("/api/openclaw/cron/v2-exit-runtime-canary")
         && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
         && submitWrapperText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE")
-        ? "exit runtime canary producer is reachable through OpenClaw cron and receives CloudBuild submit/runtime env"
-        : "exit runtime canary producer must not exist without scheduler and CloudBuild runtime wiring",
+        && packageJsonText.includes("npm run test:v2-openclaw-scheduler-binding")
+        ? "exit runtime canary producer is reachable through OpenClaw cron, promotion-tested scheduler binding, and CloudBuild submit/runtime env"
+        : "exit runtime canary producer must not exist without scheduler, promotion CI, and CloudBuild runtime wiring",
       file: FILES.openclawCronRoutes,
     }),
     buildCheck({
