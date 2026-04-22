@@ -8,6 +8,16 @@ const submitTrace = require("./lib/v2-promotion-submit-trace");
 const deployDecisionCheck = require("./check-v2-promotion-deploy-decision");
 
 const OUTPUT_FILENAME = "promotion-runbook-review.json";
+const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
+  SUBMIT_CHK_01A: Object.freeze(["artifact_dir", "resolved_artifact_dir", "artifact_dir_coherence", "position_cycle_id"]),
+  SUBMIT_CHK_06: Object.freeze(["recommended_next_action"]),
+  SUBMIT_CHK_07: Object.freeze(["deploy_decision_summary.blocker_summary.blocker_n"]),
+  SUBMIT_CHK_08: Object.freeze(["lineage_contract_hash", "deploy_decision_summary.bounded_runtime_summary.lineage_contract.hash", "lineage_consistency_summary"]),
+  SUBMIT_CHK_20A: Object.freeze([
+    "deploy_decision_summary.bounded_runtime_summary.production_entry_protected_canary",
+    "deploy_decision_summary.blocker_summary.has_production_entry_protected_canary_blocker",
+  ]),
+});
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -362,7 +372,8 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     return !!(
       row &&
       row.ok === expectedOkById.get(id) &&
-      arraysEqual(normalizeArray(row.runbook_checklist), submitTrace.getRunbookChecklistForSubmitCheck(id))
+      arraysEqual(normalizeArray(row.runbook_checklist), submitTrace.getRunbookChecklistForSubmitCheck(id)) &&
+      arraysEqual(normalizeArray(row.fields), CONTEXT_SUBMIT_TRACE_FIELDS[id] || [])
     );
   });
 
@@ -1049,6 +1060,7 @@ if (require.main === module) {
       normalizeArray,
       hasConsistentContextSubmitTrace,
       hasConsistentWarningSummary,
+      CONTEXT_SUBMIT_TRACE_FIELDS,
       collectExpectedWarningRunbookChecklist,
       hasLiveCutoverReadinessPlan,
       hasProductionCutoverReadinessPlan,

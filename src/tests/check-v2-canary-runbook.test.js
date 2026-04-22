@@ -73,8 +73,12 @@ function buildWarningSubmitTrace(warnings = []) {
         id: "SUBMIT_CHK_08",
         ok: true,
         runbook_checklist: ["16", "17"],
-        fields: ["lineage_contract_hash", "deploy_decision_summary.lineage_contract_hash"],
-        reason: "cloudbuild lineage hash present for bounded provenance trace",
+        fields: [
+          "lineage_contract_hash",
+          "deploy_decision_summary.bounded_runtime_summary.lineage_contract.hash",
+          "lineage_consistency_summary",
+        ],
+        reason: "cloudbuild lineage hashes are consistent for bounded provenance trace",
       },
     ],
   };
@@ -976,11 +980,36 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
         primary_blocker_family: "PROTECTED_ENTRY_CANARY",
         recommended_next_action_reason_code: "PROTECTED_ENTRY_CANARY_BLOCKER",
         checks: [
-          { id: "SUBMIT_CHK_01A", ok: true, runbook_checklist: ["1", "5", "9"] },
-          { id: "SUBMIT_CHK_06", ok: false, runbook_checklist: ["11"] },
-          { id: "SUBMIT_CHK_07", ok: false, runbook_checklist: ["13"] },
-          { id: "SUBMIT_CHK_08", ok: true, runbook_checklist: ["16", "17"] },
-          { id: "SUBMIT_CHK_20A", ok: false, runbook_checklist: ["27A"] },
+          {
+            id: "SUBMIT_CHK_01A",
+            ok: true,
+            runbook_checklist: ["1", "5", "9"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_01A,
+          },
+          {
+            id: "SUBMIT_CHK_06",
+            ok: false,
+            runbook_checklist: ["11"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_06,
+          },
+          {
+            id: "SUBMIT_CHK_07",
+            ok: false,
+            runbook_checklist: ["13"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_07,
+          },
+          {
+            id: "SUBMIT_CHK_08",
+            ok: true,
+            runbook_checklist: ["16", "17"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_08,
+          },
+          {
+            id: "SUBMIT_CHK_20A",
+            ok: false,
+            runbook_checklist: ["27A"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_20A,
+          },
         ],
       },
       deploy_decision_summary: {
@@ -995,6 +1024,36 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       },
     },
   }), true);
+})();
+
+(function contextSubmitTraceHelperRejectsFieldTraceDrift() {
+  const trace = buildWarningSubmitTrace([]);
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
+    cloudbuildContext: {
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__FIELD_DRIFT", "PCY__TRACE__FIELD_DRIFT"),
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      lineage_consistency_summary: buildLineageConsistencySummary(),
+      recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
+      recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      submit_trace: {
+        ...trace,
+        checks: trace.checks.map((row) => (
+          row.id === "SUBMIT_CHK_08"
+            ? { ...row, fields: ["lineage_contract_hash"] }
+            : row
+        )),
+      },
+      deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
+        blocker_summary: {
+          blocker_n: 0,
+        },
+      },
+    },
+  }), false);
 })();
 
 (function contextSubmitTraceHelperRejectsProtectedEntryCanaryStatusLineDrift() {

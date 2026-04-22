@@ -1606,6 +1606,19 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "submit blockers must be actionable without manually cross-referencing SUBMIT_CHK ids",
       file: FILES.submitWrapper,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_62",
+      label: "runbook verifier enforces submit trace field lineage",
+      ok: runbookCheckerText.includes("CONTEXT_SUBMIT_TRACE_FIELDS")
+        && runbookCheckerText.includes("arraysEqual(normalizeArray(row.fields), CONTEXT_SUBMIT_TRACE_FIELDS[id] || [])")
+        && cloudbuildWrapperText.includes("CONTEXT_SUBMIT_TRACE_FIELDS")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-canary-runbook.test.js")).includes("contextSubmitTraceHelperRejectsFieldTraceDrift"),
+      reason: runbookCheckerText.includes("CONTEXT_SUBMIT_TRACE_FIELDS")
+        && runbookCheckerText.includes("normalizeArray(row.fields)")
+        ? "runbook verifier now blocks submit trace checks when their evidence fields drift from the CloudBuild context contract"
+        : "runbook verifier must not accept submit trace checks that omit or alter the field-level evidence map",
+      file: FILES.runbookChecker,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
