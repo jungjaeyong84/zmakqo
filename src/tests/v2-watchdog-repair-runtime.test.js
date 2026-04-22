@@ -143,6 +143,12 @@ function buildTrailActiveBase() {
   assert.strictEqual(envelope.writer_delegation.requested_by_service, "V2_REPAIR_EXECUTOR");
   assert.strictEqual(envelope.writer_delegation.command.command_type, "REFRESH_NATIVE_STOP");
   assert.strictEqual(envelope.writer_delegation.attempt_meta.requested_by_service, "V2_PROTECTION_WRITER");
+  assert.strictEqual(envelope.writer_delegation.writer_lease.lease_scope, "V2_PROTECTION_WRITER_EXCHANGE_WRITE");
+  assert.strictEqual(envelope.writer_delegation.writer_lease.lease_service, "V2_PROTECTION_WRITER");
+  assert.strictEqual(envelope.writer_delegation.writer_lease.acquired_by_service, "V2_REPAIR_EXECUTOR");
+  assert.strictEqual(envelope.writer_delegation.writer_lease.position_cycle_id, base.positionCycle.position_cycle_id);
+  assert.strictEqual(envelope.writer_delegation.writer_lease.placement_attempt_id, envelope.writer_delegation.attempt_meta.placement_attempt_id);
+  assert.strictEqual(envelope.writer_delegation.writer_lease.command_type, "REFRESH_NATIVE_STOP");
   assert.strictEqual(envelope.position_cycle_snapshot.symbol, "ETHUSDT");
 })();
 
@@ -181,6 +187,9 @@ function buildTrailActiveBase() {
   assert.strictEqual(envelope.writer_delegation.command.trigger_price, base.projection.tp1_target_price);
   assert.strictEqual(envelope.writer_delegation.command.quantity_abs, base.projection.tp1_target_qty_abs);
   assert.strictEqual(envelope.writer_delegation.attempt_meta.requested_by_service, "V2_PROTECTION_WRITER");
+  assert.strictEqual(envelope.writer_delegation.writer_lease.lease_scope, "V2_PROTECTION_WRITER_EXCHANGE_WRITE");
+  assert.strictEqual(envelope.writer_delegation.writer_lease.command_type, "PLACE_OR_REPLACE_TP1");
+  assert.strictEqual(envelope.writer_delegation.writer_lease.position_cycle_id, base.positionCycle.position_cycle_id);
   assert.strictEqual(envelope.tp1_repair_request.requested_tp1_price, base.projection.tp1_target_price);
 })();
 
@@ -226,6 +235,8 @@ function buildTrailActiveBase() {
   assert.strictEqual(envelope.writer_delegation.command.include_tp1_order, true);
   assert.strictEqual(envelope.writer_delegation.command.commands.sl, null);
   assert.strictEqual(envelope.writer_delegation.command.commands.tp1.trigger_price, base.projection.tp1_target_price);
+  assert.strictEqual(envelope.writer_delegation.writer_lease.lease_service, "V2_PROTECTION_WRITER");
+  assert.strictEqual(envelope.writer_delegation.writer_lease.command_type, "PLACE_OR_REPLACE_FULL_PROTECTION");
   assert.strictEqual(envelope.full_protection_repair_request.include_tp1_order, true);
 })();
 

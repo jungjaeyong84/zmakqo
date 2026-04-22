@@ -2227,6 +2227,56 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "LIVE promotion must expose one checker for production runtime, 24h streaks, protected entry, OpenClaw, and temporal coherence evidence",
       file: FILES.liveEvidenceReadinessChecker,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_78",
+      label: "V2 protection writes have execution-time deadlines",
+      ok: packageJsonText.includes("v2-binance-protection-transport.test.js")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("withProtectionWriteDeadline")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-binance-protection-transport.test.js")).includes("refreshTransportFailsClosedOnProtectionWriteDeadline")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-binance-protection-transport.test.js")).includes("fullProtectionTransportFailsClosedPerLegOnProtectionWriteDeadline")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED")
+        && artifactContractText.includes("DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS")
+        && artifactContractText.includes("BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED"),
+      reason: packageJsonText.includes("v2-binance-protection-transport.test.js")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED")
+        ? "promotion now proves Binance native protection writes fail closed at execution time when the transport exceeds its deadline"
+        : "V2 promotion must include protection write deadline behavior tests and production runtime chain evidence",
+      file: path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js"),
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_79",
+      label: "V2 repair transport requires protection-writer lease",
+      ok: packageJsonText.includes("v2-repair-delegated-executor.test.js")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "watchdogRepairRuntime.js")).includes("V2_PROTECTION_WRITER_EXCHANGE_WRITE")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "repairDelegatedExecutor.js")).includes("PROTECTION_WRITER_LEASE_REQUIRED")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "repairDelegatedExecutor.js")).includes("PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-repair-delegated-executor.test.js")).includes("validationRejectsDelegatedProtectionWriteWithoutWriterLease")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-repair-delegated-executor.test.js")).includes("validationRejectsWriterLeasePositionCycleDrift")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_REPAIR_WRITER_LEASE_REQUIRED")
+        && artifactContractText.includes("V2_PROTECTION_WRITER_EXCHANGE_WRITE")
+        && artifactContractText.includes("PROTECTION_WRITER_LEASE_REQUIRED"),
+      reason: packageJsonText.includes("v2-repair-delegated-executor.test.js")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_REPAIR_WRITER_LEASE_REQUIRED")
+        ? "delegated repair writes now require a protection-writer exchange-write lease before transport execution"
+        : "V2 promotion must prove repair cannot run a protection transport without protection-writer lease evidence",
+      file: path.resolve(__dirname, "..", "src", "v2", "repairDelegatedExecutor.js"),
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_80",
+      label: "V2 promotion override policy is explicit and fail-closed",
+      ok: !submitWrapperText.includes("V2_PROMOTION_OVERRIDE")
+        && !deployDecisionCheckerText.includes("V2_PROMOTION_OVERRIDE")
+        && artifactContractText.includes("promotion override is intentionally forbidden")
+        && runbookText.includes("promotion override is intentionally forbidden"),
+      reason: !submitWrapperText.includes("V2_PROMOTION_OVERRIDE")
+        && !deployDecisionCheckerText.includes("V2_PROMOTION_OVERRIDE")
+        ? "promotion bypass is intentionally absent from submit/deploy code; false positives require artifact/code fix, not hidden override"
+        : "V2 promotion must not contain hidden V2_PROMOTION_OVERRIDE bypass paths",
+      file: FILES.artifactContract,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

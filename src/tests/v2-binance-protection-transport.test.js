@@ -173,6 +173,34 @@ const {
   assert.strictEqual(called, false);
 })();
 
+(async function refreshTransportFailsClosedOnProtectionWriteDeadline() {
+  const transport = buildBinanceRefreshNativeStopTransport({
+    deadlineMs: 5,
+    resolveContext: async () => ({
+      liveCfg: {
+        apiKey: "key",
+        apiSecret: "secret",
+      },
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      fallbackSide: "SELL",
+      fallbackEntryPrice: 2500,
+      fallbackLeverage: 2,
+    }),
+    refreshNativeProtectionWithRetry: async () => new Promise(() => {}),
+  });
+  const ack = await transport({
+    command: {
+      command_type: "REFRESH_NATIVE_STOP",
+      trigger_price: 2445,
+    },
+    delegatedRepair: {},
+  });
+  assert.strictEqual(ack.status, "FAILED");
+  assert.strictEqual(ack.error_code, "BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED");
+  assert.strictEqual(ack.trigger_price, 2445);
+})();
+
 (async function tp1RepairTransportUsesReduceOnlyTakeProfitContract() {
   const calls = [];
   const transport = buildBinancePlaceOrReplaceTp1Transport({
@@ -282,6 +310,39 @@ const {
   assert.strictEqual(ack.status, "FAILED");
   assert.strictEqual(ack.error_code, "BINANCE_TP1_REPAIR_QTY_REQUIRED");
   assert.strictEqual(contextCalled, false);
+})();
+
+(async function tp1RepairTransportFailsClosedOnProtectionWriteDeadline() {
+  const transport = buildBinancePlaceOrReplaceTp1Transport({
+    deadlineMs: 5,
+    resolveContext: async () => ({
+      liveCfg: {
+        apiKey: "key",
+        apiSecret: "secret",
+        liveEnabled: true,
+        liveDryRun: false,
+      },
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      fallbackSide: "SELL",
+      fallbackEntryPrice: 2500,
+      fallbackLeverage: 2,
+    }),
+    placeTakeProfitMarketOrder: async () => new Promise(() => {}),
+  });
+  const ack = await transport({
+    command: {
+      command_type: "PLACE_OR_REPLACE_TP1",
+      symbol: "ETHUSDT",
+      close_side: "SELL",
+      trigger_price: 2542,
+      quantity_abs: 0.4,
+    },
+    delegatedRepair: {},
+  });
+  assert.strictEqual(ack.status, "FAILED");
+  assert.strictEqual(ack.error_code, "BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED");
+  assert.strictEqual(ack.trigger_price, 2542);
 })();
 
 (async function fullProtectionTransportPlacesStopThenTp1WithExplicitContracts() {
@@ -402,8 +463,65 @@ const {
   assert.strictEqual(called, false);
 })();
 
+(async function fullProtectionTransportFailsClosedPerLegOnProtectionWriteDeadline() {
+  const transport = buildBinancePlaceOrReplaceFullProtectionTransport({
+    deadlineMs: 5,
+    resolveContext: async () => ({
+      liveCfg: {
+        apiKey: "key",
+        apiSecret: "secret",
+        liveEnabled: true,
+        liveDryRun: false,
+      },
+      exchange: "BINANCEFUT",
+      symbol: "BTCUSDT",
+      fallbackSide: "SELL",
+      fallbackEntryPrice: 100000,
+      fallbackLeverage: 2,
+    }),
+    placeStopMarketOrder: async () => new Promise(() => {}),
+    placeTakeProfitMarketOrder: async () => ({
+      orderId: "TP1__OK_AFTER_SL_TIMEOUT",
+      stopPrice: 101680,
+    }),
+  });
+  const ack = await transport({
+    command: {
+      command_type: "PLACE_OR_REPLACE_FULL_PROTECTION",
+      include_sl_order: true,
+      include_tp1_order: true,
+      commands: {
+        sl: {
+          command_type: "PLACE_OR_REPLACE_SL",
+          symbol: "BTCUSDT",
+          close_side: "SELL",
+          trigger_price: 98350,
+        },
+        tp1: {
+          command_type: "PLACE_OR_REPLACE_TP1",
+          symbol: "BTCUSDT",
+          close_side: "SELL",
+          trigger_price: 101680,
+          quantity_abs: 0.005,
+        },
+      },
+    },
+    delegatedRepair: {},
+  });
+  assert.strictEqual(ack.slAck.status, "FAILED");
+  assert.strictEqual(ack.slAck.error_code, "BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED");
+  assert.strictEqual(ack.tp1Ack.status, "PLACED");
+  assert.strictEqual(ack.tp1Ack.order_id, "TP1__OK_AFTER_SL_TIMEOUT");
+})();
+
 (function stableCodeNormalizesTransportErrors() {
   assert.strictEqual(__test.stableCode("native refresh missing stop"), "NATIVE_REFRESH_MISSING_STOP");
+})();
+
+(function protectionWriteDeadlineIsClampedForOperationalSafety() {
+  assert.strictEqual(__test.resolveProtectionWriteDeadlineMs({ deadlineMs: 1 }), 250);
+  assert.strictEqual(__test.resolveProtectionWriteDeadlineMs({ deadlineMs: 999999 }), 120000);
+  assert.strictEqual(__test.resolveProtectionWriteDeadlineMs({ deadlineMs: 5000 }), 5000);
 })();
 
 console.log("V2_BINANCE_PROTECTION_TRANSPORT_TEST_OK");

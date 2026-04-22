@@ -157,6 +157,61 @@ function buildFullProtectionDelegatedRepair() {
   assert.strictEqual(err.message, "REPAIR_DELEGATION_TARGET_INVALID");
 })();
 
+(function validationRejectsDelegatedProtectionWriteWithoutWriterLease() {
+  const delegatedRepair = buildRefreshDelegatedRepair();
+  let err = null;
+  try {
+    validateDelegatedRepair({
+      ...delegatedRepair,
+      envelope: {
+        ...delegatedRepair.envelope,
+        writer_delegation: {
+          ...delegatedRepair.envelope.writer_delegation,
+          writer_lease: null,
+        },
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "PROTECTION_WRITER_LEASE_REQUIRED");
+})();
+
+(function validationRejectsWriterLeasePositionCycleDrift() {
+  const delegatedRepair = buildTp1DelegatedRepair();
+  let err = null;
+  try {
+    validateDelegatedRepair({
+      ...delegatedRepair,
+      envelope: {
+        ...delegatedRepair.envelope,
+        writer_delegation: {
+          ...delegatedRepair.envelope.writer_delegation,
+          writer_lease: {
+            ...delegatedRepair.envelope.writer_delegation.writer_lease,
+            position_cycle_id: "PCY__OTHER",
+          },
+        },
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH");
+})();
+
+(function validationAcceptsProtectionWriterLeaseForDelegatedRepair() {
+  const delegatedRepair = buildFullProtectionDelegatedRepair();
+  const result = validateDelegatedRepair(delegatedRepair);
+  assert.strictEqual(result.writerLease.lease_scope, "V2_PROTECTION_WRITER_EXCHANGE_WRITE");
+  assert.strictEqual(result.writerLease.lease_service, "V2_PROTECTION_WRITER");
+  assert.strictEqual(result.writerLease.acquired_by_service, "V2_REPAIR_EXECUTOR");
+  assert.strictEqual(result.writerLease.position_cycle_id, "PCY__EXEC__FULL");
+  assert.strictEqual(result.writerLease.command_type, "PLACE_OR_REPLACE_FULL_PROTECTION");
+})();
+
 (function tp1RepairRejectsMissingTargetPriceInsteadOfUsingQuantityAsPrice() {
   let err = null;
   try {

@@ -36,6 +36,33 @@ function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function buildProtectionWriterLease({ repairCommand, delegated }) {
+  const command = delegated && delegated.command && typeof delegated.command === "object"
+    ? delegated.command
+    : {};
+  const attemptMeta = delegated && delegated.attemptMeta && typeof delegated.attemptMeta === "object"
+    ? delegated.attemptMeta
+    : {};
+  const positionCycleId = trimOrNull(repairCommand && repairCommand.position_cycle_id);
+  const placementAttemptId = trimOrNull(attemptMeta.placement_attempt_id)
+    || trimOrNull(command.placement_attempt_id);
+  if (!positionCycleId) throw new Error("PROTECTION_WRITER_LEASE_POSITION_CYCLE_REQUIRED");
+  if (!placementAttemptId) throw new Error("PROTECTION_WRITER_LEASE_PLACEMENT_ATTEMPT_REQUIRED");
+  return Object.freeze({
+    lease_scope: "V2_PROTECTION_WRITER_EXCHANGE_WRITE",
+    lease_service: V2_SERVICES.PROTECTION_WRITER,
+    acquired_by_service: V2_SERVICES.REPAIR_EXECUTOR,
+    position_cycle_id: positionCycleId,
+    placement_attempt_id: placementAttemptId,
+    command_type: upper(command.command_type) || upper(repairCommand && repairCommand.command_type),
+  });
+}
+
 function buildWatchdogRepairSnapshot(input = {}) {
   const boundaryAudit = assertWatchdogRepairRuntimeBoundaries();
   const watchdog = evaluateActiveExitWatchdog(input);
@@ -94,6 +121,7 @@ function buildRepairDelegationEnvelope({
         requested_by_service: V2_SERVICES.REPAIR_EXECUTOR,
         command: delegated.command,
         attempt_meta: delegated.attemptMeta,
+        writer_lease: buildProtectionWriterLease({ repairCommand, delegated }),
       }),
       direct_exchange_write_forbidden: true,
     });
@@ -127,6 +155,7 @@ function buildRepairDelegationEnvelope({
         requested_by_service: V2_SERVICES.REPAIR_EXECUTOR,
         command: delegated.command,
         attempt_meta: delegated.attemptMeta,
+        writer_lease: buildProtectionWriterLease({ repairCommand, delegated }),
       }),
       direct_exchange_write_forbidden: true,
     });
@@ -166,6 +195,7 @@ function buildRepairDelegationEnvelope({
         requested_by_service: V2_SERVICES.REPAIR_EXECUTOR,
         command: delegated.command,
         attempt_meta: delegated.attemptMeta,
+        writer_lease: buildProtectionWriterLease({ repairCommand, delegated }),
       }),
       direct_exchange_write_forbidden: true,
     });

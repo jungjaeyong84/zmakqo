@@ -49,6 +49,44 @@ function buildFailedProtectionWriteResult({
   });
 }
 
+function validateProtectionWriterLease({ envelope, delegation }) {
+  const command = delegation && delegation.command && typeof delegation.command === "object"
+    ? delegation.command
+    : null;
+  if (!command) return null;
+  const lease = delegation.writer_lease && typeof delegation.writer_lease === "object"
+    ? delegation.writer_lease
+    : null;
+  if (!lease) throw new Error("PROTECTION_WRITER_LEASE_REQUIRED");
+  if (lease.lease_scope !== "V2_PROTECTION_WRITER_EXCHANGE_WRITE") {
+    throw new Error("PROTECTION_WRITER_LEASE_SCOPE_INVALID");
+  }
+  if (lease.lease_service !== V2_SERVICES.PROTECTION_WRITER) {
+    throw new Error("PROTECTION_WRITER_LEASE_SERVICE_INVALID");
+  }
+  if (lease.acquired_by_service !== V2_SERVICES.REPAIR_EXECUTOR) {
+    throw new Error("PROTECTION_WRITER_LEASE_ACQUIRER_INVALID");
+  }
+  const repairCommand = envelope.repair_command && typeof envelope.repair_command === "object"
+    ? envelope.repair_command
+    : null;
+  const expectedCycleId = trimOrNull(repairCommand && repairCommand.position_cycle_id)
+    || trimOrNull(envelope.position_cycle_snapshot && envelope.position_cycle_snapshot.position_cycle_id);
+  if (!expectedCycleId || trimOrNull(lease.position_cycle_id) !== expectedCycleId) {
+    throw new Error("PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH");
+  }
+  const expectedAttemptId = trimOrNull(delegation.attempt_meta && delegation.attempt_meta.placement_attempt_id)
+    || trimOrNull(command.placement_attempt_id);
+  if (!expectedAttemptId || trimOrNull(lease.placement_attempt_id) !== expectedAttemptId) {
+    throw new Error("PROTECTION_WRITER_LEASE_PLACEMENT_ATTEMPT_MISMATCH");
+  }
+  const expectedCommandType = upper(command.command_type) || upper(repairCommand && repairCommand.command_type);
+  if (!expectedCommandType || upper(lease.command_type) !== expectedCommandType) {
+    throw new Error("PROTECTION_WRITER_LEASE_COMMAND_TYPE_MISMATCH");
+  }
+  return Object.freeze({ ...lease });
+}
+
 function validateDelegatedRepair(delegatedRepair) {
   if (!delegatedRepair || typeof delegatedRepair !== "object") {
     throw new Error("DELEGATED_REPAIR_REQUIRED");
@@ -67,9 +105,11 @@ function validateDelegatedRepair(delegatedRepair) {
   if (delegation.requested_by_service !== V2_SERVICES.REPAIR_EXECUTOR) {
     throw new Error("REPAIR_DELEGATION_REQUESTER_INVALID");
   }
+  const writerLease = validateProtectionWriterLease({ envelope, delegation });
   return Object.freeze({
     envelope,
     delegation,
+    writerLease,
     repairCommand: envelope.repair_command && typeof envelope.repair_command === "object"
       ? envelope.repair_command
       : null,

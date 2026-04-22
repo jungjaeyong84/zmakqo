@@ -74,6 +74,24 @@ function auditWithOverride(relPath, replacer) {
   assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_TICK_NATIVE_REFRESH_SINGLE_WRITER"));
 })();
 
+(function missingProtectionWriteDeadlineFailsClosed() {
+  const audit = auditWithOverride("src/v2/binanceProtectionTransport.js", (source) => source.replace(
+    /withProtectionWriteDeadline/g,
+    "protectionDeadlineRemoved"
+  ));
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED"));
+})();
+
+(function missingRepairWriterLeaseFailsClosed() {
+  const audit = auditWithOverride("src/v2/repairDelegatedExecutor.js", (source) => source.replace(
+    /PROTECTION_WRITER_LEASE_REQUIRED/g,
+    "PROTECTION_WRITER_LEASE_REMOVED"
+  ));
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_REPAIR_WRITER_LEASE_REQUIRED"));
+})();
+
 (function missingLiveTemporalCoherenceFailsClosed() {
   const audit = auditWithOverride("scripts/check-v2-promotion-deploy-decision.js", (source) => source.replace(
     /LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH/g,

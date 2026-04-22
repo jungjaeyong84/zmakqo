@@ -55,6 +55,7 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
   const repairQueueWorker = readRepoFile("src/v2/repairQueueWorker.js", sourceOverrides);
   const repairDelegatedExecutor = readRepoFile("src/v2/repairDelegatedExecutor.js", sourceOverrides);
   const repairExecutionLedger = readRepoFile("src/v2/repairExecutionLedger.js", sourceOverrides);
+  const binanceProtectionTransport = readRepoFile("src/v2/binanceProtectionTransport.js", sourceOverrides);
   const deployDecision = readRepoFile("scripts/check-v2-promotion-deploy-decision.js", sourceOverrides);
   const statusDoc = readRepoFile("docs/DONBEOLJA_V2_IMPLEMENTATION_STATUS_2026-04-21.md", sourceOverrides);
 
@@ -122,6 +123,20 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
     "requires_repair",
     "repair_command",
   ];
+  const protectionWriteDeadlineTokens = [
+    "DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS",
+    "withProtectionWriteDeadline",
+    "BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED",
+    "BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED",
+    "BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED",
+    "BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED",
+  ];
+  const repairWriterLeaseTokens = [
+    "PROTECTION_WRITER_LEASE_REQUIRED",
+    "PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH",
+    "V2_PROTECTION_WRITER_EXCHANGE_WRITE",
+    "writerLease",
+  ];
   const liveEvidenceTokens = [
     "MIN_LIVE_STREAK_COVERAGE_MINUTES",
     "LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH",
@@ -136,6 +151,8 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
     "v2-tick-exit-worker.test.js",
     "v2-exit-fill-ingestion.test.js",
     "v2-watchdog-repair.test.js",
+    "v2-binance-protection-transport.test.js",
+    "v2-repair-delegated-executor.test.js",
     "t" + "p0-retirement.test.js",
     "native-protection-unprotected-window.test.js",
     "check:v2-production-runtime-chain",
@@ -208,6 +225,18 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
       hasEvery(`${repairQueueService}\n${repairQueueWorker}\n${repairDelegatedExecutor}\n${repairExecutionLedger}`, repairTokens),
       "watchdog repair must route through queue, delegated executor, and execution ledger evidence",
       buildTokenEvidence(`${repairQueueService}\n${repairQueueWorker}\n${repairDelegatedExecutor}\n${repairExecutionLedger}`, repairTokens)
+    ),
+    buildCheck(
+      "V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED",
+      hasEvery(binanceProtectionTransport, protectionWriteDeadlineTokens),
+      "Binance native protection writes must fail closed at execution time when REST calls exceed the protection write deadline",
+      buildTokenEvidence(binanceProtectionTransport, protectionWriteDeadlineTokens)
+    ),
+    buildCheck(
+      "V2_PRODUCTION_CHAIN_REPAIR_WRITER_LEASE_REQUIRED",
+      hasEvery(`${repairDelegatedExecutor}\n${readRepoFile("src/v2/watchdogRepairRuntime.js", sourceOverrides)}`, repairWriterLeaseTokens),
+      "delegated repair writes must carry a protection-writer exchange-write lease before any transport can run",
+      buildTokenEvidence(`${repairDelegatedExecutor}\n${readRepoFile("src/v2/watchdogRepairRuntime.js", sourceOverrides)}`, repairWriterLeaseTokens)
     ),
     buildCheck(
       "V2_PRODUCTION_CHAIN_24H_EVIDENCE_AND_OPENCLAW_SUPREME_GATED",

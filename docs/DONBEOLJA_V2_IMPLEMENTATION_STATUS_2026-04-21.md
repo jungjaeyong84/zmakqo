@@ -2779,3 +2779,34 @@ V1 약점 재발 방지:
 
 1. fill sync와 production runtime chain audit 자체는 여전히 source token 기반 검사를 포함한다
 2. 이번 단계는 그 약점을 promotion core behavior tests로 보완하지만, 장기적으로는 AST/호출그래프 기반 감사로 전환하는 것이 더 안전하다
+
+## 2026-04-23 Protection Write Deadline / Repair Lease Hardening
+
+추가 증거:
+
+1. `src/v2/binanceProtectionTransport.js`
+2. `src/v2/watchdogRepairRuntime.js`
+3. `src/v2/repairDelegatedExecutor.js`
+4. `src/v2/productionRuntimeChainAudit.js`
+5. `src/tests/v2-binance-protection-transport.test.js`
+6. `src/tests/v2-repair-delegated-executor.test.js`
+7. `src/tests/v2-watchdog-repair-runtime.test.js`
+8. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+9. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. Binance protection write transport는 `DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS` deadline을 갖고, native stop refresh/TP1/full protection 각 leg에서 deadline 초과를 실패 ack로 남긴다
+2. deadline 초과 사유는 `BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED`, `BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED`, `BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED`, `BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED` 로 고정된다
+3. watchdog repair delegation은 `V2_PROTECTION_WRITER_EXCHANGE_WRITE` lease를 포함한다
+4. delegated repair executor는 lease 누락, service mismatch, position cycle drift, placement attempt drift, command type drift를 runtime에서 거부한다
+5. `test:v2-core-invariants` 는 protection transport deadline test와 delegated repair lease test를 포함한다
+6. promotion contract는 `SUBMIT_CONTRACT_CHK_78`, `SUBMIT_CONTRACT_CHK_79`, `SUBMIT_CONTRACT_CHK_80` 으로 deadline, writer lease, override 금지 정책을 검증한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 보호주문 실패가 사후 watchdog 경고로만 드러나고 write 시점의 timeout 계약이 약했다
+2. 이번 단계는 write 시점에서 무기한 대기를 실패 ack로 닫아 repair ledger가 즉시 다룰 수 있게 한다
+3. V1에서는 repair/watchdog 계열이 복구 경로와 writer 권한 경계가 섞여 중복 주문 race가 생길 수 있었다
+4. 이번 단계는 repair가 exchange writer가 아니라 protection writer lease를 가진 delegated command만 실행한다는 계약을 코드와 테스트에 남긴다
+5. promotion bypass는 의도적으로 두지 않는다. 오탐은 hidden override가 아니라 깨진 artifact/checker/runbook/code를 수정해 해결한다

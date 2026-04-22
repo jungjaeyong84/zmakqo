@@ -665,6 +665,9 @@ cloudbuild는 아래 원칙을 따른다.
 25. wrapper가 runbook review 단계에서 실패하더라도 `promotion-cloudbuild-context.json` 은 `runbook_review_summary.ok=false`, `failed_check_ids`, `top_failed_checks[]`, `runbook_review_file` 을 보존해야 한다
 26. runbook review가 필수 artifact 누락/JSON 파싱 오류 등으로 review 생성 전에 throw 되더라도 context에는 synthetic `CHK_RUNBOOK_REVIEW_THROWN` 이 남아야 한다
 27. submit wrapper의 operator summary와 operator alert preview는 `runbook_review`, `runbook_review_failures`, `runbook_review_failed_checks`, `runbook_review_file` 을 같은 line set으로 노출해야 한다
+28. V2 protection write transport는 실행 시점 deadline을 가져야 한다. 기본 deadline은 `DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS` 로 조정 가능하되, deadline 초과는 `BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED`, `BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED`, `BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED`, `BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED` 중 하나의 실패 ack로 ledger에 남아야 한다. 이는 사후 canary가 아니라 주문 write 시점에서 무기한 대기/무보호 구간을 fail-closed 하기 위한 계약이다.
+29. repair executor가 protection transport를 실행하려면 writer delegation 안에 `V2_PROTECTION_WRITER_EXCHANGE_WRITE` lease가 있어야 한다. lease가 없으면 `PROTECTION_WRITER_LEASE_REQUIRED`, position cycle이 다르면 `PROTECTION_WRITER_LEASE_POSITION_CYCLE_MISMATCH` 로 실패해야 한다. watchdog/repair는 여전히 직접 exchange writer가 아니며, lease evidence를 가진 delegated protection writer command만 실행할 수 있다.
+30. promotion override is intentionally forbidden. V2 promotion의 deploy/submit 경로에는 `V2_PROMOTION_OVERRIDE` 같은 bypass flag를 두지 않는다. false positive가 발생하면 artifact, checker, runbook, 코드 중 깨진 계열을 수정하고 다시 promotion pipeline을 실행해야 하며, hidden override로 LIVE 승격을 강행하지 않는다.
 
 `SUBMIT_CHK_17` 실패는 `SCHEDULER_COLLECTOR_BLOCKER` 이며, 권장 행동은 `FIX_V2_SCHEDULER_COLLECTOR_IAM_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER` 이다.
 

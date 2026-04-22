@@ -165,6 +165,12 @@ npm run check:v2-canary-runbook
 | `SUBMIT_CHK_23` | `31` | LIVE OpenClaw supreme control plane closed loop complete |
 | `SUBMIT_CHK_24` | `13G` | LIVE evidence readiness summary visible in final submit path |
 
+추가 runtime hardening trace:
+
+1. `SUBMIT_CONTRACT_CHK_78` 은 V2 protection write transport가 `DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS` deadline을 갖고, deadline 초과를 `BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED` 등 실패 ack로 남기는지 확인한다
+2. `SUBMIT_CONTRACT_CHK_79` 는 repair delegated executor가 `V2_PROTECTION_WRITER_EXCHANGE_WRITE` lease 없이는 protection transport를 실행하지 못하고, 누락 시 `PROTECTION_WRITER_LEASE_REQUIRED` 로 실패하는지 확인한다
+3. promotion override is intentionally forbidden. `SUBMIT_CONTRACT_CHK_80` 은 submit/deploy 코드에 `V2_PROMOTION_OVERRIDE` bypass가 없는지 확인한다. false positive는 hidden override가 아니라 깨진 checker/artifact/runbook을 고쳐 재실행한다
+
 실무 원칙:
 
 1. 한 항목이라도 fail이면 다음 항목으로 넘어가지 않는다

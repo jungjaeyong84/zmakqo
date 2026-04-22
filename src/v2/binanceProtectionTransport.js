@@ -8,6 +8,9 @@ const {
 
 const DEFAULT_WORKING_TYPE = "MARK_PRICE";
 const DEFAULT_PRICE_PROTECT = true;
+const DEFAULT_PROTECTION_WRITE_DEADLINE_MS = 15_000;
+const MIN_PROTECTION_WRITE_DEADLINE_MS = 250;
+const MAX_PROTECTION_WRITE_DEADLINE_MS = 120_000;
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -31,6 +34,47 @@ function stableCode(value) {
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
   return code || null;
+}
+
+function resolveProtectionWriteDeadlineMs({ env = process.env, deadlineMs = null } = {}) {
+  const raw = deadlineMs ?? (env && env.DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS);
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return DEFAULT_PROTECTION_WRITE_DEADLINE_MS;
+  const rounded = Math.trunc(parsed);
+  if (rounded < MIN_PROTECTION_WRITE_DEADLINE_MS) return MIN_PROTECTION_WRITE_DEADLINE_MS;
+  if (rounded > MAX_PROTECTION_WRITE_DEADLINE_MS) return MAX_PROTECTION_WRITE_DEADLINE_MS;
+  return rounded;
+}
+
+function buildDeadlineExceededError(errorCode) {
+  const code = stableCode(errorCode) || "BINANCE_PROTECTION_WRITE_DEADLINE_EXCEEDED";
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+async function withProtectionWriteDeadline(operation, {
+  env = process.env,
+  deadlineMs = null,
+  errorCode = "BINANCE_PROTECTION_WRITE_DEADLINE_EXCEEDED",
+} = {}) {
+  if (typeof operation !== "function") throw new Error("BINANCE_PROTECTION_WRITE_OPERATION_REQUIRED");
+  const resolvedDeadlineMs = resolveProtectionWriteDeadlineMs({ env, deadlineMs });
+  let timeout = null;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(buildDeadlineExceededError(errorCode)), resolvedDeadlineMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function deadlineErrorCode(error, fallback) {
+  return stableCode(error && (error.code || error.message)) || stableCode(fallback);
 }
 
 function validateProtectionRepairLiveCfg(liveCfg = null, errorPrefix = "BINANCE_PROTECTION_REPAIR") {
@@ -209,6 +253,7 @@ function buildBinanceRefreshNativeStopTransport({
   refreshNativeProtectionWithRetry,
   resolveContext,
   now = () => new Date().toISOString(),
+  deadlineMs = null,
 } = {}) {
   if (typeof refreshNativeProtectionWithRetry !== "function") {
     throw new Error("BINANCE_REFRESH_NATIVE_PROTECTION_FN_REQUIRED");
@@ -225,17 +270,29 @@ function buildBinanceRefreshNativeStopTransport({
       db,
       resolveContext,
     });
-    const refreshResult = await refreshNativeProtectionWithRetry({
-      liveCfg: context.liveCfg,
-      exchange: context.exchange,
-      symbol: context.symbol,
-      fallbackSide: context.fallbackSide,
-      fallbackEntryPrice: context.fallbackEntryPrice,
-      fallbackLeverage: context.fallbackLeverage,
-      exitRulesOverride: context.exitRulesOverride,
-      posMeta: context.posMeta,
-      writerSource: BINANCE_NATIVE_STOP_WRITER_SOURCE,
-    });
+    let refreshResult;
+    try {
+      refreshResult = await withProtectionWriteDeadline(() => refreshNativeProtectionWithRetry({
+        liveCfg: context.liveCfg,
+        exchange: context.exchange,
+        symbol: context.symbol,
+        fallbackSide: context.fallbackSide,
+        fallbackEntryPrice: context.fallbackEntryPrice,
+        fallbackLeverage: context.fallbackLeverage,
+        exitRulesOverride: context.exitRulesOverride,
+        posMeta: context.posMeta,
+        writerSource: BINANCE_NATIVE_STOP_WRITER_SOURCE,
+      }), {
+        env,
+        deadlineMs,
+        errorCode: "BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED",
+      });
+    } catch (error) {
+      refreshResult = {
+        ok: false,
+        reason: deadlineErrorCode(error, "BINANCE_NATIVE_STOP_REFRESH_FAILED"),
+      };
+    }
     return normalizeRefreshNativeStopAck({
       command,
       refreshResult,
@@ -269,6 +326,7 @@ function buildBinancePlaceOrReplaceTp1Transport({
   placeTakeProfitMarketOrder = placeFuturesTakeProfitMarketOrder,
   resolveContext,
   now = () => new Date().toISOString(),
+  deadlineMs = null,
 } = {}) {
   if (typeof placeTakeProfitMarketOrder !== "function") {
     throw new Error("BINANCE_TP1_REPAIR_ORDER_FN_REQUIRED");
@@ -316,20 +374,32 @@ function buildBinancePlaceOrReplaceTp1Transport({
         ack_at: null,
       });
     }
-    const order = await placeTakeProfitMarketOrder({
-      apiKey: cfg.apiKey,
-      apiSecret: cfg.apiSecret,
-      symbol: upper(row.symbol) || context.symbol,
-      side: upper(row.close_side) || context.fallbackSide,
-      stopPrice: triggerPrice,
-      closePosition: false,
-      quantity: qty,
-      reduceOnly: true,
-      workingType: DEFAULT_WORKING_TYPE,
-      priceProtect: DEFAULT_PRICE_PROTECT,
-      clientOrderId: trimOrNull(row.client_order_key),
-      idempotencyKey: trimOrNull(row.client_order_key) || trimOrNull(row.placement_attempt_id),
-    });
+    let order;
+    try {
+      order = await withProtectionWriteDeadline(() => placeTakeProfitMarketOrder({
+        apiKey: cfg.apiKey,
+        apiSecret: cfg.apiSecret,
+        symbol: upper(row.symbol) || context.symbol,
+        side: upper(row.close_side) || context.fallbackSide,
+        stopPrice: triggerPrice,
+        closePosition: false,
+        quantity: qty,
+        reduceOnly: true,
+        workingType: DEFAULT_WORKING_TYPE,
+        priceProtect: DEFAULT_PRICE_PROTECT,
+        clientOrderId: trimOrNull(row.client_order_key),
+        idempotencyKey: trimOrNull(row.client_order_key) || trimOrNull(row.placement_attempt_id),
+      }), {
+        env,
+        deadlineMs,
+        errorCode: "BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED",
+      });
+    } catch (error) {
+      order = {
+        skipped: true,
+        reason: deadlineErrorCode(error, "BINANCE_TP1_REPAIR_ORDER_FAILED"),
+      };
+    }
     return normalizePlaceOrReplaceTp1Ack({
       command: row,
       order,
@@ -343,6 +413,7 @@ function buildBinancePlaceOrReplaceFullProtectionTransport({
   placeTakeProfitMarketOrder = placeFuturesTakeProfitMarketOrder,
   resolveContext,
   now = () => new Date().toISOString(),
+  deadlineMs = null,
 } = {}) {
   if (typeof placeStopMarketOrder !== "function") {
     throw new Error("BINANCE_FULL_PROTECTION_SL_ORDER_FN_REQUIRED");
@@ -372,18 +443,30 @@ function buildBinancePlaceOrReplaceFullProtectionTransport({
       if (!(stopPrice > 0)) {
         slAck = buildFailedRepairAck({ command: sl, errorCode: "BINANCE_FULL_PROTECTION_SL_PRICE_REQUIRED" });
       } else {
-        const slOrder = await placeStopMarketOrder({
-          apiKey: cfg.apiKey,
-          apiSecret: cfg.apiSecret,
-          symbol: upper(sl.symbol) || context.symbol,
-          side: upper(sl.close_side) || context.fallbackSide,
-          stopPrice,
-          closePosition: true,
-          workingType: DEFAULT_WORKING_TYPE,
-          priceProtect: DEFAULT_PRICE_PROTECT,
-          clientOrderId: trimOrNull(sl.client_order_key),
-          idempotencyKey: trimOrNull(sl.client_order_key) || trimOrNull(sl.placement_attempt_id),
-        });
+        let slOrder;
+        try {
+          slOrder = await withProtectionWriteDeadline(() => placeStopMarketOrder({
+            apiKey: cfg.apiKey,
+            apiSecret: cfg.apiSecret,
+            symbol: upper(sl.symbol) || context.symbol,
+            side: upper(sl.close_side) || context.fallbackSide,
+            stopPrice,
+            closePosition: true,
+            workingType: DEFAULT_WORKING_TYPE,
+            priceProtect: DEFAULT_PRICE_PROTECT,
+            clientOrderId: trimOrNull(sl.client_order_key),
+            idempotencyKey: trimOrNull(sl.client_order_key) || trimOrNull(sl.placement_attempt_id),
+          }), {
+            env,
+            deadlineMs,
+            errorCode: "BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED",
+          });
+        } catch (error) {
+          slOrder = {
+            skipped: true,
+            reason: deadlineErrorCode(error, "BINANCE_FULL_PROTECTION_SL_ORDER_FAILED"),
+          };
+        }
         slAck = normalizePlaceOrReplaceSlAck({
           command: sl,
           order: slOrder,
@@ -400,20 +483,32 @@ function buildBinancePlaceOrReplaceFullProtectionTransport({
       } else if (!(triggerPrice > 0)) {
         tp1Ack = buildFailedRepairAck({ command: tp1, errorCode: "BINANCE_FULL_PROTECTION_TP1_PRICE_REQUIRED" });
       } else {
-        const tp1Order = await placeTakeProfitMarketOrder({
-          apiKey: cfg.apiKey,
-          apiSecret: cfg.apiSecret,
-          symbol: upper(tp1.symbol) || context.symbol,
-          side: upper(tp1.close_side) || context.fallbackSide,
-          stopPrice: triggerPrice,
-          closePosition: false,
-          quantity: qty,
-          reduceOnly: true,
-          workingType: DEFAULT_WORKING_TYPE,
-          priceProtect: DEFAULT_PRICE_PROTECT,
-          clientOrderId: trimOrNull(tp1.client_order_key),
-          idempotencyKey: trimOrNull(tp1.client_order_key) || trimOrNull(tp1.placement_attempt_id),
-        });
+        let tp1Order;
+        try {
+          tp1Order = await withProtectionWriteDeadline(() => placeTakeProfitMarketOrder({
+            apiKey: cfg.apiKey,
+            apiSecret: cfg.apiSecret,
+            symbol: upper(tp1.symbol) || context.symbol,
+            side: upper(tp1.close_side) || context.fallbackSide,
+            stopPrice: triggerPrice,
+            closePosition: false,
+            quantity: qty,
+            reduceOnly: true,
+            workingType: DEFAULT_WORKING_TYPE,
+            priceProtect: DEFAULT_PRICE_PROTECT,
+            clientOrderId: trimOrNull(tp1.client_order_key),
+            idempotencyKey: trimOrNull(tp1.client_order_key) || trimOrNull(tp1.placement_attempt_id),
+          }), {
+            env,
+            deadlineMs,
+            errorCode: "BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED",
+          });
+        } catch (error) {
+          tp1Order = {
+            skipped: true,
+            reason: deadlineErrorCode(error, "BINANCE_FULL_PROTECTION_TP1_ORDER_FAILED"),
+          };
+        }
         tp1Ack = normalizePlaceOrReplaceTp1Ack({
           command: tp1,
           order: tp1Order,
@@ -443,6 +538,8 @@ module.exports = {
     upper,
     toNumberOrNull,
     stableCode,
+    resolveProtectionWriteDeadlineMs,
+    withProtectionWriteDeadline,
     buildFailedRepairAck,
     assertFullProtectionCommand,
   },
