@@ -1235,6 +1235,13 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       ok: packageJsonText.includes('"test:v2-promotion"')
         && packageJsonText.includes("v2-production-cutover-audit.test.js")
         && packageJsonText.includes('"test:v2-scheduler-traffic-cutover"')
+        && packageJsonText.includes('"test:v2-repair-queue-runtime"')
+        && packageJsonText.includes("npm run test:v2-repair-queue-runtime")
+        && packageJsonText.includes("run-v2-repair-queue-service.test.js")
+        && packageJsonText.includes("v2-repair-queue-live-worker.test.js")
+        && packageJsonText.includes("check-v2-repair-queue-canary-preflight.test.js")
+        && artifactContractText.includes("test:v2-repair-queue-runtime")
+        && runbookText.includes("12C")
         && packageJsonText.includes("v2-scheduler-traffic-collector-preflight.test.js")
         && packageJsonText.includes("v2-scheduler-traffic-cutover-audit.test.js")
         && packageJsonText.includes("v2-scheduler-traffic-state-collector.test.js")
@@ -1248,6 +1255,10 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && cloudbuildText.includes("npm run check:v2-production-cutover"),
       reason: packageJsonText.includes('"test:v2-promotion"')
         && packageJsonText.includes("v2-production-cutover-audit.test.js")
+        && packageJsonText.includes("npm run test:v2-repair-queue-runtime")
+        && packageJsonText.includes("run-v2-repair-queue-service.test.js")
+        && artifactContractText.includes("test:v2-repair-queue-runtime")
+        && runbookText.includes("12C")
         && packageJsonText.includes('"test:v2-scheduler-traffic-cutover"')
         && packageJsonText.includes("v2-scheduler-traffic-collector-preflight.test.js")
         && packageJsonText.includes("v2-scheduler-traffic-cutover-audit.test.js")
@@ -1260,8 +1271,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && packageJsonText.includes("check:v2-production-cutover")
         && cloudbuildText.includes("npm run test:v2-promotion")
         && cloudbuildText.includes("npm run check:v2-production-cutover")
-        ? "package and CloudBuild execute V2 promotion, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E regression paths"
-        : "package.json and cloudbuild.yaml must require test:v2-promotion plus production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E audits",
+        ? "package and CloudBuild execute V2 promotion, repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E regression paths"
+        : "package.json and cloudbuild.yaml must require test:v2-promotion plus repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E audits",
       file: FILES.packageJson,
     }),
     buildCheck({
