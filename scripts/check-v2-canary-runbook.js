@@ -291,6 +291,7 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     : null;
   if (!context || !trace || !deploySummary || !blockerSummary) return false;
 
+  const finalStatusLine = trimOrNull(context.final_status_line) || "";
   const baseExpectedRelevantSubmitChecks = ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"];
   const failedSubmitChecks = [];
   const artifactDirCoherence = context.artifact_dir_coherence && typeof context.artifact_dir_coherence === "object"
@@ -301,6 +302,7 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
   const blockerOk = Number(blockerSummary.blocker_n) === 0;
   const lineageOk = hasContextLineageConsistency({ cloudbuildContext: context });
   const protectedEntryCanaryOk = blockerSummary.has_production_entry_protected_canary_blocker !== true;
+  const protectedEntryCanaryStatusLineOk = protectedEntryCanaryOk || finalStatusLine.includes("protected_entry_canary=BLOCKED");
   if (!artifactDirOk) failedSubmitChecks.push("SUBMIT_CHK_01A");
   if (!actionOk) failedSubmitChecks.push("SUBMIT_CHK_06");
   if (!blockerOk) failedSubmitChecks.push("SUBMIT_CHK_07");
@@ -343,6 +345,7 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     arraysEqual(normalizeArray(trace.failed_runbook_checklist), expectedFailedRunbook) &&
     arraysEqual(normalizeArray(trace.blocker_families), expectedFamilies) &&
     (trimOrNull(trace.primary_blocker_family) || null) === expectedPrimaryFamily &&
+    protectedEntryCanaryStatusLineOk &&
     trimOrNull(trace.recommended_next_action_reason_code) === trimOrNull(context.recommended_next_action_reason_code) &&
     checks.length === expectedRelevantSubmitChecks.length &&
     checksMatch

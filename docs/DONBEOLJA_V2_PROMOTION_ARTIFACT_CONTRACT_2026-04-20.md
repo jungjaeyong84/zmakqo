@@ -75,6 +75,7 @@ optional review artifact:
 32. `runbook_review_summary.failed_check_ids`
 
 `final_status_line` 은 operator가 파일을 열자마자 판정 상태를 한 줄로 읽기 위한 필드다.
+보호주문 canary 차단이 있으면 이 한 줄은 `protected_entry_canary=BLOCKED` 를 포함해야 한다.
 
 최소 포함 항목:
 

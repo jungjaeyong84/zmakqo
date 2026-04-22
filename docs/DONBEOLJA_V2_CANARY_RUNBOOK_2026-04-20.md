@@ -445,7 +445,7 @@ auto-select runtime finalize 경로에서는 같은 context file에 `requested_a
 
 `promotion-cloudbuild-context.json.final_status_line` 은 operator가 마지막 상태를 한 줄로 읽는 필드다.
 
-즉, 승인 상태, cycle id, blocker / warning count, top blockers 일부를 파일 첫 판독 포인트로 제공해야 한다.
+즉, 승인 상태, cycle id, blocker / warning count, top blockers 일부를 파일 첫 판독 포인트로 제공해야 한다. 보호주문 canary blocker가 있으면 `protected_entry_canary=BLOCKED` 도 같은 한 줄에 있어야 한다.
 
 `promotion-cloudbuild-context.json.recommended_next_action` 은 마지막 문서를 본 뒤 operator가 취해야 할 다음 행동을 고정한 필드다.
 

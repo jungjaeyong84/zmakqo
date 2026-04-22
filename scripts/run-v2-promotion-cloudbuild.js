@@ -130,6 +130,9 @@ function buildStatusLine(summary) {
     parts.push(`alert_failed=${Number(alertRetrySummary.failed_n || 0)}`);
     parts.push(`alert_pending=${Number(alertRetrySummary.pending_n || 0)}`);
   }
+  if (blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker === true) {
+    parts.push("protected_entry_canary=BLOCKED");
+  }
   if (topBlockers.length) parts.push(`top=${topBlockers.join("|")}`);
   const warningSummary = normalizeObject(row.warning_summary);
   const topWarnings = Array.isArray(warningSummary && warningSummary.top_warnings)

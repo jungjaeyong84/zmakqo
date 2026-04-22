@@ -694,6 +694,22 @@ function seedRunbookArtifacts(dir, cycleId) {
   assert.ok(statusLine.includes("top=DEPLOY_DECISION:BOUNDED_RUNTIME_SUMMARY_REQUIRED|PROVENANCE:POSITION_CYCLE_ID_REQUIRED"));
 })();
 
+(function statusLineSurfacesProtectedEntryCanaryBlocker() {
+  const statusLine = cloudbuild.__test.buildStatusLine({
+    approved: false,
+    decision: "HOLD",
+    position_cycle_id: "PCY__READ__PROTECTED",
+    blocker_n: 1,
+    warning_n: 0,
+    blocker_summary: {
+      top_blockers: ["DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED"],
+      has_production_entry_protected_canary_blocker: true,
+    },
+  });
+  assert.ok(statusLine.includes("protected_entry_canary=BLOCKED"));
+  assert.ok(statusLine.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED"));
+})();
+
 (function statusLineShowsAlertAttentionWithoutChangingApproval() {
   const statusLine = cloudbuild.__test.buildStatusLine({
     approved: true,
