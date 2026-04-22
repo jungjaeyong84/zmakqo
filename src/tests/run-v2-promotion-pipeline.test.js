@@ -294,6 +294,10 @@ function buildProductionRouteCanaryHistoryDb(rows) {
     assert.strictEqual(storedDecision.bounded_runtime_summary.runtime_chain_audit_summary.ok, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.repair_evidence_summary.ok, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_protected_canary.reason, "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS");
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_protected_canary.artifact_file, path.join(dir, "v2_production_entry_protected_canary_latest.json"));
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_protected_canary.artifact_dir, dir);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_protected_canary.artifact_filename, "v2_production_entry_protected_canary_latest.json");
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_protected_canary.artifact_current_dir_match, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_protected_canary.exchange_write_performed, false);
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}

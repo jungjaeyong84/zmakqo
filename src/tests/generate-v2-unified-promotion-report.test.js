@@ -88,6 +88,40 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
       max_observed_gap_minutes: 120,
       blockers: [],
     }, null, 2), "utf8");
+    fs.writeFileSync(path.join(dir, "v2_production_entry_protected_canary_latest.json"), JSON.stringify({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS",
+      scope: "production_entry_protected_canary",
+      canary_mode: "PROTECTED_ENTRY_NO_EXCHANGE_PROOF",
+      exchange_write_performed: false,
+      route_called: true,
+      kernel_called: true,
+      entry_transport_called: true,
+      initial_sl_transport_called: true,
+      initial_tp1_transport_called: true,
+      memory_firestore_batch_commit_n: 2,
+      memory_firestore_write_n: 4,
+      fail_n: 0,
+      check_ids: [
+        "V2_PROTECTED_ENTRY_CANARY_REQUEST_SIZING_APPROVED",
+        "V2_PROTECTED_ENTRY_CANARY_ACTIVE_PROTECTED",
+        "V2_PROTECTED_ENTRY_CANARY_SL_ORDER_PRESENT",
+        "V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT",
+        "V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT",
+        "V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE",
+      ],
+      failed_check_ids: [],
+      route_result_summary: {
+        ok: true,
+        reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED",
+        position_cycle_id: "PCY__PROTECTED_CANARY__REPORT",
+        entry_event_id: "ENTRY__PROTECTED_CANARY__REPORT",
+        protection_runtime_id: "PRTV2__PROTECTED_CANARY__REPORT",
+        runtime_health_status: "HEALTHY",
+        sl_order_id: "SL__PROTECTED_CANARY__REPORT",
+        tp1_order_id: "TP1__PROTECTED_CANARY__REPORT",
+      },
+    }, null, 2), "utf8");
     fs.writeFileSync(path.join(dir, "promotion-runtime-manifest.json"), JSON.stringify({
       snapshot_size_bytes: 12345,
       snapshot_meta: {
@@ -237,6 +271,10 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.history_source, "FIRESTORE");
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.healthy_run_n, 13);
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.reason, "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS");
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_file, path.join(dir, "v2_production_entry_protected_canary_latest.json"));
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_dir, dir);
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_current_dir_match, true);
     assert.strictEqual(stored.bounded_runtime_summary.alert_retry_summary.failed_n, 1);
     assert.strictEqual(stored.alert_retry_summary.latest_failed.last_reason_family, "TRANSPORT");
     assert.strictEqual(stored.candidate_selection_summary.selection_status, "READY");

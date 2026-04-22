@@ -124,6 +124,10 @@ function buildBoundedRuntimeSummaryFixture() {
       reason: "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS",
       scope: "production_entry_protected_canary",
       canary_mode: "PROTECTED_ENTRY_NO_EXCHANGE_PROOF",
+      artifact_file: "/tmp/dbj-v2-artifacts/v2_production_entry_protected_canary_latest.json",
+      artifact_dir: "/tmp/dbj-v2-artifacts",
+      artifact_filename: "v2_production_entry_protected_canary_latest.json",
+      artifact_current_dir_match: true,
       exchange_write_performed: false,
       route_called: true,
       kernel_called: true,
@@ -469,6 +473,42 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__CANARY__NO_PROTECTED_CANARY",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionCutoverAudit: buildProductionCutoverAuditFixture(),
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED"));
+})();
+
+(function canaryWithStaleProductionEntryProtectedCanaryFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.production_entry_protected_canary = {
+    ...bounded.production_entry_protected_canary,
+    artifact_file: "/tmp/ops/daily/v2_production_entry_protected_canary_latest.json",
+    artifact_dir: "/tmp/dbj-v2-artifacts",
+    artifact_current_dir_match: false,
+  };
+  assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__STALE_PROTECTED_CANARY",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__STALE_PROTECTED_CANARY",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__STALE_PROTECTED_CANARY",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

@@ -419,6 +419,10 @@ function hasProductionEntryProtectedCanary(summary) {
     trimOrNull(canary.reason) === "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS" &&
     trimOrNull(canary.scope) === "production_entry_protected_canary" &&
     trimOrNull(canary.canary_mode) === "PROTECTED_ENTRY_NO_EXCHANGE_PROOF" &&
+    trimOrNull(canary.artifact_filename) === "v2_production_entry_protected_canary_latest.json" &&
+    !!trimOrNull(canary.artifact_file) &&
+    !!trimOrNull(canary.artifact_dir) &&
+    canary.artifact_current_dir_match === true &&
     canary.exchange_write_performed === false &&
     canary.route_called === true &&
     canary.kernel_called === true &&

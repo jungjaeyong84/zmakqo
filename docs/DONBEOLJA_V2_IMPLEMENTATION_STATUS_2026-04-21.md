@@ -2052,3 +2052,27 @@ V1 약점 재발 방지:
 1. V1에서는 보호주문 누락이 TP/stop/lineage 오류와 섞여 한 줄 상태에서 원인 계열을 읽기 어려웠다
 2. 이번 단계는 최종 상태 라인, submit trace, runbook 27A를 같은 보호주문 canary 의미로 묶는다
 3. 따라서 보호주문 실패를 단순 bounded runtime 재생성 문제로 오판하는 경로를 줄인다
+
+## 2026-04-22 Protected Entry Canary Fresh Artifact Provenance
+
+추가 증거:
+
+1. `scripts/generate-v2-unified-promotion-report.js`
+2. `scripts/check-v2-promotion-deploy-decision.js`
+3. `src/tests/generate-v2-unified-promotion-report.test.js`
+4. `src/tests/check-v2-promotion-deploy-decision.test.js`
+5. `src/tests/run-v2-promotion-pipeline.test.js`
+6. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+7. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. unified report는 protected canary를 읽을 때 `artifact_file`, `artifact_dir`, `artifact_filename`, `artifact_current_dir_match` 를 같이 승격한다
+2. deploy decision은 CANARY/LIVE에서 `artifact_filename=v2_production_entry_protected_canary_latest.json` 및 `artifact_current_dir_match=true` 가 아니면 `DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED` 로 차단한다
+3. promotion pipeline 통합 테스트는 실제 artifact dir에 생성된 fresh canary가 deploy decision까지 그대로 연결되는지 확인한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 latest 계열 artifact가 존재해도 “이번 실행에서 생성된 증거인가”가 불명확해 stale 상태를 정상으로 오판할 여지가 있었다
+2. 이번 단계는 보호주문 canary pass 자체와 artifact provenance를 같은 승인 조건으로 묶는다
+3. 따라서 오래된 `ops/daily` 또는 다른 cycle의 protected canary를 가져와 CANARY/LIVE 승격을 통과시키는 경로를 차단한다

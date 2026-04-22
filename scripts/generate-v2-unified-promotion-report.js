@@ -208,7 +208,22 @@ function resolveProductionEntryProtectedCanaryFile(env = process.env, artifactDi
 }
 
 function readProductionEntryProtectedCanaryArtifact(env = process.env, artifactDir = null) {
-  return readOptionalJson(resolveProductionEntryProtectedCanaryFile(env, artifactDir));
+  const filePath = resolveProductionEntryProtectedCanaryFile(env, artifactDir);
+  const payload = readOptionalJson(filePath);
+  const row = normalizeObject(payload);
+  if (!row) return null;
+  const resolvedArtifactDir = trimOrNull(artifactDir) ? path.resolve(artifactDir) : null;
+  const expectedFile = resolvedArtifactDir
+    ? path.join(resolvedArtifactDir, PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME)
+    : null;
+  const resolvedFile = path.resolve(filePath);
+  return Object.freeze({
+    ...row,
+    artifact_file: resolvedFile,
+    artifact_dir: resolvedArtifactDir,
+    artifact_filename: path.basename(resolvedFile),
+    artifact_current_dir_match: !!(expectedFile && resolvedFile === expectedFile),
+  });
 }
 
 function buildRepairFirestoreCanaryStreakSummary(streak) {
@@ -266,6 +281,10 @@ function buildProductionEntryProtectedCanarySummary(canary) {
     reason: trimOrNull(row.reason),
     scope: trimOrNull(row.scope),
     canary_mode: trimOrNull(row.canary_mode),
+    artifact_file: trimOrNull(row.artifact_file || row.output_file),
+    artifact_dir: trimOrNull(row.artifact_dir),
+    artifact_filename: trimOrNull(row.artifact_filename),
+    artifact_current_dir_match: row.artifact_current_dir_match === true,
     exchange_write_performed: row.exchange_write_performed === true,
     generated_at: trimOrNull(row.generated_at),
     route_called: row.route_called === true,
