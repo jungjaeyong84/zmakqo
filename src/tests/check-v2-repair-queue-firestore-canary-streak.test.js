@@ -53,6 +53,7 @@ function buildHistory(rows) {
     historyFile: "/tmp/history.jsonl",
   });
   assert.strictEqual(report.ok, true);
+  assert.strictEqual(report.generated_at, "2026-04-21T12:00:00.000Z");
   assert.strictEqual(report.healthy_run_n, 13);
   assert.strictEqual(report.blockers.length, 0);
 })();

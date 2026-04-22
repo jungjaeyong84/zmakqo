@@ -106,6 +106,9 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_dir: "/tmp/dbj-v2-artifacts",
       artifact_filename: "v2_repair_queue_firestore_canary_streak_latest.json",
       artifact_current_dir_match: true,
+      generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_age_minutes: 15,
       lookback_hours: 24,
       healthy_run_n: 13,
       min_run_count: 12,
@@ -124,6 +127,9 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_dir: "/tmp/dbj-v2-artifacts",
       artifact_filename: "v2_production_entry_route_canary_streak_latest.json",
       artifact_current_dir_match: true,
+      generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_age_minutes: 15,
       history_source: "FIRESTORE",
       history_file: "dbjv2__production_entry_route_canaries_v2",
       lookback_hours: 24,
@@ -144,6 +150,9 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_dir: "/tmp/dbj-v2-artifacts",
       artifact_filename: "v2_exit_runtime_canary_streak_latest.json",
       artifact_current_dir_match: true,
+      generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_age_minutes: 15,
       history_source: "FIRESTORE",
       history_file: "dbjv2__exit_runtime_canaries_v2",
       lookback_hours: 24,
@@ -1307,6 +1316,36 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   );
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:LINEAGE_CONTRACT_MISMATCH"));
+})();
+
+(function liveWithStaleStreakArtifactGeneratedAtFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.exit_runtime_canary_streak.artifact_generated_age_minutes = 240;
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(bounded), false);
+  assert.strictEqual(deployDecision.__test.hasFreshLongRunStreakCoverage(bounded.exit_runtime_canary_streak), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__STALE_EXIT_ARTIFACT",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__STALE_EXIT_ARTIFACT",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__STALE_EXIT_ARTIFACT",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
 })();
 
 console.log("CHECK_V2_PROMOTION_DEPLOY_DECISION_TEST_OK");

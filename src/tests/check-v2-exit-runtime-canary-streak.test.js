@@ -84,6 +84,7 @@ function buildFakeDb(rows) {
   });
   assert.strictEqual(report.ok, true);
   assert.strictEqual(report.reason, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS");
+  assert.strictEqual(report.generated_at, "2026-04-22T12:00:00.000Z");
   assert.strictEqual(report.healthy_run_n, 13);
   assert.strictEqual(report.coverage_minutes, 1440);
   assert.strictEqual(report.tp1_missing_n, 0);

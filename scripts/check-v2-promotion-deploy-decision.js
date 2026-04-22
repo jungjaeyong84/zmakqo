@@ -427,6 +427,7 @@ function hasFreshLongRunStreakCoverage(streak) {
   const maxGapMinutes = Number(row.max_gap_minutes);
   const latestAgeMinutes = Number(row.latest_age_minutes);
   const maxObservedGapMinutes = Number(row.max_observed_gap_minutes);
+  const artifactGeneratedAgeMinutes = Number(row.artifact_generated_age_minutes);
   return (
     Number.isFinite(lookbackHours) &&
     lookbackHours >= 24 &&
@@ -434,6 +435,10 @@ function hasFreshLongRunStreakCoverage(streak) {
     coverageMinutes >= MIN_LIVE_STREAK_COVERAGE_MINUTES &&
     Number.isFinite(maxGapMinutes) &&
     maxGapMinutes > 0 &&
+    !!trimOrNull(row.generated_at) &&
+    !!trimOrNull(row.artifact_generated_at) &&
+    Number.isFinite(artifactGeneratedAgeMinutes) &&
+    artifactGeneratedAgeMinutes <= maxGapMinutes &&
     Number.isFinite(latestAgeMinutes) &&
     latestAgeMinutes <= maxGapMinutes &&
     Number.isFinite(maxObservedGapMinutes) &&

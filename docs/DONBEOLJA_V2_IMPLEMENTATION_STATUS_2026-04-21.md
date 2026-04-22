@@ -2322,3 +2322,28 @@ V1 약점 재발 방지:
 1. V1에서는 local scheduler와 Cloud Scheduler가 다른 truth처럼 움직여도 최종 readiness가 한쪽만 보는 위험이 있었다
 2. 이번 단계는 manifest의 Cloud Scheduler HIGH job을 LIVE cutover 필수 evidence로 승격했다
 3. 따라서 exit runtime canary producer가 route/env에 연결되어 있어도 실제 Cloud Scheduler job이 없거나 잘못된 endpoint를 호출하면 LIVE 승격이 막힌다
+
+## 2026-04-22 LIVE Streak Artifact Freshness Contract
+
+추가 증거:
+
+1. `scripts/check-v2-repair-queue-firestore-canary-streak.js`
+2. `scripts/check-v2-production-entry-route-canary-streak.js`
+3. `scripts/check-v2-exit-runtime-canary-streak.js`
+4. `scripts/generate-v2-unified-promotion-report.js`
+5. `scripts/check-v2-promotion-deploy-decision.js`
+6. `scripts/check-v2-promotion-submit-contract.js`
+7. `src/tests/check-v2-promotion-deploy-decision.test.js`
+
+판정:
+
+1. repair Firestore streak, production entry route streak, exit runtime streak 산출물은 모두 `generated_at` 을 직접 기록한다
+2. unified promotion report는 streak 파일을 읽을 때 `artifact_generated_at` 과 `artifact_generated_age_minutes` 를 추가한다
+3. deploy decision의 long-run streak 판정은 24시간 coverage뿐 아니라 `artifact_generated_age_minutes <= max_gap_minutes` 도 요구한다
+4. `SUBMIT_CONTRACT_CHK_51` 은 이 계약이 streak checker, unified report, deploy decision, artifact contract, runbook에 모두 남아 있는지 정적으로 검증한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 latest 파일이 현재 artifact dir에 있으면 오래된 증거인지 구분하기 어려웠다
+2. 이번 단계는 오래된 PASS streak JSON을 현재 artifact dir에 복사해 LIVE 승격 증거처럼 보이게 하는 경로를 차단한다
+3. LIVE 승격은 이제 history coverage, current-dir provenance, artifact 생성 freshness 세 조건을 동시에 만족해야 한다

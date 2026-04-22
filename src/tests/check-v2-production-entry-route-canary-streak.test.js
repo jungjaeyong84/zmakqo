@@ -98,6 +98,7 @@ function buildFakeDb(rows) {
   });
   assert.strictEqual(report.ok, true);
   assert.strictEqual(report.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
+  assert.strictEqual(report.generated_at, "2026-04-21T12:00:00.000Z");
   assert.strictEqual(report.healthy_run_n, 13);
   assert.strictEqual(report.blockers.length, 0);
 })();

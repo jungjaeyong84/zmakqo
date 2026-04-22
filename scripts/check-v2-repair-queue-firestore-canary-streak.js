@@ -149,6 +149,7 @@ function evaluateFirestoreCanaryStreak({
     reason: blockers.length === 0
       ? "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"
       : "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_BLOCKED",
+    generated_at: new Date(Number(nowMs)).toISOString(),
     history_file: trimOrNull(historyFile),
     lookback_hours: Number(config.lookbackHours),
     min_run_count: Number(config.minRunCount),

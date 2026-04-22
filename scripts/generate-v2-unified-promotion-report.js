@@ -38,6 +38,11 @@ function normalizeNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function toMs(value) {
+  const ms = Date.parse(String(value || "").trim());
+  return Number.isFinite(ms) ? ms : null;
+}
+
 function buildEvidenceSnapshotSummary(summary) {
   const row = normalizeObject(summary);
   if (!row) return null;
@@ -157,7 +162,7 @@ function readOptionalJson(filePath) {
   return JSON.parse(fs.readFileSync(resolved, "utf8"));
 }
 
-function withArtifactProvenance(payload, filePath, artifactDir, expectedFilename) {
+function withArtifactProvenance(payload, filePath, artifactDir, expectedFilename, nowMs = Date.now()) {
   const row = normalizeObject(payload);
   if (!row) return null;
   const resolvedArtifactDir = trimOrNull(artifactDir) ? path.resolve(artifactDir) : null;
@@ -165,12 +170,18 @@ function withArtifactProvenance(payload, filePath, artifactDir, expectedFilename
     ? path.join(resolvedArtifactDir, expectedFilename)
     : null;
   const resolvedFile = path.resolve(filePath);
+  const generatedMs = toMs(row.generated_at);
+  const artifactGeneratedAgeMinutes = generatedMs == null
+    ? null
+    : Math.max(0, (Number(nowMs) - generatedMs) / 60000);
   return Object.freeze({
     ...row,
     artifact_file: resolvedFile,
     artifact_dir: resolvedArtifactDir,
     artifact_filename: path.basename(resolvedFile),
     artifact_current_dir_match: !!(expectedFile && resolvedFile === expectedFile),
+    artifact_generated_at: trimOrNull(row.generated_at),
+    artifact_generated_age_minutes: artifactGeneratedAgeMinutes,
   });
 }
 
@@ -275,6 +286,9 @@ function buildRepairFirestoreCanaryStreakSummary(streak) {
   return Object.freeze({
     ok: row.ok === true,
     reason: trimOrNull(row.reason),
+    generated_at: trimOrNull(row.generated_at),
+    artifact_generated_at: trimOrNull(row.artifact_generated_at),
+    artifact_generated_age_minutes: normalizeNumber(row.artifact_generated_age_minutes),
     artifact_file: trimOrNull(row.artifact_file),
     artifact_dir: trimOrNull(row.artifact_dir),
     artifact_filename: trimOrNull(row.artifact_filename),
@@ -302,6 +316,9 @@ function buildProductionEntryRouteCanaryStreakSummary(streak) {
   return Object.freeze({
     ok: row.ok === true,
     reason: trimOrNull(row.reason),
+    generated_at: trimOrNull(row.generated_at),
+    artifact_generated_at: trimOrNull(row.artifact_generated_at),
+    artifact_generated_age_minutes: normalizeNumber(row.artifact_generated_age_minutes),
     artifact_file: trimOrNull(row.artifact_file),
     artifact_dir: trimOrNull(row.artifact_dir),
     artifact_filename: trimOrNull(row.artifact_filename),
@@ -329,6 +346,9 @@ function buildExitRuntimeCanaryStreakSummary(streak) {
   return Object.freeze({
     ok: row.ok === true,
     reason: trimOrNull(row.reason),
+    generated_at: trimOrNull(row.generated_at),
+    artifact_generated_at: trimOrNull(row.artifact_generated_at),
+    artifact_generated_age_minutes: normalizeNumber(row.artifact_generated_age_minutes),
     artifact_file: trimOrNull(row.artifact_file),
     artifact_dir: trimOrNull(row.artifact_dir),
     artifact_filename: trimOrNull(row.artifact_filename),
@@ -546,6 +566,7 @@ if (require.main === module) {
       resolveExitRuntimeCanaryStreakFile,
       normalizeObject,
       normalizeNumber,
+      toMs,
       buildEvidenceSnapshotSummary,
       buildLineageContractSummary,
       buildCandidateSelectionContractSummary,

@@ -25,6 +25,11 @@ const FILES = Object.freeze({
   productionRuntimeConfigAudit: path.resolve(__dirname, "..", "src", "v2", "productionRuntimeConfigAudit.js"),
   exitRuntimeCanaryRunner: path.resolve(__dirname, "run-v2-exit-runtime-canary.js"),
   exitRuntimeCanaryModule: path.resolve(__dirname, "..", "src", "v2", "exitRuntimeCanary.js"),
+  unifiedPromotionReportGenerator: path.resolve(__dirname, "generate-v2-unified-promotion-report.js"),
+  deployDecisionChecker: path.resolve(__dirname, "check-v2-promotion-deploy-decision.js"),
+  repairFirestoreStreakChecker: path.resolve(__dirname, "check-v2-repair-queue-firestore-canary-streak.js"),
+  productionEntryRouteStreakChecker: path.resolve(__dirname, "check-v2-production-entry-route-canary-streak.js"),
+  exitRuntimeStreakChecker: path.resolve(__dirname, "check-v2-exit-runtime-canary-streak.js"),
 });
 
 function trimOrNull(value) {
@@ -305,6 +310,11 @@ function evaluateSubmitContract() {
   const productionRuntimeConfigAuditText = readText(FILES.productionRuntimeConfigAudit);
   const exitRuntimeCanaryRunnerText = readText(FILES.exitRuntimeCanaryRunner);
   const exitRuntimeCanaryModuleText = readText(FILES.exitRuntimeCanaryModule);
+  const unifiedPromotionReportGeneratorText = readText(FILES.unifiedPromotionReportGenerator);
+  const deployDecisionCheckerText = readText(FILES.deployDecisionChecker);
+  const repairFirestoreStreakCheckerText = readText(FILES.repairFirestoreStreakChecker);
+  const productionEntryRouteStreakCheckerText = readText(FILES.productionEntryRouteStreakChecker);
+  const exitRuntimeStreakCheckerText = readText(FILES.exitRuntimeStreakChecker);
   const operatorSummaryText = readText(SHARED_FORMATTER_MODULE_PATH);
   const summary = buildFormatterFixtureResult();
   const summaryPreview = operatorAlertPreview.buildOperatorAlertPreview({
@@ -1356,6 +1366,24 @@ function evaluateSubmitContract() {
         ? "scheduler traffic readiness verifies required Cloud Scheduler canary jobs as part of LIVE cutover"
         : "scheduler traffic readiness must not only verify launchd jobs; required Cloud Scheduler canary jobs must be explicit evidence",
       file: path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCutoverAudit.js"),
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_51",
+      label: "LIVE streak artifacts require generated freshness provenance",
+      ok: repairFirestoreStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && productionEntryRouteStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && exitRuntimeStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && unifiedPromotionReportGeneratorText.includes("artifact_generated_age_minutes")
+        && unifiedPromotionReportGeneratorText.includes("artifact_generated_at")
+        && deployDecisionCheckerText.includes("artifact_generated_age_minutes")
+        && artifactContractText.includes("artifact_generated_age_minutes")
+        && runbookText.includes("artifact_generated_age_minutes"),
+      reason: repairFirestoreStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && unifiedPromotionReportGeneratorText.includes("artifact_generated_age_minutes")
+        && deployDecisionCheckerText.includes("artifact_generated_age_minutes")
+        ? "LIVE streak evidence now proves both 24h history coverage and current artifact freshness"
+        : "streak pass must not be accepted from a copied current-dir file without generated freshness evidence",
+      file: FILES.deployDecisionChecker,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

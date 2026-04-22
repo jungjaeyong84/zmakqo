@@ -181,6 +181,7 @@ function evaluateExitRuntimeCanaryStreak({
     reason: blockers.length === 0
       ? "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"
       : "V2_EXIT_RUNTIME_CANARY_STREAK_BLOCKED",
+    generated_at: new Date(Number(nowMs)).toISOString(),
     history_source: trimOrNull(historySource) || "JSONL",
     history_file: trimOrNull(historyFile),
     lookback_hours: Number(config.lookbackHours),
