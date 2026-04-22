@@ -110,6 +110,7 @@ function summarizeBlockers(blockers) {
       row.includes("OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_REQUIRED")
     )),
     has_production_entry_protected_canary_blocker: normalized.some((row) => row.includes("PRODUCTION_ENTRY_PROTECTED_CANARY")),
+    has_openclaw_supreme_control_plane_blocker: normalized.some((row) => row.includes("OPENCLAW_SUPREME_CONTROL_PLANE")),
     has_entry_boundary_blocker: normalized.some((row) => row.includes("ENTRY_BOUNDARY")),
     has_production_cutover_blocker: normalized.some((row) => row.includes("PRODUCTION_CUTOVER")),
   });
@@ -190,6 +191,9 @@ function buildStatusLine(summary) {
   if (blockerSummary && blockerSummary.has_live_evidence_cycle_blocker === true) {
     parts.push("live_evidence_cycle=BLOCKED");
   }
+  if (blockerSummary && blockerSummary.has_openclaw_supreme_control_plane_blocker === true) {
+    parts.push("openclaw_supreme=BLOCKED");
+  }
   if (topBlockers.length) parts.push(`top=${topBlockers.join("|")}`);
   const warningSummary = normalizeObject(row.warning_summary);
   const topWarnings = Array.isArray(warningSummary && warningSummary.top_warnings)
@@ -218,6 +222,9 @@ function buildRecommendedNextAction(summary) {
   }
   if (blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker) {
     return "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION";
+  }
+  if (blockerSummary && blockerSummary.has_openclaw_supreme_control_plane_blocker) {
+    return "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION";
   }
   if (blockerSummary && blockerSummary.has_bounded_runtime_blocker) {
     return "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION";
@@ -256,6 +263,9 @@ function buildRecommendedNextActionReason(summary) {
   if (blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker) {
     return "protected entry canary blocker detected; production entry must prove SL and TP1 protection before promotion";
   }
+  if (blockerSummary && blockerSummary.has_openclaw_supreme_control_plane_blocker) {
+    return "OpenClaw supreme control plane blocker detected; decision, permit, outcome, learner, and collector lineage must close before promotion";
+  }
   if (blockerSummary && blockerSummary.has_bounded_runtime_blocker) {
     return "bounded runtime blocker detected; required selector/collector/exporter evidence is incomplete";
   }
@@ -291,6 +301,9 @@ function buildRecommendedNextActionReasonCode(summary) {
   if (blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker) {
     return "PROTECTED_ENTRY_CANARY_BLOCKER";
   }
+  if (blockerSummary && blockerSummary.has_openclaw_supreme_control_plane_blocker) {
+    return "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER";
+  }
   if (blockerSummary && blockerSummary.has_bounded_runtime_blocker) {
     return "BOUNDED_RUNTIME_BLOCKER";
   }
@@ -314,6 +327,10 @@ const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
   SUBMIT_CHK_20A: Object.freeze([
     "deploy_decision_summary.bounded_runtime_summary.production_entry_protected_canary",
     "deploy_decision_summary.blocker_summary.has_production_entry_protected_canary_blocker",
+  ]),
+  SUBMIT_CHK_23: Object.freeze([
+    "deploy_decision_summary.bounded_runtime_summary.openclaw_supreme_control_plane_summary",
+    "deploy_decision_summary.blocker_summary.has_openclaw_supreme_control_plane_blocker",
   ]),
 });
 
@@ -446,6 +463,7 @@ function buildContextBlockerFamilies(summary) {
   if (row.has_live_evidence_cycle_blocker) families.push("LIVE_EVIDENCE_CYCLE");
   if (row.has_candidate_selection_blocker) families.push("CANDIDATE_SELECTION");
   if (row.has_production_entry_protected_canary_blocker) families.push("PROTECTED_ENTRY_CANARY");
+  if (row.has_openclaw_supreme_control_plane_blocker) families.push("OPENCLAW_SUPREME_CONTROL_PLANE");
   if (row.has_bounded_runtime_blocker) families.push("BOUNDED_RUNTIME");
   if (row.has_entry_boundary_blocker) families.push("ENTRY_BOUNDARY");
   if (row.has_production_cutover_blocker) families.push("PRODUCTION_CUTOVER");
@@ -533,6 +551,7 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null, lineage
   const recommendedNextAction = buildContextRecommendedNextAction(row, artifactDirCoherence);
   const blockerSummary = normalizeObject(row.blocker_summary);
   const hasProtectedEntryCanaryBlocker = blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker === true;
+  const hasOpenClawSupremeBlocker = blockerSummary && blockerSummary.has_openclaw_supreme_control_plane_blocker === true;
   const lineageConsistency = normalizeObject(lineageConsistencySummary)
     || buildLineageConsistencySummary({ deployDecisionSummary: row });
   const lineageOk = lineageConsistency && lineageConsistency.ok === true;
@@ -581,6 +600,15 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null, lineage
       runbook_checklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_20A"),
       fields: CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_20A,
       reason: "cloudbuild deploy decision reports protected entry canary blocker",
+    }));
+  }
+  if (hasOpenClawSupremeBlocker) {
+    checks.push(Object.freeze({
+      id: "SUBMIT_CHK_23",
+      ok: false,
+      runbook_checklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_23"),
+      fields: CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_23,
+      reason: "cloudbuild deploy decision reports OpenClaw supreme control plane blocker",
     }));
   }
   const frozenChecks = Object.freeze(checks);
@@ -1665,6 +1693,7 @@ if (require.main === module) {
       buildContextRecommendedNextActionReason,
       buildContextRecommendedNextActionReasonCode,
       buildContextBlockerFamilies,
+      CONTEXT_SUBMIT_TRACE_FIELDS,
       resolvePathOrNull,
       pathHasExactSegment,
       buildLineageConsistencySummary,

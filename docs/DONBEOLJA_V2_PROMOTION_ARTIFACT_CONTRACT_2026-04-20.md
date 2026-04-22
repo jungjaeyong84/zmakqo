@@ -175,10 +175,11 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 3. `has_provenance_blocker`
 4. `has_watchdog_blocker`
 5. `has_stale_artifact_provenance_blocker`
-6. `has_candidate_selection_blocker`
-7. `has_bounded_runtime_blocker`
-8. `has_production_entry_protected_canary_blocker`
-9. `has_openclaw_supreme_control_plane_blocker`
+6. `has_live_evidence_cycle_blocker`
+7. `has_candidate_selection_blocker`
+8. `has_bounded_runtime_blocker`
+9. `has_production_entry_protected_canary_blocker`
+10. `has_openclaw_supreme_control_plane_blocker`
 
 `promotion-cloudbuild-submit-request.json` 에도 runbook review 정책이 같이 남아야 한다.
 

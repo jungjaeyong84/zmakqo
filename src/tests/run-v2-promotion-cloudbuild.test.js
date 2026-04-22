@@ -757,10 +757,11 @@ function seedRunbookArtifacts(dir, cycleId) {
       "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK",
       "DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH",
       "DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH",
+      "DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED",
     ],
     warnings: [],
   });
-  assert.strictEqual(summary.blocker_summary.blocker_n, 8);
+  assert.strictEqual(summary.blocker_summary.blocker_n, 9);
   assert.strictEqual(summary.blocker_summary.top_blockers.length, 3);
   assert.strictEqual(summary.blocker_summary.has_provenance_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_stale_artifact_provenance_blocker, true);
@@ -769,6 +770,7 @@ function seedRunbookArtifacts(dir, cycleId) {
   assert.strictEqual(summary.blocker_summary.has_candidate_selection_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_bounded_runtime_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_production_entry_protected_canary_blocker, true);
+  assert.strictEqual(summary.blocker_summary.has_openclaw_supreme_control_plane_blocker, true);
 })();
 
 (function staleArtifactProvenanceBlockerHasSpecificCloudbuildAction() {
@@ -826,6 +828,36 @@ function seedRunbookArtifacts(dir, cycleId) {
   );
 })();
 
+(function openClawSupremeBlockerHasSpecificCloudbuildAction() {
+  const decision = {
+    approved: false,
+    blocker_summary: {
+      blocker_n: 1,
+      has_provenance_blocker: false,
+      has_stale_artifact_provenance_blocker: false,
+      has_live_evidence_cycle_blocker: false,
+      has_candidate_selection_blocker: false,
+      has_production_entry_protected_canary_blocker: false,
+      has_openclaw_supreme_control_plane_blocker: true,
+      has_bounded_runtime_blocker: false,
+      has_watchdog_blocker: false,
+    },
+  };
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextAction(decision),
+    "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION"
+  );
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextActionReasonCode(decision),
+    "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER"
+  );
+  assert.deepStrictEqual(
+    cloudbuild.__test.buildContextBlockerFamilies(decision.blocker_summary),
+    ["OPENCLAW_SUPREME_CONTROL_PLANE"]
+  );
+  assert.ok(cloudbuild.__test.buildStatusLine(decision).includes("openclaw_supreme=BLOCKED"));
+})();
+
 (function liveStreakPositionCycleMismatchIsLiveEvidenceCycleBlocker() {
   const summary = cloudbuild.__test.buildDeployDecisionSummary({
     approved: false,
@@ -846,6 +878,32 @@ function seedRunbookArtifacts(dir, cycleId) {
     ["LIVE_EVIDENCE_CYCLE"]
   );
   assert.ok(cloudbuild.__test.buildStatusLine(summary).includes("live_evidence_cycle=BLOCKED"));
+})();
+
+(function contextSubmitTraceIncludesOpenClawSupremeCheckAndRunbook() {
+  const trace = cloudbuild.__test.buildContextSubmitTrace({
+    approved: false,
+    lineage_contract_hash: "lineage-hash-fixture",
+    blocker_summary: {
+      blocker_n: 1,
+      has_openclaw_supreme_control_plane_blocker: true,
+    },
+  }, {
+    artifactDirCoherence: { ok: true },
+    lineageConsistencySummary: { ok: true },
+  });
+  assert.deepStrictEqual(trace.relevant_submit_check_ids, ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08", "SUBMIT_CHK_23"]);
+  assert.deepStrictEqual(trace.relevant_runbook_checklist, ["1", "5", "9", "11", "13", "16", "17", "31"]);
+  assert.deepStrictEqual(trace.failed_submit_check_ids, ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_23"]);
+  assert.deepStrictEqual(trace.failed_runbook_checklist, ["11", "13", "31"]);
+  assert.deepStrictEqual(trace.blocker_families, ["OPENCLAW_SUPREME_CONTROL_PLANE"]);
+  assert.strictEqual(trace.primary_blocker_family, "OPENCLAW_SUPREME_CONTROL_PLANE");
+  assert.strictEqual(trace.recommended_next_action_reason_code, "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER");
+  const check = trace.checks.find((row) => row.id === "SUBMIT_CHK_23");
+  assert.ok(check);
+  assert.strictEqual(check.ok, false);
+  assert.deepStrictEqual(check.runbook_checklist, ["31"]);
+  assert.deepStrictEqual(check.fields, cloudbuild.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_23);
 })();
 
 (function repairEvidenceSummaryRequiredIsBoundedRuntimeBlocker() {

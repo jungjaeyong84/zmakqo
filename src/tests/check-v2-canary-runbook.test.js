@@ -1239,6 +1239,71 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
   }), true);
 })();
 
+(function contextSubmitTraceHelperAcceptsOpenClawSupremeBlocker() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
+    cloudbuildContext: {
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__OPENCLAW_SUPREME", "PCY__TRACE__OPENCLAW_SUPREME"),
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      lineage_consistency_summary: buildLineageConsistencySummary(),
+      final_status_line: "HOLD ; cycle=PCY__TRACE__OPENCLAW_SUPREME ; blockers=1 ; warnings=0 ; openclaw_supreme=BLOCKED ; top=DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED",
+      recommended_next_action: "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION",
+      recommended_next_action_reason_code: "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER",
+      submit_trace: {
+        relevant_submit_check_ids: ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08", "SUBMIT_CHK_23"],
+        relevant_runbook_checklist: ["1", "5", "9", "11", "13", "16", "17", "31"],
+        failed_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_23"],
+        failed_runbook_checklist: ["11", "13", "31"],
+        blocker_families: ["OPENCLAW_SUPREME_CONTROL_PLANE"],
+        primary_blocker_family: "OPENCLAW_SUPREME_CONTROL_PLANE",
+        recommended_next_action_reason_code: "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER",
+        checks: [
+          {
+            id: "SUBMIT_CHK_01A",
+            ok: true,
+            runbook_checklist: ["1", "5", "9"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_01A,
+          },
+          {
+            id: "SUBMIT_CHK_06",
+            ok: false,
+            runbook_checklist: ["11"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_06,
+          },
+          {
+            id: "SUBMIT_CHK_07",
+            ok: false,
+            runbook_checklist: ["13"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_07,
+          },
+          {
+            id: "SUBMIT_CHK_08",
+            ok: true,
+            runbook_checklist: ["16", "17"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_08,
+          },
+          {
+            id: "SUBMIT_CHK_23",
+            ok: false,
+            runbook_checklist: ["31"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_23,
+          },
+        ],
+      },
+      deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+          openclaw_supreme_control_plane_summary: { ok: false },
+        },
+        blocker_summary: {
+          blocker_n: 1,
+          has_openclaw_supreme_control_plane_blocker: true,
+        },
+      },
+    },
+  }), true);
+})();
+
 (function contextSubmitTraceHelperRejectsLiveEvidenceCycleStatusLineDrift() {
   const context = {
     artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__LIVE_EVIDENCE_DRIFT", "PCY__TRACE__LIVE_EVIDENCE_DRIFT"),
@@ -1275,6 +1340,46 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
   };
   assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({ cloudbuildContext: context }), false);
   assert.strictEqual(runbookCheck.__test.hasConsistentLiveEvidenceCycleBlockerTrace({ cloudbuildContext: context }), false);
+})();
+
+(function contextSubmitTraceHelperRejectsOpenClawSupremeStatusLineDrift() {
+  const context = {
+    artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__OPENCLAW_DRIFT", "PCY__TRACE__OPENCLAW_DRIFT"),
+    lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+    lineage_consistency_summary: buildLineageConsistencySummary(),
+    final_status_line: "HOLD ; cycle=PCY__TRACE__OPENCLAW_DRIFT ; blockers=1 ; warnings=0 ; top=DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED",
+    recommended_next_action: "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION",
+    recommended_next_action_reason_code: "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER",
+    submit_trace: {
+      relevant_submit_check_ids: ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08", "SUBMIT_CHK_23"],
+      relevant_runbook_checklist: ["1", "5", "9", "11", "13", "16", "17", "31"],
+      failed_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_23"],
+      failed_runbook_checklist: ["11", "13", "31"],
+      blocker_families: ["OPENCLAW_SUPREME_CONTROL_PLANE"],
+      primary_blocker_family: "OPENCLAW_SUPREME_CONTROL_PLANE",
+      recommended_next_action_reason_code: "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER",
+      checks: [
+        { id: "SUBMIT_CHK_01A", ok: true, runbook_checklist: ["1", "5", "9"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_01A },
+        { id: "SUBMIT_CHK_06", ok: false, runbook_checklist: ["11"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_06 },
+        { id: "SUBMIT_CHK_07", ok: false, runbook_checklist: ["13"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_07 },
+        { id: "SUBMIT_CHK_08", ok: true, runbook_checklist: ["16", "17"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_08 },
+        { id: "SUBMIT_CHK_23", ok: false, runbook_checklist: ["31"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_23 },
+      ],
+    },
+    deploy_decision_summary: {
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      bounded_runtime_summary: {
+        lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        openclaw_supreme_control_plane_summary: { ok: false },
+      },
+      blocker_summary: {
+        blocker_n: 1,
+        has_openclaw_supreme_control_plane_blocker: true,
+      },
+    },
+  };
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({ cloudbuildContext: context }), false);
+  assert.strictEqual(runbookCheck.__test.hasConsistentOpenClawSupremeBlockerTrace({ cloudbuildContext: context }), false);
 })();
 
 (function contextSubmitTraceHelperRejectsFieldTraceDrift() {

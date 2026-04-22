@@ -24,6 +24,10 @@ const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
     "deploy_decision_summary.bounded_runtime_summary.production_entry_protected_canary",
     "deploy_decision_summary.blocker_summary.has_production_entry_protected_canary_blocker",
   ]),
+  SUBMIT_CHK_23: Object.freeze([
+    "deploy_decision_summary.bounded_runtime_summary.openclaw_supreme_control_plane_summary",
+    "deploy_decision_summary.blocker_summary.has_openclaw_supreme_control_plane_blocker",
+  ]),
 });
 
 function trimOrNull(value) {
@@ -316,6 +320,7 @@ function buildExpectedContextBlockerFamilies(blockerSummary) {
   if (row.has_live_evidence_cycle_blocker === true) families.push("LIVE_EVIDENCE_CYCLE");
   if (row.has_candidate_selection_blocker === true) families.push("CANDIDATE_SELECTION");
   if (row.has_production_entry_protected_canary_blocker === true) families.push("PROTECTED_ENTRY_CANARY");
+  if (row.has_openclaw_supreme_control_plane_blocker === true) families.push("OPENCLAW_SUPREME_CONTROL_PLANE");
   if (row.has_bounded_runtime_blocker === true) families.push("BOUNDED_RUNTIME");
   if (row.has_entry_boundary_blocker === true) families.push("ENTRY_BOUNDARY");
   if (row.has_production_cutover_blocker === true) families.push("PRODUCTION_CUTOVER");
@@ -351,11 +356,14 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
   const protectedEntryCanaryStatusLineOk = protectedEntryCanaryOk || finalStatusLine.includes("protected_entry_canary=BLOCKED");
   const liveEvidenceCycleOk = blockerSummary.has_live_evidence_cycle_blocker !== true;
   const liveEvidenceCycleStatusLineOk = liveEvidenceCycleOk || finalStatusLine.includes("live_evidence_cycle=BLOCKED");
+  const openClawSupremeOk = blockerSummary.has_openclaw_supreme_control_plane_blocker !== true;
+  const openClawSupremeStatusLineOk = openClawSupremeOk || finalStatusLine.includes("openclaw_supreme=BLOCKED");
   if (!artifactDirOk) failedSubmitChecks.push("SUBMIT_CHK_01A");
   if (!actionOk) failedSubmitChecks.push("SUBMIT_CHK_06");
   if (!blockerOk) failedSubmitChecks.push("SUBMIT_CHK_07");
   if (!lineageOk) failedSubmitChecks.push("SUBMIT_CHK_08");
   if (!protectedEntryCanaryOk) failedSubmitChecks.push("SUBMIT_CHK_20A");
+  if (!openClawSupremeOk) failedSubmitChecks.push("SUBMIT_CHK_23");
 
   const expectedFailedRunbook = submitTrace.collectRunbookChecklist(failedSubmitChecks);
   const baseExpectedFamilies = buildExpectedContextBlockerFamilies(blockerSummary);
@@ -371,10 +379,13 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     ["SUBMIT_CHK_07", blockerOk],
     ["SUBMIT_CHK_08", lineageOk],
     ["SUBMIT_CHK_20A", protectedEntryCanaryOk],
+    ["SUBMIT_CHK_23", openClawSupremeOk],
   ]);
-  const expectedRelevantSubmitChecks = protectedEntryCanaryOk
-    ? baseExpectedRelevantSubmitChecks
-    : [...baseExpectedRelevantSubmitChecks, "SUBMIT_CHK_20A"];
+  const expectedRelevantSubmitChecks = [
+    ...baseExpectedRelevantSubmitChecks,
+    ...(protectedEntryCanaryOk ? [] : ["SUBMIT_CHK_20A"]),
+    ...(openClawSupremeOk ? [] : ["SUBMIT_CHK_23"]),
+  ];
   const expectedRelevantRunbook = submitTrace.collectRunbookChecklist(expectedRelevantSubmitChecks);
 
   const checksMatch = expectedRelevantSubmitChecks.every((id) => {
@@ -396,6 +407,7 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     (trimOrNull(trace.primary_blocker_family) || null) === expectedPrimaryFamily &&
     protectedEntryCanaryStatusLineOk &&
     liveEvidenceCycleStatusLineOk &&
+    openClawSupremeStatusLineOk &&
     trimOrNull(trace.recommended_next_action_reason_code) === trimOrNull(context.recommended_next_action_reason_code) &&
     checks.length === expectedRelevantSubmitChecks.length &&
     checksMatch
@@ -424,6 +436,31 @@ function hasConsistentLiveEvidenceCycleBlockerTrace({ cloudbuildContext = null }
     trimOrNull(trace.primary_blocker_family) === "LIVE_EVIDENCE_CYCLE" &&
     trimOrNull(trace.recommended_next_action_reason_code) === "LIVE_EVIDENCE_CYCLE_BLOCKER" &&
     trimOrNull(context.recommended_next_action_reason_code) === "LIVE_EVIDENCE_CYCLE_BLOCKER"
+  );
+}
+
+function hasConsistentOpenClawSupremeBlockerTrace({ cloudbuildContext = null } = {}) {
+  const context = cloudbuildContext && typeof cloudbuildContext === "object" ? cloudbuildContext : null;
+  const trace = context && context.submit_trace && typeof context.submit_trace === "object"
+    ? context.submit_trace
+    : null;
+  const blockerSummary = context
+    && context.deploy_decision_summary
+    && typeof context.deploy_decision_summary === "object"
+    && context.deploy_decision_summary.blocker_summary
+    && typeof context.deploy_decision_summary.blocker_summary === "object"
+    ? context.deploy_decision_summary.blocker_summary
+    : null;
+  if (!blockerSummary || blockerSummary.has_openclaw_supreme_control_plane_blocker !== true) return true;
+  const finalStatusLine = trimOrNull(context && context.final_status_line) || "";
+  const blockerFamilies = normalizeArray(trace && trace.blocker_families);
+  return !!(
+    trace &&
+    finalStatusLine.includes("openclaw_supreme=BLOCKED") &&
+    blockerFamilies.includes("OPENCLAW_SUPREME_CONTROL_PLANE") &&
+    trimOrNull(trace.primary_blocker_family) === "OPENCLAW_SUPREME_CONTROL_PLANE" &&
+    trimOrNull(trace.recommended_next_action_reason_code) === "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER" &&
+    trimOrNull(context.recommended_next_action_reason_code) === "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER"
   );
 }
 
@@ -980,6 +1017,17 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
     field: "deploy_decision_summary.blocker_summary.has_live_evidence_cycle_blocker,submit_trace.blocker_families,submit_trace.recommended_next_action_reason_code,final_status_line",
   }));
 
+  checks.push(buildCheck({
+    id: "CHK_13F",
+    label: "OpenClaw supreme blocker is traceable to operator action",
+    status: hasConsistentOpenClawSupremeBlockerTrace({ cloudbuildContext }) ? "PASS" : "FAIL",
+    reason: hasConsistentOpenClawSupremeBlockerTrace({ cloudbuildContext })
+      ? "OpenClaw supreme blocker is either absent or traceable through blocker summary, submit trace, reason code, and final status line"
+      : "OpenClaw supreme blocker must surface as OPENCLAW_SUPREME_CONTROL_PLANE with reason_code=OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER and final_status_line openclaw_supreme=BLOCKED",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "deploy_decision_summary.blocker_summary.has_openclaw_supreme_control_plane_blocker,submit_trace.blocker_families,submit_trace.recommended_next_action_reason_code,final_status_line",
+  }));
+
   const deployMode = String(deployDecision && deployDecision.mode || "").trim().toUpperCase();
   if (deployMode === "LIVE" || artifacts.liveCutoverReadiness) {
     checks.push(buildCheck({
@@ -1161,6 +1209,7 @@ if (require.main === module) {
       normalizeArray,
       hasConsistentContextSubmitTrace,
       hasConsistentLiveEvidenceCycleBlockerTrace,
+      hasConsistentOpenClawSupremeBlockerTrace,
       hasConsistentWarningSummary,
       CONTEXT_SUBMIT_TRACE_FIELDS,
       collectExpectedWarningRunbookChecklist,

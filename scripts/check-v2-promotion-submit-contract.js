@@ -1251,12 +1251,14 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && staleArtifactProvenanceSummary.lines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER")
         && staleArtifactProvenancePreviewTraceLines.includes("stale_artifact_provenance_blocker=YES")
         && staleArtifactProvenancePreviewTraceLines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER")
-        && artifactContractText.includes("8. `has_stale_artifact_provenance_blocker`\n9. `has_live_evidence_cycle_blocker`\n10. `has_production_entry_protected_canary_blocker`")
+        && artifactContractText.includes("5. `has_stale_artifact_provenance_blocker`\n6. `has_live_evidence_cycle_blocker`")
+        && artifactContractText.includes("9. `has_production_entry_protected_canary_blocker`\n10. `has_openclaw_supreme_control_plane_blocker`")
         && artifactContractText.includes("`recommended_next_action` 은 `DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE`")
         && submitWrapperText.includes("has_stale_artifact_provenance_blocker"),
       reason: staleArtifactProvenanceSummary.lines.includes("stale_artifact_provenance_blocker=YES")
         && staleArtifactProvenancePreviewTraceLines.includes("stale_artifact_provenance_blocker=YES")
-        && artifactContractText.includes("8. `has_stale_artifact_provenance_blocker`\n9. `has_live_evidence_cycle_blocker`\n10. `has_production_entry_protected_canary_blocker`")
+        && artifactContractText.includes("5. `has_stale_artifact_provenance_blocker`\n6. `has_live_evidence_cycle_blocker`")
+        && artifactContractText.includes("9. `has_production_entry_protected_canary_blocker`\n10. `has_openclaw_supreme_control_plane_blocker`")
         && submitWrapperText.includes("has_stale_artifact_provenance_blocker")
         ? "operator summary, approval verification contract, and submit wrapper preserve stale artifact provenance blocker"
         : "operator summary, approval verification contract, and submit wrapper must expose stale artifact provenance blocker explicitly",
@@ -1959,6 +1961,14 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && artifactContractText.includes("has_openclaw_supreme_control_plane_blocker")
         && artifactContractText.includes("openclaw_supreme_blocker=YES")
         && runbookText.includes("openclaw_supreme_blocker=YES")
+        && runbookText.includes("| 13F | `SUBMIT_CHK_06`, `SUBMIT_CHK_07`, `SUBMIT_CHK_23`")
+        && runbookText.includes("openclaw_supreme=BLOCKED")
+        && cloudbuildWrapperText.includes("has_openclaw_supreme_control_plane_blocker")
+        && cloudbuildWrapperText.includes("openclaw_supreme=BLOCKED")
+        && cloudbuildWrapperText.includes("SUBMIT_CHK_23")
+        && runbookCheckerText.includes("hasConsistentOpenClawSupremeBlockerTrace")
+        && runbookCheckerText.includes("CHK_13F")
+        && runbookCheckerText.includes("SUBMIT_CHK_23")
         && operatorSummaryText.includes("openclaw_supreme_blocker=")
         && operatorAlertPreviewText.includes("openclaw_supreme_blocker=")
         && openClawSupremeSummary.lines.includes("openclaw_supreme_blocker=YES")
@@ -1991,14 +2001,18 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremeMissingLearnerFreshnessContractFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremeMissingCollectorProvenanceFailsClosed")
         && packageJsonText.includes("test:v2-openclaw-supreme-control-plane")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("openClawSupremeBlockerHasSpecificCloudbuildAction")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-canary-runbook.test.js")).includes("contextSubmitTraceHelperAcceptsOpenClawSupremeBlocker")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitBlocksWithoutOpenClawSupremeClosedLoopEvidence")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("openclaw_supreme_blocker=YES")
         && readText(path.resolve(__dirname, "..", "src", "tests", "v2-promotion-submit-operator-alert.test.js")).includes("openClawSupremeBlockerIsVisibleInSummaryAndTrace"),
       reason: submitWrapperText.includes("SUBMIT_CHK_23")
         && submitWrapperText.includes("hasOpenClawSupremeControlPlaneCoverage")
+        && cloudbuildWrapperText.includes("openclaw_supreme=BLOCKED")
+        && runbookCheckerText.includes("hasConsistentOpenClawSupremeBlockerTrace")
         && openClawSupremePreviewTraceLines.includes("openclaw_supreme_blocker=YES")
-        ? "LIVE submit now blocks and operator-visible traces OpenClaw world state, permit, outcome, and learner shadow closed-loop evidence gaps"
-        : "LIVE submit must expose SUBMIT_CHK_23/runbook 31 and fail closed without OpenClaw supreme closed-loop evidence",
+        ? "LIVE submit and CloudBuild context now block and operator-visible trace OpenClaw world state, permit, outcome, and learner shadow closed-loop evidence gaps"
+        : "LIVE submit and CloudBuild context must expose SUBMIT_CHK_23/runbook 31 and fail closed without OpenClaw supreme closed-loop evidence",
       file: FILES.submitWrapper,
     }),
   ];
