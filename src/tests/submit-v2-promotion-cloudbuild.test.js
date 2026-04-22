@@ -199,6 +199,8 @@ function seedBoundedSubmitArtifacts(
           live_applied_n: 0,
           stale_evaluation_n: 0,
           max_evaluation_age_minutes: 1440,
+          max_observed_evaluation_age_minutes: 1,
+          latest_evaluated_at: "2026-04-22T00:01:00.000Z",
           blockers: [],
         },
         lineage_consistency_summary: {

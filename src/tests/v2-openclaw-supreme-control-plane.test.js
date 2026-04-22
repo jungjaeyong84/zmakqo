@@ -222,6 +222,8 @@ function buildBundle(overrides = {}) {
   assert.strictEqual(summary.lineage_consistency_summary.permit_lineage_mismatch_n, 0);
   assert.strictEqual(summary.lineage_consistency_summary.outcome_lineage_mismatch_n, 0);
   assert.strictEqual(summary.lineage_consistency_summary.learner_lineage_mismatch_n, 0);
+  assert.strictEqual(summary.learner_shadow_summary.max_observed_evaluation_age_minutes, 1);
+  assert.strictEqual(summary.learner_shadow_summary.latest_evaluated_at, "2026-04-22T01:01:00.000Z");
 
   const mismatchedLearner = {
     ...evaluation,
@@ -284,6 +286,8 @@ function buildBundle(overrides = {}) {
   assert.strictEqual(summary.permit_validation_fail_n, 1);
   assert.strictEqual(summary.learner_shadow_summary.ok, false);
   assert.strictEqual(summary.learner_shadow_summary.stale_evaluation_n, 1);
+  assert.strictEqual(summary.learner_shadow_summary.max_observed_evaluation_age_minutes, 2882);
+  assert.strictEqual(summary.learner_shadow_summary.latest_evaluated_at, "2026-04-20T01:00:00.000Z");
   assert.ok(summary.blockers.includes("OPENCLAW_EXECUTION_PERMIT_VALIDATION_REQUIRED"));
   assert.ok(summary.blockers.includes("OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE"));
 })();

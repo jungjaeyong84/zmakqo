@@ -39,6 +39,7 @@ const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = Object.freeze([
 ]);
 const MIN_LIVE_STREAK_COVERAGE_MINUTES = 24 * 60;
 const MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES = 180;
+const MAX_OPENCLAW_LEARNER_SHADOW_EVALUATION_AGE_MINUTES = 24 * 60;
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -387,6 +388,8 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
   if (!supreme) return false;
   const learner = normalizeObject(supreme.learner_shadow_summary);
   const lineage = normalizeObject(supreme.lineage_consistency_summary);
+  const maxLearnerAgeMinutes = Number(learner && learner.max_evaluation_age_minutes);
+  const maxObservedLearnerAgeMinutes = Number(learner && learner.max_observed_evaluation_age_minutes);
   return (
     supreme.ok === true &&
     Number(supreme.world_state_n) > 0 &&
@@ -402,6 +405,13 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
     Number(learner.shadow_only_n) === Number(learner.evaluation_n) &&
     Number(learner.live_applied_n || 0) === 0 &&
     Number(learner.stale_evaluation_n || 0) === 0 &&
+    Number.isFinite(maxLearnerAgeMinutes) &&
+    maxLearnerAgeMinutes > 0 &&
+    maxLearnerAgeMinutes <= MAX_OPENCLAW_LEARNER_SHADOW_EVALUATION_AGE_MINUTES &&
+    Number.isFinite(maxObservedLearnerAgeMinutes) &&
+    maxObservedLearnerAgeMinutes >= 0 &&
+    maxObservedLearnerAgeMinutes <= maxLearnerAgeMinutes &&
+    !!trimOrNull(learner.latest_evaluated_at) &&
     lineage &&
     lineage.ok === true &&
     !!trimOrNull(lineage.expected_openclaw_decision_id) &&

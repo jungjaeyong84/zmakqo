@@ -511,6 +511,18 @@ function buildOpenClawSupremeControlPlaneSummary({
     const evaluatedMs = parseIsoMs(row && row.evaluated_at);
     return evaluatedMs != null && evaluatedMs <= currentMs && (currentMs - evaluatedMs) <= maxLearnerAgeMs;
   };
+  const learnerEvaluationAgesMinutes = learnerRows
+    .map((row) => parseIsoMs(row && row.evaluated_at))
+    .filter((value) => value != null)
+    .map((value) => Math.round(((currentMs - value) / 60_000) * 1000) / 1000);
+  const maxObservedEvaluationAgeMinutes = learnerEvaluationAgesMinutes.length
+    ? Math.max(...learnerEvaluationAgesMinutes)
+    : null;
+  const latestEvaluatedAt = learnerRows
+    .map((row) => trimOrNull(row && row.evaluated_at))
+    .filter(Boolean)
+    .sort()
+    .pop() || null;
   const permitLineageMatches = permits.filter((row) => {
     const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
     const worldOk = !expectedWorldStateHash || trimOrNull(row && row.world_state_hash) === expectedWorldStateHash;
@@ -560,6 +572,8 @@ function buildOpenClawSupremeControlPlaneSummary({
       live_applied_n: liveAppliedCount,
       stale_evaluation_n: staleEvaluationCount,
       max_evaluation_age_minutes: maxLearnerEvaluationAgeMinutes,
+      max_observed_evaluation_age_minutes: maxObservedEvaluationAgeMinutes,
+      latest_evaluated_at: latestEvaluatedAt,
       blockers: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0 && staleEvaluationCount === 0
         ? []
         : [
