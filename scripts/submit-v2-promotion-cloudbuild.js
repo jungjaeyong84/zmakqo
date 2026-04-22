@@ -137,6 +137,11 @@ function buildVerificationSummary(checks) {
     row.toUpperCase().includes("STALE_ARTIFACT_PROVENANCE") ||
     row.toUpperCase().includes("STALE ARTIFACT PROVENANCE")
   ));
+  const hasLiveEvidenceCycleBlocker = deployBlockers.some((row) => (
+    row.toUpperCase().includes("LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH") ||
+    row.toUpperCase().includes("LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH") ||
+    row.toUpperCase().includes("LIVE_EVIDENCE_CYCLE")
+  ));
   const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19", "SUBMIT_CHK_20A", "SUBMIT_CHK_21"].includes(id));
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
@@ -154,6 +159,7 @@ function buildVerificationSummary(checks) {
     top_failures: topFailures,
     has_provenance_blocker: hasProvenanceBlocker,
     has_stale_artifact_provenance_blocker: hasStaleArtifactProvenanceBlocker,
+    has_live_evidence_cycle_blocker: hasLiveEvidenceCycleBlocker,
     has_bounded_runtime_blocker: hasBoundedRuntimeBlocker,
     has_entry_boundary_blocker: hasEntryBoundaryBlocker,
     has_fill_sync_canonical_boundary_blocker: hasFillSyncCanonicalBoundaryBlocker,
@@ -174,6 +180,7 @@ function buildVerificationRecommendedAction(summary) {
   if (!row || Number(row.blocker_n) === 0) return "PROCEED_WITH_SUBMIT_WRAPPER";
   if (row.has_provenance_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT";
   if (row.has_stale_artifact_provenance_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
+  if (row.has_live_evidence_cycle_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
   if (row.has_production_entry_protected_canary_blocker) return "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_bounded_runtime_blocker) return "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_entry_boundary_blocker) return "FIX_V2_ENTRY_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
@@ -199,6 +206,9 @@ function buildVerificationRecommendedActionReason(summary) {
   }
   if (row.has_stale_artifact_provenance_blocker) {
     return "required canary or streak evidence is stale and must be regenerated in the current artifact cycle";
+  }
+  if (row.has_live_evidence_cycle_blocker) {
+    return "LIVE evidence artifacts disagree on the selected position cycle and must be regenerated together";
   }
   if (row.has_production_entry_protected_canary_blocker) {
     return "protected entry canary failed; production entry must prove SL and TP1 protection before submit";
@@ -249,6 +259,9 @@ function buildVerificationRecommendedActionReasonCode(summary) {
   }
   if (row.has_stale_artifact_provenance_blocker) {
     return "STALE_ARTIFACT_PROVENANCE_BLOCKER";
+  }
+  if (row.has_live_evidence_cycle_blocker) {
+    return "LIVE_EVIDENCE_CYCLE_BLOCKER";
   }
   if (row.has_production_entry_protected_canary_blocker) {
     return "PROTECTED_ENTRY_CANARY_BLOCKER";
@@ -815,6 +828,7 @@ function buildSubmitTraceFamilies(summary) {
   const families = [];
   if (row.has_provenance_blocker) families.push("PROVENANCE");
   if (row.has_stale_artifact_provenance_blocker) families.push("STALE_ARTIFACT_PROVENANCE");
+  if (row.has_live_evidence_cycle_blocker) families.push("LIVE_EVIDENCE_CYCLE");
   if (row.has_production_entry_protected_canary_blocker) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker) families.push("BOUNDED_RUNTIME");
   if (row.has_entry_boundary_blocker) families.push("ENTRY_BOUNDARY");
@@ -1842,13 +1856,21 @@ function buildApprovalVerification(request) {
     && cloudbuildContext.deploy_decision_summary.blocker_summary
     && cloudbuildContext.deploy_decision_summary.blocker_summary.blocker_n
   );
+  const cloudbuildBlockerSummary = normalizeObject(
+    cloudbuildContext
+    && cloudbuildContext.deploy_decision_summary
+    && cloudbuildContext.deploy_decision_summary.blocker_summary
+  );
+  const topCloudbuildBlockers = Array.isArray(cloudbuildBlockerSummary && cloudbuildBlockerSummary.top_blockers)
+    ? cloudbuildBlockerSummary.top_blockers.map((value) => trimOrNull(value)).filter(Boolean)
+    : [];
   checks.push(withDocRefs(buildVerificationCheck({
     id: "SUBMIT_CHK_07",
     label: "cloudbuild blocker count is zero",
     ok: blockerN === 0,
     reason: blockerN === 0
       ? "cloudbuild blocker count is zero"
-      : "cloudbuild blocker count must be zero",
+      : `cloudbuild blocker count must be zero${topCloudbuildBlockers.length ? `: ${topCloudbuildBlockers.join("|")}` : ""}`,
     file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
     field: "deploy_decision_summary.blocker_summary.blocker_n",
   }), {

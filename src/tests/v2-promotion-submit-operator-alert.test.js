@@ -116,6 +116,46 @@ const operatorSummary = require("../../scripts/lib/v2-promotion-operator-summary
   assert.ok(preview.sections[1].lines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER"));
 })();
 
+(function liveEvidenceCycleBlockerIsVisibleInSummaryAndTrace() {
+  const summary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/live-evidence-cycle-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__LIVE_EVIDENCE__01",
+      submit_trace_summary: {
+        ok: false,
+        failed_submit_check_ids: ["SUBMIT_CHK_07"],
+        failed_runbook_checklist: ["13"],
+        blocker_families: ["LIVE_EVIDENCE_CYCLE", "CONTEXT"],
+        primary_blocker_family: "LIVE_EVIDENCE_CYCLE",
+        recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE",
+        recommended_next_action_reason_code: "LIVE_EVIDENCE_CYCLE_BLOCKER",
+      },
+    },
+  });
+  const preview = alertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/live-evidence-cycle-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__LIVE_EVIDENCE__01",
+      operator_summary: summary,
+      submit_trace_summary: {
+        ok: false,
+        failed_submit_check_ids: ["SUBMIT_CHK_07"],
+        failed_runbook_checklist: ["13"],
+        blocker_families: ["LIVE_EVIDENCE_CYCLE", "CONTEXT"],
+        primary_blocker_family: "LIVE_EVIDENCE_CYCLE",
+        recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE",
+        recommended_next_action_reason_code: "LIVE_EVIDENCE_CYCLE_BLOCKER",
+      },
+    },
+  });
+  assert.ok(summary.lines.includes("live_evidence_cycle_blocker=YES"));
+  assert.ok(preview.sections[0].lines.includes("live_evidence_cycle_blocker=YES"));
+  assert.ok(preview.sections[1].lines.includes("live_evidence_cycle_blocker=YES"));
+  assert.ok(preview.sections[1].lines.includes("reason_code=LIVE_EVIDENCE_CYCLE_BLOCKER"));
+})();
+
 (function readyPreviewBuildsTelegramArgs() {
   const args = alertPreview.buildTelegramSummaryArgs({
     severity: "INFO",

@@ -133,6 +133,8 @@ LIVE scheduler collector preflight는 단순히 Cloud Run service describe 권�
 
 stale artifact provenance는 일반 bounded runtime 누락과 분리되어야 한다. 여기서 stale은 파일 경로 mismatch뿐 아니라 `generated_at`/`artifact_generated_at` 누락 또는 `artifact_generated_age_minutes` 초과를 포함한다. `DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:*` blocker가 있으면 `blocker_summary.has_stale_artifact_provenance_blocker=true`, `submit_trace.blocker_families` 에 `STALE_ARTIFACT_PROVENANCE`, `recommended_next_action_reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER`, `final_status_line` 에 `stale_artifact=BLOCKED` 가 남아야 한다.
 
+LIVE evidence cycle mismatch도 일반 bounded runtime 누락과 분리되어야 한다. `DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH` 또는 `DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH` blocker가 있으면 `blocker_summary.has_live_evidence_cycle_blocker=true`, `submit_trace.blocker_families` 에 `LIVE_EVIDENCE_CYCLE`, `recommended_next_action_reason_code=LIVE_EVIDENCE_CYCLE_BLOCKER`, `final_status_line` 에 `live_evidence_cycle=BLOCKED`, `operator_summary.lines[]` 와 `operator_alert_preview.sections[]` 에 `live_evidence_cycle_blocker=YES` 가 남아야 한다. 이 문제는 단일 스크립트 재실행이 아니라 서로 다른 cycle에서 온 증거가 섞인 상태이므로 artifact dir을 폐기하고 fresh promotion pipeline을 재실행해야 한다.
+
 최소 포함 항목:
 
 1. `relevant_submit_check_ids`
@@ -486,7 +488,8 @@ submit request의 `approval_evidence_sources.lineage_hash_sources` 는 이 hash�
 6. `has_context_blocker`
 7. `has_candidate_selection_blocker`
 8. `has_stale_artifact_provenance_blocker`
-9. `has_production_entry_protected_canary_blocker`
+9. `has_live_evidence_cycle_blocker`
+10. `has_production_entry_protected_canary_blocker`
 
 `approval_verification.recommended_next_action` 과 `approval_verification.recommended_next_action_reason` 도 같이 남아야 한다.
 
@@ -495,6 +498,8 @@ submit request의 `approval_evidence_sources.lineage_hash_sources` 는 이 hash�
 특히 `SUBMIT_CHK_20A` 실패는 단순 bounded runtime 누락이 아니라 `PROTECTED_ENTRY_CANARY` 계열로 먼저 드러나야 한다. 이 필드는 production entry가 SL/TP1 보호주문 체인을 증명하지 못했다는 의미이므로, `recommended_next_action` 은 `FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION` 이어야 한다.
 
 동시에 `SUBMIT_CHK_11`, `SUBMIT_CHK_19`, `SUBMIT_CHK_20A` 가 stale artifact provenance 때문에 실패하면 `has_stale_artifact_provenance_blocker=true` 가 먼저 드러나야 한다. 이 경우 문제는 본체 runtime 수정이 아니라 현재 artifact dir 증거를 다시 만드는 것이므로, `recommended_next_action` 은 `DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE` 이어야 한다.
+
+동시에 LIVE evidence cycle mismatch blocker는 `has_live_evidence_cycle_blocker=true` 와 `LIVE_EVIDENCE_CYCLE` 계열로 먼저 드러나야 한다. 이 경우 operator는 개별 readiness artifact를 수정하지 말고 전체 artifact dir을 폐기한 뒤 같은 `position_cycle_id` 로 fresh promotion pipeline을 재실행해야 한다.
 
 동시에 각 check는 runbook checklist 번호와 artifact contract 필드명을 직접 가리켜야 한다.
 

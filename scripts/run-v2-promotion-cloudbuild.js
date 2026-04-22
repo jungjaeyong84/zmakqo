@@ -82,11 +82,16 @@ function summarizeBlockers(blockers) {
   const normalized = rows
     .map((row) => trimOrNull(row))
     .filter(Boolean);
+  const hasLiveEvidenceCycleBlocker = normalized.some((row) => (
+    row.includes("LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH") ||
+    row.includes("LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH")
+  ));
   return Object.freeze({
     blocker_n: normalized.length,
     top_blockers: normalized.slice(0, 3),
     has_provenance_blocker: normalized.some((row) => row.includes("PROVENANCE:")),
     has_stale_artifact_provenance_blocker: normalized.some((row) => row.includes("STALE_ARTIFACT_PROVENANCE")),
+    has_live_evidence_cycle_blocker: hasLiveEvidenceCycleBlocker,
     has_watchdog_blocker: normalized.some((row) => row.includes("WATCHDOG")),
     has_candidate_selection_blocker: normalized.some((row) => row.includes("CANDIDATE_SELECTION")),
     has_bounded_runtime_blocker: normalized.some((row) => row.includes("BOUNDED_RUNTIME") || row.includes("EVIDENCE_SNAPSHOT")),
@@ -168,6 +173,9 @@ function buildStatusLine(summary) {
   if (blockerSummary && blockerSummary.has_stale_artifact_provenance_blocker === true) {
     parts.push("stale_artifact=BLOCKED");
   }
+  if (blockerSummary && blockerSummary.has_live_evidence_cycle_blocker === true) {
+    parts.push("live_evidence_cycle=BLOCKED");
+  }
   if (topBlockers.length) parts.push(`top=${topBlockers.join("|")}`);
   const warningSummary = normalizeObject(row.warning_summary);
   const topWarnings = Array.isArray(warningSummary && warningSummary.top_warnings)
@@ -186,6 +194,9 @@ function buildRecommendedNextAction(summary) {
     return "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT";
   }
   if (blockerSummary && blockerSummary.has_stale_artifact_provenance_blocker) {
+    return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
+  }
+  if (blockerSummary && blockerSummary.has_live_evidence_cycle_blocker) {
     return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
   }
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
@@ -222,6 +233,9 @@ function buildRecommendedNextActionReason(summary) {
   if (blockerSummary && blockerSummary.has_stale_artifact_provenance_blocker) {
     return "stale artifact provenance blocker detected; required canary or streak evidence is not from the current artifact cycle";
   }
+  if (blockerSummary && blockerSummary.has_live_evidence_cycle_blocker) {
+    return "LIVE evidence cycle blocker detected; all LIVE canary/streak/protected-entry evidence must come from the same selected position cycle";
+  }
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
     return "candidate selection blocker detected; selected cycle and approved cycle must be revalidated";
   }
@@ -253,6 +267,9 @@ function buildRecommendedNextActionReasonCode(summary) {
   }
   if (blockerSummary && blockerSummary.has_stale_artifact_provenance_blocker) {
     return "STALE_ARTIFACT_PROVENANCE_BLOCKER";
+  }
+  if (blockerSummary && blockerSummary.has_live_evidence_cycle_blocker) {
+    return "LIVE_EVIDENCE_CYCLE_BLOCKER";
   }
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
     return "CANDIDATE_SELECTION_BLOCKER";
@@ -412,6 +429,7 @@ function buildContextBlockerFamilies(summary) {
   const families = [];
   if (row.has_provenance_blocker) families.push("PROVENANCE");
   if (row.has_stale_artifact_provenance_blocker) families.push("STALE_ARTIFACT_PROVENANCE");
+  if (row.has_live_evidence_cycle_blocker) families.push("LIVE_EVIDENCE_CYCLE");
   if (row.has_candidate_selection_blocker) families.push("CANDIDATE_SELECTION");
   if (row.has_production_entry_protected_canary_blocker) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker) families.push("BOUNDED_RUNTIME");

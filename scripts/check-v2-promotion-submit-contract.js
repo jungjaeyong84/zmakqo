@@ -432,6 +432,40 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
   )
     ? staleArtifactProvenancePreview.sections[1].lines
     : [];
+  const liveEvidenceCycleTrace = Object.freeze({
+    ok: false,
+    primary_blocker_family: "LIVE_EVIDENCE_CYCLE",
+    blocker_families: ["LIVE_EVIDENCE_CYCLE", "CONTEXT"],
+    failed_submit_check_ids: ["SUBMIT_CHK_07"],
+    failed_runbook_checklist: ["13"],
+    recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE",
+    recommended_next_action_reason: "LIVE evidence artifacts disagree on the selected position cycle",
+    recommended_next_action_reason_code: "LIVE_EVIDENCE_CYCLE_BLOCKER",
+  });
+  const liveEvidenceCycleSummary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/live-evidence-cycle-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__LIVE_EVIDENCE__01",
+      submit_trace_summary: liveEvidenceCycleTrace,
+    },
+  });
+  const liveEvidenceCyclePreview = operatorAlertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/live-evidence-cycle-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__LIVE_EVIDENCE__01",
+      submit_trace_summary: liveEvidenceCycleTrace,
+      operator_summary: liveEvidenceCycleSummary,
+    },
+  });
+  const liveEvidenceCyclePreviewTraceLines = Array.isArray(
+    liveEvidenceCyclePreview.sections
+    && liveEvidenceCyclePreview.sections[1]
+    && liveEvidenceCyclePreview.sections[1].lines
+  )
+    ? liveEvidenceCyclePreview.sections[1].lines
+    : [];
   const staleSourceTrace = {
     ok: false,
     failed_submit_check_ids: ["SUBMIT_CHK_08"],
@@ -513,6 +547,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "primary_blocker_family=PROVENANCE",
         "protected_entry_canary_blocker=NO",
         "stale_artifact_provenance_blocker=NO",
+        "live_evidence_cycle_blocker=NO",
         "alert_retry_attention=NO",
         "alert_runbook_refs=NONE",
         "alert_failed=0",
@@ -565,6 +600,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "primary_blocker_family=PROVENANCE",
         "protected_entry_canary_blocker=NO",
         "stale_artifact_provenance_blocker=NO",
+        "live_evidence_cycle_blocker=NO",
         "alert_retry_attention=NO",
         "alert_runbook_refs=NONE",
         "alert_failed=0",
@@ -1151,15 +1187,35 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && staleArtifactProvenanceSummary.lines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER")
         && staleArtifactProvenancePreviewTraceLines.includes("stale_artifact_provenance_blocker=YES")
         && staleArtifactProvenancePreviewTraceLines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER")
-        && artifactContractText.includes("8. `has_stale_artifact_provenance_blocker`\n9. `has_production_entry_protected_canary_blocker`")
+        && artifactContractText.includes("8. `has_stale_artifact_provenance_blocker`\n9. `has_live_evidence_cycle_blocker`\n10. `has_production_entry_protected_canary_blocker`")
         && artifactContractText.includes("`recommended_next_action` 은 `DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE`")
         && submitWrapperText.includes("has_stale_artifact_provenance_blocker"),
       reason: staleArtifactProvenanceSummary.lines.includes("stale_artifact_provenance_blocker=YES")
         && staleArtifactProvenancePreviewTraceLines.includes("stale_artifact_provenance_blocker=YES")
-        && artifactContractText.includes("8. `has_stale_artifact_provenance_blocker`\n9. `has_production_entry_protected_canary_blocker`")
+        && artifactContractText.includes("8. `has_stale_artifact_provenance_blocker`\n9. `has_live_evidence_cycle_blocker`\n10. `has_production_entry_protected_canary_blocker`")
         && submitWrapperText.includes("has_stale_artifact_provenance_blocker")
         ? "operator summary, approval verification contract, and submit wrapper preserve stale artifact provenance blocker"
         : "operator summary, approval verification contract, and submit wrapper must expose stale artifact provenance blocker explicitly",
+      file: SHARED_FORMATTER_MODULE_PATH,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_39A",
+      label: "operator summary and alert preserve LIVE evidence cycle blocker",
+      ok: liveEvidenceCycleSummary.lines.includes("live_evidence_cycle_blocker=YES")
+        && liveEvidenceCycleSummary.lines.includes("reason_code=LIVE_EVIDENCE_CYCLE_BLOCKER")
+        && liveEvidenceCyclePreviewTraceLines.includes("live_evidence_cycle_blocker=YES")
+        && liveEvidenceCyclePreviewTraceLines.includes("reason_code=LIVE_EVIDENCE_CYCLE_BLOCKER")
+        && artifactContractText.includes("has_live_evidence_cycle_blocker=true")
+        && artifactContractText.includes("live_evidence_cycle=BLOCKED")
+        && submitWrapperText.includes("has_live_evidence_cycle_blocker")
+        && runbookText.includes("13E"),
+      reason: liveEvidenceCycleSummary.lines.includes("live_evidence_cycle_blocker=YES")
+        && liveEvidenceCyclePreviewTraceLines.includes("live_evidence_cycle_blocker=YES")
+        && artifactContractText.includes("has_live_evidence_cycle_blocker=true")
+        && submitWrapperText.includes("has_live_evidence_cycle_blocker")
+        && runbookText.includes("13E")
+        ? "operator summary, approval verification contract, runbook, and submit wrapper preserve LIVE evidence cycle blocker"
+        : "LIVE evidence cycle blocker must be visible in operator summary, alert preview, contract, runbook, and submit wrapper",
       file: SHARED_FORMATTER_MODULE_PATH,
     }),
     buildCheck({

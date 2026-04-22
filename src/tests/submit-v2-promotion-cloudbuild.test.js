@@ -1610,6 +1610,70 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   }
 })();
 
+(function submitRequestClassifiesLiveEvidenceCycleMismatchSeparately() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-live-evidence-cycle-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__LIVE_EVIDENCE_CYCLE");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__LIVE_EVIDENCE_CYCLE");
+    const blocker = "DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH";
+    const deployDecisionPath = path.join(artifactDir, "promotion-deploy-decision.json");
+    const deployDecision = JSON.parse(fs.readFileSync(deployDecisionPath, "utf8"));
+    deployDecision.approved = false;
+    deployDecision.decision = "HOLD";
+    deployDecision.blockers = [blocker];
+    writeJson(deployDecisionPath, deployDecision);
+
+    const cloudbuildContextPath = path.join(artifactDir, "promotion-cloudbuild-context.json");
+    const cloudbuildContext = JSON.parse(fs.readFileSync(cloudbuildContextPath, "utf8"));
+    cloudbuildContext.final_status_line = `HOLD ; cycle=PCY__CANARY__LIVE_EVIDENCE_CYCLE ; blockers=1 ; warnings=0 ; live_evidence_cycle=BLOCKED ; top=${blocker}`;
+    cloudbuildContext.recommended_next_action = "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
+    cloudbuildContext.recommended_next_action_reason = "LIVE evidence cycle blocker detected; all LIVE evidence must come from the same selected position cycle";
+    cloudbuildContext.recommended_next_action_reason_code = "LIVE_EVIDENCE_CYCLE_BLOCKER";
+    cloudbuildContext.deploy_decision_summary.blocker_summary = {
+      blocker_n: 1,
+      top_blockers: [blocker],
+      has_provenance_blocker: false,
+      has_stale_artifact_provenance_blocker: false,
+      has_live_evidence_cycle_blocker: true,
+      has_candidate_selection_blocker: false,
+      has_bounded_runtime_blocker: false,
+      has_production_entry_protected_canary_blocker: false,
+    };
+    writeJson(cloudbuildContextPath, cloudbuildContext);
+
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__LIVE_EVIDENCE_CYCLE",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_BLOCKED");
+    assert.strictEqual(result.request.approval_verification.blocker_summary.has_live_evidence_cycle_blocker, true);
+    assert.deepStrictEqual(result.request.submit_trace_summary.blocker_families, ["LIVE_EVIDENCE_CYCLE", "CONTEXT"]);
+    assert.strictEqual(result.request.submit_trace_summary.primary_blocker_family, "LIVE_EVIDENCE_CYCLE");
+    assert.strictEqual(
+      result.request.submit_trace_summary.recommended_next_action,
+      "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE"
+    );
+    assert.strictEqual(
+      result.request.submit_trace_summary.recommended_next_action_reason_code,
+      "LIVE_EVIDENCE_CYCLE_BLOCKER"
+    );
+    assert.ok(result.request.operator_summary.lines.includes("live_evidence_cycle_blocker=YES"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_evidence_cycle_blocker=YES"));
+    const blockerCountCheck = result.request.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_07");
+    assert.ok(blockerCountCheck);
+    assert.strictEqual(blockerCountCheck.ok, false);
+    assert.ok(blockerCountCheck.reason.includes(blocker));
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (function submitRequestSurfacesCanaryDeployWarningsToOperatorSummary() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-warning-"));
   try {
