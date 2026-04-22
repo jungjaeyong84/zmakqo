@@ -28,6 +28,14 @@ function normalizeError(error) {
   });
 }
 
+function hasRequiredSchedulerEnv(service) {
+  const env = service && typeof service.env === "object" ? service.env : {};
+  return (
+    Object.prototype.hasOwnProperty.call(env, "SCHEDULER_AUTOSTART") &&
+    Object.prototype.hasOwnProperty.call(env, "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE")
+  );
+}
+
 function buildCheck(id, ok, reason, evidence = {}) {
   return Object.freeze({
     id,
@@ -81,6 +89,9 @@ function runV2SchedulerTrafficCollectorPreflight(options = {}) {
         "collector must describe each Cloud Run service to verify ready revision, traffic, and scheduler env",
         () => {
           const service = collector.collectCloudRunService(serviceName, { projectId, region, env, execFileSync });
+          if (!hasRequiredSchedulerEnv(service)) {
+            throw new Error(`SCHEDULER_TRAFFIC_COLLECTOR_REQUIRED_ENV_MISSING:${serviceName}`);
+          }
           return {
             project_id: projectId,
             region,
@@ -88,6 +99,7 @@ function runV2SchedulerTrafficCollectorPreflight(options = {}) {
             latest_revision_ready: service.latest_revision_ready,
             traffic_percent: service.traffic_percent,
             has_scheduler_autostart_env: Object.prototype.hasOwnProperty.call(service.env || {}, "SCHEDULER_AUTOSTART"),
+            has_scheduler_cutover_mode_env: Object.prototype.hasOwnProperty.call(service.env || {}, "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE"),
           };
         }
       ));
@@ -116,6 +128,7 @@ module.exports = {
   __test: {
     trimOrNull,
     normalizeArray,
+    hasRequiredSchedulerEnv,
     sanitizeId,
     normalizeError,
     buildCheck,

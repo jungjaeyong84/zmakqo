@@ -91,6 +91,10 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.native_refresh_unhealthy_n, 0);
   assert.strictEqual(report.unprotected_window_violation_n, 0);
   assert.strictEqual(report.alert_silent_drop_n, 0);
+  assert.strictEqual(report.firestore_source_required, false);
+  assert.strictEqual(report.long_run_quality_summary.status, "PASS");
+  assert.strictEqual(report.long_run_quality_summary.defect_counts.tp1_missing_n, 0);
+  assert.strictEqual(report.long_run_quality_summary.coverage_minutes, 1440);
   assert.deepStrictEqual(report.blockers, []);
 })();
 
@@ -120,6 +124,32 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.ok, false);
   assert.ok(report.blockers.includes("EXIT_RUNTIME_CANARY_STREAK:UNHEALTHY_ROW_IN_WINDOW"));
   assert.ok(report.blockers.includes("EXIT_RUNTIME_CANARY_STREAK:TP1_MISSING"));
+  assert.strictEqual(report.long_run_quality_summary.status, "BLOCKED");
+  assert.strictEqual(report.long_run_quality_summary.defect_counts.tp1_missing_n, 1);
+})();
+
+(function streakRequiresFirestoreWhenLiveEvidenceModeIsArmed() {
+  const nowMs = Date.parse("2026-04-22T12:00:00.000Z");
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push(buildHealthyPayload(new Date(nowMs - hour * 60 * 60000).toISOString()));
+  }
+  const report = checker.evaluateExitRuntimeCanaryStreak({
+    history: buildHistory(rows),
+    config: {
+      lookbackHours: 24,
+      minRunCount: 12,
+      maxGapMinutes: 180,
+      requireFirestoreSource: true,
+    },
+    nowMs,
+    historyFile: "/tmp/exit-runtime-history.jsonl",
+    historySource: "JSONL",
+  });
+  assert.strictEqual(report.ok, false);
+  assert.strictEqual(report.firestore_source_required, true);
+  assert.strictEqual(report.long_run_quality_summary.firestore_source_required, true);
+  assert.ok(report.blockers.includes("EXIT_RUNTIME_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED"));
 })();
 
 (function parserReportsInvalidJsonl() {
@@ -139,6 +169,7 @@ function buildFakeDb(rows) {
   assert.ok(checker.__test.resolveHistoryFile({}).endsWith("v2_exit_runtime_canary_history.jsonl"));
   assert.ok(checker.__test.resolveOutputFile({}).endsWith("v2_exit_runtime_canary_streak_latest.json"));
   assert.strictEqual(checker.__test.resolveStreakConfig({}).lookbackHours, 24);
+  assert.strictEqual(checker.__test.resolveStreakConfig({ DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE: "1" }).requireFirestoreSource, true);
   assert.strictEqual(checker.__test.resolveHistorySource({}), "JSONL");
   assert.strictEqual(checker.__test.resolveHistorySource({ DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: "1" }), "FIRESTORE");
 })();

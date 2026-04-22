@@ -1332,7 +1332,10 @@ function generateSchedulerTrafficCutoverReadiness(plan, deployApproval) {
   const outputFile = path.join(plan.artifactDir, SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME);
   const inlineStateJson = trimOrNull(plan.effectiveEnv && plan.effectiveEnv.DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON);
   const collectorPreflightFile = path.join(plan.artifactDir, SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME);
-  const collectorPreflight = runV2SchedulerTrafficCollectorPreflight({ env: plan.effectiveEnv });
+  const collectorPreflight = runV2SchedulerTrafficCollectorPreflight({
+    env: plan.effectiveEnv,
+    execFileSync: plan.schedulerTrafficCollectorExecFileSync,
+  });
   const collectorPreflightGeneratedAt = new Date().toISOString();
   const collectorPreflightWithProvenance = collectorPreflight ? Object.freeze({
     ...collectorPreflight,

@@ -342,6 +342,63 @@ function buildSchedulerTrafficStateFixture() {
   };
 }
 
+function buildCloudRunServiceDescribeFixture(row) {
+  const service = row && typeof row === "object" ? row : {};
+  return {
+    template: {
+      spec: {
+        containers: [
+          {
+            env: Object.entries(service.env || {}).map(([name, value]) => ({ name, value })),
+          },
+        ],
+      },
+    },
+    status: {
+      latestReadyRevisionName: `${service.name || "service"}-rev-0001`,
+      conditions: [{ type: "Ready", status: service.latest_revision_ready === false ? "False" : "True" }],
+      traffic: [
+        {
+          revisionName: `${service.name || "service"}-rev-0001`,
+          latestRevision: true,
+          percent: Number(service.traffic_percent || 0),
+        },
+      ],
+    },
+  };
+}
+
+function buildSchedulerTrafficCollectorExecFileSyncFixture(state = buildSchedulerTrafficStateFixture()) {
+  return (cmd, args) => {
+    assert.strictEqual(cmd, "gcloud");
+    const joined = args.join(" ");
+    if (joined === "config get-value project") return "donbeolja-dev\n";
+    if (joined.includes("scheduler jobs list")) {
+      const jobs = [
+        ...(Array.isArray(state.openclaw_cloud_scheduler_jobs) ? state.openclaw_cloud_scheduler_jobs : []),
+        ...(Array.isArray(state.legacy_scheduler_jobs) ? state.legacy_scheduler_jobs : []),
+      ].map((job) => ({
+        name: `projects/donbeolja-dev/locations/asia-northeast3/jobs/${job.scheduler_name || job.name || job.job_id}`,
+        description: job.label || job.scheduler_name || job.name || job.job_id,
+        schedule: job.actual_schedule || job.schedule || "* * * * *",
+        timeZone: job.actual_time_zone || job.time_zone || "Asia/Seoul",
+        state: job.enabled === false || job.active === false ? "PAUSED" : "ENABLED",
+        httpTarget: {
+          uri: `https://donbeolja.example${job.actual_http_path || job.expected_http_path || job.target || "/"}`,
+        },
+      }));
+      return JSON.stringify(jobs);
+    }
+    if (joined.includes("run services describe")) {
+      const serviceName = joined.includes("donbeolja-exit-worker") ? "donbeolja-exit-worker" : "donbeolja";
+      const service = (Array.isArray(state.cloud_run_services) ? state.cloud_run_services : [])
+        .find((row) => row && row.name === serviceName);
+      return JSON.stringify(buildCloudRunServiceDescribeFixture(service || { name: serviceName }));
+    }
+    throw new Error(`UNEXPECTED_GCLOUD:${joined}`);
+  };
+}
+
 function seedRunbookArtifacts(dir, cycleId) {
   writeJson(path.join(dir, "promotion-preflight.json"), {
     ok: true,
@@ -1306,6 +1363,7 @@ function seedRunbookArtifacts(dir, cycleId) {
         DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER: "1",
         DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: JSON.stringify(buildSchedulerTrafficStateFixture()),
       },
+      schedulerTrafficCollectorExecFileSync: buildSchedulerTrafficCollectorExecFileSyncFixture(),
     };
     const deployApproval = {
       required: true,

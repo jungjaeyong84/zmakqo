@@ -100,7 +100,31 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
   assert.strictEqual(report.generated_at, "2026-04-21T12:00:00.000Z");
   assert.strictEqual(report.healthy_run_n, 13);
+  assert.strictEqual(report.firestore_source_required, false);
   assert.strictEqual(report.blockers.length, 0);
+})();
+
+(function streakRequiresFirestoreWhenLiveEvidenceModeIsArmed() {
+  const nowMs = Date.parse("2026-04-21T12:00:00.000Z");
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push(buildHealthyPayload(new Date(nowMs - hour * 60 * 60000).toISOString()));
+  }
+  const report = checker.evaluateProductionEntryRouteCanaryStreak({
+    history: buildHistory(rows),
+    config: {
+      lookbackHours: 24,
+      minRunCount: 12,
+      maxGapMinutes: 180,
+      requireFirestoreSource: true,
+    },
+    nowMs,
+    historyFile: "/tmp/history.jsonl",
+    historySource: "JSONL",
+  });
+  assert.strictEqual(report.ok, false);
+  assert.strictEqual(report.firestore_source_required, true);
+  assert.ok(report.blockers.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED"));
 })();
 
 (function streakFailsOnSingleLatestOnlyEvidence() {
@@ -164,6 +188,7 @@ function buildFakeDb(rows) {
   assert.ok(checker.__test.resolveHistoryFile({}).endsWith("v2_production_entry_route_canary_history.jsonl"));
   assert.ok(checker.__test.resolveOutputFile({}).endsWith("v2_production_entry_route_canary_streak_latest.json"));
   assert.strictEqual(checker.__test.resolveStreakConfig({}).lookbackHours, 24);
+  assert.strictEqual(checker.__test.resolveStreakConfig({ DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE: "1" }).requireFirestoreSource, true);
   assert.strictEqual(checker.__test.resolveHistorySource({}), "JSONL");
   assert.strictEqual(checker.__test.resolveHistorySource({ DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: "1" }), "FIRESTORE");
 })();

@@ -4,16 +4,19 @@ const assert = require("assert");
 const preflight = require("../v2/schedulerTrafficCollectorPreflight");
 const script = require("../../scripts/check-v2-scheduler-traffic-collector-prereq");
 
-function buildRunService(name) {
+function buildRunService(name, { omitCutoverMode = false } = {}) {
+  const env = [
+    { name: "SCHEDULER_AUTOSTART", value: "0" },
+  ];
+  if (!omitCutoverMode) {
+    env.push({ name: "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE", value: "OPENCLAW_CRON" });
+  }
   return {
     template: {
       spec: {
         containers: [
           {
-            env: [
-              { name: "SCHEDULER_AUTOSTART", value: "0" },
-              { name: "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE", value: "OPENCLAW_CRON" },
-            ],
+            env,
           },
         ],
       },
@@ -26,7 +29,7 @@ function buildRunService(name) {
   };
 }
 
-function fakeExecFactory({ failSchedulerList = false, failRunService = null } = {}) {
+function fakeExecFactory({ failSchedulerList = false, failRunService = null, omitCutoverModeFor = null } = {}) {
   return (cmd, args) => {
     assert.strictEqual(cmd, "gcloud");
     const joined = args.join(" ");
@@ -46,7 +49,7 @@ function fakeExecFactory({ failSchedulerList = false, failRunService = null } = 
         error.code = "PERMISSION_DENIED";
         throw error;
       }
-      return JSON.stringify(buildRunService(serviceName));
+      return JSON.stringify(buildRunService(serviceName, { omitCutoverMode: omitCutoverModeFor === serviceName }));
     }
     throw new Error(`UNEXPECTED_GCLOUD:${joined}`);
   };
@@ -78,6 +81,16 @@ function fakeExecFactory({ failSchedulerList = false, failRunService = null } = 
   });
   assert.strictEqual(report.ok, false);
   assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_COLLECTOR_PREREQ_03_RUN_SERVICE_DESCRIBE_DONBEOLJA_EXIT_WORKER"));
+})();
+
+(function preflightBlocksWhenSchedulerCutoverEnvIsNotVisible() {
+  const report = script.runCheck({ GOOGLE_CLOUD_PROJECT: "donbeolja-dev" }, {
+    execFileSync: fakeExecFactory({ omitCutoverModeFor: "donbeolja" }),
+  });
+  assert.strictEqual(report.ok, false);
+  assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_COLLECTOR_PREREQ_03_RUN_SERVICE_DESCRIBE_DONBEOLJA"));
+  const failed = report.checks.find((row) => row.id === "SCHED_TRAFFIC_COLLECTOR_PREREQ_03_RUN_SERVICE_DESCRIBE_DONBEOLJA");
+  assert.ok(failed.evidence.message.includes("SCHEDULER_TRAFFIC_COLLECTOR_REQUIRED_ENV_MISSING"));
 })();
 
 console.log("V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_TEST_OK");

@@ -54,6 +54,7 @@ function resolveStreakConfig(env = process.env) {
     minRunCount: Math.floor(parsePositiveNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_MIN_RUNS, 12)),
     maxGapMinutes: parsePositiveNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_MAX_GAP_MINUTES, 180),
     firestoreReadLimit: Math.floor(parsePositiveNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_READ_LIMIT, 200)),
+    requireFirestoreSource: String(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE || "").trim() === "1",
   });
 }
 
@@ -130,6 +131,43 @@ function sumCounter(rows, field) {
   return rows.reduce((sum, row) => sum + numberField(row && row.payload, field), 0);
 }
 
+function buildLongRunQualitySummary({
+  ok,
+  historySource,
+  config,
+  healthyRunN,
+  rowN,
+  latestAgeMinutes,
+  coverageMinutes,
+  maxObservedGapMinutes,
+  tp1MissingN,
+  nativeRefreshUnhealthyN,
+  unprotectedWindowViolationN,
+  alertSilentDropN,
+  blockers,
+} = {}) {
+  return Object.freeze({
+    status: ok === true ? "PASS" : "BLOCKED",
+    history_source: trimOrNull(historySource) || "JSONL",
+    firestore_source_required: config && config.requireFirestoreSource === true,
+    lookback_hours: Number(config && config.lookbackHours),
+    min_run_count: Number(config && config.minRunCount),
+    max_gap_minutes: Number(config && config.maxGapMinutes),
+    row_n: Number(rowN) || 0,
+    healthy_run_n: Number(healthyRunN) || 0,
+    latest_age_minutes: Number.isFinite(Number(latestAgeMinutes)) ? Number(latestAgeMinutes) : null,
+    coverage_minutes: Number.isFinite(Number(coverageMinutes)) ? Number(coverageMinutes) : 0,
+    max_observed_gap_minutes: Number.isFinite(Number(maxObservedGapMinutes)) ? Number(maxObservedGapMinutes) : null,
+    defect_counts: Object.freeze({
+      tp1_missing_n: Number(tp1MissingN) || 0,
+      native_refresh_unhealthy_n: Number(nativeRefreshUnhealthyN) || 0,
+      unprotected_window_violation_n: Number(unprotectedWindowViolationN) || 0,
+      alert_silent_drop_n: Number(alertSilentDropN) || 0,
+    }),
+    blockers: Object.freeze(Array.isArray(blockers) ? blockers.slice() : []),
+  });
+}
+
 function evaluateExitRuntimeCanaryStreak({
   history,
   config = resolveStreakConfig({}),
@@ -138,6 +176,7 @@ function evaluateExitRuntimeCanaryStreak({
   historySource = "JSONL",
 } = {}) {
   const parsed = history && typeof history === "object" ? history : { rows: [], invalid_lines: [] };
+  const normalizedHistorySource = trimOrNull(historySource) || "JSONL";
   const lookbackMs = Number(config.lookbackHours) * 60 * 60 * 1000;
   const lookbackStartMs = Number(nowMs) - lookbackMs;
   const rowsInWindow = (Array.isArray(parsed.rows) ? parsed.rows : [])
@@ -164,6 +203,9 @@ function evaluateExitRuntimeCanaryStreak({
   const unprotectedWindowViolationN = sumCounter(rowsInWindow, "unprotected_window_violation_n");
   const alertSilentDropN = sumCounter(rowsInWindow, "alert_silent_drop_n");
   const blockers = [];
+  if (config.requireFirestoreSource === true && normalizedHistorySource !== "FIRESTORE") {
+    blockers.push("EXIT_RUNTIME_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED");
+  }
   if ((parsed.invalid_lines || []).length > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:INVALID_JSONL");
   if (healthyRows.length < Number(config.minRunCount)) blockers.push("EXIT_RUNTIME_CANARY_STREAK:MIN_RUN_COUNT");
   if (unhealthyRows.length > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:UNHEALTHY_ROW_IN_WINDOW");
@@ -176,14 +218,31 @@ function evaluateExitRuntimeCanaryStreak({
   if (nativeRefreshUnhealthyN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:NATIVE_REFRESH_UNHEALTHY");
   if (unprotectedWindowViolationN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:UNPROTECTED_WINDOW");
   if (alertSilentDropN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:ALERT_SILENT_DROP");
+  const ok = blockers.length === 0;
+  const qualitySummary = buildLongRunQualitySummary({
+    ok,
+    historySource: normalizedHistorySource,
+    config,
+    healthyRunN: healthyRows.length,
+    rowN: rowsInWindow.length,
+    latestAgeMinutes,
+    coverageMinutes,
+    maxObservedGapMinutes: gaps.length ? Math.max(...gaps) : null,
+    tp1MissingN,
+    nativeRefreshUnhealthyN,
+    unprotectedWindowViolationN,
+    alertSilentDropN,
+    blockers,
+  });
   return Object.freeze({
-    ok: blockers.length === 0,
-    reason: blockers.length === 0
+    ok,
+    reason: ok
       ? "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"
       : "V2_EXIT_RUNTIME_CANARY_STREAK_BLOCKED",
     generated_at: new Date(Number(nowMs)).toISOString(),
-    history_source: trimOrNull(historySource) || "JSONL",
+    history_source: normalizedHistorySource,
     history_file: trimOrNull(historyFile),
+    firestore_source_required: config.requireFirestoreSource === true,
     lookback_hours: Number(config.lookbackHours),
     min_run_count: Number(config.minRunCount),
     max_gap_minutes: Number(config.maxGapMinutes),
@@ -200,6 +259,7 @@ function evaluateExitRuntimeCanaryStreak({
     native_refresh_unhealthy_n: nativeRefreshUnhealthyN,
     unprotected_window_violation_n: unprotectedWindowViolationN,
     alert_silent_drop_n: alertSilentDropN,
+    long_run_quality_summary: qualitySummary,
     blockers: Object.freeze(blockers),
   });
 }
@@ -270,6 +330,11 @@ async function main(env = process.env) {
     output_file: outputFile,
     history_source: report.history_source,
     history_file: report.history_file,
+    long_run_quality_status: report.long_run_quality_summary && report.long_run_quality_summary.status,
+    tp1_missing_n: report.tp1_missing_n,
+    native_refresh_unhealthy_n: report.native_refresh_unhealthy_n,
+    unprotected_window_violation_n: report.unprotected_window_violation_n,
+    alert_silent_drop_n: report.alert_silent_drop_n,
     blockers: report.blockers,
   }));
   if (report.ok !== true) process.exit(1);
@@ -300,6 +365,7 @@ if (require.main === module) {
       toMs,
       numberField,
       isHealthyExitRuntimeCanaryRow,
+      buildLongRunQualitySummary,
     },
   };
 }

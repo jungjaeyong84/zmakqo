@@ -54,6 +54,7 @@ function resolveStreakConfig(env = process.env) {
     minRunCount: Math.floor(parsePositiveNumber(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_MIN_RUNS, 12)),
     maxGapMinutes: parsePositiveNumber(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_MAX_GAP_MINUTES, 180),
     firestoreReadLimit: Math.floor(parsePositiveNumber(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_READ_LIMIT, 200)),
+    requireFirestoreSource: String(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE || "").trim() === "1",
   });
 }
 
@@ -153,6 +154,7 @@ function evaluateProductionEntryRouteCanaryStreak({
     .sort((left, right) => left.generated_ms - right.generated_ms);
   const healthyRows = rowsInWindow.filter(isHealthyProductionEntryRouteCanaryRow);
   const unhealthyRows = rowsInWindow.filter((row) => !isHealthyProductionEntryRouteCanaryRow(row));
+  const normalizedHistorySource = trimOrNull(historySource) || "JSONL";
   const gaps = [];
   for (let index = 1; index < healthyRows.length; index += 1) {
     gaps.push((healthyRows[index].generated_ms - healthyRows[index - 1].generated_ms) / 60000);
@@ -164,6 +166,9 @@ function evaluateProductionEntryRouteCanaryStreak({
     ? Math.max(0, (healthyRows[healthyRows.length - 1].generated_ms - healthyRows[0].generated_ms) / 60000)
     : 0;
   const blockers = [];
+  if (config.requireFirestoreSource === true && normalizedHistorySource !== "FIRESTORE") {
+    blockers.push("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED");
+  }
   if ((parsed.invalid_lines || []).length > 0) blockers.push("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:INVALID_JSONL");
   if (healthyRows.length < Number(config.minRunCount)) blockers.push("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:MIN_RUN_COUNT");
   if (unhealthyRows.length > 0) blockers.push("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:UNHEALTHY_ROW_IN_WINDOW");
@@ -178,8 +183,9 @@ function evaluateProductionEntryRouteCanaryStreak({
       ? "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"
       : "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_BLOCKED",
     generated_at: new Date(Number(nowMs)).toISOString(),
-    history_source: trimOrNull(historySource) || "JSONL",
+    history_source: normalizedHistorySource,
     history_file: trimOrNull(historyFile),
+    firestore_source_required: config.requireFirestoreSource === true,
     lookback_hours: Number(config.lookbackHours),
     min_run_count: Number(config.minRunCount),
     max_gap_minutes: Number(config.maxGapMinutes),

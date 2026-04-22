@@ -62,6 +62,10 @@ function shouldRefreshProductionEntryRouteCanaryStreak(env = process.env) {
   return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
 }
 
+function isLivePromotionMode(env = process.env) {
+  return upper(env.V2_PROMOTION_MODE) === "LIVE";
+}
+
 function shouldRefreshExitRuntimeCanaryStreak(env = process.env) {
   return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
 }
@@ -180,6 +184,7 @@ async function refreshExitRuntimeCanaryStreak(env = process.env, { db = null } =
     V2_PROMOTION_ARTIFACT_DIR: artifactDir,
     DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ARTIFACT_DIR: artifactDir,
     DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_FILE: outputFile,
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE: isLivePromotionMode(env) ? "1" : trimOrNull(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE),
   });
   let report = null;
   try {
@@ -216,6 +221,7 @@ async function refreshProductionEntryRouteCanaryStreak(env = process.env, { db =
     V2_PROMOTION_ARTIFACT_DIR: artifactDir,
     DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_ARTIFACT_DIR: artifactDir,
     DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILE: outputFile,
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE: isLivePromotionMode(env) ? "1" : trimOrNull(env.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE),
   });
   let report = null;
   try {

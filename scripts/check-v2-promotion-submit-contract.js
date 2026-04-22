@@ -1297,6 +1297,9 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && submitTraceText.includes("runbookChecklist: Object.freeze([\"28\"])")
         && cloudbuildWrapperText.includes("exit_runtime_canary_streak")
         && readText(path.resolve(__dirname, "run-v2-promotion-pipeline.js")).includes("refreshExitRuntimeCanaryStreak")
+        && readText(path.resolve(__dirname, "run-v2-promotion-pipeline.js")).includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE")
+        && exitRuntimeStreakCheckerText.includes("EXIT_RUNTIME_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED")
+        && exitRuntimeStreakCheckerText.includes("long_run_quality_summary")
         && readText(path.resolve(__dirname, "check-v2-promotion-deploy-decision.js")).includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithJsonlExitRuntimeStreakStillFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithStaleExitRuntimeStreakProvenanceFailsClosed"),
@@ -1377,7 +1380,9 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && runbookCheckerText.includes("v2_exit_runtime_canary")
         && runbookCheckerText.includes("v2_production_entry_route_canary")
         && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCutoverAudit.js")).includes("OPENCLAW_CLOUD_SCHEDULER_JOBS")
-        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficStateCollector.js")).includes("buildOpenClawCloudSchedulerJobs"),
+        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficStateCollector.js")).includes("buildOpenClawCloudSchedulerJobs")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("SCHEDULER_TRAFFIC_COLLECTOR_REQUIRED_ENV_MISSING")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-scheduler-traffic-collector-preflight.test.js")).includes("preflightBlocksWhenSchedulerCutoverEnvIsNotVisible"),
       reason: cloudbuildWrapperText.includes("openclaw_cloud_scheduler_jobs")
         && submitWrapperText.includes("v2_exit_runtime_canary")
         && runbookCheckerText.includes("v2_production_entry_route_canary")
@@ -1390,7 +1395,9 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       label: "LIVE streak artifacts require generated freshness provenance",
       ok: repairFirestoreStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
         && productionEntryRouteStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && productionEntryRouteStreakCheckerText.includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED")
         && exitRuntimeStreakCheckerText.includes("generated_at: new Date(Number(nowMs)).toISOString()")
+        && exitRuntimeStreakCheckerText.includes("EXIT_RUNTIME_CANARY_STREAK:FIRESTORE_SOURCE_REQUIRED")
         && unifiedPromotionReportGeneratorText.includes("artifact_generated_age_minutes")
         && unifiedPromotionReportGeneratorText.includes("artifact_generated_at")
         && deployDecisionCheckerText.includes("artifact_generated_age_minutes")
