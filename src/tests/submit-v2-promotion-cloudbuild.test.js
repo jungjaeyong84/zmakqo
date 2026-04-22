@@ -274,6 +274,7 @@ function seedBoundedSubmitArtifacts(
         unprotected_window_violation_n: 0,
         alert_silent_drop_n: 0,
         alert_retry_unresolved_n: 0,
+        alert_outbox_integrity_gap_n: 0,
         trail_activation_evidence_gap_n: 0,
         collector_execution_summary: {
           status: "PASS",
@@ -305,6 +306,7 @@ function seedBoundedSubmitArtifacts(
             unprotected_window_violation_n: 0,
             alert_silent_drop_n: 0,
             alert_retry_unresolved_n: 0,
+            alert_outbox_integrity_gap_n: 0,
             trail_activation_evidence_gap_n: 0,
           },
           blockers: [],

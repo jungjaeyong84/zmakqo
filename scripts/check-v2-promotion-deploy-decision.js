@@ -512,6 +512,7 @@ function hasExitRuntimeCanaryStreak(summary) {
     Number(streak.unprotected_window_violation_n || 0) === 0 &&
     Number(streak.alert_silent_drop_n || 0) === 0 &&
     Number(streak.alert_retry_unresolved_n || 0) === 0 &&
+    Number(streak.alert_outbox_integrity_gap_n || 0) === 0 &&
     Number(streak.trail_activation_evidence_gap_n || 0) === 0 &&
     hasExitRuntimeCollectorExecutionSummary(streak) &&
     hasExitRuntimeLongRunQualitySummary(streak) &&
@@ -553,6 +554,7 @@ function hasExitRuntimeLongRunQualitySummary(streak) {
       "unprotected_window_violation_n",
       "alert_silent_drop_n",
       "alert_retry_unresolved_n",
+      "alert_outbox_integrity_gap_n",
       "trail_activation_evidence_gap_n",
     ]) &&
     Number.isFinite(maxGapMinutes) &&
@@ -566,6 +568,7 @@ function hasExitRuntimeLongRunQualitySummary(streak) {
     Number(defectCounts.unprotected_window_violation_n || 0) === 0 &&
     Number(defectCounts.alert_silent_drop_n || 0) === 0 &&
     Number(defectCounts.alert_retry_unresolved_n || 0) === 0 &&
+    Number(defectCounts.alert_outbox_integrity_gap_n || 0) === 0 &&
     Number(defectCounts.trail_activation_evidence_gap_n || 0) === 0 &&
     ensureArray(quality.blockers).length === 0
   );

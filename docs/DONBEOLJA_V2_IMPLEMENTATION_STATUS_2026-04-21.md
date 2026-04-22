@@ -2236,7 +2236,7 @@ V1 약점 재발 방지:
 
 1. LIVE deploy decision은 이제 `bounded_runtime_summary.exit_runtime_canary_streak` 가 24시간 Firestore-backed coverage를 증명하지 못하면 `DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED` 로 fail-closed 한다
 2. 해당 streak는 `coverage_minutes >= 1440`, `latest_age_minutes <= max_gap_minutes`, `max_observed_gap_minutes <= max_gap_minutes`, `history_source=FIRESTORE`, current artifact dir provenance를 모두 요구한다
-3. TP1 missing, native refresh unhealthy, unprotected window, silent alert drop 카운트가 하나라도 있으면 LIVE 승격이 막힌다
+3. TP1 missing, native refresh unhealthy, unprotected window, silent alert drop, alert retry unresolved, alert outbox integrity gap 카운트가 하나라도 있으면 LIVE 승격이 막힌다
 4. promotion pipeline은 unified report 직전에 `v2_exit_runtime_canary_streak_latest.json` 를 현재 artifact dir에 다시 생성한다
 5. OpenClaw decision -> sizing -> protected entry -> TP1 -> TRAIL -> TRAIL_HIT fixture를 promotion test path에 추가했다
 
@@ -2263,7 +2263,7 @@ V1 약점 재발 방지:
 1. `run:v2-exit-runtime-canary` 는 `ACTIVE_PROTECTED` position cycle만 bounded query로 읽고, 각 cycle의 projection/protection runtime/transition/outbox를 position 단위 직접 조회로 확인한다
 2. producer는 exchange write를 하지 않고 `exchange_write_performed=false` 를 artifact와 Firestore history에 남긴다
 3. PRE_TP1 상태에서는 TP1 native order 존재를 검사하고, TRAIL_ACTIVE 상태에서는 native stop 존재를 검사한다
-4. native refresh unhealthy, unprotected window 초과, transition-alert outbox lineage 누락, lineage는 맞지만 아직 `SENT`가 아닌 알림은 각각 `tp1_missing_n`, `native_refresh_unhealthy_n`, `unprotected_window_violation_n`, `alert_silent_drop_n`, `alert_retry_unresolved_n` 카운트로 streak gate에 전달된다
+4. native refresh unhealthy, unprotected window 초과, transition-alert outbox lineage 누락, lineage는 맞지만 아직 `SENT`가 아닌 알림, transition별 outbox 중복/고아 outbox/position cycle drift는 각각 `tp1_missing_n`, `native_refresh_unhealthy_n`, `unprotected_window_violation_n`, `alert_silent_drop_n`, `alert_retry_unresolved_n`, `alert_outbox_integrity_gap_n` 카운트로 streak gate에 전달된다
 5. `test:v2-promotion` 은 이제 단일 producer 테스트와 24시간 streak checker 테스트를 모두 실행한다
 6. submit contract checker는 producer가 없거나 bounded read-only 증거 생산 경로가 빠지면 `SUBMIT_CONTRACT_CHK_48` 로 fail-closed 한다
 

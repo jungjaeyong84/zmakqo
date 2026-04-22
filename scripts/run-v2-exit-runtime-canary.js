@@ -80,6 +80,7 @@ async function main({ env = process.env, db = null, setProcessExitCode = require
     fail_n: artifact.fail_n,
     alert_silent_drop_n: artifact.alert_silent_drop_n,
     alert_retry_unresolved_n: artifact.alert_retry_unresolved_n,
+    alert_outbox_integrity_gap_n: artifact.alert_outbox_integrity_gap_n,
     blockers: artifact.blockers,
   }));
   if (!artifact.ok && setProcessExitCode) process.exitCode = 1;

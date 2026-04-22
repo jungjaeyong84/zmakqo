@@ -186,6 +186,47 @@ function hasSentOutboxForTransition({ transition, outboxes }) {
   return resolved.ok === true && resolved.status === "SENT";
 }
 
+function buildAlertOutboxIntegrityChecks({ positionCycleId, transitions, outboxes }) {
+  const transitionIds = new Set(
+    asArray(transitions)
+      .map((row) => trimOrNull(row && row.canonical_transition_id))
+      .filter(Boolean)
+  );
+  const byTransitionId = new Map();
+  const checks = [];
+  for (const outbox of asArray(outboxes)) {
+    const alertOutboxId = trimOrNull(outbox && outbox.alert_outbox_id);
+    const transitionId = trimOrNull(outbox && outbox.canonical_transition_id);
+    if (transitionId) {
+      byTransitionId.set(transitionId, (byTransitionId.get(transitionId) || 0) + 1);
+    }
+    checks.push(Object.freeze({
+      id: "EXIT_RUNTIME_CANARY_ALERT_OUTBOX_POSITION_CYCLE_MATCH",
+      ok: trimOrNull(outbox && outbox.position_cycle_id) === positionCycleId,
+      position_cycle_id: positionCycleId,
+      alert_outbox_id: alertOutboxId,
+      outbox_position_cycle_id: trimOrNull(outbox && outbox.position_cycle_id),
+    }));
+    checks.push(Object.freeze({
+      id: "EXIT_RUNTIME_CANARY_ALERT_OUTBOX_HAS_TRANSITION",
+      ok: !!transitionId && transitionIds.has(transitionId),
+      position_cycle_id: positionCycleId,
+      alert_outbox_id: alertOutboxId,
+      canonical_transition_id: transitionId,
+    }));
+  }
+  for (const [transitionId, count] of byTransitionId.entries()) {
+    checks.push(Object.freeze({
+      id: "EXIT_RUNTIME_CANARY_ALERT_OUTBOX_SINGLETON_PER_TRANSITION",
+      ok: count === 1,
+      position_cycle_id: positionCycleId,
+      canonical_transition_id: transitionId,
+      outbox_n: count,
+    }));
+  }
+  return Object.freeze(checks);
+}
+
 function findTransition(transitions, transitionEvent) {
   const expected = upper(transitionEvent);
   return asArray(transitions).find((row) => upper(row && row.transition_event) === expected) || null;
@@ -304,6 +345,7 @@ function buildPositionCanaryChecks({ row, config }) {
     position_cycle_id: positionCycleId,
     issue_codes: Object.freeze(Array.from(issueCodes)),
   }));
+  checks.push(...buildAlertOutboxIntegrityChecks({ positionCycleId, transitions, outboxes }));
 
   const requiredTransitions = TRANSITION_ALERT_REQUIREMENTS[stage] || [];
   for (const transitionEvent of requiredTransitions) {
@@ -345,6 +387,11 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
   const unprotectedWindow = failed.filter((check) => check.id === "EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_WITHIN_LIMIT" || check.id === "EXIT_RUNTIME_CANARY_NO_UNPROTECTED_ACTIVE_POSITION").length;
   const alertSilentDrop = failed.filter((check) => check.id.endsWith("_TRANSITION_ALERT_OUTBOX_LINEAGE")).length;
   const alertRetryUnresolved = failed.filter((check) => check.id.endsWith("_TRANSITION_ALERT_SENT")).length;
+  const alertOutboxIntegrityGap = failed.filter((check) => [
+    "EXIT_RUNTIME_CANARY_ALERT_OUTBOX_POSITION_CYCLE_MATCH",
+    "EXIT_RUNTIME_CANARY_ALERT_OUTBOX_HAS_TRANSITION",
+    "EXIT_RUNTIME_CANARY_ALERT_OUTBOX_SINGLETON_PER_TRANSITION",
+  ].includes(check.id)).length;
   const trailActivationEvidenceGap = failed.filter((check) => [
     "EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_PRESENT",
     "EXIT_RUNTIME_CANARY_TRAIL_PROTECTION_EVIDENCE_PRESENT",
@@ -359,6 +406,7 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
   if (unprotectedWindow > 0) blockers.push("EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_VIOLATION");
   if (alertSilentDrop > 0) blockers.push("EXIT_RUNTIME_CANARY_ALERT_SILENT_DROP");
   if (alertRetryUnresolved > 0) blockers.push("EXIT_RUNTIME_CANARY_ALERT_RETRY_UNRESOLVED");
+  if (alertOutboxIntegrityGap > 0) blockers.push("EXIT_RUNTIME_CANARY_ALERT_OUTBOX_INTEGRITY_GAP");
   if (trailActivationEvidenceGap > 0) blockers.push("EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_GAP");
   for (const id of failedIds) {
     if (id.includes("QUERY_LIMIT_REACHED") && !blockers.includes(id)) blockers.push(id);
@@ -370,6 +418,7 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
     unprotected_window_violation_n: unprotectedWindow,
     alert_silent_drop_n: alertSilentDrop,
     alert_retry_unresolved_n: alertRetryUnresolved,
+    alert_outbox_integrity_gap_n: alertOutboxIntegrityGap,
     trail_activation_evidence_gap_n: trailActivationEvidenceGap,
     blockers: Object.freeze(blockers),
   });
@@ -396,6 +445,7 @@ function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false,
     unprotected_window_violation_n: summary.unprotected_window_violation_n,
     alert_silent_drop_n: summary.alert_silent_drop_n,
     alert_retry_unresolved_n: summary.alert_retry_unresolved_n,
+    alert_outbox_integrity_gap_n: summary.alert_outbox_integrity_gap_n,
     trail_activation_evidence_gap_n: summary.trail_activation_evidence_gap_n,
     check_n: checks.length,
     fail_n: failedChecks.length,
@@ -423,6 +473,11 @@ function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false,
         sl_order_present: hasPlacedOrder(runtime, "sl_order_id", "sl_order_status"),
         tp1_order_present: hasPlacedOrder(runtime, "tp1_order_id", "tp1_order_status"),
         native_stop_price: Number(runtime.native_stop_price) || null,
+        alert_outbox_integrity_gap_n: buildAlertOutboxIntegrityChecks({
+          positionCycleId: trimOrNull(positionCycle.position_cycle_id),
+          transitions: asArray(row && row.transitions),
+          outboxes: asArray(row && row.outboxes),
+        }).filter((check) => check.ok !== true).length,
         trail_activation_evidence_present: upper(projection.stage) === "TRAIL_ACTIVE"
           ? !!findTransition(asArray(row && row.transitions), "TRAIL_ACTIVATED")
           : null,
@@ -462,6 +517,7 @@ module.exports = {
     parseNonNegativeNumber,
     hasPlacedOrder,
     buildPositionCanaryChecks,
+    buildAlertOutboxIntegrityChecks,
     resolveAlertOutboxForTransition,
     hasSentOutboxForTransition,
     findTransition,

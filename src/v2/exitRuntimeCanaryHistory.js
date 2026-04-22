@@ -86,6 +86,7 @@ function buildExitRuntimeCanaryHistoryDoc({
     unprotected_window_violation_n: Number(source.unprotected_window_violation_n) || 0,
     alert_silent_drop_n: Number(source.alert_silent_drop_n) || 0,
     alert_retry_unresolved_n: Number(source.alert_retry_unresolved_n) || 0,
+    alert_outbox_integrity_gap_n: Number(source.alert_outbox_integrity_gap_n) || 0,
     trail_activation_evidence_gap_n: Number(source.trail_activation_evidence_gap_n) || 0,
     artifact_snapshot: Object.freeze(snapshot),
   });

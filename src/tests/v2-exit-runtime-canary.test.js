@@ -104,6 +104,7 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
   assert.strictEqual(artifact.native_refresh_unhealthy_n, 0);
   assert.strictEqual(artifact.unprotected_window_violation_n, 0);
   assert.strictEqual(artifact.alert_silent_drop_n, 0);
+  assert.strictEqual(artifact.alert_outbox_integrity_gap_n, 0);
 })();
 
 (function preTp1MissingTp1OrderFailsClosed() {
@@ -172,8 +173,54 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
   assert.strictEqual(artifact.ok, false);
   assert.strictEqual(artifact.alert_silent_drop_n, 0);
   assert.strictEqual(artifact.alert_retry_unresolved_n, 1);
+  assert.strictEqual(artifact.alert_outbox_integrity_gap_n, 0);
   assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_TP1_REACHED_TRANSITION_ALERT_SENT"));
   assert.ok(artifact.blockers.includes("EXIT_RUNTIME_CANARY_ALERT_RETRY_UNRESOLVED"));
+})();
+
+(function duplicateAlertOutboxFailsClosedSeparatelyFromRetry() {
+  const tp1 = transition("TP1_REACHED", "CET__TP1");
+  const duplicateOutbox = {
+    ...outbox("CET__TP1"),
+    alert_outbox_id: "TAO__CET__TP1__DUP",
+    delivery_request: {
+      dedupeKey: "TAO__CET__TP1__DUP",
+      dedupeFingerprint: "CET__TP1",
+    },
+  };
+  const artifact = evaluateExitRuntimeCanaryState({
+    rows: [stateRow({
+      projectionDoc: projection({ stage: "TP1_DONE", tp1_done: true }),
+      transitions: [tp1],
+      outboxes: [outbox("CET__TP1"), duplicateOutbox],
+    })],
+    config: resolveExitRuntimeCanaryConfig({}),
+  });
+  assert.strictEqual(artifact.ok, false);
+  assert.strictEqual(artifact.alert_silent_drop_n, 0);
+  assert.strictEqual(artifact.alert_retry_unresolved_n, 0);
+  assert.strictEqual(artifact.alert_outbox_integrity_gap_n, 1);
+  assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_ALERT_OUTBOX_SINGLETON_PER_TRANSITION"));
+  assert.ok(artifact.blockers.includes("EXIT_RUNTIME_CANARY_ALERT_OUTBOX_INTEGRITY_GAP"));
+})();
+
+(function orphanAlertOutboxFailsClosedSeparatelyFromLineage() {
+  const tp1 = transition("TP1_REACHED", "CET__TP1");
+  const orphanOutbox = outbox("CET__ORPHAN");
+  const artifact = evaluateExitRuntimeCanaryState({
+    rows: [stateRow({
+      projectionDoc: projection({ stage: "TP1_DONE", tp1_done: true }),
+      transitions: [tp1],
+      outboxes: [outbox("CET__TP1"), orphanOutbox],
+    })],
+    config: resolveExitRuntimeCanaryConfig({}),
+  });
+  assert.strictEqual(artifact.ok, false);
+  assert.strictEqual(artifact.alert_silent_drop_n, 0);
+  assert.strictEqual(artifact.alert_retry_unresolved_n, 0);
+  assert.strictEqual(artifact.alert_outbox_integrity_gap_n, 1);
+  assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_ALERT_OUTBOX_HAS_TRANSITION"));
+  assert.ok(artifact.blockers.includes("EXIT_RUNTIME_CANARY_ALERT_OUTBOX_INTEGRITY_GAP"));
 })();
 
 (function trailActiveRequiresTrailStopAndTransitionAlerts() {
@@ -195,6 +242,7 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
   assert.strictEqual(artifact.ok, true);
   assert.strictEqual(artifact.alert_silent_drop_n, 0);
   assert.strictEqual(artifact.alert_retry_unresolved_n, 0);
+  assert.strictEqual(artifact.alert_outbox_integrity_gap_n, 0);
   assert.strictEqual(artifact.trail_activation_evidence_gap_n, 0);
 })();
 

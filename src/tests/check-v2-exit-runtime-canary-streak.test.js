@@ -21,6 +21,7 @@ function buildHealthyPayload(generatedAt) {
     unprotected_window_violation_n: 0,
     alert_silent_drop_n: 0,
     alert_retry_unresolved_n: 0,
+    alert_outbox_integrity_gap_n: 0,
     trail_activation_evidence_gap_n: 0,
     fail_n: 0,
     failed_check_ids: [],
@@ -97,6 +98,7 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.unprotected_window_violation_n, 0);
   assert.strictEqual(report.alert_silent_drop_n, 0);
   assert.strictEqual(report.alert_retry_unresolved_n, 0);
+  assert.strictEqual(report.alert_outbox_integrity_gap_n, 0);
   assert.strictEqual(report.trail_activation_evidence_gap_n, 0);
   assert.strictEqual(report.firestore_source_required, false);
   assert.strictEqual(report.collector_execution_summary.status, "PASS");
@@ -107,9 +109,39 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.long_run_quality_summary.status, "PASS");
   assert.strictEqual(report.long_run_quality_summary.defect_counts.tp1_missing_n, 0);
   assert.strictEqual(report.long_run_quality_summary.defect_counts.alert_retry_unresolved_n, 0);
+  assert.strictEqual(report.long_run_quality_summary.defect_counts.alert_outbox_integrity_gap_n, 0);
   assert.strictEqual(report.long_run_quality_summary.defect_counts.trail_activation_evidence_gap_n, 0);
   assert.strictEqual(report.long_run_quality_summary.coverage_minutes, 1440);
   assert.deepStrictEqual(report.blockers, []);
+})();
+
+(function streakFailsOnAlertOutboxIntegrityGap() {
+  const nowMs = Date.parse("2026-04-22T12:00:00.000Z");
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push(buildHealthyPayload(new Date(nowMs - hour * 60 * 60000).toISOString()));
+  }
+  rows[3] = {
+    ...rows[3],
+    ok: false,
+    reason: "V2_EXIT_RUNTIME_CANARY_BLOCKED",
+    alert_outbox_integrity_gap_n: 1,
+    fail_n: 1,
+    failed_check_ids: ["EXIT_RUNTIME_CANARY_ALERT_OUTBOX_SINGLETON_PER_TRANSITION"],
+  };
+  const report = checker.evaluateExitRuntimeCanaryStreak({
+    history: buildHistory(rows),
+    config: {
+      lookbackHours: 24,
+      minRunCount: 12,
+      maxGapMinutes: 180,
+    },
+    nowMs,
+  });
+  assert.strictEqual(report.ok, false);
+  assert.strictEqual(report.alert_outbox_integrity_gap_n, 1);
+  assert.ok(report.blockers.includes("EXIT_RUNTIME_CANARY_STREAK:ALERT_OUTBOX_INTEGRITY_GAP"));
+  assert.strictEqual(report.long_run_quality_summary.defect_counts.alert_outbox_integrity_gap_n, 1);
 })();
 
 (function streakFailsOnAlertRetryUnresolved() {

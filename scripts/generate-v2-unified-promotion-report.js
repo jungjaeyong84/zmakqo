@@ -372,6 +372,7 @@ function buildExitRuntimeCanaryStreakSummary(streak) {
     unprotected_window_violation_n: normalizeNumber(row.unprotected_window_violation_n),
     alert_silent_drop_n: normalizeNumber(row.alert_silent_drop_n),
     alert_retry_unresolved_n: normalizeNumber(row.alert_retry_unresolved_n),
+    alert_outbox_integrity_gap_n: normalizeNumber(row.alert_outbox_integrity_gap_n),
     trail_activation_evidence_gap_n: normalizeNumber(row.trail_activation_evidence_gap_n),
     blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
   });
