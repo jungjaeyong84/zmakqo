@@ -233,6 +233,10 @@ const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
   SUBMIT_CHK_06: Object.freeze(["recommended_next_action"]),
   SUBMIT_CHK_07: Object.freeze(["deploy_decision_summary.blocker_summary.blocker_n"]),
   SUBMIT_CHK_08: Object.freeze(["lineage_contract_hash", "deploy_decision_summary.bounded_runtime_summary.lineage_contract.hash", "lineage_consistency_summary"]),
+  SUBMIT_CHK_20A: Object.freeze([
+    "deploy_decision_summary.bounded_runtime_summary.production_entry_protected_canary",
+    "deploy_decision_summary.blocker_summary.has_production_entry_protected_canary_blocker",
+  ]),
 });
 
 function resolvePathOrNull(value) {
@@ -448,10 +452,11 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null, lineage
 
   const recommendedNextAction = buildContextRecommendedNextAction(row, artifactDirCoherence);
   const blockerSummary = normalizeObject(row.blocker_summary);
+  const hasProtectedEntryCanaryBlocker = blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker === true;
   const lineageConsistency = normalizeObject(lineageConsistencySummary)
     || buildLineageConsistencySummary({ deployDecisionSummary: row });
   const lineageOk = lineageConsistency && lineageConsistency.ok === true;
-  const checks = Object.freeze([
+  const checks = [
     Object.freeze({
       id: "SUBMIT_CHK_01A",
       ok: artifactCoherenceOk,
@@ -488,9 +493,19 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null, lineage
         ? "cloudbuild lineage hashes are consistent for bounded provenance trace"
         : `cloudbuild lineage consistency failed: ${trimOrNull(lineageConsistency && lineageConsistency.reason) || "LINEAGE_CONSISTENCY_FAILED"}`,
     }),
-  ]);
+  ];
+  if (hasProtectedEntryCanaryBlocker) {
+    checks.push(Object.freeze({
+      id: "SUBMIT_CHK_20A",
+      ok: false,
+      runbook_checklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_20A"),
+      fields: CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_20A,
+      reason: "cloudbuild deploy decision reports protected entry canary blocker",
+    }));
+  }
+  const frozenChecks = Object.freeze(checks);
   const failedSubmitCheckIds = Object.freeze(
-    checks.filter((entry) => entry.ok !== true).map((entry) => entry.id)
+    frozenChecks.filter((entry) => entry.ok !== true).map((entry) => entry.id)
   );
   const blockerFamilies = buildContextBlockerFamilies(blockerSummary);
   const effectiveBlockerFamilies = failedSubmitCheckIds.includes("SUBMIT_CHK_01A") || failedSubmitCheckIds.includes("SUBMIT_CHK_08")
@@ -499,8 +514,8 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null, lineage
   const primaryBlockerFamily = effectiveBlockerFamilies[0] || null;
   const warningSummary = normalizeObject(row.warning_summary);
   return Object.freeze({
-    relevant_submit_check_ids: Object.freeze(checks.map((entry) => entry.id)),
-    relevant_runbook_checklist: submitTrace.collectRunbookChecklist(checks.map((entry) => entry.id)),
+    relevant_submit_check_ids: Object.freeze(frozenChecks.map((entry) => entry.id)),
+    relevant_runbook_checklist: submitTrace.collectRunbookChecklist(frozenChecks.map((entry) => entry.id)),
     failed_submit_check_ids: failedSubmitCheckIds,
     failed_runbook_checklist: submitTrace.collectRunbookChecklist(failedSubmitCheckIds),
     blocker_families: effectiveBlockerFamilies,
@@ -510,7 +525,7 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null, lineage
     deploy_warning_runbook_checklist: collectContextDeployWarningRunbookChecklist(row),
     lineage_consistency_summary: lineageConsistency,
     recommended_next_action_reason_code: buildContextRecommendedNextActionReasonCode(row, artifactDirCoherence),
-    checks,
+    checks: frozenChecks,
   });
 }
 

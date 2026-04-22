@@ -269,6 +269,7 @@ function buildExpectedContextBlockerFamilies(blockerSummary) {
   const families = [];
   if (row.has_provenance_blocker === true) families.push("PROVENANCE");
   if (row.has_candidate_selection_blocker === true) families.push("CANDIDATE_SELECTION");
+  if (row.has_production_entry_protected_canary_blocker === true) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker === true) families.push("BOUNDED_RUNTIME");
   if (row.has_entry_boundary_blocker === true) families.push("ENTRY_BOUNDARY");
   if (row.has_production_cutover_blocker === true) families.push("PRODUCTION_CUTOVER");
@@ -290,8 +291,7 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     : null;
   if (!context || !trace || !deploySummary || !blockerSummary) return false;
 
-  const expectedRelevantSubmitChecks = ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"];
-  const expectedRelevantRunbook = submitTrace.collectRunbookChecklist(expectedRelevantSubmitChecks);
+  const baseExpectedRelevantSubmitChecks = ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"];
   const failedSubmitChecks = [];
   const artifactDirCoherence = context.artifact_dir_coherence && typeof context.artifact_dir_coherence === "object"
     ? context.artifact_dir_coherence
@@ -300,10 +300,12 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
   const actionOk = trimOrNull(context.recommended_next_action) === "PROCEED_WITH_SUBMIT_WRAPPER";
   const blockerOk = Number(blockerSummary.blocker_n) === 0;
   const lineageOk = hasContextLineageConsistency({ cloudbuildContext: context });
+  const protectedEntryCanaryOk = blockerSummary.has_production_entry_protected_canary_blocker !== true;
   if (!artifactDirOk) failedSubmitChecks.push("SUBMIT_CHK_01A");
   if (!actionOk) failedSubmitChecks.push("SUBMIT_CHK_06");
   if (!blockerOk) failedSubmitChecks.push("SUBMIT_CHK_07");
   if (!lineageOk) failedSubmitChecks.push("SUBMIT_CHK_08");
+  if (!protectedEntryCanaryOk) failedSubmitChecks.push("SUBMIT_CHK_20A");
 
   const expectedFailedRunbook = submitTrace.collectRunbookChecklist(failedSubmitChecks);
   const baseExpectedFamilies = buildExpectedContextBlockerFamilies(blockerSummary);
@@ -318,7 +320,12 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     ["SUBMIT_CHK_06", actionOk],
     ["SUBMIT_CHK_07", blockerOk],
     ["SUBMIT_CHK_08", lineageOk],
+    ["SUBMIT_CHK_20A", protectedEntryCanaryOk],
   ]);
+  const expectedRelevantSubmitChecks = protectedEntryCanaryOk
+    ? baseExpectedRelevantSubmitChecks
+    : [...baseExpectedRelevantSubmitChecks, "SUBMIT_CHK_20A"];
+  const expectedRelevantRunbook = submitTrace.collectRunbookChecklist(expectedRelevantSubmitChecks);
 
   const checksMatch = expectedRelevantSubmitChecks.every((id) => {
     const row = checksById.get(id);

@@ -894,6 +894,44 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
   }), true);
 })();
 
+(function contextSubmitTraceHelperAcceptsProtectedEntryCanaryCheck() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
+    cloudbuildContext: {
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__PROTECTED", "PCY__TRACE__PROTECTED"),
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      lineage_consistency_summary: buildLineageConsistencySummary(),
+      recommended_next_action: "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION",
+      recommended_next_action_reason_code: "PROTECTED_ENTRY_CANARY_BLOCKER",
+      submit_trace: {
+        relevant_submit_check_ids: ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08", "SUBMIT_CHK_20A"],
+        relevant_runbook_checklist: ["1", "5", "9", "11", "13", "16", "17", "27A"],
+        failed_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_20A"],
+        failed_runbook_checklist: ["11", "13", "27A"],
+        blocker_families: ["PROTECTED_ENTRY_CANARY"],
+        primary_blocker_family: "PROTECTED_ENTRY_CANARY",
+        recommended_next_action_reason_code: "PROTECTED_ENTRY_CANARY_BLOCKER",
+        checks: [
+          { id: "SUBMIT_CHK_01A", ok: true, runbook_checklist: ["1", "5", "9"] },
+          { id: "SUBMIT_CHK_06", ok: false, runbook_checklist: ["11"] },
+          { id: "SUBMIT_CHK_07", ok: false, runbook_checklist: ["13"] },
+          { id: "SUBMIT_CHK_08", ok: true, runbook_checklist: ["16", "17"] },
+          { id: "SUBMIT_CHK_20A", ok: false, runbook_checklist: ["27A"] },
+        ],
+      },
+      deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
+        blocker_summary: {
+          blocker_n: 1,
+          has_production_entry_protected_canary_blocker: true,
+        },
+      },
+    },
+  }), true);
+})();
+
 (function contextSubmitTraceHelperRejectsFailedSubmitCheckDrift() {
   assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
     cloudbuildContext: {

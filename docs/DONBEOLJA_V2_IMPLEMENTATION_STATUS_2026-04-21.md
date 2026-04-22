@@ -2005,3 +2005,27 @@ V1 약점 재발 방지:
 1. V1에서는 보호주문 누락이 일반 TP/stop 상태 오류와 섞여 원인 판독이 늦었다
 2. 이번 단계는 보호주문 체인 실패를 별도 blocker family로 승격해 운영자가 “SL/TP1 보호주문 증명 실패”를 즉시 읽게 만든다
 3. 따라서 보호주문 문제를 bounded runtime 재생성으로만 처리하다가 실제 원인 수정을 놓치는 경로를 줄인다
+
+## 2026-04-22 Protected Entry Canary Context Trace
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-cloudbuild.js`
+2. `scripts/check-v2-canary-runbook.js`
+3. `src/tests/run-v2-promotion-cloudbuild.test.js`
+4. `src/tests/check-v2-canary-runbook.test.js`
+5. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+6. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. CloudBuild context submit trace는 보호주문 canary blocker가 있을 때 `SUBMIT_CHK_20A` 를 relevant/failed check에 포함한다
+2. 해당 실패는 runbook checklist `27A` 로 즉시 역추적된다
+3. runbook verifier도 같은 조건을 검사하므로 context trace와 submit wrapper trace가 서로 다른 문제 분류를 만들 수 없다
+4. 일반 context trace는 기존 `SUBMIT_CHK_01A/06/07/08` 경로를 유지한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 보호주문 누락 원인이 watchdog/TP 상태 오류로 늦게 드러났다
+2. 이번 단계는 deploy decision이 보호주문 canary 실패를 보는 즉시 CloudBuild context에서 `SUBMIT_CHK_20A -> 27A` 로 연결한다
+3. 따라서 submit wrapper를 열기 전에도 운영자가 “보호주문 체인 실패”를 정확히 판단할 수 있다

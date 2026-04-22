@@ -627,6 +627,37 @@ function seedRunbookArtifacts(dir, cycleId) {
   );
 })();
 
+(function contextSubmitTraceMapsProtectedEntryCanaryToRunbook27A() {
+  const trace = cloudbuild.__test.buildContextSubmitTrace({
+    approved: false,
+    lineage_contract_hash: "lineage-hash-fixture",
+    recommended_next_action: "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION",
+    blocker_summary: {
+      blocker_n: 1,
+      has_provenance_blocker: false,
+      has_candidate_selection_blocker: false,
+      has_production_entry_protected_canary_blocker: true,
+      has_bounded_runtime_blocker: false,
+      has_watchdog_blocker: false,
+    },
+    bounded_runtime_summary: {
+      lineage_contract: { hash: "lineage-hash-fixture" },
+    },
+  }, {
+    artifactDirCoherence: { ok: true },
+  });
+  assert.deepStrictEqual(trace.relevant_submit_check_ids, ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08", "SUBMIT_CHK_20A"]);
+  assert.deepStrictEqual(trace.relevant_runbook_checklist, ["1", "5", "9", "11", "13", "16", "17", "27A"]);
+  assert.deepStrictEqual(trace.failed_submit_check_ids, ["SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_20A"]);
+  assert.deepStrictEqual(trace.failed_runbook_checklist, ["11", "13", "27A"]);
+  assert.deepStrictEqual(trace.blocker_families, ["PROTECTED_ENTRY_CANARY"]);
+  assert.strictEqual(trace.primary_blocker_family, "PROTECTED_ENTRY_CANARY");
+  const protectedCheck = trace.checks.find((row) => row.id === "SUBMIT_CHK_20A");
+  assert.ok(protectedCheck);
+  assert.strictEqual(protectedCheck.ok, false);
+  assert.deepStrictEqual(protectedCheck.runbook_checklist, ["27A"]);
+})();
+
 (function warningSummaryClassifiesBothLiveReadinessStreakWarnings() {
   const summary = cloudbuild.__test.summarizeWarnings([
     "DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_NOT_READY",

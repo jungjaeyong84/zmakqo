@@ -102,6 +102,8 @@ optional review artifact:
 
 `submit_trace` 는 cloudbuild context 단계에서 submit 차단과 runbook checklist를 역으로 연결하는 요약 필드다.
 
+보호주문 canary 차단은 예외적으로 context 단계에서도 `SUBMIT_CHK_20A` 를 relevant/failed submit check에 포함해야 한다. 즉 `DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED` 가 있으면 submit wrapper까지 기다리지 않고 `promotion-cloudbuild-context.json.submit_trace.failed_runbook_checklist` 에 `27A` 가 보여야 한다.
+
 최소 포함 항목:
 
 1. `relevant_submit_check_ids`
