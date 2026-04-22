@@ -1275,6 +1275,7 @@ LIVE readiness artifact 4종도 long-run streak/protected entry canary와 같은
 7. `artifact_generated_age_minutes`
 
 LIVE submit은 `artifact_current_dir_match=true`, 기대 filename 일치, `generated_at`/`artifact_generated_at` 존재, `artifact_generated_age_minutes <= 180` 을 모두 요구한다.
+또한 LIVE 장시간 canary streak 3종(`repair_firestore_canary_streak`, `production_entry_route_canary_streak`, `exit_runtime_canary_streak`)은 각각 24시간 coverage/freshness 조건을 만족하는 것만으로는 부족하다. 세 artifact의 `artifact_generated_at` 시각이 서로 30분을 초과해 벌어지면 서로 다른 운영 창의 PASS 증거를 조합한 것으로 간주하고 `DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH` 로 fail-closed 해야 한다.
 
 이 중 하나라도 깨지면 submit wrapper는 해당 `SUBMIT_CHK_*` 를 실패시키고 `STALE_ARTIFACT_PROVENANCE` family로 분류해야 한다.
 즉, 오래된 readiness PASS JSON을 현재 artifact dir에 복사해 LIVE 승격을 통과시키는 경로는 허용하지 않는다.

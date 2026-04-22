@@ -44,7 +44,7 @@ const contractCheck = require("../../scripts/check-v2-promotion-submit-contract"
     },
   });
   assert.strictEqual(result.ok, false);
-  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_72"));
+  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_73"));
   assert.ok(!result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_71"));
 })();
 
@@ -57,8 +57,20 @@ const contractCheck = require("../../scripts/check-v2-promotion-submit-contract"
     },
   });
   assert.strictEqual(result.ok, false);
-  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_72"));
+  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_73"));
   assert.ok(!result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_71"));
+})();
+
+(function liveLongRunStreakTemporalCoherenceContractFailsWhenDeployBlockerIsMissing() {
+  const deployDecisionText = contractCheck.__test.readText(contractCheck.__test.FILES.deployDecisionChecker)
+    .replaceAll("DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH", "DEPLOY_DECISION:LIVE_STREAK_WINDOW_DISABLED");
+  const result = contractCheck.__test.evaluateSubmitContract({
+    textOverrides: {
+      [contractCheck.__test.FILES.deployDecisionChecker]: deployDecisionText,
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_72"));
 })();
 
 (function formatterFixtureProducesCanonicalBlockedHeadline() {

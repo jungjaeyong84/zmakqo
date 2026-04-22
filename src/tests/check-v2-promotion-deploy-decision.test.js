@@ -1487,6 +1487,39 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
 })();
 
+(function liveWithMismatchedLongRunStreakArtifactWindowFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__STREAK_WINDOW");
+  bounded.repair_firestore_canary_streak.artifact_generated_at = "2026-04-22T08:00:00.000Z";
+  bounded.production_entry_route_canary_streak.artifact_generated_at = "2026-04-22T12:00:00.000Z";
+  bounded.exit_runtime_canary_streak.artifact_generated_at = "2026-04-22T12:00:00.000Z";
+  assert.deepStrictEqual(deployDecision.__test.collectLiveStreakTemporalCoherenceBlockers(bounded, {
+    mode: "LIVE",
+  }), ["DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH"]);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__STREAK_WINDOW",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__STREAK_WINDOW",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__STREAK_WINDOW",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH"));
+})();
+
 (function canaryWithoutOpenClawExecutionSeparationFailsClosed() {
   const bounded = buildBoundedRuntimeSummaryFixture();
   delete bounded.openclaw_execution_separation_summary;

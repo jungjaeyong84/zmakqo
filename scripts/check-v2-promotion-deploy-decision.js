@@ -38,6 +38,7 @@ const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = Object.freeze([
   "V2_PRODUCTION_ENTRY_LIVE_REQUEST_BUILDER_EMBEDS_SIZING",
 ]);
 const MIN_LIVE_STREAK_COVERAGE_MINUTES = 24 * 60;
+const MAX_LIVE_STREAK_ARTIFACT_SKEW_MINUTES = 30;
 const MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES = 180;
 const MAX_OPENCLAW_LEARNER_SHADOW_EVALUATION_AGE_MINUTES = 24 * 60;
 
@@ -757,6 +758,36 @@ function hasStaleArtifactFreshness(row, maxAgeMinutes) {
   );
 }
 
+function parseIsoMs(value) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  const ms = Date.parse(text);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function collectLiveStreakTemporalCoherenceBlockers(summary, { mode = null } = {}) {
+  const row = normalizeObject(summary);
+  if (!row || mode !== "LIVE") return [];
+  const streakRows = [
+    row.repair_firestore_canary_streak,
+    row.production_entry_route_canary_streak,
+    row.exit_runtime_canary_streak,
+  ].map(normalizeObject).filter(Boolean);
+  const generatedMsRows = streakRows
+    .map((entry) => parseIsoMs(entry && entry.artifact_generated_at))
+    .filter((value) => value != null);
+  if (streakRows.length !== 3 || generatedMsRows.length !== 3) {
+    return ["DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH"];
+  }
+  const minGeneratedMs = Math.min(...generatedMsRows);
+  const maxGeneratedMs = Math.max(...generatedMsRows);
+  const skewMinutes = (maxGeneratedMs - minGeneratedMs) / 60000;
+  if (!Number.isFinite(skewMinutes) || skewMinutes > MAX_LIVE_STREAK_ARTIFACT_SKEW_MINUTES) {
+    return ["DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH"];
+  }
+  return [];
+}
+
 function pushUnique(rows, value) {
   if (!rows.includes(value)) rows.push(value);
 }
@@ -1075,6 +1106,7 @@ function buildDeployDecision(unifiedReport, {
     positionCycleId,
     artifactDir,
   }));
+  blockers.push(...collectLiveStreakTemporalCoherenceBlockers(boundedRuntimeSummary, { mode }));
   if (mode === "SHADOW") {
     blockers.push("DEPLOY_DECISION:SHADOW_MODE_NOT_DEPLOYABLE");
   }
@@ -1238,6 +1270,7 @@ if (require.main === module) {
       hasStaleArtifactFreshness,
       collectStaleArtifactProvenanceBlockers,
       collectLiveEvidenceCycleConsistencyBlockers,
+      collectLiveStreakTemporalCoherenceBlockers,
       buildAlertRetrySummary,
       hasAlertRetryAttention,
       hasExactCandidateSnapshotCounts,

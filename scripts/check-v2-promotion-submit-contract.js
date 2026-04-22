@@ -2005,6 +2005,23 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     }),
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_72",
+      label: "LIVE long-run streak artifacts require temporal coherence",
+      ok: deployDecisionCheckerText.includes("MAX_LIVE_STREAK_ARTIFACT_SKEW_MINUTES")
+        && deployDecisionCheckerText.includes("collectLiveStreakTemporalCoherenceBlockers")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithMismatchedLongRunStreakArtifactWindowFailsClosed")
+        && artifactContractText.includes("LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH")
+        && artifactContractText.includes("30분을 초과")
+        && runbookText.includes("DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH")
+        && runbookText.includes("artifact_generated_at` 시각은 서로 30분 이내"),
+      reason: deployDecisionCheckerText.includes("collectLiveStreakTemporalCoherenceBlockers")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithMismatchedLongRunStreakArtifactWindowFailsClosed")
+        ? "LIVE deploy decision now rejects mixing 24h repair, entry, and exit streak PASS artifacts from different generation windows"
+        : "LIVE 24h canary streaks must not pass from individually fresh but mutually stale artifact windows",
+      file: FILES.deployDecisionChecker,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_73",
       label: "CloudBuild context traces OpenClaw supreme blockers independently",
       ok: runbookText.includes("| 13F | `SUBMIT_CHK_06`, `SUBMIT_CHK_07`, `SUBMIT_CHK_23`")
         && runbookText.includes("openclaw_supreme=BLOCKED")
