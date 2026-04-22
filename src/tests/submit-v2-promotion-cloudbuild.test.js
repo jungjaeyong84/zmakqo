@@ -87,6 +87,21 @@ function buildFillSyncCanonicalBoundaryAuditFixture() {
   };
 }
 
+function buildProductionRuntimeChainAuditFixture() {
+  return {
+    ok: true,
+    reason: "V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_PASS",
+    scope: "production_runtime_chain",
+    contract: {
+      ok: true,
+      reason: "V2_PRODUCTION_RUNTIME_CHAIN_PASS",
+      check_n: 12,
+      fail_n: 0,
+      failed_check_ids: [],
+    },
+  };
+}
+
 function seedBoundedSubmitArtifacts(
   dir,
   cycleId,
@@ -130,6 +145,7 @@ function seedBoundedSubmitArtifacts(
       violations: [],
     },
     fill_sync_canonical_boundary_audit: buildFillSyncCanonicalBoundaryAuditFixture(),
+    production_runtime_chain_audit: buildProductionRuntimeChainAuditFixture(),
     production_cutover_audit: buildProductionCutoverAuditFixture(),
     ...(alertRetrySummary ? { alert_retry_summary: alertRetrySummary } : {}),
     bounded_runtime_summary: {
@@ -670,6 +686,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.runtime_chain_audit_summary_required, true);
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, true);
+  assert.strictEqual(request.approval_contract.production_runtime_chain_audit_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, true);
   assert.strictEqual(request.approval_contract.production_runtime_config_contract_required, true);
   assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, true);
@@ -691,6 +708,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.runtime_chain_audit_summary.field, "bounded_runtime_summary.runtime_chain_audit_summary");
   assert.strictEqual(request.approval_evidence_sources.entry_boundary_audit.field, "entry_boundary_audit");
   assert.strictEqual(request.approval_evidence_sources.fill_sync_canonical_boundary_audit.field, "fill_sync_canonical_boundary_audit");
+  assert.strictEqual(request.approval_evidence_sources.production_runtime_chain_audit.field, "production_runtime_chain_audit");
   assert.strictEqual(request.approval_evidence_sources.production_cutover_audit.field, "production_cutover_audit");
   assert.strictEqual(request.approval_evidence_sources.production_runtime_config_contract.field, "auditWorkspaceV2ProductionRuntimeConfigContract");
   assert.strictEqual(request.approval_evidence_sources.production_live_entry_sizing_contract.field, "production_cutover_audit.contract.checks");
@@ -748,6 +766,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.runbook_review_pass_required, true);
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, true);
+  assert.strictEqual(request.approval_contract.production_runtime_chain_audit_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, true);
   assert.strictEqual(request.approval_contract.production_runtime_config_contract_required, true);
   assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, true);
@@ -965,6 +984,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, true);
   assert.strictEqual(request.approval_contract.exit_runtime_canary_streak_required, true);
   assert.strictEqual(request.approval_contract.production_entry_protected_canary_required, true);
+  assert.strictEqual(request.approval_contract.production_runtime_chain_audit_required, true);
   assert.strictEqual(request.approval_contract.openclaw_supreme_control_plane_closed_loop_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.scheduler_traffic_cutover_readiness_summary_required, true);
@@ -1006,6 +1026,10 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(
     request.approval_evidence_sources.production_entry_protected_canary.field,
     "bounded_runtime_summary.production_entry_protected_canary"
+  );
+  assert.strictEqual(
+    request.approval_evidence_sources.production_runtime_chain_audit.field,
+    "production_runtime_chain_audit"
   );
   assert.strictEqual(
     request.approval_evidence_sources.production_runtime_config_contract.field,
@@ -1082,6 +1106,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.runtime_chain_audit_summary_required, false);
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, false);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, false);
+  assert.strictEqual(request.approval_contract.production_runtime_chain_audit_required, false);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, false);
   assert.strictEqual(request.approval_contract.production_runtime_config_contract_required, false);
   assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, false);
@@ -1608,12 +1633,14 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(payload.approval_contract.runtime_chain_audit_summary_required, true);
     assert.strictEqual(payload.approval_contract.entry_boundary_audit_required, true);
     assert.strictEqual(payload.approval_contract.fill_sync_canonical_boundary_audit_required, true);
+    assert.strictEqual(payload.approval_contract.production_runtime_chain_audit_required, true);
     assert.strictEqual(payload.approval_contract.runbook_review_pass_required, true);
     assert.strictEqual(payload.approval_contract.production_runtime_config_contract_required, true);
     assert.strictEqual(payload.approval_evidence_sources.required, true);
     assert.strictEqual(payload.approval_evidence_sources.runtime_chain_audit_summary.field, "bounded_runtime_summary.runtime_chain_audit_summary");
     assert.strictEqual(payload.approval_evidence_sources.entry_boundary_audit.field, "entry_boundary_audit");
     assert.strictEqual(payload.approval_evidence_sources.fill_sync_canonical_boundary_audit.field, "fill_sync_canonical_boundary_audit");
+    assert.strictEqual(payload.approval_evidence_sources.production_runtime_chain_audit.field, "production_runtime_chain_audit");
     assert.strictEqual(payload.approval_evidence_sources.production_runtime_config_contract.field, "auditWorkspaceV2ProductionRuntimeConfigContract");
     assert.strictEqual(payload.approval_evidence_sources.recommended_next_action.expected_value, "PROCEED_WITH_SUBMIT_WRAPPER");
     assert.strictEqual(payload.approval_verification.required, true);

@@ -466,6 +466,7 @@ function buildApprovalContract(plan) {
       runtime_chain_audit_summary_required: false,
       entry_boundary_audit_required: false,
       fill_sync_canonical_boundary_audit_required: false,
+      production_runtime_chain_audit_required: false,
       production_cutover_audit_required: false,
       production_runtime_config_contract_required: false,
       production_live_entry_sizing_contract_required: false,
@@ -498,6 +499,7 @@ function buildApprovalContract(plan) {
     runtime_chain_audit_summary_required: true,
     entry_boundary_audit_required: true,
     fill_sync_canonical_boundary_audit_required: true,
+    production_runtime_chain_audit_required: true,
     production_cutover_audit_required: true,
     production_runtime_config_contract_required: true,
     production_live_entry_sizing_contract_required: true,
@@ -537,6 +539,7 @@ function buildApprovalEvidenceSources(plan) {
       runtime_chain_audit_summary: null,
       entry_boundary_audit: null,
       fill_sync_canonical_boundary_audit: null,
+      production_runtime_chain_audit: null,
       production_cutover_audit: null,
       production_runtime_config_contract: null,
       production_live_entry_sizing_contract: null,
@@ -585,6 +588,11 @@ function buildApprovalEvidenceSources(plan) {
       file: "promotion-deploy-decision.json",
       field: "fill_sync_canonical_boundary_audit",
       note: "ok=true, reason=V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_PASS, scope=binance_fills_sync_canonical_boundary, contract.fail_n=0",
+    }),
+    production_runtime_chain_audit: buildEvidenceRef({
+      file: "promotion-deploy-decision.json",
+      field: "production_runtime_chain_audit",
+      note: "ok=true, reason=V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_PASS, scope=production_runtime_chain, contract.fail_n=0",
     }),
     production_cutover_audit: buildEvidenceRef({
       file: "promotion-deploy-decision.json",
@@ -734,6 +742,7 @@ function hasRequiredApprovalContract(contract, { promotionMode = null } = {}) {
     row.runtime_chain_audit_summary_required === true &&
     row.entry_boundary_audit_required === true &&
     row.fill_sync_canonical_boundary_audit_required === true &&
+    row.production_runtime_chain_audit_required === true &&
     row.production_cutover_audit_required === true &&
     row.production_runtime_config_contract_required === true &&
     row.production_live_entry_sizing_contract_required === true &&
@@ -1567,6 +1576,7 @@ function buildApprovalVerification(request) {
       "approval_contract.runtime_chain_audit_summary_required",
       "approval_contract.entry_boundary_audit_required",
       "approval_contract.fill_sync_canonical_boundary_audit_required",
+      "approval_contract.production_runtime_chain_audit_required",
       "approval_contract.production_cutover_audit_required",
       "approval_contract.production_runtime_config_contract_required",
       "approval_contract.production_live_entry_sizing_contract_required",
@@ -1704,6 +1714,23 @@ function buildApprovalVerification(request) {
     artifactContract: [
       "approval_contract.fill_sync_canonical_boundary_audit_required",
       "approval_evidence_sources.fill_sync_canonical_boundary_audit",
+    ],
+  }));
+
+  checks.push(withDocRefs(buildVerificationCheck({
+    id: "SUBMIT_CHK_04C",
+    label: "V2 production runtime chain source audit complete",
+    ok: deployDecisionCheck.__test.hasProductionRuntimeChainAudit(deployDecision && deployDecision.production_runtime_chain_audit),
+    reason: deployDecisionCheck.__test.hasProductionRuntimeChainAudit(deployDecision && deployDecision.production_runtime_chain_audit)
+      ? "V2 production runtime chain audit passed"
+      : "V2 production runtime chain audit is missing or failed",
+    file: artifacts.deployDecision && artifacts.deployDecision.filePath,
+    field: "production_runtime_chain_audit",
+  }), {
+    runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_04C"),
+    artifactContract: [
+      "approval_contract.production_runtime_chain_audit_required",
+      "approval_evidence_sources.production_runtime_chain_audit",
     ],
   }));
 

@@ -2576,3 +2576,31 @@ V1 약점 재발 방지:
 1. 이 단계는 실제 exchange write를 켜지 않는다
 2. LIVE 승격에는 production entry route canary, exit runtime canary, repair Firestore canary, OpenClaw supreme closed-loop evidence가 24시간 이상 실제 artifact로 축적되어야 한다
 3. learner는 shadow-only이며, OpenClaw가 모든 실행 결정을 자동 변경하는 단계는 별도 promotion gate 이후에만 가능하다
+
+## 2026-04-22 Production Runtime Chain Deploy Decision Lock
+
+추가 증거:
+
+1. `scripts/check-v2-promotion-deploy-decision.js`
+2. `scripts/submit-v2-promotion-cloudbuild.js`
+3. `scripts/lib/v2-promotion-submit-trace.js`
+4. `scripts/check-v2-promotion-submit-contract.js`
+5. `src/tests/check-v2-promotion-deploy-decision.test.js`
+6. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+7. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+8. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. production runtime chain audit는 이제 package test에만 있는 보조 검사기가 아니다
+2. `promotion-deploy-decision.json.production_runtime_chain_audit` 가 top-level 승인 증거로 들어간다
+3. CANARY/LIVE deploy decision은 이 audit가 없거나 `V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_PASS` 가 아니면 `DEPLOY_DECISION:V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_REQUIRED` 로 fail-closed 한다
+4. submit request의 `approval_contract.production_runtime_chain_audit_required=true` 와 `approval_evidence_sources.production_runtime_chain_audit` 가 최종 CloudBuild submit 경로까지 남는다
+5. submit verifier는 `SUBMIT_CHK_04C` 로 이 top-level source audit를 다시 검사하고, runbook checklist 14B로 역추적된다
+6. submit contract checker는 `SUBMIT_CONTRACT_CHK_76` 으로 deploy decision, submit wrapper, trace, runbook, artifact contract, tests가 모두 같은 계약을 공유하는지 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 게이트성 테스트가 있어도 실제 deploy decision 승인 조건과 submit evidence source에서 빠져 우회될 수 있었다
+2. 이번 단계는 production runtime chain source audit를 deploy decision과 submit wrapper 양쪽에 직접 넣었다
+3. 따라서 entry/protection/fill/reducer/tick/trail/alert/watchdog/repair 본선 연결이 깨진 커밋은 test path뿐 아니라 실제 승격 승인 artifact에서도 차단된다

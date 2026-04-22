@@ -461,6 +461,7 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   assert.strictEqual(deployDecision.__test.hasFreshProtectedCanaryArtifact(decision.bounded_runtime_summary.production_entry_protected_canary), true);
   assert.strictEqual(deployDecision.__test.hasEntryBoundaryAudit(decision.entry_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasFillSyncCanonicalBoundaryAudit(decision.fill_sync_canonical_boundary_audit), true);
+  assert.strictEqual(deployDecision.__test.hasProductionRuntimeChainAudit(decision.production_runtime_chain_audit), true);
   assert.strictEqual(deployDecision.__test.hasProductionCutoverAudit(decision.production_cutover_audit), true);
   assert.strictEqual(deployDecision.__test.hasProductionLiveEntrySizingContract(decision.production_cutover_audit), true);
   assert.strictEqual(decision.alert_retry_attention_required, true);
@@ -644,6 +645,44 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_REQUIRED"));
+})();
+
+(function canaryWithoutProductionRuntimeChainAuditFailsClosed() {
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__BAD_RUNTIME_CHAIN",
+    bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__BAD_RUNTIME_CHAIN",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__BAD_RUNTIME_CHAIN",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionRuntimeChainAudit: {
+      ok: false,
+      reason: "V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_BLOCKED",
+      scope: "production_runtime_chain",
+      contract: {
+        ok: false,
+        reason: "V2_PRODUCTION_RUNTIME_CHAIN_BLOCKED",
+        fail_n: 1,
+        failed_check_ids: ["V2_PRODUCTION_CHAIN_TRAIL_ACTIVATION_REQUIRES_NATIVE_OK"],
+      },
+    },
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_REQUIRED"));
 })();
 
 (function canaryWithoutProductionCutoverAuditFailsClosed() {
@@ -2003,6 +2042,7 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
     assert.strictEqual(stored.bounded_runtime_summary.evidence_snapshot_summary.ok, true);
     assert.strictEqual(stored.entry_boundary_audit.reason, "V2_ENTRY_BOUNDARY_AUDIT_PASS");
     assert.strictEqual(stored.fill_sync_canonical_boundary_audit.reason, "V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_PASS");
+    assert.strictEqual(stored.production_runtime_chain_audit.reason, "V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_PASS");
     assert.strictEqual(stored.production_cutover_audit.reason, "V2_PRODUCTION_CUTOVER_AUDIT_PASS");
     assert.strictEqual(stored.candidate_selection_summary.selection_status, "READY");
     assert.strictEqual(stored.candidate_selection_summary.selection_contract.ok, true);

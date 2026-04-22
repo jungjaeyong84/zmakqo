@@ -2085,6 +2085,28 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "V2 production runtime chain audit must be exposed as a checker and included in test:v2-promotion",
       file: FILES.productionRuntimeChainAudit,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_76",
+      label: "deploy decision and submit wrapper require production runtime chain audit",
+      ok: deployDecisionCheckerText.includes("buildV2ProductionRuntimeChainAuditSummary")
+        && deployDecisionCheckerText.includes("hasProductionRuntimeChainAudit")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_REQUIRED")
+        && deployDecisionCheckerText.includes("production_runtime_chain_audit: productionRuntimeChainAudit")
+        && submitWrapperText.includes("production_runtime_chain_audit_required")
+        && submitWrapperText.includes("approval_evidence_sources.production_runtime_chain_audit")
+        && submitWrapperText.includes("SUBMIT_CHK_04C")
+        && submitTraceText.includes("SUBMIT_CHK_04C")
+        && runbookText.includes("| 14B | `SUBMIT_CHK_04C` |")
+        && artifactContractText.includes("approval_contract.production_runtime_chain_audit_required")
+        && artifactContractText.includes("approval_evidence_sources.production_runtime_chain_audit")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithoutProductionRuntimeChainAuditFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("production_runtime_chain_audit_required"),
+      reason: deployDecisionCheckerText.includes("DEPLOY_DECISION:V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_REQUIRED")
+        && submitWrapperText.includes("SUBMIT_CHK_04C")
+        ? "deploy decision and submit wrapper now require the production runtime chain source audit as first-class approval evidence"
+        : "production runtime chain audit must be a deploy decision blocker and submit approval evidence source, not only a package-level test",
+      file: FILES.deployDecisionChecker,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

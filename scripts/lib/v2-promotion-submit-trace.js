@@ -32,6 +32,11 @@ const TRACE_INDEX = Object.freeze([
     summary: "runtime chain audit complete",
   }),
   Object.freeze({
+    id: "SUBMIT_CHK_04C",
+    runbookChecklist: Object.freeze(["14B"]),
+    summary: "production runtime chain source audit complete",
+  }),
+  Object.freeze({
     id: "SUBMIT_CHK_13",
     runbookChecklist: Object.freeze(["21"]),
     summary: "V2 entry boundary audit complete",

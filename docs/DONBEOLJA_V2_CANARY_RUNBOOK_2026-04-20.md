@@ -71,6 +71,8 @@ npm run check:v2-canary-runbook
    submit trace-back: `SUBMIT_CHK_04`
 14A. `promotion-deploy-decision.json.bounded_runtime_summary.runtime_chain_audit_summary` 가 존재하고 `ok=true`, `check_n > 0`, `fail_n=0` 인가
     submit trace-back: `SUBMIT_CHK_04B`
+14B. `promotion-deploy-decision.json.production_runtime_chain_audit` 가 존재하고 `ok=true`, `reason=V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_PASS`, `contract.fail_n=0` 인가
+    submit trace-back: `SUBMIT_CHK_04C`
 15. `promotion-deploy-decision.json.candidate_selection_summary.selection_contract` 가 존재하고 `selected_runtime_chain_ok` 를 포함한 모든 계약 플래그가 `true` 인가
    submit trace-back: `SUBMIT_CHK_09`
 16. `promotion-preflight.json.lineage_contract.hash`, `promotion-runtime-manifest.json.snapshot_meta.lineage_contract.hash`, `promotion-deploy-decision.json.bounded_runtime_summary.lineage_contract.hash` 가 모두 같은가
@@ -106,6 +108,7 @@ npm run check:v2-canary-runbook
 | 13F | `SUBMIT_CHK_06`, `SUBMIT_CHK_07`, `SUBMIT_CHK_23` | `promotion-cloudbuild-context.json` | `blocker_summary.has_openclaw_supreme_control_plane_blocker`, `submit_trace.blocker_families`, `submit_trace.recommended_next_action_reason_code`, `submit_trace.checks[]`, `final_status_line` | OpenClaw supreme blocker가 있으면 `has_openclaw_supreme_control_plane_blocker=true`, `submit_trace.blocker_families` 에 `OPENCLAW_SUPREME_CONTROL_PLANE`, `recommended_next_action_reason_code=OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER`, `submit_trace.checks[]` 에 `SUBMIT_CHK_23`/runbook `31`, `final_status_line` 에 `openclaw_supreme=BLOCKED` 가 남아야 함 | OpenClaw decision -> permit -> outcome -> learner shadow -> collector lineage closed-loop가 닫히지 않았으므로 해당 evidence를 복구하고 deploy decision 및 CloudBuild context를 다시 생성 |
 | 14 | `SUBMIT_CHK_04` | `promotion-deploy-decision.json` | `bounded_runtime_summary.evidence_snapshot_summary.ok`, `missing_transition_evidence_n`, `missing_protection_runtime_evidence_n` | `ok=true`, 두 누락 카운트 `0` | runtime snapshot/exporter부터 다시 생성 |
 | 14A | `SUBMIT_CHK_04B` | `promotion-deploy-decision.json` | `bounded_runtime_summary.runtime_chain_audit_summary.ok`, `check_n`, `fail_n`, `failed_check_ids` | `ok=true`, `check_n > 0`, `fail_n=0`, `failed_check_ids=[]` | runtime chain audit 생성 경로와 entry/protection/reducer/alert 연결 불변식 재검토 |
+| 14B | `SUBMIT_CHK_04C` | `promotion-deploy-decision.json` | `production_runtime_chain_audit.ok`, `reason`, `scope`, `contract.reason`, `contract.fail_n`, `contract.failed_check_ids` | `ok=true`, `reason=V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_PASS`, `scope=production_runtime_chain`, `contract.reason=V2_PRODUCTION_RUNTIME_CHAIN_PASS`, `contract.fail_n=0`, `contract.failed_check_ids=[]` | production runtime chain source audit를 다시 실행하고 entry/protection/fill/reducer/tick/trail/alert/watchdog/repair 중 깨진 계열을 먼저 수정 |
 | 15 | `SUBMIT_CHK_09` | `promotion-deploy-decision.json` | `candidate_selection_summary.selection_contract.ok`, `scan_limit_respected`, `recent_window_enforced`, `selected_candidate_present`, `selected_preflight_ok`, `selected_runtime_chain_ok`, `selected_cycle_matches_preflight`, `selected_cycle_matches_collector_env`, `selected_snapshot_counts_exact` | 모든 값 `true` | auto-select 결과 폐기 후 candidate selector부터 다시 시작 |
 | 16 | `SUBMIT_CHK_08` | `promotion-preflight.json`, `promotion-runtime-manifest.json`, `promotion-deploy-decision.json` | `lineage_contract.hash` | 세 hash가 동일 | artifact dir 폐기 후 preflight부터 다시 시작 |
 | 17 | `SUBMIT_CHK_08` | `promotion-cloudbuild-context.json`, `promotion-deploy-decision.json` | `lineage_consistency_summary`, `lineage_contract_hash`, `bounded_runtime_summary.lineage_contract.hash` | context lineage consistency가 PASS이고 두 hash가 동일 | submit 직전 wrapper provenance 재검토 후 중단 |
@@ -138,6 +141,7 @@ npm run check:v2-canary-runbook
 | `SUBMIT_CHK_03` | `8` | bounded runtime summary complete |
 | `SUBMIT_CHK_04` | `14` | evidence snapshot coverage complete |
 | `SUBMIT_CHK_04B` | `14A` | runtime chain audit complete |
+| `SUBMIT_CHK_04C` | `14B` | production runtime chain source audit complete |
 | `SUBMIT_CHK_05` | `runbook aggregate` | automated runbook review overall status must be PASS |
 | `SUBMIT_CHK_06` | `11` | cloudbuild next action is submit |
 | `SUBMIT_CHK_07` | `13` | cloudbuild deploy decision summary matches current deploy decision and blocker count is zero |

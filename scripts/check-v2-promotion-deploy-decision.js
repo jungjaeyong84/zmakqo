@@ -7,6 +7,7 @@ const { hasLineageContract, contractsMatch } = require("./lib/v2-promotion-linea
 const { auditV2EntryBoundaries } = require("../src/v2/entryBoundaryAudit");
 const { auditV2FillSyncCanonicalBoundary } = require("../src/v2/fillSyncCanonicalBoundaryAudit");
 const { auditWorkspaceV2ProductionCutoverContract } = require("../src/v2/productionCutoverAudit");
+const { auditV2ProductionRuntimeChain } = require("../src/v2/productionRuntimeChainAudit");
 
 const OUTPUT_FILENAME = "promotion-deploy-decision.json";
 const UNIFIED_REPORT_FILENAME = "unified-promotion-report.json";
@@ -186,6 +187,44 @@ function hasFillSyncCanonicalBoundaryAudit(summary) {
     contract &&
     contract.ok === true &&
     trimOrNull(contract.reason) === "V2_FILL_SYNC_CANONICAL_BOUNDARY_PASS" &&
+    Number(contract.fail_n) === 0 &&
+    ensureArray(contract.failed_check_ids).length === 0
+  );
+}
+
+function buildV2ProductionRuntimeChainAuditSummary() {
+  try {
+    const contract = auditV2ProductionRuntimeChain();
+    return Object.freeze({
+      ok: contract.ok === true,
+      reason: contract.ok === true ? "V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_PASS" : "V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_BLOCKED",
+      scope: "production_runtime_chain",
+      contract,
+    });
+  } catch (error) {
+    return Object.freeze({
+      ok: false,
+      reason: "V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_THROWN",
+      scope: "production_runtime_chain",
+      contract: null,
+      error: {
+        message: error && error.message ? error.message : String(error),
+      },
+    });
+  }
+}
+
+function hasProductionRuntimeChainAudit(summary) {
+  const row = normalizeObject(summary);
+  const contract = normalizeObject(row && row.contract);
+  return !!(
+    row &&
+    row.ok === true &&
+    trimOrNull(row.reason) === "V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_PASS" &&
+    trimOrNull(row.scope) === "production_runtime_chain" &&
+    contract &&
+    contract.ok === true &&
+    trimOrNull(contract.reason) === "V2_PRODUCTION_RUNTIME_CHAIN_PASS" &&
     Number(contract.fail_n) === 0 &&
     ensureArray(contract.failed_check_ids).length === 0
   );
@@ -1001,6 +1040,7 @@ function buildPromotionPositionLineageBlockers({
 function buildDeployDecision(unifiedReport, {
   entryBoundaryAudit = buildV2EntryBoundaryAuditSummary(),
   fillSyncCanonicalBoundaryAudit = buildV2FillSyncCanonicalBoundaryAuditSummary(),
+  productionRuntimeChainAudit = buildV2ProductionRuntimeChainAuditSummary(),
   productionCutoverAudit = buildV2ProductionCutoverAuditSummary(),
   artifactDir = null,
 } = {}) {
@@ -1073,6 +1113,9 @@ function buildDeployDecision(unifiedReport, {
   if (["CANARY", "LIVE"].includes(mode || "") && !hasFillSyncCanonicalBoundaryAudit(fillSyncCanonicalBoundaryAudit)) {
     blockers.push("DEPLOY_DECISION:V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_REQUIRED");
   }
+  if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionRuntimeChainAudit(productionRuntimeChainAudit)) {
+    blockers.push("DEPLOY_DECISION:V2_PRODUCTION_RUNTIME_CHAIN_AUDIT_REQUIRED");
+  }
   if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionCutoverAudit(productionCutoverAudit)) {
     blockers.push("DEPLOY_DECISION:V2_PRODUCTION_CUTOVER_AUDIT_REQUIRED");
   }
@@ -1137,6 +1180,7 @@ function buildDeployDecision(unifiedReport, {
     selector_meta: selectorMeta,
     entry_boundary_audit: entryBoundaryAudit,
     fill_sync_canonical_boundary_audit: fillSyncCanonicalBoundaryAudit,
+    production_runtime_chain_audit: productionRuntimeChainAudit,
     production_cutover_audit: productionCutoverAudit,
     alert_retry_summary: alertRetrySummary,
     alert_retry_attention_required: hasAlertRetryAttention(alertRetrySummary),
@@ -1250,6 +1294,8 @@ if (require.main === module) {
       hasEntryBoundaryAudit,
       buildV2FillSyncCanonicalBoundaryAuditSummary,
       hasFillSyncCanonicalBoundaryAudit,
+      buildV2ProductionRuntimeChainAuditSummary,
+      hasProductionRuntimeChainAudit,
       buildV2ProductionCutoverAuditSummary,
       hasProductionCutoverAudit,
       REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS,
