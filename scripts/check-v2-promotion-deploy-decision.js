@@ -29,6 +29,12 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = Object.freeze([
   "COLLECTED_OUTBOX_POSITION_CYCLE_MATCH",
   "REPLAY_GATE_EPISODE_VALID",
 ]);
+const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = Object.freeze([
+  "V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_RESOLVES_TRANSPORTS_BEFORE_ROUTE",
+  "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REQUIRE_APPROVED_SIZING",
+  "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCK_DRY_RUN_CFG",
+  "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_DO_NOT_EXPOSE_SECRETS",
+]);
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -214,6 +220,28 @@ function hasProductionCutoverAudit(summary) {
     Number(contract.fail_n) === 0 &&
     ensureArray(contract.failed_check_ids).length === 0
   );
+}
+
+function hasProductionLiveEntrySizingContract(summary) {
+  const row = normalizeObject(summary);
+  const contract = normalizeObject(row && row.contract);
+  const checks = ensureArray(contract && contract.checks);
+  if (
+    !row ||
+    !contract ||
+    row.ok !== true ||
+    contract.ok !== true ||
+    Number(contract.fail_n) !== 0 ||
+    ensureArray(contract.failed_check_ids).length !== 0 ||
+    checks.length === 0
+  ) {
+    return false;
+  }
+  const byId = new Map(checks.map((check) => [trimOrNull(check && check.id), check]));
+  return REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS.every((id) => {
+    const check = byId.get(id);
+    return check && check.ok === true;
+  });
 }
 
 function hasBoundedRuntimeEvidence(summary) {
@@ -534,6 +562,9 @@ function buildDeployDecision(unifiedReport, {
   if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionCutoverAudit(productionCutoverAudit)) {
     blockers.push("DEPLOY_DECISION:V2_PRODUCTION_CUTOVER_AUDIT_REQUIRED");
   }
+  if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionLiveEntrySizingContract(productionCutoverAudit)) {
+    blockers.push("DEPLOY_DECISION:V2_PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_REQUIRED");
+  }
   if (mode === "LIVE" && !hasRepairFirestoreCanaryStreak(boundedRuntimeSummary)) {
     blockers.push("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED");
   }
@@ -683,6 +714,8 @@ if (require.main === module) {
       hasFillSyncCanonicalBoundaryAudit,
       buildV2ProductionCutoverAuditSummary,
       hasProductionCutoverAudit,
+      REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS,
+      hasProductionLiveEntrySizingContract,
       hasRepairFirestoreCanaryStreak,
       hasProductionEntryRouteCanaryStreak,
       buildAlertRetrySummary,

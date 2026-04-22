@@ -738,6 +738,40 @@ function evaluateSubmitContract() {
       file: FILES.artifactContract,
     }),
     buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_16A",
+      label: "runbook maps V2 production live entry sizing submit check",
+      ok: runbookText.includes("| `SUBMIT_CHK_20` | `27` | V2 production live entry sizing contract complete |"),
+      reason: runbookText.includes("| `SUBMIT_CHK_20` | `27` | V2 production live entry sizing contract complete |")
+        ? "runbook reverse index maps SUBMIT_CHK_20 to checklist 27"
+        : "runbook must map SUBMIT_CHK_20 to checklist 27",
+      file: FILES.runbook,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_16B",
+      label: "artifact contract requires V2 production live entry sizing contract",
+      ok: artifactContractText.includes("approval_contract.production_live_entry_sizing_contract_required")
+        && artifactContractText.includes("approval_evidence_sources.production_live_entry_sizing_contract"),
+      reason: artifactContractText.includes("approval_contract.production_live_entry_sizing_contract_required")
+        && artifactContractText.includes("approval_evidence_sources.production_live_entry_sizing_contract")
+        ? "artifact contract includes production live entry sizing approval contract and evidence source"
+        : "artifact contract must include production live entry sizing approval contract and evidence source",
+      file: FILES.artifactContract,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_16C",
+      label: "submit wrapper verifies V2 production live entry sizing contract",
+      ok: submitWrapperText.includes("SUBMIT_CHK_20")
+        && submitWrapperText.includes("hasProductionLiveEntrySizingContract")
+        && submitWrapperText.includes("production_live_entry_sizing_contract_required")
+        && submitTraceText.includes("SUBMIT_CHK_20"),
+      reason: submitWrapperText.includes("SUBMIT_CHK_20")
+        && submitWrapperText.includes("hasProductionLiveEntrySizingContract")
+        && submitTraceText.includes("SUBMIT_CHK_20")
+        ? "submit wrapper verifies production live entry sizing contract and trace mapping"
+        : "submit wrapper must verify production live entry sizing contract and trace mapping",
+      file: FILES.submitWrapper,
+    }),
+    buildCheck({
       id: "SUBMIT_CONTRACT_CHK_17",
       label: "runbook maps LIVE production cutover readiness submit check",
       ok: runbookText.includes("| `SUBMIT_CHK_15` | `23` | LIVE production cutover readiness blocks legacy webhook |"),

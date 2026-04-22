@@ -116,6 +116,7 @@ npm run check:v2-canary-runbook
 | 24A | `SUBMIT_CHK_17` | `promotion-cloudbuild-context.json`, `v2_scheduler_traffic_collector_preflight_latest.json` | `scheduler_traffic_collector_preflight_summary`, `reason`, `project_id`, `region`, `service_names`, `failed_check_ids` | LIVE만 필수. collector preflight는 `reason=V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS`, context summary와 artifact file이 1:1로 맞아야 함. collector preflight 실패 시에도 context에는 `scheduler_traffic_collector_preflight_summary.ok=false` 와 `failed_check_ids` 가 남아야 함 | collector 권한/환경 문제면 `SCHED_TRAFFIC_COLLECTOR_PREREQ_*` 를 먼저 해소하고 LIVE cloudbuild wrapper를 다시 실행 |
 | 25 | `SUBMIT_CHK_18` | `promotion-deploy-decision.json` | `fill_sync_canonical_boundary_audit.ok`, `reason`, `scope`, `contract.fail_n`, `contract.failed_check_ids` | `ok=true`, `reason=V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_PASS`, `scope=binance_fills_sync_canonical_boundary`, `contract.fail_n=0`, `contract.failed_check_ids=[]` | legacy fill sync canonical write 경계를 수정하고 `check:v2-fill-sync-canonical-boundary` 및 deploy decision을 다시 실행 |
 | 26 | `SUBMIT_CHK_19` | `promotion-deploy-decision.json`, `v2_production_entry_route_canary_streak_latest.json` | `bounded_runtime_summary.production_entry_route_canary_streak.reason`, `history_source`, `history_file`, `healthy_run_n`, `blockers` | LIVE만 필수. `reason=V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS`, `history_source=FIRESTORE`, `history_file` 은 V2 Firestore collection name, `healthy_run_n >= min_run_count`, `blockers=[]`, canary artifact는 `exchange_write_performed=false` 이어야 함. 이 파일은 promotion pipeline이 unified report 직전에 같은 artifact dir에 갱신해야 함 | OpenClaw cron의 V2 production route canary Firestore history와 streak output을 재검토. JSONL source는 개발 fallback이므로 LIVE 승격 증거로 인정하지 않는다 |
+| 27 | `SUBMIT_CHK_20` | `promotion-deploy-decision.json` | `production_cutover_audit.contract.checks[]` | `V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_RESOLVES_TRANSPORTS_BEFORE_ROUTE`, `V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REQUIRE_APPROVED_SIZING`, `V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCK_DRY_RUN_CFG`, `V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_DO_NOT_EXPOSE_SECRETS` 가 모두 `ok=true` | live endpoint가 sizing 없이 route를 열 수 있거나 secret/dry-run contract가 깨진 상태이므로 `check:v2-production-cutover` 및 deploy decision을 다시 실행 |
 
 ## Submit Reverse Index
 
@@ -143,6 +144,7 @@ npm run check:v2-canary-runbook
 | `SUBMIT_CHK_17` | `24A` | LIVE scheduler traffic collector preflight can read GCP state |
 | `SUBMIT_CHK_18` | `25` | V2 fill sync canonical boundary audit complete |
 | `SUBMIT_CHK_19` | `26` | LIVE production entry route canary streak complete |
+| `SUBMIT_CHK_20` | `27` | V2 production live entry sizing contract complete |
 
 실무 원칙:
 

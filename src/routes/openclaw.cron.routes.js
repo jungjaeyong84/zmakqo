@@ -126,6 +126,26 @@ router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedu
   }
 });
 
+// v2-production-entry-live: deliberately disabled by default. When enabled,
+// this endpoint still delegates only to the V2 production entry route.
+router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, express.json({ type: "*/*", limit: "128kb" }), async (req, res) => {
+  try {
+    const { runV2ProductionEntryLiveEndpoint } = require("../v2/productionEntryLiveEndpoint");
+    const outcome = await runWithShortTimeout("v2_production_entry_live", () => runV2ProductionEntryLiveEndpoint({
+      env: process.env,
+      body: req.body,
+      requestId: req.get("x-request-id") || req.get("X-Request-Id") || null,
+    }), 120000);
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 409).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // Health probe — returns 200 with a small payload so scheduler smoke
 // tests can verify auth + routing without kicking off a full run.
 router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
@@ -136,6 +156,7 @@ router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
       "POST /api/openclaw/cron/calibration",
       "POST /api/openclaw/cron/retrospect",
       "POST /api/openclaw/cron/v2-production-entry-route-canary",
+      "POST /api/openclaw/cron/v2-production-entry-live",
     ],
     now_iso: new Date().toISOString(),
   });

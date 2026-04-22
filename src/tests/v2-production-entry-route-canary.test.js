@@ -16,6 +16,9 @@ const {
   assert.strictEqual(result.kernelAudit.fail_n, 0);
   assert.ok(result.kernelAudit.position_cycle_id);
   assert.strictEqual(result.submitterResult.fill.exchange_write_performed, false);
+  assert.strictEqual(result.submitterResult.entrySizingDecision.ok, true);
+  assert.strictEqual(result.submitterResult.entrySizingDecision.status, "APPROVED");
+  assert.strictEqual(result.submitterResult.entrySizingDecision.entry_qty_abs, result.submitterResult.fill.qty_abs);
   assert.strictEqual(result.submitterResult.protectionEvidence.exchange_write_performed, false);
   assert.strictEqual(result.submitterResult.protectionResult.protectionWriteResult.runtimeDoc.health_status, "HEALTHY");
   assert.ok(result.submitterResult.protectionResult.protectionWriteResult.runtimeDoc.sl_order_id);
@@ -35,6 +38,11 @@ async function canaryRunsProductionRouteWithoutExchangeWrite() {
   assert.strictEqual(artifact.route_result_summary.reason, "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED");
   assert.strictEqual(artifact.route_result_summary.runtime.dry_run, false);
   assert.strictEqual(artifact.route_result_summary.audit_ledger_reason, "PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED");
+  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.ok, true);
+  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.status, "APPROVED");
+  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.entry_qty_abs, 0.8);
+  assert.ok(artifact.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_APPROVED"));
+  assert.ok(artifact.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_QTY_MATCHES_FILL"));
   assert.deepStrictEqual(artifact.failed_check_ids, []);
 }
 

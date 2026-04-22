@@ -5,6 +5,7 @@ const { resolveEntryIntentFromOpenClaw } = require("./signalAuthorityRouter");
 const { buildV2ExecutedEntryFromIntent } = require("./entryExecutor");
 const { evaluateEntryExecutionKernelResult } = require("./entryExecutionKernel");
 const { runV2ProductionEntryRoute } = require("./productionEntryRoute");
+const { buildV2EntrySizingDecision } = require("./entrySizingDecision");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -53,13 +54,49 @@ function buildNoExchangeKernelResult({ bundle, nowIso = new Date().toISOString()
     });
   }
 
+  const entrySizingDecision = buildV2EntrySizingDecision({
+    entryIntent: routed.entryIntent,
+    referencePrice: 2500,
+    requestedNotionalQuote: 2000,
+    maxNotionalQuote: 2500,
+    minNotionalQuote: 5,
+    minQtyAbs: 0.001,
+    stepSize: 0.001,
+    allowMinOrderBump: false,
+    createdAt: nowIso,
+  });
+  if (!entrySizingDecision.ok) {
+    return Object.freeze({
+      ok: false,
+      reason: "V2_ENTRY_EXECUTION_KERNEL_BLOCKED",
+      submitterResult: Object.freeze({
+        ok: false,
+        reason: "ENTRY_SIZING_CANARY_BLOCKED",
+        entrySizingDecision,
+      }),
+      kernelAudit: Object.freeze({
+        ok: false,
+        reason: "ENTRY_EXECUTION_KERNEL_CANARY_SIZING_BLOCKED",
+        check_n: 1,
+        fail_n: 1,
+        check_ids: Object.freeze(["ENTRY_KERNEL_CANARY_SIZING_APPROVED"]),
+        passed_check_ids: Object.freeze([]),
+        failed_check_ids: Object.freeze(["ENTRY_KERNEL_CANARY_SIZING_APPROVED"]),
+        checks: Object.freeze([Object.freeze({ id: "ENTRY_KERNEL_CANARY_SIZING_APPROVED", ok: false })]),
+        position_cycle_id: null,
+        entry_event_id: null,
+        protection_runtime_id: null,
+      }),
+    });
+  }
+
   const executedEntry = buildV2ExecutedEntryFromIntent({
     entryIntent: routed.entryIntent,
     entryEventId: "ENTRY__V2_PRODUCTION_ROUTE_CANARY",
     entryOrderId: "ORDER__NO_EXCHANGE__V2_PRODUCTION_ROUTE_CANARY",
     entryFillGroupId: "FILL_GROUP__NO_EXCHANGE__V2_PRODUCTION_ROUTE_CANARY",
-    entryPrice: 2500,
-    entryQtyAbs: 0.8,
+    entryPrice: entrySizingDecision.reference_price,
+    entryQtyAbs: entrySizingDecision.entry_qty_abs,
   });
   const positionCycleId = executedEntry.positionCycle.position_cycle_id;
   const protectionRuntimeId = `${positionCycleId}__PROTECTION_RUNTIME__CANARY`;
@@ -73,11 +110,12 @@ function buildNoExchangeKernelResult({ bundle, nowIso = new Date().toISOString()
       entry_fill_group_id: executedEntry.positionCycle.entry_fill_group_id,
       symbol: routed.entryIntent.symbol,
       side: routed.entryIntent.side,
-      price: 2500,
-      qty_abs: 0.8,
+      price: entrySizingDecision.reference_price,
+      qty_abs: entrySizingDecision.entry_qty_abs,
       exchange_write_performed: false,
       canary_mode: "NO_EXCHANGE_ROUTE_PROOF",
     }),
+    entrySizingDecision,
     executedEntry,
     protectionEvidence: Object.freeze({
       ok: true,
@@ -174,6 +212,9 @@ async function runV2ProductionEntryRouteCanary({
   });
 
   const runtime = asObject(routeResult && routeResult.runtime);
+  const submitterResult = asObject(routeResult && routeResult.kernelResult && routeResult.kernelResult.submitterResult);
+  const fill = asObject(submitterResult && submitterResult.fill);
+  const entrySizingDecision = asObject(submitterResult && submitterResult.entrySizingDecision);
   const kernelAudit = asObject(routeResult && routeResult.kernelResult && routeResult.kernelResult.kernelAudit);
   const openclawAudit = asObject(routeResult && routeResult.openclawExecutionAudit);
   const ledgerResult = asObject(routeResult && routeResult.auditLedgerResult);
@@ -184,6 +225,8 @@ async function runV2ProductionEntryRouteCanary({
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_KERNEL_CALLED", ok: kernelCalled === true }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_KERNEL_AUDIT_OK", ok: kernelAudit && kernelAudit.ok === true }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_OPENCLAW_AUDIT_OK", ok: openclawAudit && openclawAudit.ok === true }),
+    Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_APPROVED", ok: entrySizingDecision && entrySizingDecision.ok === true && entrySizingDecision.status === "APPROVED" }),
+    Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_QTY_MATCHES_FILL", ok: entrySizingDecision && fill && Number(entrySizingDecision.entry_qty_abs) === Number(fill.qty_abs) }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_LEDGER_SKIPPED_INTENTIONALLY", ok: ledgerResult && ledgerResult.ok === true && ledgerResult.skipped === true && ledgerResult.reason === "PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED" }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_NO_EXCHANGE_WRITE", ok: true }),
   ]);
@@ -215,6 +258,17 @@ async function runV2ProductionEntryRouteCanary({
       protection_runtime_id: trimOrNull(kernelAudit && kernelAudit.protection_runtime_id),
       openclaw_audit_id: trimOrNull(openclawAudit && openclawAudit.audit_id),
       audit_ledger_reason: trimOrNull(ledgerResult && ledgerResult.reason),
+      entry_sizing_decision: entrySizingDecision ? Object.freeze({
+        ok: entrySizingDecision.ok === true,
+        status: trimOrNull(entrySizingDecision.status),
+        reason: trimOrNull(entrySizingDecision.reason),
+        entry_intent_id: trimOrNull(entrySizingDecision.entry_intent_id),
+        symbol: trimOrNull(entrySizingDecision.symbol),
+        side: trimOrNull(entrySizingDecision.side),
+        entry_qty_abs: Number(entrySizingDecision.entry_qty_abs),
+        notional_quote: Number(entrySizingDecision.notional_quote),
+        reference_price: Number(entrySizingDecision.reference_price),
+      }) : null,
     }),
     checks,
   });

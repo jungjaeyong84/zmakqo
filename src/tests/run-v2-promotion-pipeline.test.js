@@ -71,6 +71,10 @@ function buildHealthyProductionRouteCanaryPayload(generatedAt) {
     persist_called: true,
     generated_at: generatedAt,
     fail_n: 0,
+    check_ids: [
+      "V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_APPROVED",
+      "V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_QTY_MATCHES_FILL",
+    ],
     failed_check_ids: [],
     route_result_summary: {
       ok: true,
@@ -79,6 +83,11 @@ function buildHealthyProductionRouteCanaryPayload(generatedAt) {
       entry_event_id: "ENTRY__V2_PRODUCTION_ROUTE_CANARY",
       protection_runtime_id: "PCYV2__ETHUSDT__ENTRY__CANARY__PROTECTION_RUNTIME__CANARY",
       audit_ledger_reason: "PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED",
+      entry_sizing_decision: {
+        ok: true,
+        status: "APPROVED",
+        entry_qty_abs: 0.8,
+      },
     },
   };
 }

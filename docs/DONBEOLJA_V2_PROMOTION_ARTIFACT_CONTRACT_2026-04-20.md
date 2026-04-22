@@ -160,18 +160,19 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 8. `approval_contract.entry_boundary_audit_required`
 9. `approval_contract.fill_sync_canonical_boundary_audit_required`
 10. `approval_contract.production_cutover_audit_required`
-11. `approval_contract.openclaw_execution_audit_ledger_write_required`
-12. `approval_contract.repair_firestore_canary_streak_required`
-13. `approval_contract.production_cutover_readiness_summary_required`
-14. `approval_contract.scheduler_traffic_collector_preflight_summary_required`
-15. `approval_contract.scheduler_traffic_cutover_readiness_summary_required`
-16. `approval_contract.live_cutover_readiness_summary_required`
-17. `approval_contract.runbook_review_pass_required`
-18. `approval_contract.candidate_selection_ready_required`
-19. `approval_contract.selected_preflight_required`
-20. `approval_contract.blocker_free_required`
-21. `approval_contract.recommended_next_action_required`
-22. `approval_contract.resolved_artifact_dir_required`
+11. `approval_contract.production_live_entry_sizing_contract_required`
+12. `approval_contract.openclaw_execution_audit_ledger_write_required`
+13. `approval_contract.repair_firestore_canary_streak_required`
+14. `approval_contract.production_cutover_readiness_summary_required`
+15. `approval_contract.scheduler_traffic_collector_preflight_summary_required`
+16. `approval_contract.scheduler_traffic_cutover_readiness_summary_required`
+17. `approval_contract.live_cutover_readiness_summary_required`
+18. `approval_contract.runbook_review_pass_required`
+19. `approval_contract.candidate_selection_ready_required`
+20. `approval_contract.selected_preflight_required`
+21. `approval_contract.blocker_free_required`
+22. `approval_contract.recommended_next_action_required`
+23. `approval_contract.resolved_artifact_dir_required`
 
 또한 submit request에는 “최종 승격이 어떤 artifact/field로 증명돼야 하는가” 도 같이 남아야 한다.
 
@@ -185,18 +186,19 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 6. `approval_evidence_sources.entry_boundary_audit`
 7. `approval_evidence_sources.fill_sync_canonical_boundary_audit`
 8. `approval_evidence_sources.production_cutover_audit`
-9. `approval_evidence_sources.openclaw_execution_audit_ledger_write`
-10. `approval_evidence_sources.repair_firestore_canary_streak`
-11. `approval_evidence_sources.production_cutover_readiness_summary`
-12. `approval_evidence_sources.scheduler_traffic_collector_preflight_summary`
-13. `approval_evidence_sources.scheduler_traffic_cutover_readiness_summary`
-14. `approval_evidence_sources.live_cutover_readiness_summary`
-15. `approval_evidence_sources.runbook_review`
-16. `approval_evidence_sources.recommended_next_action`
-17. `approval_evidence_sources.blocker_summary`
-18. `approval_evidence_sources.lineage_hash_sources`
-19. `approval_evidence_sources.candidate_selection` (auto-select path만)
-20. `approval_evidence_sources.resolved_artifact_dir`
+9. `approval_evidence_sources.production_live_entry_sizing_contract`
+10. `approval_evidence_sources.openclaw_execution_audit_ledger_write`
+11. `approval_evidence_sources.repair_firestore_canary_streak`
+12. `approval_evidence_sources.production_cutover_readiness_summary`
+13. `approval_evidence_sources.scheduler_traffic_collector_preflight_summary`
+14. `approval_evidence_sources.scheduler_traffic_cutover_readiness_summary`
+15. `approval_evidence_sources.live_cutover_readiness_summary`
+16. `approval_evidence_sources.runbook_review`
+17. `approval_evidence_sources.recommended_next_action`
+18. `approval_evidence_sources.blocker_summary`
+19. `approval_evidence_sources.lineage_hash_sources`
+20. `approval_evidence_sources.candidate_selection` (auto-select path만)
+21. `approval_evidence_sources.resolved_artifact_dir`
 
 submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도 같이 남아야 한다.
 
@@ -566,13 +568,14 @@ cloudbuild는 아래 원칙을 따른다.
 14. bounded canary/live mode에서는 `entry_boundary_audit` 이 `V2_ENTRY_BOUNDARY_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_13`/runbook 21로 fail-closed 된다
 15. bounded canary/live mode에서는 `fill_sync_canonical_boundary_audit` 이 `V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_18`/runbook 25로 fail-closed 된다
 16. bounded canary/live mode에서는 `production_cutover_audit` 이 `V2_PRODUCTION_CUTOVER_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_14`/runbook 22로 fail-closed 된다
-17. LIVE mode에서는 `production_cutover_readiness_summary` 가 `V2_PRODUCTION_CUTOVER_READINESS_PASS` 와 `legacy_webhook_blocked=true` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_15`/runbook 23으로 fail-closed 된다
-18. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
-19. LIVE mode에서는 `scheduler_traffic_cutover_readiness_summary` 가 `V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run service readiness를 증명해야 하며, 위반 시 `SUBMIT_CHK_16`/runbook 24로 fail-closed 된다
-20. LIVE wrapper가 live cutover, production cutover, scheduler traffic 단계 중 어디서 실패하더라도 `promotion-cloudbuild-context.json` 은 직전까지 생성된 readiness summary와 실패 summary를 보존해야 한다
-21. wrapper가 runbook review 단계에서 실패하더라도 `promotion-cloudbuild-context.json` 은 `runbook_review_summary.ok=false`, `failed_check_ids`, `top_failed_checks[]`, `runbook_review_file` 을 보존해야 한다
-22. runbook review가 필수 artifact 누락/JSON 파싱 오류 등으로 review 생성 전에 throw 되더라도 context에는 synthetic `CHK_RUNBOOK_REVIEW_THROWN` 이 남아야 한다
-23. submit wrapper의 operator summary와 operator alert preview는 `runbook_review`, `runbook_review_failures`, `runbook_review_failed_checks`, `runbook_review_file` 을 같은 line set으로 노출해야 한다
+17. bounded canary/live mode에서는 `production_cutover_audit.contract.checks[]` 가 live endpoint가 sizing-backed transport를 route 전에 만들고, live transport가 approved `entrySizingDecision` 없이 막힌다는 것을 증명해야 하며, 위반 시 `SUBMIT_CHK_20`/runbook 27로 fail-closed 된다
+18. LIVE mode에서는 `production_cutover_readiness_summary` 가 `V2_PRODUCTION_CUTOVER_READINESS_PASS` 와 `legacy_webhook_blocked=true` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_15`/runbook 23으로 fail-closed 된다
+19. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
+20. LIVE mode에서는 `scheduler_traffic_cutover_readiness_summary` 가 `V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run service readiness를 증명해야 하며, 위반 시 `SUBMIT_CHK_16`/runbook 24로 fail-closed 된다
+21. LIVE wrapper가 live cutover, production cutover, scheduler traffic 단계 중 어디서 실패하더라도 `promotion-cloudbuild-context.json` 은 직전까지 생성된 readiness summary와 실패 summary를 보존해야 한다
+22. wrapper가 runbook review 단계에서 실패하더라도 `promotion-cloudbuild-context.json` 은 `runbook_review_summary.ok=false`, `failed_check_ids`, `top_failed_checks[]`, `runbook_review_file` 을 보존해야 한다
+23. runbook review가 필수 artifact 누락/JSON 파싱 오류 등으로 review 생성 전에 throw 되더라도 context에는 synthetic `CHK_RUNBOOK_REVIEW_THROWN` 이 남아야 한다
+24. submit wrapper의 operator summary와 operator alert preview는 `runbook_review`, `runbook_review_failures`, `runbook_review_failed_checks`, `runbook_review_file` 을 같은 line set으로 노출해야 한다
 
 `SUBMIT_CHK_17` 실패는 `SCHEDULER_COLLECTOR_BLOCKER` 이며, 권장 행동은 `FIX_V2_SCHEDULER_COLLECTOR_IAM_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER` 이다.
 
@@ -679,8 +682,9 @@ deploy decision artifact는 최종 승인/차단 판정 외에도 아래를 그�
 7. `entry_boundary_audit`
 8. `fill_sync_canonical_boundary_audit`
 9. `production_cutover_audit`
-10. `alert_retry_summary`
-11. `alert_retry_attention_required`
+10. `production_cutover_audit.contract.checks[]` 중 live entry sizing contract check
+11. `alert_retry_summary`
+12. `alert_retry_attention_required`
 
 `candidate_selection_summary` 가 존재하는 경우 deploy decision은 `selection_contract` 도 그대로 보존해야 한다.
 즉, auto-select가 만든 후보 선택 근거를 마지막 승인 artifact에서 다시 복원할 수 있어야 한다.

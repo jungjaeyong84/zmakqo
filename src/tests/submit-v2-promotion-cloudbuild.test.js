@@ -13,6 +13,7 @@ const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
   hash: "lineage-hash-fixture",
 });
 const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
+const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS;
 
 function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -44,9 +45,15 @@ function buildProductionCutoverAuditFixture() {
     contract: {
       ok: true,
       reason: "V2_PRODUCTION_CUTOVER_CONTRACT_PASS",
-      check_n: 4,
+      check_n: REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS.length,
       fail_n: 0,
       failed_check_ids: [],
+      checks: REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS.map((id) => ({
+        id,
+        ok: true,
+        reason: "fixture production live entry sizing contract passed",
+        evidence: {},
+      })),
     },
   };
 }
@@ -410,6 +417,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, true);
+  assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, false);
@@ -426,6 +434,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.entry_boundary_audit.field, "entry_boundary_audit");
   assert.strictEqual(request.approval_evidence_sources.fill_sync_canonical_boundary_audit.field, "fill_sync_canonical_boundary_audit");
   assert.strictEqual(request.approval_evidence_sources.production_cutover_audit.field, "production_cutover_audit");
+  assert.strictEqual(request.approval_evidence_sources.production_live_entry_sizing_contract.field, "production_cutover_audit.contract.checks");
   assert.strictEqual(request.approval_evidence_sources.openclaw_execution_audit_ledger_write.field, "bounded_runtime_summary.openclaw_execution_audit_ledger_write");
   assert.strictEqual(request.approval_evidence_sources.repair_firestore_canary_streak, null);
   assert.strictEqual(request.approval_evidence_sources.production_entry_route_canary_streak, null);
@@ -465,6 +474,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, true);
+  assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, false);
@@ -670,6 +680,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.entry_boundary_audit_required, false);
   assert.strictEqual(request.approval_contract.fill_sync_canonical_boundary_audit_required, false);
   assert.strictEqual(request.approval_contract.production_cutover_audit_required, false);
+  assert.strictEqual(request.approval_contract.production_live_entry_sizing_contract_required, false);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.runbook_review_pass_required, false);
   assert.strictEqual(request.approval_evidence_sources.required, false);
@@ -741,6 +752,23 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     submit.__test.buildVerificationRecommendedActionReasonCode(summary),
     "PRODUCTION_CUTOVER_BLOCKER"
   );
+})();
+
+(function verificationSummaryMapsProductionLiveEntrySizingFailureToAction() {
+  const summary = submit.__test.buildVerificationSummary([
+    { id: "SUBMIT_CHK_20", ok: false, reason: "V2 production live entry sizing contract is missing or failed" },
+  ]);
+  assert.strictEqual(summary.blocker_n, 1);
+  assert.strictEqual(summary.has_production_live_entry_sizing_blocker, true);
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedAction(summary),
+    "FIX_V2_PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_AND_RECHECK_DEPLOY_DECISION"
+  );
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedActionReasonCode(summary),
+    "PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_BLOCKER"
+  );
+  assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["ENTRY_SIZING"]);
 })();
 
 (function verificationSummarySeparatesSchedulerCollectorAndTrafficFailures() {
@@ -1099,6 +1127,46 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(
       result.request.approval_verification.recommended_next_action,
       "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION"
+    );
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function submitRequestBlocksWhenProductionLiveEntrySizingContractIsMissing() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-live-sizing-blocked-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__LIVE_SIZING_BLOCKED");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__LIVE_SIZING_BLOCKED");
+    const deployDecisionPath = path.join(artifactDir, "promotion-deploy-decision.json");
+    const deployDecision = JSON.parse(fs.readFileSync(deployDecisionPath, "utf8"));
+    deployDecision.production_cutover_audit.contract.checks =
+      deployDecision.production_cutover_audit.contract.checks.filter((row) => (
+        row.id !== "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REQUIRE_APPROVED_SIZING"
+      ));
+    writeJson(deployDecisionPath, deployDecision);
+
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__LIVE_SIZING_BLOCKED",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.ok, false);
+    const sizingCheck = result.request.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_20");
+    assert.ok(sizingCheck);
+    assert.strictEqual(sizingCheck.ok, false);
+    assert.deepStrictEqual(sizingCheck.doc_refs.runbook_checklist, ["27"]);
+    assert.strictEqual(result.request.approval_verification.blocker_summary.has_production_live_entry_sizing_blocker, true);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_submit_check_ids, ["SUBMIT_CHK_20"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.failed_runbook_checklist, ["27"]);
+    assert.deepStrictEqual(result.request.submit_trace_summary.blocker_families, ["ENTRY_SIZING"]);
+    assert.strictEqual(
+      result.request.approval_verification.recommended_next_action,
+      "FIX_V2_PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_AND_RECHECK_DEPLOY_DECISION"
     );
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}

@@ -191,9 +191,10 @@ V2 production route / scheduler / OpenClaw cron은 `runV2ProductionEntryRoute` �
 5. router가 blocked이면 커널을 호출하지 않는다
 6. `DONBEOLJA_V2_CANARY_ONLY=1` 에서 `LIVE` decision이면 커널을 호출하지 않는다
 7. `runV2EntryExecutionKernel` 을 호출한다
-8. kernel이 반환한 executed entry와 OpenClaw/router lineage를 `openclawExecutionSeparationAudit` 로 다시 비교한다
-9. audit ledger write를 시도한다
-10. kernel, separation audit, ledger result가 모두 정상일 때만 route success를 반환한다
+8. kernel이 blocked이면 post-execution audit나 audit ledger write를 시도하지 않고 즉시 route blocked로 반환한다
+9. kernel이 반환한 executed entry와 OpenClaw/router lineage를 `openclawExecutionSeparationAudit` 로 다시 비교한다
+10. audit ledger write를 시도한다
+11. kernel, separation audit, ledger result가 모두 정상일 때만 route success를 반환한다
 
 필수 정책:
 
@@ -202,6 +203,7 @@ V2 production route / scheduler / OpenClaw cron은 `runV2ProductionEntryRoute` �
 3. kernel이 blocked면 route도 blocked다
 4. kernel이 다른 `signal_intent_id` / `openclaw_decision_id` / `entry_intent_id` 를 실행한 흔적이 있으면 route success가 아니다
 5. audit ledger write가 throw되면 entry가 이미 보호됐더라도 route success로 포장하지 않는다
+6. kernel blocked는 audit ledger 실패로 덮이면 안 된다. root cause는 항상 `V2_PRODUCTION_ENTRY_KERNEL_BLOCKED` 로 보존되어야 한다
 
 이 계약의 목적은 V1의 "scheduler / native signal / repair / watchdog가 각자 성공 의미를 다르게 해석한 문제"를 production entry 최상단에서 끊는 것이다.
 
@@ -770,7 +772,7 @@ V2 entry architecture는 V2 내부의 소유권만으로 완료되지 않는다.
 1. [`buildV2ProductionCutoverGuard`](/Users/jeongjaeyong/Projects/donbeolja/src/v2/productionCutoverGuard.js)
    역할: full V2 cutover 조건에서 legacy webhook signal route를 차단할지 결정
 2. [`auditWorkspaceV2ProductionCutoverContract`](/Users/jeongjaeyong/Projects/donbeolja/src/v2/productionCutoverAudit.js)
-   역할: route가 guard를 import/apply/outcome-record 하는지 static contract로 검증
+   역할: route가 guard를 import/apply/outcome-record 하는지, OpenClaw cron이 V2 entry route canary를 우회하지 않는지 static contract로 검증
 3. [`check-v2-production-cutover`](/Users/jeongjaeyong/Projects/donbeolja/scripts/check-v2-production-cutover.js)
    역할: production cutover contract와 선택적 readiness env를 CLI gate로 검증
 
@@ -782,11 +784,30 @@ V2 entry architecture는 V2 내부의 소유권만으로 완료되지 않는다.
 4. 이 drop은 webhook outcome ledger에 `event=V2_CUTOVER_GUARD_BLOCK` 으로 남아야 한다
 5. 긴급 예외는 `DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL=1` 로만 허용한다
 
+caller boundary 조건:
+
+1. OpenClaw cron endpoint는 `/api/openclaw/cron/v2-production-entry-route-canary` 를 제공해야 한다
+2. 이 endpoint는 `requireSchedulerToken` 을 반드시 거쳐야 한다
+3. 이 endpoint는 `scripts/run-v2-production-entry-route-canary.js` 의 `main({ setProcessExitCode: false })` 만 호출해야 한다
+4. OpenClaw cron endpoint는 `runV2EntryExecutionKernel`, `runV2EntrySubmitter`, `runV2EntryProtectionActivation` 을 직접 호출하면 안 된다
+5. canary script도 `runV2ProductionEntryRouteCanary` 만 호출해야 하며 kernel/submitter/protection internals를 직접 호출하면 안 된다
+6. LIVE endpoint는 `/api/openclaw/cron/v2-production-entry-live` 로만 열고 기본값은 비활성이다
+7. LIVE endpoint는 `DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED=1` 과 `confirm=EXECUTE_V2_LIVE_ENTRY` 없이는 production route를 호출하면 안 된다
+8. LIVE endpoint는 `DONBEOLJA_V2_ENABLED=1`, `DONBEOLJA_V2_DRY_RUN=0`, `DONBEOLJA_V2_CANARY_ONLY=0`, `decision_mode=LIVE` 를 모두 확인해야 한다
+9. LIVE endpoint도 `runV2ProductionEntryRoute` 만 호출해야 하며 kernel/submitter/protection internals를 직접 호출하면 안 된다
+10. LIVE endpoint는 route 호출 전에 `buildV2ProductionEntryLiveTransports` 로 approved sizing decision과 Binance live config를 확인해야 한다
+11. approved sizing decision이 없거나 routed `entry_intent_id/symbol/side` 와 맞지 않으면 `V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCKED` 로 route 호출 전 차단한다
+12. Binance live config가 `liveEnabled=true`, `liveDryRun=false`, key present 상태가 아니면 route 호출 전 차단한다
+13. LIVE endpoint response는 key/secret 값을 노출하지 않고 `api_key_present/api_secret_present` 만 노출한다
+
+이 조건의 목적은 V1의 "운영 endpoint가 하위 실행기를 직접 호출해 성공 의미가 분산되는 문제"를 cutover gate에서 차단하는 것이다.
+
 아직 남은 일:
 
 1. Cloud Build submit contract에 production cutover readiness evidence를 연결
-2. scheduler 설정에서 V1 signal route가 남아 있는지 static audit 추가
-3. LIVE 전환 전 runbook에 `check:v2-production-cutover` 결과를 필수 증거로 요구
+2. LIVE 전환 전 runbook에 `check:v2-production-cutover` 결과를 필수 증거로 요구
+3. 실제 운영 bundle 생성기가 `entrySizingDecision` 을 항상 포함하도록 OpenClaw collector/submitter 경계를 연결
+4. 실제 Binance endpoint를 켜기 전, 소액 canary에서 `ENTRY_SUBMITTED_AND_PROTECTED` 와 `ACTIVE_PROTECTED` 증거를 24시간 수집
 
 ## 다음 단계
 
@@ -839,3 +860,15 @@ Repair evidence는 ledger 내부에만 머물면 안 된다. CANARY/LIVE promoti
 7. Cloud Build context도 같은 summary를 보존해서 운영자가 deploy context 하나만 열어도 repair evidence 상태를 볼 수 있어야 한다
 
 이 규칙은 V1처럼 “복구 경로는 있었지만 promotion/배포 판단에서 보이지 않는” 상태를 금지한다.
+
+## Production route canary sizing evidence
+
+V2 production entry route canary는 exchange write를 하지 않지만, 수량 결정 근거는 생략하지 않는다.
+
+1. canary kernel은 `entrySizingDecision` 을 먼저 만들고 `APPROVED` 가 아니면 route canary를 실패시킨다
+2. canary fill의 `qty_abs` 는 hardcoded runner 수량이 아니라 `entrySizingDecision.entry_qty_abs` 를 그대로 사용한다
+3. canary artifact의 `route_result_summary.entry_sizing_decision` 은 `ok`, `status`, `reason`, `entry_intent_id`, `symbol`, `side`, `entry_qty_abs`, `notional_quote`, `reference_price` 를 보존한다
+4. streak checker는 `V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_APPROVED` 와 `V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_QTY_MATCHES_FILL` 이 없으면 healthy run으로 인정하지 않는다
+5. 이 증거는 LIVE endpoint static contract인 `SUBMIT_CHK_20` 과 별개로, 실제 canary history가 sizing-aware flow였는지 확인하는 runtime evidence다
+
+이 규칙은 V1처럼 “진입은 됐지만 수량 산식/보호 주문이 어느 계층에서 결정됐는지 나중에 복원 불가”인 상태를 금지한다.

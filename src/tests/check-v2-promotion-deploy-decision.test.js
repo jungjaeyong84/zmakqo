@@ -11,6 +11,29 @@ const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
   hash: "lineage-hash-fixture",
 });
 const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecision.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
+const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = deployDecision.__test.REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS;
+
+function buildProductionCutoverAuditFixture(overrides = {}) {
+  return {
+    ok: true,
+    reason: "V2_PRODUCTION_CUTOVER_AUDIT_PASS",
+    scope: "production_webhook_cutover",
+    contract: {
+      ok: true,
+      reason: "V2_PRODUCTION_CUTOVER_CONTRACT_PASS",
+      check_n: REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS.length,
+      fail_n: 0,
+      failed_check_ids: [],
+      checks: REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS.map((id) => ({
+        id,
+        ok: true,
+        reason: "fixture production live entry sizing contract passed",
+        evidence: {},
+      })),
+    },
+    ...overrides,
+  };
+}
 
 function buildBoundedRuntimeSummaryFixture() {
   return {
@@ -170,6 +193,8 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     candidate_selection_summary: buildCandidateSelectionSummaryFixture(),
     blockers: [],
     warnings: [],
+  }, {
+    productionCutoverAudit: buildProductionCutoverAuditFixture(),
   });
   assert.strictEqual(decision.approved, true);
   assert.strictEqual(decision.decision, "APPROVE_DEPLOY");
@@ -184,10 +209,43 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.strictEqual(deployDecision.__test.hasEntryBoundaryAudit(decision.entry_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasFillSyncCanonicalBoundaryAudit(decision.fill_sync_canonical_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasProductionCutoverAudit(decision.production_cutover_audit), true);
+  assert.strictEqual(deployDecision.__test.hasProductionLiveEntrySizingContract(decision.production_cutover_audit), true);
   assert.strictEqual(decision.alert_retry_attention_required, true);
   assert.strictEqual(decision.alert_retry_summary.failed_n, 1);
   assert.strictEqual(decision.alert_retry_summary.latest_failed.retry_policy_code, "ALERT_RETRY_TRANSPORT");
   assert.strictEqual(decision.candidate_selection_summary.selection_status, "READY");
+})();
+
+(function canaryWithoutProductionLiveEntrySizingContractFailsClosed() {
+  const productionCutoverAudit = buildProductionCutoverAuditFixture();
+  productionCutoverAudit.contract.checks = productionCutoverAudit.contract.checks.filter((row) => (
+    row.id !== "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REQUIRE_APPROVED_SIZING"
+  ));
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__BAD_LIVE_SIZING",
+    bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__BAD_LIVE_SIZING",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__BAD_LIVE_SIZING",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionCutoverAudit,
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:V2_PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_REQUIRED"));
 })();
 
 (function canaryWithoutEntryBoundaryAuditFailsClosed() {

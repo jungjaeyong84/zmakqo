@@ -101,6 +101,7 @@ function toMs(value) {
 function isHealthyProductionEntryRouteCanaryRow(row) {
   const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
   const summary = payload.route_result_summary && typeof payload.route_result_summary === "object" ? payload.route_result_summary : {};
+  const sizing = summary.entry_sizing_decision && typeof summary.entry_sizing_decision === "object" ? summary.entry_sizing_decision : {};
   const raw = String(row && row.raw || "");
   return (
     payload.ok === true &&
@@ -120,6 +121,12 @@ function isHealthyProductionEntryRouteCanaryRow(row) {
     summary.position_cycle_id &&
     summary.entry_event_id &&
     summary.protection_runtime_id &&
+    sizing.ok === true &&
+    sizing.status === "APPROVED" &&
+    Number(sizing.entry_qty_abs) > 0 &&
+    Array.isArray(payload.check_ids) &&
+    payload.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_APPROVED") &&
+    payload.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_QTY_MATCHES_FILL") &&
     !raw.includes("apiKey") &&
     !raw.includes("apiSecret") &&
     !raw.includes("BINANCE_SECRET") &&

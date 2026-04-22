@@ -101,6 +101,7 @@ function buildVerificationSummary(checks) {
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
   const hasProductionCutoverBlocker = ids.some((id) => ["SUBMIT_CHK_14", "SUBMIT_CHK_15"].includes(id));
+  const hasProductionLiveEntrySizingBlocker = ids.some((id) => id === "SUBMIT_CHK_20");
   const hasSchedulerTrafficBlocker = ids.some((id) => id === "SUBMIT_CHK_16");
   const hasSchedulerCollectorBlocker = ids.some((id) => id === "SUBMIT_CHK_17");
   const hasRunbookBlocker = ids.some((id) => id === "SUBMIT_CHK_05");
@@ -114,6 +115,7 @@ function buildVerificationSummary(checks) {
     has_entry_boundary_blocker: hasEntryBoundaryBlocker,
     has_fill_sync_canonical_boundary_blocker: hasFillSyncCanonicalBoundaryBlocker,
     has_production_cutover_blocker: hasProductionCutoverBlocker,
+    has_production_live_entry_sizing_blocker: hasProductionLiveEntrySizingBlocker,
     has_scheduler_traffic_blocker: hasSchedulerTrafficBlocker,
     has_scheduler_collector_blocker: hasSchedulerCollectorBlocker,
     has_runbook_blocker: hasRunbookBlocker,
@@ -130,6 +132,7 @@ function buildVerificationRecommendedAction(summary) {
   if (row.has_entry_boundary_blocker) return "FIX_V2_ENTRY_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_fill_sync_canonical_boundary_blocker) return "FIX_V2_FILL_SYNC_CANONICAL_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_production_cutover_blocker) return "FIX_V2_PRODUCTION_CUTOVER_AND_RECHECK_DEPLOY_DECISION";
+  if (row.has_production_live_entry_sizing_blocker) return "FIX_V2_PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_scheduler_collector_blocker) return "FIX_V2_SCHEDULER_COLLECTOR_IAM_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER";
   if (row.has_scheduler_traffic_blocker) return "FIX_V2_SCHEDULER_TRAFFIC_CUTOVER_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER";
   if (row.has_runbook_blocker) return "RERUN_CANARY_RUNBOOK_AND_RECHECK_ARTIFACT_COHERENCE";
@@ -157,6 +160,9 @@ function buildVerificationRecommendedActionReason(summary) {
   }
   if (row.has_production_cutover_blocker) {
     return "V2 production cutover guard audit failed";
+  }
+  if (row.has_production_live_entry_sizing_blocker) {
+    return "V2 production live entry sizing contract failed";
   }
   if (row.has_scheduler_collector_blocker) {
     return "V2 scheduler traffic collector cannot prove GCP project scheduler and Cloud Run read access";
@@ -195,6 +201,9 @@ function buildVerificationRecommendedActionReasonCode(summary) {
   }
   if (row.has_production_cutover_blocker) {
     return "PRODUCTION_CUTOVER_BLOCKER";
+  }
+  if (row.has_production_live_entry_sizing_blocker) {
+    return "PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_BLOCKER";
   }
   if (row.has_scheduler_collector_blocker) {
     return "SCHEDULER_COLLECTOR_BLOCKER";
@@ -318,6 +327,7 @@ function buildApprovalContract(plan) {
       entry_boundary_audit_required: false,
       fill_sync_canonical_boundary_audit_required: false,
       production_cutover_audit_required: false,
+      production_live_entry_sizing_contract_required: false,
       production_cutover_readiness_summary_required: false,
       scheduler_traffic_collector_preflight_summary_required: false,
       scheduler_traffic_cutover_readiness_summary_required: false,
@@ -345,6 +355,7 @@ function buildApprovalContract(plan) {
     entry_boundary_audit_required: true,
     fill_sync_canonical_boundary_audit_required: true,
     production_cutover_audit_required: true,
+    production_live_entry_sizing_contract_required: true,
     production_cutover_readiness_summary_required: row.promotionMode === "LIVE",
     scheduler_traffic_collector_preflight_summary_required: row.promotionMode === "LIVE",
     scheduler_traffic_cutover_readiness_summary_required: row.promotionMode === "LIVE",
@@ -379,6 +390,7 @@ function buildApprovalEvidenceSources(plan) {
       entry_boundary_audit: null,
       fill_sync_canonical_boundary_audit: null,
       production_cutover_audit: null,
+      production_live_entry_sizing_contract: null,
      production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
@@ -426,6 +438,11 @@ function buildApprovalEvidenceSources(plan) {
       file: "promotion-deploy-decision.json",
       field: "production_cutover_audit",
       note: "ok=true, reason=V2_PRODUCTION_CUTOVER_AUDIT_PASS, route guard import/apply/outcome checks pass",
+    }),
+    production_live_entry_sizing_contract: buildEvidenceRef({
+      file: "promotion-deploy-decision.json",
+      field: "production_cutover_audit.contract.checks",
+      note: "live endpoint resolves sizing-backed transports before route and transports require approved entrySizingDecision",
     }),
     production_cutover_readiness_summary: row.promotionMode === "LIVE"
       ? buildEvidenceRef({
@@ -542,6 +559,7 @@ function hasRequiredApprovalContract(contract, { promotionMode = null } = {}) {
     row.entry_boundary_audit_required === true &&
     row.fill_sync_canonical_boundary_audit_required === true &&
     row.production_cutover_audit_required === true &&
+    row.production_live_entry_sizing_contract_required === true &&
     mustBeLiveTrue(row, "production_cutover_readiness_summary_required", liveRequired) &&
     mustBeLiveTrue(row, "scheduler_traffic_collector_preflight_summary_required", liveRequired) &&
     mustBeLiveTrue(row, "scheduler_traffic_cutover_readiness_summary_required", liveRequired) &&
@@ -680,6 +698,7 @@ function buildSubmitTraceFamilies(summary) {
   if (row.has_entry_boundary_blocker) families.push("ENTRY_BOUNDARY");
   if (row.has_fill_sync_canonical_boundary_blocker) families.push("FILL_SYNC_CANONICAL_BOUNDARY");
   if (row.has_production_cutover_blocker) families.push("PRODUCTION_CUTOVER");
+  if (row.has_production_live_entry_sizing_blocker) families.push("ENTRY_SIZING");
   if (row.has_scheduler_collector_blocker) families.push("SCHEDULER_COLLECTOR");
   if (row.has_scheduler_traffic_blocker) families.push("SCHEDULER_TRAFFIC");
   if (row.has_runbook_blocker) families.push("RUNBOOK");
@@ -1193,6 +1212,7 @@ function buildApprovalVerification(request) {
       "approval_contract.entry_boundary_audit_required",
       "approval_contract.fill_sync_canonical_boundary_audit_required",
       "approval_contract.production_cutover_audit_required",
+      "approval_contract.production_live_entry_sizing_contract_required",
       "approval_contract.production_cutover_readiness_summary_required",
       "approval_contract.scheduler_traffic_cutover_readiness_summary_required",
       "approval_contract.openclaw_execution_audit_ledger_write_required",
@@ -1343,6 +1363,23 @@ function buildApprovalVerification(request) {
     artifactContract: [
       "approval_contract.production_cutover_audit_required",
       "approval_evidence_sources.production_cutover_audit",
+    ],
+  }));
+
+  checks.push(withDocRefs(buildVerificationCheck({
+    id: "SUBMIT_CHK_20",
+    label: "V2 production live entry sizing contract complete",
+    ok: deployDecisionCheck.__test.hasProductionLiveEntrySizingContract(deployDecision && deployDecision.production_cutover_audit),
+    reason: deployDecisionCheck.__test.hasProductionLiveEntrySizingContract(deployDecision && deployDecision.production_cutover_audit)
+      ? "V2 production live endpoint requires approved sizing before route"
+      : "V2 production live entry sizing contract is missing or failed",
+    file: artifacts.deployDecision && artifacts.deployDecision.filePath,
+    field: "production_cutover_audit.contract.checks",
+  }), {
+    runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_20"),
+    artifactContract: [
+      "approval_contract.production_live_entry_sizing_contract_required",
+      "approval_evidence_sources.production_live_entry_sizing_contract",
     ],
   }));
 

@@ -26,13 +26,31 @@ function readTextSafe(filePath) {
   }
 }
 
+function appearsBefore(source, earlier, later) {
+  const earlierIndex = String(source || "").indexOf(String(earlier || ""));
+  const laterIndex = String(source || "").indexOf(String(later || ""));
+  return earlierIndex >= 0 && laterIndex >= 0 && earlierIndex < laterIndex;
+}
+
 function auditV2ProductionCutoverContract({
   routeSource = "",
+  openclawCronRouteSource = "",
   guardSource = "",
   productionEntryRouteSource = "",
   productionEntryRouteCanarySource = "",
+  productionEntryLiveEndpointSource = "",
+  productionEntryLiveTransportsSource = "",
+  productionEntryRouteCanaryScriptSource = "",
   entryBoundaryAuditSource = "",
 } = {}) {
+  const forbiddenEntryBypassSymbols = [
+    "runV2Entry" + "ExecutionKernel",
+    "runV2Entry" + "Submitter",
+    "runV2Entry" + "ProtectionActivation",
+  ];
+  const openclawCronBypassesProductionRoute = forbiddenEntryBypassSymbols.some((symbol) => openclawCronRouteSource.includes(symbol));
+  const canaryScriptBypassesProductionRoute = forbiddenEntryBypassSymbols.some((symbol) => productionEntryRouteCanaryScriptSource.includes(symbol));
+  const liveEndpointBypassesProductionRoute = forbiddenEntryBypassSymbols.some((symbol) => productionEntryLiveEndpointSource.includes(symbol));
   const checks = [
     buildCheck(
       "V2_CUTOVER_GUARD_MODULE_EXISTS",
@@ -75,9 +93,94 @@ function auditV2ProductionCutoverContract({
       "production entry route must compare kernel executed entry against OpenClaw/router lineage"
     ),
     buildCheck(
+      "V2_PRODUCTION_ENTRY_ROUTE_PRESERVES_KERNEL_FAILURE_CAUSE",
+      appearsBefore(productionEntryRouteSource, "if (!kernelResult || kernelResult.ok !== true)", "let auditLedgerResult = null;"),
+      "production entry route must return kernel blocked before audit ledger writes can mask the root cause"
+    ),
+    buildCheck(
       "V2_PRODUCTION_ENTRY_ROUTE_CANARY_NO_EXCHANGE_WRITE",
       productionEntryRouteCanarySource.includes("runV2ProductionEntryRoute") && productionEntryRouteCanarySource.includes("NO_EXCHANGE_ROUTE_PROOF") && productionEntryRouteCanarySource.includes("exchange_write_performed: false"),
       "production entry route canary must prove route wiring without exchange writes"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_ROUTE_CANARY_ENDPOINT_EXISTS",
+      openclawCronRouteSource.includes("/api/openclaw/cron/v2-production-entry-route-canary"),
+      "OpenClaw cron route must expose a V2 production entry route canary endpoint"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_ROUTE_CANARY_REQUIRES_TOKEN",
+      openclawCronRouteSource.includes('router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedulerToken'),
+      "OpenClaw V2 entry route canary endpoint must require scheduler token auth"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_ROUTE_CANARY_USES_SCRIPT_BOUNDARY",
+      openclawCronRouteSource.includes("run-v2-production-entry-route-canary") && openclawCronRouteSource.includes("main({ setProcessExitCode: false })"),
+      "OpenClaw cron endpoint must call the canary script boundary instead of inlining entry execution"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_ROUTE_CANARY_FORBIDS_ENTRY_BYPASS",
+      !openclawCronBypassesProductionRoute,
+      "OpenClaw cron endpoint must not call kernel, submitter, or protection activation directly"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_ROUTE_LIVE_ENDPOINT_EXISTS",
+      openclawCronRouteSource.includes("/api/openclaw/cron/v2-production-entry-live"),
+      "OpenClaw cron route must expose the fail-closed V2 production live entry endpoint"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_ROUTE_LIVE_REQUIRES_TOKEN",
+      openclawCronRouteSource.includes('router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken'),
+      "OpenClaw V2 live entry endpoint must require scheduler token auth"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_ROUTE_LIVE_USES_ENDPOINT_BOUNDARY",
+      openclawCronRouteSource.includes("runV2ProductionEntryLiveEndpoint") && !openclawCronBypassesProductionRoute,
+      "OpenClaw live endpoint must call the live endpoint boundary instead of entry internals"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_FAILS_CLOSED",
+      productionEntryLiveEndpointSource.includes("DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED")
+        && productionEntryLiveEndpointSource.includes("V2_PRODUCTION_ENTRY_LIVE_CONFIRM_REQUIRED")
+        && productionEntryLiveEndpointSource.includes("V2_PRODUCTION_ENTRY_LIVE_CANARY_ONLY_BLOCKED")
+        && productionEntryLiveEndpointSource.includes("V2_PRODUCTION_ENTRY_LIVE_DECISION_REQUIRED"),
+      "V2 production live endpoint must be disabled by default and require explicit live confirmation/runtime checks"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_USES_PRODUCTION_ROUTE_ONLY",
+      productionEntryLiveEndpointSource.includes("runV2ProductionEntryRoute") && !liveEndpointBypassesProductionRoute,
+      "V2 production live endpoint must delegate only to productionEntryRoute"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_RESOLVES_TRANSPORTS_BEFORE_ROUTE",
+      productionEntryLiveEndpointSource.includes("buildV2ProductionEntryLiveTransports")
+        && productionEntryLiveEndpointSource.includes("V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCKED")
+        && appearsBefore(productionEntryLiveEndpointSource, "buildLiveTransports", "runProductionEntryRoute"),
+      "V2 production live endpoint must resolve sizing-backed live transports before route execution"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REQUIRE_APPROVED_SIZING",
+      productionEntryLiveTransportsSource.includes("buildEntryQuantityResolverFromSizingDecision")
+        && productionEntryLiveTransportsSource.includes("V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_REQUIRED")
+        && productionEntryLiveTransportsSource.includes("quantityResolver({ entryIntent })"),
+      "V2 live transports must use an approved sizing decision matched to the routed entry intent"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCK_DRY_RUN_CFG",
+      productionEntryLiveTransportsSource.includes("V2_PRODUCTION_ENTRY_LIVE_CFG_DRY_RUN_BLOCKED")
+        && productionEntryLiveTransportsSource.includes("V2_PRODUCTION_ENTRY_LIVE_CFG_NOT_ENABLED"),
+      "V2 live transports must reject live config that is disabled or dry-run"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_DO_NOT_EXPOSE_SECRETS",
+      productionEntryLiveTransportsSource.includes("api_key_present")
+        && productionEntryLiveTransportsSource.includes("api_secret_present")
+        && productionEntryLiveTransportsSource.includes("summarizeLiveCfg"),
+      "V2 live transport summaries must expose secret presence only, never secret values"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_ROUTE_CANARY_SCRIPT_FORBIDS_ENTRY_BYPASS",
+      productionEntryRouteCanaryScriptSource.includes("runV2ProductionEntryRouteCanary") && !canaryScriptBypassesProductionRoute,
+      "production entry route canary script must call canary runner only, not kernel/submission/protection internals"
     ),
     buildCheck(
       "V2_ENTRY_BOUNDARY_FORBIDS_KERNEL_BYPASS",
@@ -122,9 +225,13 @@ function auditV2ProductionCutoverReadiness(env = process.env) {
 function auditWorkspaceV2ProductionCutoverContract({ rootDir = path.resolve(__dirname, "../..") } = {}) {
   return auditV2ProductionCutoverContract({
     routeSource: readTextSafe(path.join(rootDir, "src", "routes", "webhook.routes.js")),
+    openclawCronRouteSource: readTextSafe(path.join(rootDir, "src", "routes", "openclaw.cron.routes.js")),
     guardSource: readTextSafe(path.join(rootDir, "src", "v2", "productionCutoverGuard.js")),
     productionEntryRouteSource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryRoute.js")),
     productionEntryRouteCanarySource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryRouteCanary.js")),
+    productionEntryLiveEndpointSource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryLiveEndpoint.js")),
+    productionEntryLiveTransportsSource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryLiveTransports.js")),
+    productionEntryRouteCanaryScriptSource: readTextSafe(path.join(rootDir, "scripts", "run-v2-production-entry-route-canary.js")),
     entryBoundaryAuditSource: readTextSafe(path.join(rootDir, "src", "v2", "entryBoundaryAudit.js")),
   });
 }
@@ -137,5 +244,6 @@ module.exports = {
     trimOrNull,
     buildCheck,
     readTextSafe,
+    appearsBefore,
   },
 };

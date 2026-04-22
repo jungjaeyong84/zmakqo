@@ -48,6 +48,9 @@ async function writesArtifactAndKeepsExchangeWriteDisabled() {
   assert.strictEqual(artifact.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_PASS");
   assert.strictEqual(artifact.route_result_summary.reason, "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED");
   assert.strictEqual(artifact.route_result_summary.audit_ledger_reason, "PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED");
+  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.ok, true);
+  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.status, "APPROVED");
+  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.entry_qty_abs, 0.8);
   const historyRows = fs.readFileSync(historyFile, "utf8").trim().split(/\r?\n/);
   assert.strictEqual(historyRows.length, 1);
 }

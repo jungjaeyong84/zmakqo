@@ -106,6 +106,10 @@ function hasProductionCutoverAudit(summary) {
   return deployDecisionCheck.__test.hasProductionCutoverAudit(summary);
 }
 
+function hasProductionLiveEntrySizingContract(summary) {
+  return deployDecisionCheck.__test.hasProductionLiveEntrySizingContract(summary);
+}
+
 function hasCandidateSelectionContract(summary) {
   const row = summary && typeof summary === "object" ? summary : null;
   const contract = row && typeof row.selection_contract === "object" ? row.selection_contract : null;
@@ -670,6 +674,17 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
   }));
 
   checks.push(buildCheck({
+    id: "CHK_27",
+    label: "V2 production live entry sizing contract complete",
+    status: hasProductionLiveEntrySizingContract(deployDecision && deployDecision.production_cutover_audit) ? "PASS" : "FAIL",
+    reason: hasProductionLiveEntrySizingContract(deployDecision && deployDecision.production_cutover_audit)
+      ? "V2 production live entry sizing contract passed"
+      : "V2 production live entry sizing contract is missing or failed",
+    file: artifacts.deployDecision.filePath,
+    field: "production_cutover_audit.contract.checks",
+  }));
+
+  checks.push(buildCheck({
     id: "CHK_18",
     label: "OpenClaw execution audit ledger write complete",
     status: deployDecisionCheck.__test.hasOpenClawExecutionAuditLedgerWrite(deployDecision && deployDecision.bounded_runtime_summary) ? "PASS" : "FAIL",
@@ -982,6 +997,7 @@ if (require.main === module) {
       hasEntryBoundaryAudit,
       hasFillSyncCanonicalBoundaryAudit,
       hasProductionCutoverAudit,
+      hasProductionLiveEntrySizingContract,
       hasCandidateSelectionContract,
       hasConsistentLineageContract,
       hasContextLineageHashMatch,

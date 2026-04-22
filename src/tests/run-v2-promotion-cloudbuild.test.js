@@ -12,6 +12,7 @@ const LINEAGE_CONTRACT_FIXTURE = Object.freeze({
   hash: "lineage-hash-fixture",
 });
 const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
+const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS;
 
 function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
@@ -173,9 +174,15 @@ function buildProductionCutoverAuditFixture() {
     contract: {
       ok: true,
       reason: "V2_PRODUCTION_CUTOVER_CONTRACT_PASS",
-      check_n: 4,
+      check_n: REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS.length,
       fail_n: 0,
       failed_check_ids: [],
+      checks: REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS.map((id) => ({
+        id,
+        ok: true,
+        reason: "fixture production live entry sizing contract passed",
+        evidence: {},
+      })),
     },
   };
 }

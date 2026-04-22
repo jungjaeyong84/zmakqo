@@ -131,6 +131,16 @@ async function runV2ProductionEntryRoute({
     tp1TargetPct,
     tp1QtyRatio,
   });
+  if (!kernelResult || kernelResult.ok !== true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_KERNEL_BLOCKED", {
+      runtime,
+      routedDecision,
+      kernelResult,
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+
   const executedEntry = extractExecutedEntry(kernelResult);
   const openclawExecutionAudit = evaluateOpenClawExecutionSeparation({
     bundle,
@@ -160,16 +170,6 @@ async function runV2ProductionEntryRoute({
         reason: "OPENCLAW_EXECUTION_AUDIT_LEDGER_THROWN",
         error_message: trimOrNull(error && error.message) || String(error),
       }),
-    });
-  }
-
-  if (!kernelResult || kernelResult.ok !== true) {
-    return buildRouteBlock("V2_PRODUCTION_ENTRY_KERNEL_BLOCKED", {
-      runtime,
-      routedDecision,
-      kernelResult,
-      openclawExecutionAudit,
-      auditLedgerResult,
     });
   }
 

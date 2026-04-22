@@ -161,24 +161,33 @@ async function liveDecisionIsBlockedWhenRuntimeIsCanaryOnly() {
 }
 
 async function kernelBlockDoesNotBecomeRouteSuccess() {
+  const calls = [];
   const bundle = buildBundle();
   const result = await runV2ProductionEntryRoute({
     env: buildEnv(),
     bundle,
-    runEntryKernel: async () => ({
-      ok: false,
-      reason: "V2_ENTRY_EXECUTION_KERNEL_BLOCKED",
-      submitterResult: null,
-      kernelAudit: {
+    runEntryKernel: async () => {
+      calls.push("kernel");
+      return {
         ok: false,
-        failed_check_ids: ["ENTRY_KERNEL_TP1_ORDER_PRESENT"],
-      },
-    }),
-    persistExecutionAudit: async () => ({ ok: true, skipped: true }),
+        reason: "V2_ENTRY_EXECUTION_KERNEL_BLOCKED",
+        submitterResult: null,
+        kernelAudit: {
+          ok: false,
+          failed_check_ids: ["ENTRY_KERNEL_TP1_ORDER_PRESENT"],
+        },
+      };
+    },
+    persistExecutionAudit: async () => {
+      calls.push("persist");
+      throw new Error("audit ledger must not mask kernel failure");
+    },
   });
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED");
   assert.strictEqual(result.kernelResult.reason, "V2_ENTRY_EXECUTION_KERNEL_BLOCKED");
+  assert.strictEqual(result.auditLedgerResult, null);
+  assert.deepStrictEqual(calls, ["kernel"]);
 }
 
 async function tamperedKernelExecutionLineageBlocksRouteSuccess() {
