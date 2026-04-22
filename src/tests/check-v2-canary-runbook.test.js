@@ -143,6 +143,11 @@ function buildLiveCutoverReadinessFixture() {
   return {
     ok: true,
     reason: "V2_REPAIR_FIRESTORE_CANARY_READY_FOR_LIVE_PREFLIGHT",
+    artifact_filename: "v2_repair_live_cutover_readiness_latest.json",
+    artifact_current_dir_match: true,
+    generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_age_minutes: 15,
     auto_apply: false,
     mutates_environment: false,
     runbook_checklist: ["19"],
@@ -160,6 +165,11 @@ function buildProductionCutoverReadinessFixture() {
   return {
     ok: true,
     reason: "V2_PRODUCTION_CUTOVER_READINESS_PASS",
+    artifact_filename: "v2_production_cutover_readiness_latest.json",
+    artifact_current_dir_match: true,
+    generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_age_minutes: 15,
     fail_n: 0,
     failed_check_ids: [],
     guard: {
@@ -181,6 +191,11 @@ function buildSchedulerTrafficCutoverReadinessFixture() {
   return {
     ok: true,
     reason: "V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS",
+    artifact_filename: "v2_scheduler_traffic_cutover_readiness_latest.json",
+    artifact_current_dir_match: true,
+    generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_age_minutes: 15,
     fail_n: 0,
     scheduler_sot: "OPENCLAW_CRON",
     required_openclaw_job_ids: [
@@ -219,6 +234,11 @@ function buildSchedulerTrafficCollectorPreflightFixture(filePath = null) {
   return {
     ok: true,
     reason: "V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS",
+    artifact_filename: "v2_scheduler_traffic_collector_preflight_latest.json",
+    artifact_current_dir_match: true,
+    generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_age_minutes: 15,
     fail_n: 0,
     failed_check_ids: [],
     blocker_n: 0,
@@ -776,6 +796,56 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     const schedulerTrafficCollectorCheck = result.review.checks.find((row) => row.id === "CHK_24A");
     assert.ok(schedulerTrafficCollectorCheck);
     assert.strictEqual(schedulerTrafficCollectorCheck.status, "PASS");
+    const readinessFreshnessCheck = result.review.checks.find((row) => row.id === "CHK_24B");
+    assert.ok(readinessFreshnessCheck);
+    assert.strictEqual(readinessFreshnessCheck.status, "PASS");
+  } finally {
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(async function runbookCheckFailsWhenLiveReadinessArtifactIsStale() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-live-readiness-stale-"));
+  try {
+    const cycleId = "PCY__RUNBOOK__LIVE_READINESS_STALE";
+    const dir = path.join(root, cycleId);
+    fs.mkdirSync(dir, { recursive: true });
+    seedMinimalRunbookArtifacts(dir, cycleId, {
+      deployDecisionPatch: { mode: "LIVE" },
+      contextPatch: {
+        live_cutover_readiness_file: path.join(dir, "v2_repair_live_cutover_readiness_latest.json"),
+        live_cutover_readiness_summary: buildLiveCutoverReadinessFixture(),
+        production_cutover_readiness_file: path.join(dir, "v2_production_cutover_readiness_latest.json"),
+        production_cutover_readiness_summary: {
+          ok: true,
+          reason: "V2_PRODUCTION_CUTOVER_READINESS_PASS",
+          blocker_n: 0,
+          guard_reason: "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
+          legacy_webhook_blocked: true,
+        },
+        scheduler_traffic_collector_preflight_file: path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json"),
+        scheduler_traffic_collector_preflight_summary: buildSchedulerTrafficCollectorPreflightFixture(path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json")),
+        scheduler_traffic_cutover_readiness_file: path.join(dir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
+        scheduler_traffic_cutover_readiness_summary: buildSchedulerTrafficCutoverReadinessFixture(),
+      },
+    });
+    writeJson(dir, "v2_repair_live_cutover_readiness_latest.json", buildLiveCutoverReadinessFixture());
+    writeJson(dir, "v2_production_cutover_readiness_latest.json", {
+      ...buildProductionCutoverReadinessFixture(),
+      artifact_generated_age_minutes: runbookCheck.__test.MAX_LIVE_READINESS_ARTIFACT_AGE_MINUTES + 1,
+    });
+    writeJson(dir, "v2_scheduler_traffic_collector_preflight_latest.json", buildSchedulerTrafficCollectorPreflightFixture(path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json")));
+    writeJson(dir, "v2_scheduler_traffic_cutover_readiness_latest.json", buildSchedulerTrafficCutoverReadinessFixture());
+
+    const result = runbookCheck.runCanaryRunbookCheck({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
+    });
+    assert.strictEqual(result.review.ok, false);
+    const readinessFreshnessCheck = result.review.checks.find((row) => row.id === "CHK_24B");
+    assert.ok(readinessFreshnessCheck);
+    assert.strictEqual(readinessFreshnessCheck.status, "FAIL");
+    assert.strictEqual(readinessFreshnessCheck.field, "v2_repair_live_cutover_readiness_latest.json,v2_production_cutover_readiness_latest.json,v2_scheduler_traffic_collector_preflight_latest.json,v2_scheduler_traffic_cutover_readiness_latest.json");
   } finally {
     try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }

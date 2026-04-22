@@ -8,6 +8,13 @@ const submitTrace = require("./lib/v2-promotion-submit-trace");
 const deployDecisionCheck = require("./check-v2-promotion-deploy-decision");
 
 const OUTPUT_FILENAME = "promotion-runbook-review.json";
+const MAX_LIVE_READINESS_ARTIFACT_AGE_MINUTES = 180;
+const LIVE_READINESS_ARTIFACT_REQUIREMENTS = Object.freeze([
+  Object.freeze({ key: "liveCutoverReadiness", filename: "v2_repair_live_cutover_readiness_latest.json" }),
+  Object.freeze({ key: "productionCutoverReadiness", filename: "v2_production_cutover_readiness_latest.json" }),
+  Object.freeze({ key: "schedulerTrafficCollectorPreflight", filename: "v2_scheduler_traffic_collector_preflight_latest.json" }),
+  Object.freeze({ key: "schedulerTrafficCutoverReadiness", filename: "v2_scheduler_traffic_cutover_readiness_latest.json" }),
+]);
 const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
   SUBMIT_CHK_01A: Object.freeze(["artifact_dir", "resolved_artifact_dir", "artifact_dir_coherence", "position_cycle_id"]),
   SUBMIT_CHK_06: Object.freeze(["recommended_next_action"]),
@@ -586,6 +593,37 @@ function hasSchedulerTrafficCollectorPreflightPlan({ preflight = null, cloudbuil
   );
 }
 
+function hasFreshCurrentReadinessArtifact(artifact, expectedFilename) {
+  const row = artifact && typeof artifact === "object" && artifact.payload && typeof artifact.payload === "object"
+    ? artifact.payload
+    : artifact && typeof artifact === "object"
+      ? artifact
+      : null;
+  const filePath = artifact && typeof artifact === "object" && artifact.filePath
+    ? artifact.filePath
+    : row && (row.artifact_file || row.file);
+  const ageMinutes = Number(row && row.artifact_generated_age_minutes);
+  return !!(
+    row &&
+    trimOrNull(expectedFilename) &&
+    trimOrNull(row.artifact_filename) === trimOrNull(expectedFilename) &&
+    row.artifact_current_dir_match === true &&
+    trimOrNull(row.generated_at) &&
+    trimOrNull(row.artifact_generated_at) &&
+    Number.isFinite(ageMinutes) &&
+    ageMinutes <= MAX_LIVE_READINESS_ARTIFACT_AGE_MINUTES &&
+    trimOrNull(filePath) &&
+    path.basename(trimOrNull(filePath)) === trimOrNull(expectedFilename)
+  );
+}
+
+function hasFreshLiveReadinessArtifacts({ artifacts = null } = {}) {
+  const rows = artifacts && typeof artifacts === "object" ? artifacts : {};
+  return LIVE_READINESS_ARTIFACT_REQUIREMENTS.every((requirement) => (
+    hasFreshCurrentReadinessArtifact(rows[requirement.key], requirement.filename)
+  ));
+}
+
 function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts }) {
   const checks = [];
   const preflight = artifacts.preflight.payload;
@@ -985,6 +1023,19 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
     }));
   }
 
+  if (deployMode === "LIVE" || LIVE_READINESS_ARTIFACT_REQUIREMENTS.some((requirement) => artifacts[requirement.key])) {
+    checks.push(buildCheck({
+      id: "CHK_24B",
+      label: "LIVE readiness artifacts are fresh and current-dir scoped",
+      status: hasFreshLiveReadinessArtifacts({ artifacts }) ? "PASS" : "FAIL",
+      reason: hasFreshLiveReadinessArtifacts({ artifacts })
+        ? "LIVE readiness artifacts have current-dir provenance and bounded generated freshness"
+        : "LIVE readiness artifacts must be current-dir matched with generated_at/artifact_generated_at and artifact_generated_age_minutes <= 180",
+      file: artifactDir,
+      field: "v2_repair_live_cutover_readiness_latest.json,v2_production_cutover_readiness_latest.json,v2_scheduler_traffic_collector_preflight_latest.json,v2_scheduler_traffic_cutover_readiness_latest.json",
+    }));
+  }
+
   const failCount = checks.filter((row) => row.status === "FAIL").length;
   const skipCount = checks.filter((row) => row.status === "SKIP").length;
   const passCount = checks.filter((row) => row.status === "PASS").length;
@@ -1107,6 +1158,10 @@ if (require.main === module) {
       hasProductionCutoverReadinessPlan,
       hasSchedulerTrafficCollectorPreflightPlan,
       hasSchedulerTrafficCutoverReadinessPlan,
+      hasFreshCurrentReadinessArtifact,
+      hasFreshLiveReadinessArtifacts,
+      MAX_LIVE_READINESS_ARTIFACT_AGE_MINUTES,
+      LIVE_READINESS_ARTIFACT_REQUIREMENTS,
       evaluateRunbookReview,
     },
   };

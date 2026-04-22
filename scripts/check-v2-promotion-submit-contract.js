@@ -1520,14 +1520,18 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && submitWrapperText.includes("hasFreshCurrentReadinessArtifact")
         && submitWrapperText.includes("LIVE_READINESS_ARTIFACT_MAX_AGE_MINUTES")
         && submitWrapperText.includes("LIVE production cutover readiness has stale artifact provenance")
+        && runbookCheckerText.includes("hasFreshLiveReadinessArtifacts")
+        && runbookCheckerText.includes("CHK_24B")
         && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("artifact_generated_age_minutes")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitClassifiesStaleProductionCutoverReadinessFreshnessAsStaleArtifact")
         && artifactContractText.includes("LIVE readiness artifact")
-        && runbookText.includes("LIVE readiness artifact"),
+        && runbookText.includes("LIVE readiness artifact")
+        && runbookText.includes("CHK_24B"),
       reason: submitWrapperText.includes("hasFreshCurrentReadinessArtifact")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitClassifiesStaleProductionCutoverReadinessFreshnessAsStaleArtifact")
-        ? "LIVE cutover readiness summaries now require current-dir provenance and bounded generated freshness"
-        : "LIVE readiness summaries must not pass submit from copied or stale PASS artifacts",
+        && runbookCheckerText.includes("hasFreshLiveReadinessArtifacts")
+        ? "LIVE cutover readiness summaries now require current-dir provenance and bounded generated freshness in submit and runbook verifier"
+        : "LIVE readiness summaries must not pass submit or runbook review from copied or stale PASS artifacts",
       file: FILES.submitWrapper,
     }),
     buildCheck({
