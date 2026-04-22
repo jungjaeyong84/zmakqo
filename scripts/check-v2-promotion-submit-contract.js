@@ -1297,7 +1297,9 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && submitTraceText.includes("runbookChecklist: Object.freeze([\"28\"])")
         && cloudbuildWrapperText.includes("exit_runtime_canary_streak")
         && readText(path.resolve(__dirname, "run-v2-promotion-pipeline.js")).includes("refreshExitRuntimeCanaryStreak")
-        && readText(path.resolve(__dirname, "check-v2-promotion-deploy-decision.js")).includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"),
+        && readText(path.resolve(__dirname, "check-v2-promotion-deploy-decision.js")).includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithJsonlExitRuntimeStreakStillFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithStaleExitRuntimeStreakProvenanceFailsClosed"),
       reason: runbookText.includes("| `SUBMIT_CHK_21` | `28` | LIVE exit runtime canary streak complete |")
         && artifactContractText.includes("approval_contract.exit_runtime_canary_streak_required")
         && submitWrapperText.includes("SUBMIT_CHK_21")

@@ -896,6 +896,77 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
 })();
 
+(function liveWithJsonlExitRuntimeStreakStillFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.exit_runtime_canary_streak = {
+    ...bounded.exit_runtime_canary_streak,
+    history_source: "JSONL",
+    history_file: "/tmp/v2_exit_runtime_canary_history.jsonl",
+  };
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__JSONL_EXIT_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__JSONL_EXIT_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__JSONL_EXIT_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithStaleExitRuntimeStreakProvenanceFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.exit_runtime_canary_streak = {
+    ...bounded.exit_runtime_canary_streak,
+    artifact_file: "/tmp/ops/daily/v2_exit_runtime_canary_streak_latest.json",
+    artifact_dir: "/tmp/dbj-v2-artifacts",
+    artifact_current_dir_match: false,
+  };
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(bounded), false);
+  assert.deepStrictEqual(deployDecision.__test.collectStaleArtifactProvenanceBlockers(bounded, { mode: "LIVE" }), [
+    "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:EXIT_RUNTIME_CANARY_STREAK",
+  ]);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__STALE_EXIT_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__STALE_EXIT_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__STALE_EXIT_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:EXIT_RUNTIME_CANARY_STREAK"));
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
 (function liveWithShortRepairStreakCoverageFailsClosed() {
   const bounded = buildBoundedRuntimeSummaryFixture();
   bounded.repair_firestore_canary_streak.coverage_minutes = 720;
