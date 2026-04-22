@@ -33,6 +33,8 @@ const FILES = Object.freeze({
   repairFirestoreStreakChecker: path.resolve(__dirname, "check-v2-repair-queue-firestore-canary-streak.js"),
   productionEntryRouteStreakChecker: path.resolve(__dirname, "check-v2-production-entry-route-canary-streak.js"),
   exitRuntimeStreakChecker: path.resolve(__dirname, "check-v2-exit-runtime-canary-streak.js"),
+  productionRuntimeChainChecker: path.resolve(__dirname, "check-v2-production-runtime-chain.js"),
+  productionRuntimeChainAudit: path.resolve(__dirname, "..", "src", "v2", "productionRuntimeChainAudit.js"),
 });
 
 function trimOrNull(value) {
@@ -2060,6 +2062,28 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         ? "submit wrapper now recomputes deploy summary from the current deploy decision and rejects stale context summaries"
         : "submit wrapper must not approve a stale promotion-cloudbuild-context.json when promotion-deploy-decision.json has changed",
       file: FILES.submitWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_75",
+      label: "V2 production runtime chain is locked into promotion",
+      ok: packageJsonText.includes("check:v2-production-runtime-chain")
+        && packageJsonText.includes("v2-production-runtime-chain-audit.test.js")
+        && readText(FILES.productionRuntimeChainChecker).includes("auditV2ProductionRuntimeChain")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_ENTRY_ROUTE_PERMIT_AND_KERNEL")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_FILL_SYNC_BOUNDARY_PASS")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_TRAIL_ACTIVATION_REQUIRES_NATIVE_OK")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_24H_EVIDENCE_AND_OPENCLAW_SUPREME_GATED")
+        && readText(FILES.productionRuntimeChainAudit).includes("DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-runtime-chain-audit.test.js")).includes("missingOpenClawPermitFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-runtime-chain-audit.test.js")).includes("missingReducedFillReducerFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-runtime-chain-audit.test.js")).includes("missingTrailNativeRefreshGateFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-runtime-chain-audit.test.js")).includes("missingLiveTemporalCoherenceFailsClosed")
+        && readText(path.resolve(__dirname, "..", "docs", "DONBEOLJA_V2_IMPLEMENTATION_STATUS_2026-04-21.md")).includes("Production Runtime Chain Audit"),
+      reason: packageJsonText.includes("check:v2-production-runtime-chain")
+        && packageJsonText.includes("v2-production-runtime-chain-audit.test.js")
+        ? "promotion now has a source-level chain audit for entry/protection/fill/reducer/tick/alert/watchdog/repair plus 24h/OpenClaw evidence"
+        : "V2 production runtime chain audit must be exposed as a checker and included in test:v2-promotion",
+      file: FILES.productionRuntimeChainAudit,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

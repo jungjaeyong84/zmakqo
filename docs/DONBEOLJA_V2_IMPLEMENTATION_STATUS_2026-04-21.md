@@ -14,11 +14,11 @@
 1. bounded promotion / lineage / canary / submit fail-closed 계층
 2. 실제 entry / protection / reducer / tick / alert / watchdog / repair runtime 계층
 
-1번은 상당히 진전됐다.
-2번은 핵심 pure module과 contract는 많이 올라왔지만, 실제 런타임 오케스트레이션과 production write path는 아직 얇다.
+1번은 상당히 진전됐고, 2026-04-22 기준 submit/deploy fail-closed 계층은 후반부에 가깝다.
+2번은 핵심 pure module과 contract에 더해 production runtime chain static audit가 추가됐지만, 실제 LIVE 24시간 evidence가 아직 축적 완료된 것은 아니다.
 
 즉, "V2 안전한 승격 검증 프레임" 은 후반부에 가깝고,
-"V2 실전 본체" 는 중반 이하로 보는 것이 맞다.
+"V2 실전 본체" 는 중반에서 후반으로 넘어가는 구간이다. 다만 이 평가는 live exchange write를 켰다는 의미가 아니라, 본체 경로가 promotion gate에서 한 번에 감시되기 시작했다는 의미다.
 
 ## 상태 정의
 
@@ -37,15 +37,15 @@
 | --- | --- | --- |
 | 단계 0. 착수 준비 | 부분완료 | 문서/namespace/runtime contract는 존재하나, V1/V2 완전 분리 운영이 코드 차원에서 끝났다고 보긴 이르다 |
 | 단계 1. Data Contract | 부분완료 | contract와 storage 계층은 강하다. 실제 Firestore live namespace 사용 증거는 아직 부족하다 |
-| 단계 2. Entry + Native Protection | 부분완료 | bootstrap/executor/protection writer는 존재하고 테스트도 통과한다. 하지만 live orchestration evidence는 아직 부족하다 |
-| 단계 3. Canonical Exit Reducer | 부분완료 | reducer와 ledger 규칙은 명확하다. 다만 실제 fill sync writer가 V2 reducer를 production path로 쓰는 증거는 아직 없다 |
-| 단계 4. Tick Exit Worker | 부분완료 | pure evaluation과 refresh request 생성은 존재한다. tick scheduler / runtime write 연결은 아직 얇다 |
-| 단계 5. Alert Pipeline | 부분완료 | alert worker와 outbox contract는 있다. production canonical transition 후행 처리로 완전히 묶였다고 보긴 이르다 |
-| 단계 6. Watchdog + Repair Queue | 부분완료 | watchdog / repair executor pure logic은 있다. queue / executor / service 분리 운영은 아직 약하다 |
-| 단계 6A. OpenClaw Supreme Control Plane | 부분완료 | decision bundle / evidence summary는 존재한다. supreme control plane 실제 운영 통합은 아직 미완이다 |
+| 단계 2. Entry + Native Protection | 완료에 가까운 부분완료 | production entry route / execution kernel / permit / protected success gate가 있고, production runtime chain audit에 묶였다. LIVE 24시간 실증은 아직 필요하다 |
+| 단계 3. Canonical Exit Reducer | 완료에 가까운 부분완료 | fill sync boundary audit와 production runtime chain audit가 `exitFillIngestion -> reducer -> V2 batch writer`를 본선 계약으로 고정한다. live fill 장기 증거는 아직 필요하다 |
+| 단계 4. Tick Exit Worker | 부분완료 | tick native refresh와 trail activation gate가 production runtime chain audit에 묶였다. 실제 tick long-run canary 증거는 24시간 축적이 필요하다 |
+| 단계 5. Alert Pipeline | 완료에 가까운 부분완료 | reduced fill writer가 transition/projection/outbox batch와 alert delivery evidence를 반환한다. LIVE alert streak evidence는 계속 축적해야 한다 |
+| 단계 6. Watchdog + Repair Queue | 완료에 가까운 부분완료 | watchdog canary, repair queue worker, delegated executor, execution ledger가 chain audit와 streak gate에 묶였다. 실운영 repair 24시간 evidence는 아직 승격 조건이다 |
+| 단계 6A. OpenClaw Supreme Control Plane | 완료에 가까운 부분완료 | world state / permit / outcome adjudicator / learner shadow closed-loop evidence와 stale context 차단이 submit/deploy gate에 연결됐다. learner는 여전히 shadow-only다 |
 | 단계 6B. ML+AI Native Signal Plane | 부분완료 | proposal, shadow writer, comparison, promotion artifact 계층은 꽤 진전됐다. 실제 native signal 운영 승격은 아직 아니다 |
-| 단계 7. Replay Gate | 완료에 가까운 부분완료 | bounded selector / collector / exporter / replay / comparison / unified report / deploy decision / cloudbuild / submit wrapper까지 닫혀 있다 |
-| 단계 8. Paper / Shadow / Canary | 초기 | 문서와 gate는 있으나, V2가 실제 paper/shadow/live를 대체 운용하는 증거는 아직 부족하다 |
+| 단계 7. Replay Gate | 완료에 가까운 부분완료 | bounded selector / collector / exporter / replay / comparison / unified report / deploy decision / cloudbuild / submit wrapper / production runtime chain audit까지 닫혀 있다 |
+| 단계 8. Paper / Shadow / Canary | 부분완료 | production entry route, exit runtime, repair Firestore 24시간 streak gate와 temporal coherence 검증은 있다. 실제 24시간 LIVE evidence 축적 PASS가 남았다 |
 
 ## 증거
 
@@ -2533,3 +2533,46 @@ V1 약점 재발 방지:
 1. V1에서는 내부 route나 audit script는 통과했지만 실제 운영 endpoint의 confirm/body/transport 계층이 깨져 보호주문 누락이 늦게 드러나는 문제가 있었다
 2. 이번 단계는 endpoint 계층과 route/protection 계층을 같은 protected-entry artifact에 묶어, 한쪽만 통과한 증거가 LIVE 승격에 쓰이는 경로를 차단한다
 3. no-exchange probe라 실제 주문 위험은 없지만, LIVE endpoint enable 조건과 transport resolution 경계는 promotion gate가 직접 검증한다
+
+## 2026-04-22 Production Runtime Chain Audit
+
+추가 증거:
+
+1. `src/v2/productionRuntimeChainAudit.js`
+2. `scripts/check-v2-production-runtime-chain.js`
+3. `src/tests/v2-production-runtime-chain-audit.test.js`
+4. `package.json`
+5. `scripts/check-v2-promotion-submit-contract.js`
+6. `src/v2/productionEntryRoute.js`
+7. `src/v2/entryExecutionKernel.js`
+8. `src/services/binanceFuturesFillsSync.js`
+9. `src/v2/openclawShadowExitWriter.js`
+10. `src/services/binanceTickExit.js`
+11. `src/v2/exitRuntimeCanary.js`
+12. `scripts/check-v2-promotion-deploy-decision.js`
+
+판정:
+
+1. `entry → protection → fill → reducer → tick/trail → alert → watchdog → repair` 경로가 이제 하나의 static source contract로 검사된다
+2. entry route는 OpenClaw `ExecutionPermit`, execution audit ledger, execution kernel, `V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED` 성공 이유를 모두 가져야 한다
+3. entry kernel은 `ENTRY_SUBMITTED_AND_PROTECTED`, `ACTIVE_PROTECTED`, `HEALTHY`, `SL_ORDER_PRESENT`, `TP1_ORDER_PRESENT` 없이 통과할 수 없다
+4. fill path는 `exitFillIngestion -> reduceV2ExitFill -> commitReducedExitFillArtifacts -> commitCanonicalExitArtifacts -> putV2DocsBatch` 흐름이 깨지면 audit가 실패한다
+5. legacy canonical backfill은 `DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED` 가 있는 명시 env 경로로만 남고, 본선은 V2 batch writer 소유로 고정된다
+6. tick/trail/native stop single writer 경계는 `binanceTickExit` 의 native refresh 성공 후 `writeOpenClawShadowTrailActivation` 으로 넘어가는 계약으로 검사된다
+7. trail activation은 `evaluateTrailActivationProtectionGate`, `nativeRefreshStatus`, `refreshStatus !== "OK"`, `NATIVE_REFRESH_UNHEALTHY` 조건이 깨지면 canonical truth 승격 계약이 실패한다
+8. alert/watchdog/repair는 `exitRuntimeCanary` 의 alert silent drop, retry unresolved, outbox integrity gap, trail activation evidence gap과 repair queue/ledger source가 함께 검사된다
+9. LIVE 24시간 evidence는 production entry route canary streak, exit runtime canary streak, repair Firestore canary streak, OpenClaw supreme closed-loop evidence, live evidence temporal coherence가 같은 deploy decision contract에 묶여 있다
+10. stale context 차단은 submit wrapper와 deploy decision summary drift 검사에 남아 있으며, 오래된 CloudBuild context를 현재 승격 증거처럼 쓰는 경로를 막는다
+11. `test:v2-promotion` 은 `v2-production-runtime-chain-audit.test.js` 를 실행하고, submit contract는 `SUBMIT_CONTRACT_CHK_75` 로 이 연결을 다시 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 entry/protection/fill/reducer/tick/alert/watchdog/repair가 각각 따로 맞아도 전체 운영 경로가 한 번에 증명되지 않았다
+2. 이번 단계는 각 모듈의 존재가 아니라, V2 본선 연결 문자열과 fail-closed 테스트를 promotion path에 묶는다
+3. 따라서 reduced fill이 legacy canonical fallback으로 새거나, trail state가 native refresh 성공 증거 없이 먼저 전진하거나, 24시간 evidence가 서로 다른 시간대 artifact를 섞어 통과하는 회귀가 submit 전에 드러난다
+
+남은 한계:
+
+1. 이 단계는 실제 exchange write를 켜지 않는다
+2. LIVE 승격에는 production entry route canary, exit runtime canary, repair Firestore canary, OpenClaw supreme closed-loop evidence가 24시간 이상 실제 artifact로 축적되어야 한다
+3. learner는 shadow-only이며, OpenClaw가 모든 실행 결정을 자동 변경하는 단계는 별도 promotion gate 이후에만 가능하다
