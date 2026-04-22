@@ -1482,6 +1482,20 @@ function evaluateSubmitContract() {
         : "submit wrapper must not rely only on CloudBuild validation for production runtime config contract",
       file: FILES.submitWrapper,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_57",
+      label: "promotion CI requires production route canary history contract",
+      ok: packageJsonText.includes('"test:v2-production-entry-route-canary-history": "node src/tests/v2-production-entry-route-canary-history.test.js"')
+        && packageJsonText.includes("npm run test:v2-production-entry-route-canary-history")
+        && artifactContractText.includes("v2-production-entry-route-canary-history.test.js")
+        && artifactContractText.includes("history_source=FIRESTORE")
+        && runbookText.includes("v2-production-entry-route-canary-history.test.js")
+        && runbookText.includes("test:v2-production-entry-route-canary-history"),
+      reason: packageJsonText.includes("npm run test:v2-production-entry-route-canary-history")
+        ? "promotion CI now checks production entry route canary history append/source contract before accepting 24h streak evidence"
+        : "promotion CI must not accept 24h route streak evidence without running the durable history append/source contract",
+      file: FILES.packageJson,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
