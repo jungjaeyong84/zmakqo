@@ -26,6 +26,19 @@ function trimOrNull(value) {
   return text || null;
 }
 
+function toMs(value) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ageMinutesSince(value, nowMs = Date.now()) {
+  const generatedMs = toMs(value);
+  if (!Number.isFinite(generatedMs)) return null;
+  return Math.max(0, Math.floor((Number(nowMs) - generatedMs) / 60000));
+}
+
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
@@ -44,6 +57,24 @@ function writeJson(filePath, payload) {
 
 function normalizeObject(value) {
   return value && typeof value === "object" ? value : null;
+}
+
+function buildArtifactProvenance({ artifactDir = null, filePath = null, expectedFilename = null, generatedAt = null, nowMs = Date.now() } = {}) {
+  const file = trimOrNull(filePath);
+  const dir = trimOrNull(artifactDir);
+  const filename = trimOrNull(expectedFilename);
+  const generated = trimOrNull(generatedAt);
+  const resolvedFile = file ? path.resolve(file) : null;
+  const resolvedExpected = dir && filename ? path.join(path.resolve(dir), filename) : null;
+  return Object.freeze({
+    artifact_file: file,
+    artifact_dir: file ? path.dirname(file) : null,
+    artifact_filename: file ? path.basename(file) : null,
+    artifact_current_dir_match: !!(resolvedFile && resolvedExpected && resolvedFile === resolvedExpected),
+    generated_at: generated,
+    artifact_generated_at: generated,
+    artifact_generated_age_minutes: ageMinutesSince(generated, nowMs),
+  });
 }
 
 function summarizeBlockers(blockers) {
@@ -720,7 +751,7 @@ function buildDeployDecisionSummary(deployDecision) {
   });
 }
 
-function buildLiveCutoverReadinessSummary(readiness) {
+function buildLiveCutoverReadinessSummary(readiness, { artifactDir = null, filePath = null } = {}) {
   const row = normalizeObject(readiness);
   if (!row) return null;
   return Object.freeze({
@@ -733,10 +764,17 @@ function buildLiveCutoverReadinessSummary(readiness) {
     required_env_change_n: Array.isArray(row.required_env_changes) ? row.required_env_changes.length : 0,
     submit_check_ids: Array.isArray(row.submit_check_ids) ? row.submit_check_ids.slice() : [],
     runbook_checklist: Array.isArray(row.runbook_checklist) ? row.runbook_checklist.slice() : [],
+    file: trimOrNull(filePath) || trimOrNull(row.artifact_file),
+    ...buildArtifactProvenance({
+      artifactDir,
+      filePath: trimOrNull(filePath) || trimOrNull(row.artifact_file),
+      expectedFilename: LIVE_CUTOVER_READINESS_FILENAME,
+      generatedAt: trimOrNull(row.generated_at) || trimOrNull(row.artifact_generated_at),
+    }),
   });
 }
 
-function buildProductionCutoverReadinessSummary(readiness) {
+function buildProductionCutoverReadinessSummary(readiness, { artifactDir = null, filePath = null } = {}) {
   const row = normalizeObject(readiness);
   if (!row) return null;
   const guard = normalizeObject(row.guard);
@@ -758,10 +796,17 @@ function buildProductionCutoverReadinessSummary(readiness) {
     require_production_cutover: context ? context.require_production_cutover === true : false,
     block_legacy_webhook_signal: context ? context.block_legacy_webhook_signal === true : false,
     allow_legacy_webhook_signal: context ? context.allow_legacy_webhook_signal === true : false,
+    file: trimOrNull(filePath) || trimOrNull(row.artifact_file),
+    ...buildArtifactProvenance({
+      artifactDir,
+      filePath: trimOrNull(filePath) || trimOrNull(row.artifact_file),
+      expectedFilename: PRODUCTION_CUTOVER_READINESS_FILENAME,
+      generatedAt: trimOrNull(row.generated_at) || trimOrNull(row.artifact_generated_at),
+    }),
   });
 }
 
-function buildSchedulerTrafficCutoverReadinessSummary(readiness) {
+function buildSchedulerTrafficCutoverReadinessSummary(readiness, { artifactDir = null, filePath = null } = {}) {
   const row = normalizeObject(readiness);
   if (!row) return null;
   return Object.freeze({
@@ -775,10 +820,17 @@ function buildSchedulerTrafficCutoverReadinessSummary(readiness) {
     active_legacy_scheduler_job_n: Array.isArray(row.active_legacy_scheduler_jobs) ? row.active_legacy_scheduler_jobs.length : 0,
     openclaw_cloud_scheduler_jobs: Array.isArray(row.openclaw_cloud_scheduler_jobs) ? row.openclaw_cloud_scheduler_jobs.slice() : [],
     cloud_run_services: Array.isArray(row.cloud_run_services) ? row.cloud_run_services.slice() : [],
+    file: trimOrNull(filePath) || trimOrNull(row.artifact_file),
+    ...buildArtifactProvenance({
+      artifactDir,
+      filePath: trimOrNull(filePath) || trimOrNull(row.artifact_file),
+      expectedFilename: SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME,
+      generatedAt: trimOrNull(row.generated_at) || trimOrNull(row.artifact_generated_at),
+    }),
   });
 }
 
-function buildSchedulerTrafficCollectorPreflightSummary(preflight, filePath = null) {
+function buildSchedulerTrafficCollectorPreflightSummary(preflight, { artifactDir = null, filePath = null } = {}) {
   const row = normalizeObject(preflight);
   if (!row) return null;
   return Object.freeze({
@@ -791,6 +843,12 @@ function buildSchedulerTrafficCollectorPreflightSummary(preflight, filePath = nu
     service_names: Array.isArray(row.service_names) ? row.service_names.slice() : [],
     scheduler_job_n: Number.isFinite(Number(row.scheduler_job_n)) ? Number(row.scheduler_job_n) : null,
     file: trimOrNull(filePath),
+    ...buildArtifactProvenance({
+      artifactDir,
+      filePath: trimOrNull(filePath) || trimOrNull(row.artifact_file),
+      expectedFilename: SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME,
+      generatedAt: trimOrNull(row.generated_at) || trimOrNull(row.artifact_generated_at),
+    }),
   });
 }
 
@@ -838,13 +896,25 @@ function writeContextArtifact(plan, {
   ensureDir(plan.artifactDir);
   const filePath = path.join(plan.artifactDir, OUTPUT_FILENAME);
   const deployDecisionSummary = buildDeployDecisionSummary(deployDecision);
-  const liveCutoverReadinessSummary = buildLiveCutoverReadinessSummary(liveCutoverReadiness);
-  const productionCutoverReadinessSummary = buildProductionCutoverReadinessSummary(productionCutoverReadiness);
+  const liveCutoverReadinessSummary = buildLiveCutoverReadinessSummary(liveCutoverReadiness, {
+    artifactDir: plan.artifactDir,
+    filePath: liveCutoverReadinessFile,
+  });
+  const productionCutoverReadinessSummary = buildProductionCutoverReadinessSummary(productionCutoverReadiness, {
+    artifactDir: plan.artifactDir,
+    filePath: productionCutoverReadinessFile,
+  });
   const schedulerTrafficCollectorPreflightSummary = buildSchedulerTrafficCollectorPreflightSummary(
     schedulerTrafficCollectorPreflight,
-    schedulerTrafficCollectorPreflightFile
+    {
+      artifactDir: plan.artifactDir,
+      filePath: schedulerTrafficCollectorPreflightFile,
+    }
   );
-  const schedulerTrafficCutoverReadinessSummary = buildSchedulerTrafficCutoverReadinessSummary(schedulerTrafficCutoverReadiness);
+  const schedulerTrafficCutoverReadinessSummary = buildSchedulerTrafficCutoverReadinessSummary(schedulerTrafficCutoverReadiness, {
+    artifactDir: plan.artifactDir,
+    filePath: schedulerTrafficCutoverReadinessFile,
+  });
   const runbookReviewSummary = buildRunbookReviewSummary(runbookReview, runbookReviewFile);
   const requestedDir = trimOrNull(requestedArtifactDir) || plan.artifactDir;
   const resolvedDir = trimOrNull(resolvedArtifactDir) || plan.artifactDir;
@@ -1159,11 +1229,20 @@ function generateLiveCutoverReadiness(plan, deployApproval) {
     DONBEOLJA_V2_REPAIR_LIVE_CUTOVER_READINESS_FILE: outputFile,
   };
   const report = liveCutoverReadiness.runCheck(env);
-  const writtenFile = liveCutoverReadiness.writeReadinessArtifact(env, report);
-  if (!report || report.ok !== true) {
+  const reportWithProvenance = report ? Object.freeze({
+    ...report,
+    ...buildArtifactProvenance({
+      artifactDir: plan.artifactDir,
+      filePath: outputFile,
+      expectedFilename: LIVE_CUTOVER_READINESS_FILENAME,
+      generatedAt: trimOrNull(report.generated_at) || new Date().toISOString(),
+    }),
+  }) : report;
+  const writtenFile = liveCutoverReadiness.writeReadinessArtifact(env, reportWithProvenance);
+  if (!reportWithProvenance || reportWithProvenance.ok !== true) {
     const error = new Error("V2_PROMOTION_CLOUDBUILD_LIVE_CUTOVER_READINESS_BLOCKED");
-    error.details = report || null;
-    error.live_cutover_readiness = report || null;
+    error.details = reportWithProvenance || null;
+    error.live_cutover_readiness = reportWithProvenance || null;
     error.live_cutover_readiness_file = writtenFile || outputFile;
     throw error;
   }
@@ -1171,7 +1250,7 @@ function generateLiveCutoverReadiness(plan, deployApproval) {
     required: true,
     skipped: false,
     reason: "LIVE_CUTOVER_READINESS_PASS",
-    report,
+    report: reportWithProvenance,
     output_file: writtenFile,
   });
 }
@@ -1202,15 +1281,21 @@ function generateProductionCutoverReadiness(plan, deployApproval) {
     ...plan.effectiveEnv,
     DONBEOLJA_V2_PRODUCTION_CUTOVER_READINESS_CHECK: "1",
   });
-  writeJson(outputFile, {
+  const generatedAt = new Date().toISOString();
+  const reportWithProvenance = report ? Object.freeze({
     ...report,
-    artifact_file: outputFile,
-    generated_at: new Date().toISOString(),
-  });
-  if (!report || report.ok !== true) {
+    ...buildArtifactProvenance({
+      artifactDir: plan.artifactDir,
+      filePath: outputFile,
+      expectedFilename: PRODUCTION_CUTOVER_READINESS_FILENAME,
+      generatedAt,
+    }),
+  }) : report;
+  writeJson(outputFile, reportWithProvenance);
+  if (!reportWithProvenance || reportWithProvenance.ok !== true) {
     const error = new Error("V2_PROMOTION_CLOUDBUILD_PRODUCTION_CUTOVER_READINESS_BLOCKED");
-    error.details = report || null;
-    error.production_cutover_readiness = report || null;
+    error.details = reportWithProvenance || null;
+    error.production_cutover_readiness = reportWithProvenance || null;
     error.production_cutover_readiness_file = outputFile;
     throw error;
   }
@@ -1218,7 +1303,7 @@ function generateProductionCutoverReadiness(plan, deployApproval) {
     required: true,
     skipped: false,
     reason: "PRODUCTION_CUTOVER_READINESS_PASS",
-    report,
+    report: reportWithProvenance,
     output_file: outputFile,
   });
 }
@@ -1248,15 +1333,21 @@ function generateSchedulerTrafficCutoverReadiness(plan, deployApproval) {
   const inlineStateJson = trimOrNull(plan.effectiveEnv && plan.effectiveEnv.DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON);
   const collectorPreflightFile = path.join(plan.artifactDir, SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME);
   const collectorPreflight = runV2SchedulerTrafficCollectorPreflight({ env: plan.effectiveEnv });
-  writeJson(collectorPreflightFile, {
+  const collectorPreflightGeneratedAt = new Date().toISOString();
+  const collectorPreflightWithProvenance = collectorPreflight ? Object.freeze({
     ...collectorPreflight,
-    artifact_file: collectorPreflightFile,
-    generated_at: new Date().toISOString(),
-  });
-  if (!collectorPreflight || collectorPreflight.ok !== true) {
+    ...buildArtifactProvenance({
+      artifactDir: plan.artifactDir,
+      filePath: collectorPreflightFile,
+      expectedFilename: SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME,
+      generatedAt: collectorPreflightGeneratedAt,
+    }),
+  }) : collectorPreflight;
+  writeJson(collectorPreflightFile, collectorPreflightWithProvenance);
+  if (!collectorPreflightWithProvenance || collectorPreflightWithProvenance.ok !== true) {
     const error = new Error("V2_PROMOTION_CLOUDBUILD_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_BLOCKED");
-    error.details = collectorPreflight || null;
-    error.scheduler_traffic_collector_preflight = collectorPreflight || null;
+    error.details = collectorPreflightWithProvenance || null;
+    error.scheduler_traffic_collector_preflight = collectorPreflightWithProvenance || null;
     error.scheduler_traffic_collector_preflight_file = collectorPreflightFile;
     error.scheduler_traffic_cutover_readiness = null;
     error.scheduler_traffic_cutover_readiness_file = null;
@@ -1269,17 +1360,23 @@ function generateSchedulerTrafficCutoverReadiness(plan, deployApproval) {
         DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: JSON.stringify(collectV2SchedulerTrafficState({ env: plan.effectiveEnv })),
       });
   const report = auditV2SchedulerTrafficCutoverReadiness(auditEnv);
-  writeJson(outputFile, {
+  const generatedAt = new Date().toISOString();
+  const reportWithProvenance = report ? Object.freeze({
     ...report,
-    artifact_file: outputFile,
-    generated_at: new Date().toISOString(),
-  });
-  if (!report || report.ok !== true) {
+    ...buildArtifactProvenance({
+      artifactDir: plan.artifactDir,
+      filePath: outputFile,
+      expectedFilename: SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME,
+      generatedAt,
+    }),
+  }) : report;
+  writeJson(outputFile, reportWithProvenance);
+  if (!reportWithProvenance || reportWithProvenance.ok !== true) {
     const error = new Error("V2_PROMOTION_CLOUDBUILD_SCHEDULER_TRAFFIC_CUTOVER_READINESS_BLOCKED");
-    error.details = report || null;
-    error.scheduler_traffic_collector_preflight = collectorPreflight || null;
+    error.details = reportWithProvenance || null;
+    error.scheduler_traffic_collector_preflight = collectorPreflightWithProvenance || null;
     error.scheduler_traffic_collector_preflight_file = collectorPreflightFile;
-    error.scheduler_traffic_cutover_readiness = report || null;
+    error.scheduler_traffic_cutover_readiness = reportWithProvenance || null;
     error.scheduler_traffic_cutover_readiness_file = outputFile;
     throw error;
   }
@@ -1287,9 +1384,9 @@ function generateSchedulerTrafficCutoverReadiness(plan, deployApproval) {
     required: true,
     skipped: false,
     reason: "SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS",
-    collector_preflight: collectorPreflight,
+    collector_preflight: collectorPreflightWithProvenance,
     collector_preflight_file: collectorPreflightFile,
-    report,
+    report: reportWithProvenance,
     output_file: outputFile,
   });
 }

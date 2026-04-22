@@ -14,6 +14,11 @@ const submitTrace = require("./lib/v2-promotion-submit-trace");
 
 const OUTPUT_FILENAME = "promotion-cloudbuild-submit-request.json";
 const OPERATOR_ALERT_SEND_SCRIPT = path.resolve(__dirname, "send-v2-promotion-submit-operator-alert.js");
+const LIVE_READINESS_ARTIFACT_MAX_AGE_MINUTES = 180;
+const LIVE_CUTOVER_READINESS_FILENAME = "v2_repair_live_cutover_readiness_latest.json";
+const PRODUCTION_CUTOVER_READINESS_FILENAME = "v2_production_cutover_readiness_latest.json";
+const SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME = "v2_scheduler_traffic_collector_preflight_latest.json";
+const SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME = "v2_scheduler_traffic_cutover_readiness_latest.json";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -38,6 +43,33 @@ function writeJson(filePath, payload) {
 
 function normalizeObject(value) {
   return value && typeof value === "object" ? value : null;
+}
+
+function hasFreshCurrentReadinessArtifact(summary, expectedFilename, maxAgeMinutes = LIVE_READINESS_ARTIFACT_MAX_AGE_MINUTES) {
+  const row = normalizeObject(summary);
+  const filename = trimOrNull(expectedFilename);
+  const maxAge = Number(maxAgeMinutes);
+  const ageMinutes = Number(row && row.artifact_generated_age_minutes);
+  return !!(
+    row &&
+    filename &&
+    trimOrNull(row.artifact_file) &&
+    trimOrNull(row.artifact_dir) &&
+    trimOrNull(row.artifact_filename) === filename &&
+    row.artifact_current_dir_match === true &&
+    trimOrNull(row.generated_at) &&
+    trimOrNull(row.artifact_generated_at) &&
+    Number.isFinite(maxAge) &&
+    maxAge > 0 &&
+    Number.isFinite(ageMinutes) &&
+    ageMinutes <= maxAge
+  );
+}
+
+function hasStaleReadinessArtifact(summary, expectedFilename, maxAgeMinutes = LIVE_READINESS_ARTIFACT_MAX_AGE_MINUTES) {
+  const row = normalizeObject(summary);
+  if (!row) return false;
+  return !hasFreshCurrentReadinessArtifact(row, expectedFilename, maxAgeMinutes);
 }
 
 function readJsonFile(filePath) {
@@ -859,6 +891,15 @@ function extractLiveCutoverReadinessSummaryFromArtifacts(artifacts = {}) {
         .filter(Boolean)
     ),
     file: trimOrNull(cloudbuildContext && cloudbuildContext.live_cutover_readiness_file),
+    artifact_file: trimOrNull(summary.artifact_file),
+    artifact_dir: trimOrNull(summary.artifact_dir),
+    artifact_filename: trimOrNull(summary.artifact_filename),
+    artifact_current_dir_match: summary.artifact_current_dir_match === true,
+    generated_at: trimOrNull(summary.generated_at),
+    artifact_generated_at: trimOrNull(summary.artifact_generated_at),
+    artifact_generated_age_minutes: Number.isFinite(Number(summary.artifact_generated_age_minutes))
+      ? Number(summary.artifact_generated_age_minutes)
+      : null,
   });
 }
 
@@ -880,6 +921,15 @@ function extractProductionCutoverReadinessSummaryFromArtifacts(artifacts = {}) {
     block_legacy_webhook_signal: summary.block_legacy_webhook_signal === true,
     allow_legacy_webhook_signal: summary.allow_legacy_webhook_signal === true,
     file: trimOrNull(cloudbuildContext && cloudbuildContext.production_cutover_readiness_file),
+    artifact_file: trimOrNull(summary.artifact_file),
+    artifact_dir: trimOrNull(summary.artifact_dir),
+    artifact_filename: trimOrNull(summary.artifact_filename),
+    artifact_current_dir_match: summary.artifact_current_dir_match === true,
+    generated_at: trimOrNull(summary.generated_at),
+    artifact_generated_at: trimOrNull(summary.artifact_generated_at),
+    artifact_generated_age_minutes: Number.isFinite(Number(summary.artifact_generated_age_minutes))
+      ? Number(summary.artifact_generated_age_minutes)
+      : null,
   });
 }
 
@@ -908,6 +958,15 @@ function extractSchedulerTrafficCutoverReadinessSummaryFromArtifacts(artifacts =
     openclaw_cloud_scheduler_jobs: Object.freeze(Array.isArray(summary.openclaw_cloud_scheduler_jobs) ? summary.openclaw_cloud_scheduler_jobs.slice() : []),
     cloud_run_services: Object.freeze(Array.isArray(summary.cloud_run_services) ? summary.cloud_run_services.slice() : []),
     file: trimOrNull(cloudbuildContext && cloudbuildContext.scheduler_traffic_cutover_readiness_file),
+    artifact_file: trimOrNull(summary.artifact_file),
+    artifact_dir: trimOrNull(summary.artifact_dir),
+    artifact_filename: trimOrNull(summary.artifact_filename),
+    artifact_current_dir_match: summary.artifact_current_dir_match === true,
+    generated_at: trimOrNull(summary.generated_at),
+    artifact_generated_at: trimOrNull(summary.artifact_generated_at),
+    artifact_generated_age_minutes: Number.isFinite(Number(summary.artifact_generated_age_minutes))
+      ? Number(summary.artifact_generated_age_minutes)
+      : null,
   });
 }
 
@@ -933,6 +992,15 @@ function extractSchedulerTrafficCollectorPreflightSummaryFromArtifacts(artifacts
     ),
     scheduler_job_n: Number.isFinite(Number(summary.scheduler_job_n)) ? Number(summary.scheduler_job_n) : null,
     file: trimOrNull(cloudbuildContext && cloudbuildContext.scheduler_traffic_collector_preflight_file) || trimOrNull(summary.file),
+    artifact_file: trimOrNull(summary.artifact_file),
+    artifact_dir: trimOrNull(summary.artifact_dir),
+    artifact_filename: trimOrNull(summary.artifact_filename),
+    artifact_current_dir_match: summary.artifact_current_dir_match === true,
+    generated_at: trimOrNull(summary.generated_at),
+    artifact_generated_at: trimOrNull(summary.artifact_generated_at),
+    artifact_generated_age_minutes: Number.isFinite(Number(summary.artifact_generated_age_minutes))
+      ? Number(summary.artifact_generated_age_minutes)
+      : null,
   });
 }
 
@@ -984,7 +1052,8 @@ function hasLiveCutoverReadinessSummary(summary) {
     row.mutates_environment === false &&
     Number(row.blocker_n || 0) === 0 &&
     Number(row.required_env_change_n || 0) >= 4 &&
-    trimOrNull(row.file)
+    trimOrNull(row.file) &&
+    hasFreshCurrentReadinessArtifact(row, LIVE_CUTOVER_READINESS_FILENAME)
   );
 }
 
@@ -1004,7 +1073,8 @@ function hasProductionCutoverReadinessSummary(summary) {
     row.require_production_cutover === true &&
     row.block_legacy_webhook_signal === true &&
     row.allow_legacy_webhook_signal === false &&
-    trimOrNull(row.file)
+    trimOrNull(row.file) &&
+    hasFreshCurrentReadinessArtifact(row, PRODUCTION_CUTOVER_READINESS_FILENAME)
   );
 }
 
@@ -1030,7 +1100,8 @@ function hasSchedulerTrafficCutoverReadinessSummary(summary) {
       Number(service && service.traffic_percent) === 100 &&
       service.latest_revision_ready === true
     )) &&
-    trimOrNull(row.file)
+    trimOrNull(row.file) &&
+    hasFreshCurrentReadinessArtifact(row, SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME)
   );
 }
 
@@ -1045,7 +1116,8 @@ function hasSchedulerTrafficCollectorPreflightSummary(summary) {
     trimOrNull(row.region) &&
     Array.isArray(row.service_names) &&
     row.service_names.length >= 2 &&
-    trimOrNull(row.file)
+    trimOrNull(row.file) &&
+    hasFreshCurrentReadinessArtifact(row, SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME)
   );
 }
 
@@ -1549,13 +1621,17 @@ function buildApprovalVerification(request) {
   }
 
   if (row.approval_contract && row.approval_contract.live_cutover_readiness_summary_required === true) {
+    const liveCutoverReadinessOk = hasLiveCutoverReadinessSummary(liveCutoverReadinessSummary);
+    const liveCutoverReadinessStale = hasStaleReadinessArtifact(liveCutoverReadinessSummary, LIVE_CUTOVER_READINESS_FILENAME);
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_12",
       label: "LIVE repair cutover readiness summary visible",
-      ok: hasLiveCutoverReadinessSummary(liveCutoverReadinessSummary),
-      reason: hasLiveCutoverReadinessSummary(liveCutoverReadinessSummary)
+      ok: liveCutoverReadinessOk,
+      reason: liveCutoverReadinessOk
         ? "LIVE repair cutover readiness summary is visible and non-mutating"
-        : "LIVE repair cutover readiness summary is missing or not non-mutating",
+        : liveCutoverReadinessStale
+          ? "LIVE repair cutover readiness summary has stale artifact provenance"
+          : "LIVE repair cutover readiness summary is missing or not non-mutating",
       file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
       field: "live_cutover_readiness_summary",
     }), {
@@ -1568,13 +1644,17 @@ function buildApprovalVerification(request) {
   }
 
   if (row.approval_contract && row.approval_contract.production_cutover_readiness_summary_required === true) {
+    const productionCutoverReadinessOk = hasProductionCutoverReadinessSummary(productionCutoverReadinessSummary);
+    const productionCutoverReadinessStale = hasStaleReadinessArtifact(productionCutoverReadinessSummary, PRODUCTION_CUTOVER_READINESS_FILENAME);
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_15",
       label: "LIVE production cutover readiness blocks legacy webhook",
-      ok: hasProductionCutoverReadinessSummary(productionCutoverReadinessSummary),
-      reason: hasProductionCutoverReadinessSummary(productionCutoverReadinessSummary)
+      ok: productionCutoverReadinessOk,
+      reason: productionCutoverReadinessOk
         ? "LIVE production cutover readiness proves legacy webhook is blocked"
-        : "LIVE production cutover readiness is missing, failed, or does not block legacy webhook",
+        : productionCutoverReadinessStale
+          ? "LIVE production cutover readiness has stale artifact provenance"
+          : "LIVE production cutover readiness is missing, failed, or does not block legacy webhook",
       file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
       field: "production_cutover_readiness_summary",
     }), {
@@ -1587,13 +1667,20 @@ function buildApprovalVerification(request) {
   }
 
   if (row.approval_contract && row.approval_contract.scheduler_traffic_collector_preflight_summary_required === true) {
+    const schedulerTrafficCollectorPreflightOk = hasSchedulerTrafficCollectorPreflightSummary(schedulerTrafficCollectorPreflightSummary);
+    const schedulerTrafficCollectorPreflightStale = hasStaleReadinessArtifact(
+      schedulerTrafficCollectorPreflightSummary,
+      SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME
+    );
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_17",
       label: "LIVE scheduler traffic collector preflight can read GCP state",
-      ok: hasSchedulerTrafficCollectorPreflightSummary(schedulerTrafficCollectorPreflightSummary),
-      reason: hasSchedulerTrafficCollectorPreflightSummary(schedulerTrafficCollectorPreflightSummary)
+      ok: schedulerTrafficCollectorPreflightOk,
+      reason: schedulerTrafficCollectorPreflightOk
         ? "LIVE scheduler traffic collector preflight proves Cloud Build can read GCP scheduler and service state"
-        : "LIVE scheduler traffic collector preflight is missing, failed, or not traceable to an artifact",
+        : schedulerTrafficCollectorPreflightStale
+          ? "LIVE scheduler traffic collector preflight has stale artifact provenance"
+          : "LIVE scheduler traffic collector preflight is missing, failed, or not traceable to an artifact",
       file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
       field: "scheduler_traffic_collector_preflight_summary",
     }), {
@@ -1606,13 +1693,20 @@ function buildApprovalVerification(request) {
   }
 
   if (row.approval_contract && row.approval_contract.scheduler_traffic_cutover_readiness_summary_required === true) {
+    const schedulerTrafficCutoverReadinessOk = hasSchedulerTrafficCutoverReadinessSummary(schedulerTrafficCutoverReadinessSummary);
+    const schedulerTrafficCutoverReadinessStale = hasStaleReadinessArtifact(
+      schedulerTrafficCutoverReadinessSummary,
+      SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME
+    );
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_16",
       label: "LIVE scheduler traffic cutover uses OpenClaw cron only",
-      ok: hasSchedulerTrafficCutoverReadinessSummary(schedulerTrafficCutoverReadinessSummary),
-      reason: hasSchedulerTrafficCutoverReadinessSummary(schedulerTrafficCutoverReadinessSummary)
+      ok: schedulerTrafficCutoverReadinessOk,
+      reason: schedulerTrafficCutoverReadinessOk
         ? "LIVE scheduler traffic cutover proves OpenClaw cron ownership and ready Cloud Run traffic"
-        : "LIVE scheduler traffic cutover readiness is missing, failed, or still has legacy/autostart traffic risk",
+        : schedulerTrafficCutoverReadinessStale
+          ? "LIVE scheduler traffic cutover readiness has stale artifact provenance"
+          : "LIVE scheduler traffic cutover readiness is missing, failed, or still has legacy/autostart traffic risk",
       file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
       field: "scheduler_traffic_cutover_readiness_summary",
     }), {

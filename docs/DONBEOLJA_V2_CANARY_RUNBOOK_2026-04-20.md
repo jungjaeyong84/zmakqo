@@ -596,3 +596,25 @@ Runbook checklist 24는 이제 `missing_openclaw_job_ids=[]` 만 보는 것이 �
 
 특히 `v2_exit_runtime_canary` 가 빠지면 24시간 exit runtime streak가 장기 운영 증거가 아니라 수동/일회성 artifact가 된다.
 그 경우 checklist 24와 28은 모두 LIVE 승격 불가로 판정한다.
+
+## LIVE readiness artifact freshness checklist
+
+LIVE submit 직전 운영자는 readiness artifact 4종이 현재 cycle에서 새로 생성됐는지 확인해야 한다.
+
+대상 checklist:
+
+1. Runbook 20 / `SUBMIT_CHK_12`: `v2_repair_live_cutover_readiness_latest.json`
+2. Runbook 23 / `SUBMIT_CHK_15`: `v2_production_cutover_readiness_latest.json`
+3. Runbook 24A / `SUBMIT_CHK_17`: `v2_scheduler_traffic_collector_preflight_latest.json`
+4. Runbook 24 / `SUBMIT_CHK_16`: `v2_scheduler_traffic_cutover_readiness_latest.json`
+
+각 LIVE readiness artifact는 아래를 만족해야 한다.
+
+1. `artifact_current_dir_match=true`
+2. `artifact_filename` 이 기대 파일명과 일치
+3. `generated_at` 존재
+4. `artifact_generated_at` 존재
+5. `artifact_generated_age_minutes <= 180`
+
+위 조건이 깨지면 문제는 runtime 기능 고장이 아니라 stale artifact provenance 계열이다.
+운영자는 해당 artifact dir을 폐기하고 fresh promotion pipeline을 다시 실행해야 한다.

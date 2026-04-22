@@ -1167,3 +1167,29 @@ LIVE mode에서 `required_openclaw_job_ids` 는 launchd manifest의 HIGH job과 
 
 Cloud Scheduler job은 존재만으로 충분하지 않다.
 `path_match`, `schedule_match`, `time_zone_match` 가 true일 때만 enabled evidence로 인정한다.
+
+## LIVE readiness artifact freshness contract
+
+LIVE readiness artifact 4종도 long-run streak/protected entry canary와 같은 freshness 계약을 따른다.
+
+대상:
+
+1. `v2_repair_live_cutover_readiness_latest.json`
+2. `v2_production_cutover_readiness_latest.json`
+3. `v2_scheduler_traffic_collector_preflight_latest.json`
+4. `v2_scheduler_traffic_cutover_readiness_latest.json`
+
+각 summary는 `promotion-cloudbuild-context.json` 과 `promotion-cloudbuild-submit-request.json.submit_trace_summary` 에 아래 필드를 보존해야 한다.
+
+1. `artifact_file`
+2. `artifact_dir`
+3. `artifact_filename`
+4. `artifact_current_dir_match`
+5. `generated_at`
+6. `artifact_generated_at`
+7. `artifact_generated_age_minutes`
+
+LIVE submit은 `artifact_current_dir_match=true`, 기대 filename 일치, `generated_at`/`artifact_generated_at` 존재, `artifact_generated_age_minutes <= 180` 을 모두 요구한다.
+
+이 중 하나라도 깨지면 submit wrapper는 해당 `SUBMIT_CHK_*` 를 실패시키고 `STALE_ARTIFACT_PROVENANCE` family로 분류해야 한다.
+즉, 오래된 readiness PASS JSON을 현재 artifact dir에 복사해 LIVE 승격을 통과시키는 경로는 허용하지 않는다.

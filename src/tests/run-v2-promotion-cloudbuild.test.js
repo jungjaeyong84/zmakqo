@@ -1337,6 +1337,12 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(context.live_cutover_readiness_summary.auto_apply, false);
     assert.strictEqual(context.live_cutover_readiness_summary.mutates_environment, false);
     assert.strictEqual(context.live_cutover_readiness_summary.required_env_change_n, 4);
+    assert.strictEqual(context.live_cutover_readiness_summary.artifact_file, cutover.output_file);
+    assert.strictEqual(context.live_cutover_readiness_summary.artifact_filename, "v2_repair_live_cutover_readiness_latest.json");
+    assert.strictEqual(context.live_cutover_readiness_summary.artifact_current_dir_match, true);
+    assert.strictEqual(typeof context.live_cutover_readiness_summary.generated_at, "string");
+    assert.strictEqual(typeof context.live_cutover_readiness_summary.artifact_generated_at, "string");
+    assert.strictEqual(Number.isFinite(context.live_cutover_readiness_summary.artifact_generated_age_minutes), true);
 
     const productionCutover = cloudbuild.__test.generateProductionCutoverReadiness(plan, deployApproval);
     assert.strictEqual(productionCutover.required, true);
@@ -1361,6 +1367,12 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(contextWithProduction.production_cutover_readiness_summary.ok, true);
     assert.strictEqual(contextWithProduction.production_cutover_readiness_summary.legacy_webhook_blocked, true);
     assert.strictEqual(contextWithProduction.production_cutover_readiness_summary.guard_reason, "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED");
+    assert.strictEqual(contextWithProduction.production_cutover_readiness_summary.artifact_file, productionCutover.output_file);
+    assert.strictEqual(contextWithProduction.production_cutover_readiness_summary.artifact_filename, "v2_production_cutover_readiness_latest.json");
+    assert.strictEqual(contextWithProduction.production_cutover_readiness_summary.artifact_current_dir_match, true);
+    assert.strictEqual(typeof contextWithProduction.production_cutover_readiness_summary.generated_at, "string");
+    assert.strictEqual(typeof contextWithProduction.production_cutover_readiness_summary.artifact_generated_at, "string");
+    assert.strictEqual(Number.isFinite(contextWithProduction.production_cutover_readiness_summary.artifact_generated_age_minutes), true);
 
     const schedulerTrafficCutover = cloudbuild.__test.generateSchedulerTrafficCutoverReadiness(plan, deployApproval);
     assert.strictEqual(schedulerTrafficCutover.required, true);
@@ -1390,6 +1402,14 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_collector_preflight_summary.ok, true);
     assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_summary.ok, true);
     assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_summary.scheduler_sot, "OPENCLAW_CRON");
+    assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_collector_preflight_summary.artifact_file, schedulerTrafficCutover.collector_preflight_file);
+    assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_collector_preflight_summary.artifact_filename, "v2_scheduler_traffic_collector_preflight_latest.json");
+    assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_collector_preflight_summary.artifact_current_dir_match, true);
+    assert.strictEqual(Number.isFinite(contextWithSchedulerTraffic.scheduler_traffic_collector_preflight_summary.artifact_generated_age_minutes), true);
+    assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_summary.artifact_file, schedulerTrafficCutover.output_file);
+    assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_summary.artifact_filename, "v2_scheduler_traffic_cutover_readiness_latest.json");
+    assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_summary.artifact_current_dir_match, true);
+    assert.strictEqual(Number.isFinite(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_summary.artifact_generated_age_minutes), true);
 
     const result = cloudbuild.__test.runCanaryRunbookReview(plan, deployApproval);
     assert.strictEqual(result.review.ok, true);

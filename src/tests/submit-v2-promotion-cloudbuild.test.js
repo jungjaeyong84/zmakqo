@@ -19,6 +19,19 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
 }
 
+function withReadinessArtifactProvenance(filePath, expectedFilename) {
+  if (!filePath) return {};
+  return {
+    artifact_file: filePath,
+    artifact_dir: path.dirname(filePath),
+    artifact_filename: expectedFilename,
+    artifact_current_dir_match: path.basename(filePath) === expectedFilename,
+    generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_at: "2026-04-22T12:00:00.000Z",
+    artifact_generated_age_minutes: 15,
+  };
+}
+
 function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
   return {
     ok: true,
@@ -408,6 +421,7 @@ function buildLiveCutoverReadinessSummaryFixture(filePath = null) {
     submit_check_ids: ["SUBMIT_CHK_11"],
     runbook_checklist: ["19"],
     ...(filePath ? { file: filePath } : {}),
+    ...withReadinessArtifactProvenance(filePath, "v2_repair_live_cutover_readiness_latest.json"),
   };
 }
 
@@ -426,6 +440,7 @@ function buildProductionCutoverReadinessSummaryFixture(filePath = null) {
     block_legacy_webhook_signal: true,
     allow_legacy_webhook_signal: false,
     ...(filePath ? { file: filePath } : {}),
+    ...withReadinessArtifactProvenance(filePath, "v2_production_cutover_readiness_latest.json"),
   };
 }
 
@@ -464,6 +479,7 @@ function buildSchedulerTrafficCutoverReadinessSummaryFixture(filePath = null) {
       },
     ],
     ...(filePath ? { file: filePath } : {}),
+    ...withReadinessArtifactProvenance(filePath, "v2_scheduler_traffic_cutover_readiness_latest.json"),
   };
 }
 
@@ -478,6 +494,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     service_names: ["donbeolja", "donbeolja-exit-worker"],
     scheduler_job_n: 0,
     ...(filePath ? { file: filePath } : {}),
+    ...withReadinessArtifactProvenance(filePath, "v2_scheduler_traffic_collector_preflight_latest.json"),
   };
 }
 
@@ -1602,6 +1619,50 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.ok(cliPayload.operator_summary.lines.includes("production_cutover_ready=YES"));
     assert.ok(cliPayload.operator_summary.lines.includes("scheduler_collector_preflight=YES"));
     assert.ok(cliPayload.operator_summary.lines.includes("scheduler_traffic_ready=YES"));
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function liveSubmitClassifiesStaleProductionCutoverReadinessFreshnessAsStaleArtifact() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-prod-cutover-stale-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__LIVE__PROD_CUTOVER_STALE");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    const cutoverFile = path.join(artifactDir, "v2_repair_live_cutover_readiness_latest.json");
+    const productionCutoverFile = path.join(artifactDir, "v2_production_cutover_readiness_latest.json");
+    const schedulerTrafficCollectorPreflightFile = path.join(artifactDir, "v2_scheduler_traffic_collector_preflight_latest.json");
+    const schedulerTrafficCutoverFile = path.join(artifactDir, "v2_scheduler_traffic_cutover_readiness_latest.json");
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__LIVE__PROD_CUTOVER_STALE", {
+      liveCutoverReadinessSummary: buildLiveCutoverReadinessSummaryFixture(cutoverFile),
+      productionCutoverReadinessSummary: {
+        ...buildProductionCutoverReadinessSummaryFixture(productionCutoverFile),
+        artifact_generated_age_minutes: 181,
+      },
+      schedulerTrafficCollectorPreflightSummary: buildSchedulerTrafficCollectorPreflightSummaryFixture(schedulerTrafficCollectorPreflightFile),
+      schedulerTrafficCutoverReadinessSummary: buildSchedulerTrafficCutoverReadinessSummaryFixture(schedulerTrafficCutoverFile),
+    });
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "LIVE",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__LIVE__PROD_CUTOVER_STALE",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_BLOCKED");
+    assert.ok(result.request.submit_trace_summary.failed_submit_check_ids.includes("SUBMIT_CHK_15"));
+    assert.ok(result.request.submit_trace_summary.failed_runbook_checklist.includes("23"));
+    assert.deepStrictEqual(result.request.submit_trace_summary.blocker_families, ["STALE_ARTIFACT_PROVENANCE", "PRODUCTION_CUTOVER"]);
+    assert.strictEqual(result.request.submit_trace_summary.primary_blocker_family, "STALE_ARTIFACT_PROVENANCE");
+    assert.strictEqual(result.request.submit_trace_summary.recommended_next_action, "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE");
+    assert.strictEqual(result.request.submit_trace_summary.recommended_next_action_reason_code, "STALE_ARTIFACT_PROVENANCE_BLOCKER");
+    assert.ok(result.request.operator_summary.lines.includes("stale_artifact_provenance_blocker=YES"));
+    const check = result.request.approval_verification.checks.find((row) => row.id === "SUBMIT_CHK_15");
+    assert.ok(check);
+    assert.strictEqual(check.ok, false);
+    assert.strictEqual(check.reason, "LIVE production cutover readiness has stale artifact provenance");
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

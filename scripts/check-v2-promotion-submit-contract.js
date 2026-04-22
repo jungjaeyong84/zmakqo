@@ -1416,6 +1416,27 @@ function evaluateSubmitContract() {
         : "generated freshness staleness must be tested end-to-end, not only by static string checks",
       file: path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js"),
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_54",
+      label: "LIVE readiness summaries require fresh artifact provenance",
+      ok: cloudbuildWrapperText.includes("buildArtifactProvenance")
+        && cloudbuildWrapperText.includes("LIVE_CUTOVER_READINESS_FILENAME")
+        && cloudbuildWrapperText.includes("PRODUCTION_CUTOVER_READINESS_FILENAME")
+        && cloudbuildWrapperText.includes("SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME")
+        && cloudbuildWrapperText.includes("SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME")
+        && submitWrapperText.includes("hasFreshCurrentReadinessArtifact")
+        && submitWrapperText.includes("LIVE_READINESS_ARTIFACT_MAX_AGE_MINUTES")
+        && submitWrapperText.includes("LIVE production cutover readiness has stale artifact provenance")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("artifact_generated_age_minutes")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitClassifiesStaleProductionCutoverReadinessFreshnessAsStaleArtifact")
+        && artifactContractText.includes("LIVE readiness artifact")
+        && runbookText.includes("LIVE readiness artifact"),
+      reason: submitWrapperText.includes("hasFreshCurrentReadinessArtifact")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitClassifiesStaleProductionCutoverReadinessFreshnessAsStaleArtifact")
+        ? "LIVE cutover readiness summaries now require current-dir provenance and bounded generated freshness"
+        : "LIVE readiness summaries must not pass submit from copied or stale PASS artifacts",
+      file: FILES.submitWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

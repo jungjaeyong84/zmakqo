@@ -2396,3 +2396,29 @@ V1 약점 재발 방지:
 1. V1에서는 오래된 latest artifact가 본체 런타임 결함처럼 보이거나, 반대로 본체가 정상인데 artifact 재생성만 필요한 상황을 구분하지 못했다
 2. 이번 단계는 generated freshness 실패를 stale artifact 계열로 분리해, operator가 보호주문 코드를 고치기 전에 fresh promotion pipeline 재실행부터 하도록 고정했다
 3. 따라서 stale PASS JSON 때문에 잘못된 원인 분석과 불필요한 본체 수정을 반복하는 경로를 줄인다
+
+## 2026-04-22 LIVE Readiness Artifact Freshness Contract
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-cloudbuild.js`
+2. `scripts/submit-v2-promotion-cloudbuild.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `src/tests/run-v2-promotion-cloudbuild.test.js`
+5. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+6. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+7. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. LIVE repair cutover readiness, production cutover readiness, scheduler traffic collector preflight, scheduler traffic cutover readiness summary는 모두 artifact provenance를 보존한다
+2. 각 summary는 `artifact_file`, `artifact_dir`, `artifact_filename`, `artifact_current_dir_match`, `generated_at`, `artifact_generated_at`, `artifact_generated_age_minutes` 를 포함한다
+3. LIVE submit wrapper는 4종 readiness summary 모두에 대해 current-dir match와 `artifact_generated_age_minutes <= 180` 을 요구한다
+4. freshness가 깨진 readiness summary는 일반 production cutover 오류가 아니라 `STALE_ARTIFACT_PROVENANCE` family로 분류된다
+5. submit contract checker는 `SUBMIT_CONTRACT_CHK_54` 로 이 계약이 wrapper, submit verifier, tests, docs에 모두 남아 있는지 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 readiness PASS artifact가 오래됐는지, 현재 cycle에서 만든 증거인지 운영자가 한 번에 판별하기 어려웠다
+2. 이번 단계는 LIVE 전환 직전 readiness 4종도 long-run streak/protected entry canary와 같은 신선도 계약으로 묶었다
+3. 따라서 오래된 LIVE readiness PASS 파일을 현재 artifact dir에 복사해 scheduler/legacy webhook cutover를 통과시키는 경로를 차단한다
