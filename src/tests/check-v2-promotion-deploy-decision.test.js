@@ -102,6 +102,10 @@ function buildBoundedRuntimeSummaryFixture() {
     repair_firestore_canary_streak: {
       ok: true,
       reason: "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS",
+      artifact_file: "/tmp/dbj-v2-artifacts/v2_repair_queue_firestore_canary_streak_latest.json",
+      artifact_dir: "/tmp/dbj-v2-artifacts",
+      artifact_filename: "v2_repair_queue_firestore_canary_streak_latest.json",
+      artifact_current_dir_match: true,
       healthy_run_n: 13,
       min_run_count: 12,
       unhealthy_run_n: 0,
@@ -111,6 +115,10 @@ function buildBoundedRuntimeSummaryFixture() {
     production_entry_route_canary_streak: {
       ok: true,
       reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+      artifact_file: "/tmp/dbj-v2-artifacts/v2_production_entry_route_canary_streak_latest.json",
+      artifact_dir: "/tmp/dbj-v2-artifacts",
+      artifact_filename: "v2_production_entry_route_canary_streak_latest.json",
+      artifact_current_dir_match: true,
       history_source: "FIRESTORE",
       history_file: "dbjv2__production_entry_route_canaries_v2",
       healthy_run_n: 13,
@@ -460,6 +468,40 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
 })();
 
+(function liveWithStaleRepairFirestoreStreakFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.repair_firestore_canary_streak = {
+    ...bounded.repair_firestore_canary_streak,
+    artifact_file: "/tmp/ops/daily/v2_repair_queue_firestore_canary_streak_latest.json",
+    artifact_dir: "/tmp/dbj-v2-artifacts",
+    artifact_current_dir_match: false,
+  };
+  assert.strictEqual(deployDecision.__test.hasRepairFirestoreCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__STALE_REPAIR_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__STALE_REPAIR_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__STALE_REPAIR_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
+})();
+
 (function canaryWithoutProductionEntryProtectedCanaryFailsClosed() {
   const bounded = buildBoundedRuntimeSummaryFixture();
   delete bounded.production_entry_protected_canary;
@@ -577,6 +619,40 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__NO_ROUTE_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithStaleProductionEntryRouteStreakFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.production_entry_route_canary_streak = {
+    ...bounded.production_entry_route_canary_streak,
+    artifact_file: "/tmp/ops/daily/v2_production_entry_route_canary_streak_latest.json",
+    artifact_dir: "/tmp/dbj-v2-artifacts",
+    artifact_current_dir_match: false,
+  };
+  assert.strictEqual(deployDecision.__test.hasProductionEntryRouteCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__STALE_ROUTE_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__STALE_ROUTE_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__STALE_ROUTE_STREAK",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

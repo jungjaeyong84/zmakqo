@@ -403,6 +403,10 @@ function buildProductionRouteCanaryHistoryDb(rows) {
       storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.reason,
       "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"
     );
+    assert.strictEqual(storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.artifact_file, streakFile);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.artifact_dir, dir);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.artifact_filename, "v2_repair_queue_firestore_canary_streak_latest.json");
+    assert.strictEqual(storedDecision.bounded_runtime_summary.repair_firestore_canary_streak.artifact_current_dir_match, true);
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
     try { fs.rmSync(externalStreakFile, { force: true }); } catch (_) {}
@@ -515,6 +519,10 @@ function buildProductionRouteCanaryHistoryDb(rows) {
       storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.reason,
       "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"
     );
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.artifact_file, streakFile);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.artifact_dir, dir);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.artifact_filename, "v2_production_entry_route_canary_streak_latest.json");
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.artifact_current_dir_match, true);
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
     try { fs.rmSync(externalStreakFile, { force: true }); } catch (_) {}

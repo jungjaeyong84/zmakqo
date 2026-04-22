@@ -107,6 +107,8 @@ optional review artifact:
 
 `bounded_runtime_summary.production_entry_protected_canary` 는 단순 pass payload가 아니라 현재 artifact cycle의 fresh 증거여야 한다. 따라서 `artifact_file`, `artifact_dir`, `artifact_filename`, `artifact_current_dir_match` 를 포함하고, CANARY/LIVE deploy decision은 `artifact_filename=v2_production_entry_protected_canary_latest.json` 및 `artifact_current_dir_match=true` 가 아니면 fail-closed 해야 한다.
 
+`bounded_runtime_summary.repair_firestore_canary_streak` 와 `bounded_runtime_summary.production_entry_route_canary_streak` 도 동일하게 현재 artifact cycle provenance를 포함해야 한다. LIVE deploy decision은 각각 `v2_repair_queue_firestore_canary_streak_latest.json`, `v2_production_entry_route_canary_streak_latest.json` 파일명이 현재 artifact dir과 1:1로 맞지 않으면 fail-closed 해야 한다.
+
 최소 포함 항목:
 
 1. `relevant_submit_check_ids`

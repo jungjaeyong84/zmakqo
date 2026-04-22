@@ -156,6 +156,23 @@ function readOptionalJson(filePath) {
   return JSON.parse(fs.readFileSync(resolved, "utf8"));
 }
 
+function withArtifactProvenance(payload, filePath, artifactDir, expectedFilename) {
+  const row = normalizeObject(payload);
+  if (!row) return null;
+  const resolvedArtifactDir = trimOrNull(artifactDir) ? path.resolve(artifactDir) : null;
+  const expectedFile = resolvedArtifactDir && trimOrNull(expectedFilename)
+    ? path.join(resolvedArtifactDir, expectedFilename)
+    : null;
+  const resolvedFile = path.resolve(filePath);
+  return Object.freeze({
+    ...row,
+    artifact_file: resolvedFile,
+    artifact_dir: resolvedArtifactDir,
+    artifact_filename: path.basename(resolvedFile),
+    artifact_current_dir_match: !!(expectedFile && resolvedFile === expectedFile),
+  });
+}
+
 function readCandidateSelectionArtifact(artifactDir) {
   const dir = trimOrNull(artifactDir);
   if (!dir) return null;
@@ -176,7 +193,13 @@ function resolveRepairFirestoreCanaryStreakFile(env = process.env, artifactDir =
 }
 
 function readRepairFirestoreCanaryStreakArtifact(env = process.env, artifactDir = null) {
-  return readOptionalJson(resolveRepairFirestoreCanaryStreakFile(env, artifactDir));
+  const filePath = resolveRepairFirestoreCanaryStreakFile(env, artifactDir);
+  return withArtifactProvenance(
+    readOptionalJson(filePath),
+    filePath,
+    artifactDir,
+    REPAIR_FIRESTORE_CANARY_STREAK_FILENAME
+  );
 }
 
 function resolveProductionEntryRouteCanaryStreakFile(env = process.env, artifactDir = null) {
@@ -192,7 +215,13 @@ function resolveProductionEntryRouteCanaryStreakFile(env = process.env, artifact
 }
 
 function readProductionEntryRouteCanaryStreakArtifact(env = process.env, artifactDir = null) {
-  return readOptionalJson(resolveProductionEntryRouteCanaryStreakFile(env, artifactDir));
+  const filePath = resolveProductionEntryRouteCanaryStreakFile(env, artifactDir);
+  return withArtifactProvenance(
+    readOptionalJson(filePath),
+    filePath,
+    artifactDir,
+    PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME
+  );
 }
 
 function resolveProductionEntryProtectedCanaryFile(env = process.env, artifactDir = null) {
@@ -209,21 +238,12 @@ function resolveProductionEntryProtectedCanaryFile(env = process.env, artifactDi
 
 function readProductionEntryProtectedCanaryArtifact(env = process.env, artifactDir = null) {
   const filePath = resolveProductionEntryProtectedCanaryFile(env, artifactDir);
-  const payload = readOptionalJson(filePath);
-  const row = normalizeObject(payload);
-  if (!row) return null;
-  const resolvedArtifactDir = trimOrNull(artifactDir) ? path.resolve(artifactDir) : null;
-  const expectedFile = resolvedArtifactDir
-    ? path.join(resolvedArtifactDir, PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME)
-    : null;
-  const resolvedFile = path.resolve(filePath);
-  return Object.freeze({
-    ...row,
-    artifact_file: resolvedFile,
-    artifact_dir: resolvedArtifactDir,
-    artifact_filename: path.basename(resolvedFile),
-    artifact_current_dir_match: !!(expectedFile && resolvedFile === expectedFile),
-  });
+  return withArtifactProvenance(
+    readOptionalJson(filePath),
+    filePath,
+    artifactDir,
+    PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME
+  );
 }
 
 function buildRepairFirestoreCanaryStreakSummary(streak) {
@@ -232,6 +252,10 @@ function buildRepairFirestoreCanaryStreakSummary(streak) {
   return Object.freeze({
     ok: row.ok === true,
     reason: trimOrNull(row.reason),
+    artifact_file: trimOrNull(row.artifact_file),
+    artifact_dir: trimOrNull(row.artifact_dir),
+    artifact_filename: trimOrNull(row.artifact_filename),
+    artifact_current_dir_match: row.artifact_current_dir_match === true,
     history_source: trimOrNull(row.history_source),
     history_file: trimOrNull(row.history_file),
     lookback_hours: normalizeNumber(row.lookback_hours),
@@ -255,6 +279,10 @@ function buildProductionEntryRouteCanaryStreakSummary(streak) {
   return Object.freeze({
     ok: row.ok === true,
     reason: trimOrNull(row.reason),
+    artifact_file: trimOrNull(row.artifact_file),
+    artifact_dir: trimOrNull(row.artifact_dir),
+    artifact_filename: trimOrNull(row.artifact_filename),
+    artifact_current_dir_match: row.artifact_current_dir_match === true,
     history_source: trimOrNull(row.history_source),
     history_file: trimOrNull(row.history_file),
     lookback_hours: normalizeNumber(row.lookback_hours),

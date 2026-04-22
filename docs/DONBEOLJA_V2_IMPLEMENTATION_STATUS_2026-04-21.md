@@ -2076,3 +2076,28 @@ V1 약점 재발 방지:
 1. V1에서는 latest 계열 artifact가 존재해도 “이번 실행에서 생성된 증거인가”가 불명확해 stale 상태를 정상으로 오판할 여지가 있었다
 2. 이번 단계는 보호주문 canary pass 자체와 artifact provenance를 같은 승인 조건으로 묶는다
 3. 따라서 오래된 `ops/daily` 또는 다른 cycle의 protected canary를 가져와 CANARY/LIVE 승격을 통과시키는 경로를 차단한다
+
+## 2026-04-22 Repair And Route Streak Fresh Artifact Provenance
+
+추가 증거:
+
+1. `scripts/generate-v2-unified-promotion-report.js`
+2. `scripts/check-v2-promotion-deploy-decision.js`
+3. `src/tests/check-v2-promotion-deploy-decision.test.js`
+4. `src/tests/generate-v2-unified-promotion-report.test.js`
+5. `src/tests/run-v2-promotion-pipeline.test.js`
+6. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+7. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. unified report는 repair firestore streak와 production route streak에도 `artifact_file`, `artifact_dir`, `artifact_filename`, `artifact_current_dir_match` 를 같이 승격한다
+2. LIVE deploy decision은 repair streak의 `artifact_filename=v2_repair_queue_firestore_canary_streak_latest.json` 및 `artifact_current_dir_match=true` 를 요구한다
+3. LIVE deploy decision은 production route streak의 `artifact_filename=v2_production_entry_route_canary_streak_latest.json`, `artifact_current_dir_match=true`, `history_source=FIRESTORE` 를 동시에 요구한다
+4. CANARY에서는 readiness warning으로 남기되, LIVE 승격은 stale streak를 정상 증거로 인정하지 않는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 비용 절감/감사 artifact가 많아지면서 latest 파일과 현재 실행 cycle의 경계가 흐려졌다
+2. 이번 단계는 보호주문 canary뿐 아니라 repair/route streak도 “현재 artifact dir에서 방금 생성된 증거”인지 확인한다
+3. 따라서 과거 streak pass 파일을 재사용해 LIVE 승격 조건을 만족한 것처럼 보이는 경로를 차단한다

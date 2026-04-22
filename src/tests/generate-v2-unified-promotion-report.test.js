@@ -268,9 +268,15 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     assert.strictEqual(stored.bounded_runtime_summary.openclaw_execution_audit_ledger_write.collection_key, "OPENCLAW_EXECUTION_AUDITS");
     assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.reason, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS");
     assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.healthy_run_n, 13);
+    assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.artifact_file, path.join(dir, "v2_repair_queue_firestore_canary_streak_latest.json"));
+    assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.artifact_dir, dir);
+    assert.strictEqual(stored.bounded_runtime_summary.repair_firestore_canary_streak.artifact_current_dir_match, true);
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.reason, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS");
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.history_source, "FIRESTORE");
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.healthy_run_n, 13);
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.artifact_file, path.join(dir, "v2_production_entry_route_canary_streak_latest.json"));
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.artifact_dir, dir);
+    assert.strictEqual(stored.bounded_runtime_summary.production_entry_route_canary_streak.artifact_current_dir_match, true);
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.reason, "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS");
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_file, path.join(dir, "v2_production_entry_protected_canary_latest.json"));
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_dir, dir);

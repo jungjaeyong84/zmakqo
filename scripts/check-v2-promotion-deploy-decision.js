@@ -385,6 +385,10 @@ function hasRepairFirestoreCanaryStreak(summary) {
   return (
     streak.ok === true &&
     trimOrNull(streak.reason) === "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS" &&
+    trimOrNull(streak.artifact_filename) === "v2_repair_queue_firestore_canary_streak_latest.json" &&
+    !!trimOrNull(streak.artifact_file) &&
+    !!trimOrNull(streak.artifact_dir) &&
+    streak.artifact_current_dir_match === true &&
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
     Number(streak.unhealthy_run_n) === 0 &&
     Number(streak.invalid_line_n) === 0 &&
@@ -399,6 +403,10 @@ function hasProductionEntryRouteCanaryStreak(summary) {
   return (
     streak.ok === true &&
     trimOrNull(streak.reason) === "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS" &&
+    trimOrNull(streak.artifact_filename) === "v2_production_entry_route_canary_streak_latest.json" &&
+    !!trimOrNull(streak.artifact_file) &&
+    !!trimOrNull(streak.artifact_dir) &&
+    streak.artifact_current_dir_match === true &&
     trimOrNull(streak.history_source) === "FIRESTORE" &&
     !!trimOrNull(streak.history_file) &&
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&

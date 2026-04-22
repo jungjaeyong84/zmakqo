@@ -171,6 +171,10 @@ function seedBoundedSubmitArtifacts(
       repair_firestore_canary_streak: {
         ok: true,
         reason: "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS",
+        artifact_file: "/tmp/dbj-v2-artifacts/v2_repair_queue_firestore_canary_streak_latest.json",
+        artifact_dir: "/tmp/dbj-v2-artifacts",
+        artifact_filename: "v2_repair_queue_firestore_canary_streak_latest.json",
+        artifact_current_dir_match: true,
         healthy_run_n: 13,
         min_run_count: 12,
         unhealthy_run_n: 0,
@@ -180,6 +184,10 @@ function seedBoundedSubmitArtifacts(
       production_entry_route_canary_streak: {
         ok: true,
         reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS",
+        artifact_file: "/tmp/dbj-v2-artifacts/v2_production_entry_route_canary_streak_latest.json",
+        artifact_dir: "/tmp/dbj-v2-artifacts",
+        artifact_filename: "v2_production_entry_route_canary_streak_latest.json",
+        artifact_current_dir_match: true,
         history_source: "FIRESTORE",
         history_file: "dbjv2__production_entry_route_canaries_v2",
         healthy_run_n: 13,
