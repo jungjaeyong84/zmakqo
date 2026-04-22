@@ -2242,6 +2242,15 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.ok(payload.operator_delivery_summary.lines.includes("delivery_send_enabled=YES"));
     assert.ok(payload.operator_delivery_summary.lines.includes("delivery_transport_state=FAILED"));
     assert.ok(payload.operator_delivery_summary.lines.includes("delivery_reason=V2_PROMOTION_OPERATOR_ALERT_SEND_FAILED"));
+    const cliPayload = submit.__test.buildCliResultPayload(result);
+    assert.strictEqual(cliPayload.ok, false);
+    assert.strictEqual(cliPayload.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_ALERT_FAILED");
+    assert.strictEqual(cliPayload.operator_alert_delivery.ok, false);
+    assert.strictEqual(cliPayload.operator_alert_delivery.reason, "V2_PROMOTION_OPERATOR_ALERT_SEND_FAILED");
+    assert.strictEqual(cliPayload.operator_alert_delivery.transport_result.results[0].error, "UNKNOWN_CHANNEL");
+    assert.strictEqual(cliPayload.operator_delivery_summary.status, "DELIVERY_FAILED");
+    assert.strictEqual(cliPayload.operator_delivery_summary.transport_state, "FAILED");
+    assert.ok(cliPayload.operator_delivery_summary.lines.includes("delivery_status=DELIVERY_FAILED"));
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

@@ -795,10 +795,12 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       ok: readText(FILES.sendScript).includes('const renderer = require("./render-v2-promotion-submit-operator-alert");')
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("submitRequestFailsClosedWhenOperatorAlertDeliveryFails")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("V2_PROMOTION_CLOUDBUILD_SUBMIT_ALERT_FAILED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("buildCliResultPayload(result)")
         && runbookText.includes("DELIVERY_FAILED")
         && artifactContractText.includes("operator_delivery_summary"),
       reason: readText(FILES.sendScript).includes('const renderer = require("./render-v2-promotion-submit-operator-alert");')
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("submitRequestFailsClosedWhenOperatorAlertDeliveryFails")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("buildCliResultPayload(result)")
         ? "send script consumes rendered preview and submit fails closed when operator alert delivery fails"
         : "send script must consume rendered preview, and failed operator alert delivery must fail closed with DELIVERY_FAILED evidence",
       file: FILES.sendScript,
