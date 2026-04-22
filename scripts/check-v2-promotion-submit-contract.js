@@ -1140,18 +1140,28 @@ function evaluateSubmitContract() {
       label: "package and CloudBuild require V2 promotion test path",
       ok: packageJsonText.includes('"test:v2-promotion"')
         && packageJsonText.includes("v2-production-cutover-audit.test.js")
+        && packageJsonText.includes('"test:v2-scheduler-traffic-cutover"')
+        && packageJsonText.includes("v2-scheduler-traffic-collector-preflight.test.js")
+        && packageJsonText.includes("v2-scheduler-traffic-cutover-audit.test.js")
+        && packageJsonText.includes("v2-scheduler-traffic-state-collector.test.js")
+        && packageJsonText.includes("npm run test:v2-scheduler-traffic-cutover")
         && packageJsonText.includes("check:v2-promotion-submit-contract")
         && packageJsonText.includes("check:v2-production-cutover")
         && cloudbuildText.includes("npm run test:v2-promotion")
         && cloudbuildText.includes("npm run check:v2-production-cutover"),
       reason: packageJsonText.includes('"test:v2-promotion"')
         && packageJsonText.includes("v2-production-cutover-audit.test.js")
+        && packageJsonText.includes('"test:v2-scheduler-traffic-cutover"')
+        && packageJsonText.includes("v2-scheduler-traffic-collector-preflight.test.js")
+        && packageJsonText.includes("v2-scheduler-traffic-cutover-audit.test.js")
+        && packageJsonText.includes("v2-scheduler-traffic-state-collector.test.js")
+        && packageJsonText.includes("npm run test:v2-scheduler-traffic-cutover")
         && packageJsonText.includes("check:v2-promotion-submit-contract")
         && packageJsonText.includes("check:v2-production-cutover")
         && cloudbuildText.includes("npm run test:v2-promotion")
         && cloudbuildText.includes("npm run check:v2-production-cutover")
-        ? "package and CloudBuild execute V2 promotion and production cutover regression paths"
-        : "package.json and cloudbuild.yaml must require test:v2-promotion plus production cutover audit",
+        ? "package and CloudBuild execute V2 promotion, production cutover, and scheduler traffic regression paths"
+        : "package.json and cloudbuild.yaml must require test:v2-promotion plus production cutover and scheduler traffic audits",
       file: FILES.packageJson,
     }),
     buildCheck({

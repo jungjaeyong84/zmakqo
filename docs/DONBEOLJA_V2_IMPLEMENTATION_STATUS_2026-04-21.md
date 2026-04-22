@@ -2193,3 +2193,25 @@ V1 약점 재발 방지:
 1. V1에서는 운영 문서상 필요한 gate가 실제 CI 체인에서 빠져도 늦게 발견될 수 있었다
 2. 이번 단계는 production cutover static contract와 readiness entrypoint를 promotion CI 필수 경로로 끌어올렸다
 3. 따라서 legacy webhook 차단, OpenClaw cron live endpoint, sizing-backed live transport 경계가 깨진 상태로 V2 promotion이 통과하는 경로를 줄인다
+
+## 2026-04-22 Scheduler Traffic Cutover Promotion CI Binding
+
+추가 증거:
+
+1. `package.json`
+2. `scripts/check-v2-promotion-submit-contract.js`
+3. `src/tests/v2-scheduler-traffic-collector-preflight.test.js`
+4. `src/tests/v2-scheduler-traffic-cutover-audit.test.js`
+5. `src/tests/v2-scheduler-traffic-state-collector.test.js`
+
+판정:
+
+1. `test:v2-scheduler-traffic-cutover` 는 collector preflight, scheduler traffic cutover audit, GCP state collector fixture를 한 번에 실행한다
+2. `test:v2-promotion` 은 production cutover audit 직후 scheduler traffic cutover test path를 실행한다
+3. submit contract checker는 scheduler traffic cutover test path가 빠지면 `SUBMIT_CONTRACT_CHK_40` 으로 fail-closed 한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 runtime entry/exit가 바뀌어도 scheduler와 Cloud Run traffic이 과거 경로를 계속 호출하는 위험이 있었다
+2. 이번 단계는 LIVE scheduler SOT, legacy tick job 비활성, Cloud Run traffic readiness, collector 권한 preflight를 promotion regression path에 편입했다
+3. 따라서 OpenClaw cron 전환과 실제 traffic evidence가 문서/runbook에만 있고 CI에서 빠지는 경로를 차단한다
