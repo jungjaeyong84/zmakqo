@@ -120,6 +120,7 @@ function isHealthyExitRuntimeCanaryRow(row) {
     numberField(payload, "native_refresh_unhealthy_n") === 0 &&
     numberField(payload, "unprotected_window_violation_n") === 0 &&
     numberField(payload, "alert_silent_drop_n") === 0 &&
+    numberField(payload, "alert_retry_unresolved_n") === 0 &&
     numberField(payload, "trail_activation_evidence_gap_n") === 0 &&
     !raw.includes("apiKey") &&
     !raw.includes("apiSecret") &&
@@ -163,6 +164,7 @@ function buildLongRunQualitySummary({
   nativeRefreshUnhealthyN,
   unprotectedWindowViolationN,
   alertSilentDropN,
+  alertRetryUnresolvedN,
   trailActivationEvidenceGapN,
   blockers,
 } = {}) {
@@ -183,6 +185,7 @@ function buildLongRunQualitySummary({
       native_refresh_unhealthy_n: Number(nativeRefreshUnhealthyN) || 0,
       unprotected_window_violation_n: Number(unprotectedWindowViolationN) || 0,
       alert_silent_drop_n: Number(alertSilentDropN) || 0,
+      alert_retry_unresolved_n: Number(alertRetryUnresolvedN) || 0,
       trail_activation_evidence_gap_n: Number(trailActivationEvidenceGapN) || 0,
     }),
     blockers: Object.freeze(Array.isArray(blockers) ? blockers.slice() : []),
@@ -256,6 +259,7 @@ function evaluateExitRuntimeCanaryStreak({
   const nativeRefreshUnhealthyN = sumCounter(rowsInWindow, "native_refresh_unhealthy_n");
   const unprotectedWindowViolationN = sumCounter(rowsInWindow, "unprotected_window_violation_n");
   const alertSilentDropN = sumCounter(rowsInWindow, "alert_silent_drop_n");
+  const alertRetryUnresolvedN = sumCounter(rowsInWindow, "alert_retry_unresolved_n");
   const trailActivationEvidenceGapN = sumCounter(rowsInWindow, "trail_activation_evidence_gap_n");
   const positionCycleIds = extractHealthyPositionCycleIds(healthyRows);
   const blockers = [];
@@ -274,6 +278,7 @@ function evaluateExitRuntimeCanaryStreak({
   if (nativeRefreshUnhealthyN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:NATIVE_REFRESH_UNHEALTHY");
   if (unprotectedWindowViolationN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:UNPROTECTED_WINDOW");
   if (alertSilentDropN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:ALERT_SILENT_DROP");
+  if (alertRetryUnresolvedN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:ALERT_RETRY_UNRESOLVED");
   if (trailActivationEvidenceGapN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:TRAIL_ACTIVATION_EVIDENCE_GAP");
   const ok = blockers.length === 0;
   const qualitySummary = buildLongRunQualitySummary({
@@ -289,6 +294,7 @@ function evaluateExitRuntimeCanaryStreak({
     nativeRefreshUnhealthyN,
     unprotectedWindowViolationN,
     alertSilentDropN,
+    alertRetryUnresolvedN,
     trailActivationEvidenceGapN,
     blockers,
   });
@@ -330,6 +336,7 @@ function evaluateExitRuntimeCanaryStreak({
     native_refresh_unhealthy_n: nativeRefreshUnhealthyN,
     unprotected_window_violation_n: unprotectedWindowViolationN,
     alert_silent_drop_n: alertSilentDropN,
+    alert_retry_unresolved_n: alertRetryUnresolvedN,
     trail_activation_evidence_gap_n: trailActivationEvidenceGapN,
     collector_execution_summary: collectorExecutionSummary,
     long_run_quality_summary: qualitySummary,
@@ -408,6 +415,7 @@ async function main(env = process.env) {
     native_refresh_unhealthy_n: report.native_refresh_unhealthy_n,
     unprotected_window_violation_n: report.unprotected_window_violation_n,
     alert_silent_drop_n: report.alert_silent_drop_n,
+    alert_retry_unresolved_n: report.alert_retry_unresolved_n,
     blockers: report.blockers,
   }));
   if (report.ok !== true) process.exit(1);

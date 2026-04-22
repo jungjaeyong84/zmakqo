@@ -2263,7 +2263,7 @@ V1 약점 재발 방지:
 1. `run:v2-exit-runtime-canary` 는 `ACTIVE_PROTECTED` position cycle만 bounded query로 읽고, 각 cycle의 projection/protection runtime/transition/outbox를 position 단위 직접 조회로 확인한다
 2. producer는 exchange write를 하지 않고 `exchange_write_performed=false` 를 artifact와 Firestore history에 남긴다
 3. PRE_TP1 상태에서는 TP1 native order 존재를 검사하고, TRAIL_ACTIVE 상태에서는 native stop 존재를 검사한다
-4. native refresh unhealthy, unprotected window 초과, transition-alert mismatch는 각각 `tp1_missing_n`, `native_refresh_unhealthy_n`, `unprotected_window_violation_n`, `alert_silent_drop_n` 카운트로 streak gate에 전달된다
+4. native refresh unhealthy, unprotected window 초과, transition-alert outbox lineage 누락, lineage는 맞지만 아직 `SENT`가 아닌 알림은 각각 `tp1_missing_n`, `native_refresh_unhealthy_n`, `unprotected_window_violation_n`, `alert_silent_drop_n`, `alert_retry_unresolved_n` 카운트로 streak gate에 전달된다
 5. `test:v2-promotion` 은 이제 단일 producer 테스트와 24시간 streak checker 테스트를 모두 실행한다
 6. submit contract checker는 producer가 없거나 bounded read-only 증거 생산 경로가 빠지면 `SUBMIT_CONTRACT_CHK_48` 로 fail-closed 한다
 

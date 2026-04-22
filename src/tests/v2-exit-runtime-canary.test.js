@@ -69,6 +69,14 @@ function outbox(transitionId, status = "SENT") {
     position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__ABC",
     canonical_transition_id: transitionId,
     status,
+    prepared_payload: {
+      canonical_transition_id: transitionId,
+      position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__ABC",
+    },
+    delivery_request: {
+      dedupeKey: `TAO__${transitionId}`,
+      dedupeFingerprint: transitionId,
+    },
   };
 }
 
@@ -135,14 +143,37 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
     rows: [stateRow({
       projectionDoc: projection({ stage: "TP1_DONE", tp1_done: true }),
       transitions: [tp1],
-      outboxes: [outbox("CET__TP1", "FAILED")],
+      outboxes: [{
+        alert_outbox_id: "TAO__CET__TP1",
+        position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__ABC",
+        canonical_transition_id: "CET__TP1",
+        status: "FAILED",
+      }],
     })],
     config: resolveExitRuntimeCanaryConfig({}),
   });
   assert.strictEqual(artifact.ok, false);
   assert.strictEqual(artifact.alert_silent_drop_n, 1);
-  assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_TP1_REACHED_TRANSITION_ALERT_SENT"));
+  assert.strictEqual(artifact.alert_retry_unresolved_n, 0);
+  assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_TP1_REACHED_TRANSITION_ALERT_OUTBOX_LINEAGE"));
   assert.ok(artifact.blockers.includes("EXIT_RUNTIME_CANARY_ALERT_SILENT_DROP"));
+})();
+
+(function tp1DoneSeparatesRetryableOutboxFromSilentDrop() {
+  const tp1 = transition("TP1_REACHED", "CET__TP1");
+  const artifact = evaluateExitRuntimeCanaryState({
+    rows: [stateRow({
+      projectionDoc: projection({ stage: "TP1_DONE", tp1_done: true }),
+      transitions: [tp1],
+      outboxes: [outbox("CET__TP1", "FAILED")],
+    })],
+    config: resolveExitRuntimeCanaryConfig({}),
+  });
+  assert.strictEqual(artifact.ok, false);
+  assert.strictEqual(artifact.alert_silent_drop_n, 0);
+  assert.strictEqual(artifact.alert_retry_unresolved_n, 1);
+  assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_TP1_REACHED_TRANSITION_ALERT_SENT"));
+  assert.ok(artifact.blockers.includes("EXIT_RUNTIME_CANARY_ALERT_RETRY_UNRESOLVED"));
 })();
 
 (function trailActiveRequiresTrailStopAndTransitionAlerts() {
@@ -163,6 +194,7 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
   });
   assert.strictEqual(artifact.ok, true);
   assert.strictEqual(artifact.alert_silent_drop_n, 0);
+  assert.strictEqual(artifact.alert_retry_unresolved_n, 0);
   assert.strictEqual(artifact.trail_activation_evidence_gap_n, 0);
 })();
 

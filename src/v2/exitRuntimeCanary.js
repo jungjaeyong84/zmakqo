@@ -140,12 +140,50 @@ async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, co
   });
 }
 
-function hasSentOutboxForTransition({ transition, outboxes }) {
+function resolveAlertOutboxForTransition({ transition, outboxes }) {
   const transitionId = trimOrNull(transition && transition.canonical_transition_id);
-  if (!transitionId) return false;
-  return asArray(outboxes).some((row) => {
-    return trimOrNull(row && row.canonical_transition_id) === transitionId && upper(row && row.status) === "SENT";
+  if (!transitionId) {
+    return Object.freeze({
+      ok: false,
+      outbox: null,
+      status: null,
+      reason: "CANONICAL_TRANSITION_ID_MISSING",
+    });
+  }
+  const outbox = asArray(outboxes).find((row) => trimOrNull(row && row.canonical_transition_id) === transitionId) || null;
+  if (!outbox) {
+    return Object.freeze({
+      ok: false,
+      outbox: null,
+      status: null,
+      reason: "ALERT_OUTBOX_MISSING",
+    });
+  }
+  const preparedPayload = outbox.prepared_payload && typeof outbox.prepared_payload === "object" ? outbox.prepared_payload : null;
+  const deliveryRequest = outbox.delivery_request && typeof outbox.delivery_request === "object" ? outbox.delivery_request : null;
+  const alertOutboxId = trimOrNull(outbox.alert_outbox_id);
+  const payloadTransitionId = trimOrNull(preparedPayload && preparedPayload.canonical_transition_id);
+  const dedupeFingerprint = trimOrNull(deliveryRequest && deliveryRequest.dedupeFingerprint);
+  const dedupeKey = trimOrNull(deliveryRequest && deliveryRequest.dedupeKey);
+  const ok = !!alertOutboxId
+    && payloadTransitionId === transitionId
+    && dedupeFingerprint === transitionId
+    && dedupeKey === alertOutboxId;
+  return Object.freeze({
+    ok,
+    outbox,
+    status: upper(outbox.status),
+    reason: ok ? "ALERT_OUTBOX_LINEAGE_OK" : "ALERT_OUTBOX_LINEAGE_MISMATCH",
+    alert_outbox_id: alertOutboxId,
+    payload_transition_id: payloadTransitionId,
+    dedupe_fingerprint: dedupeFingerprint,
+    dedupe_key: dedupeKey,
   });
+}
+
+function hasSentOutboxForTransition({ transition, outboxes }) {
+  const resolved = resolveAlertOutboxForTransition({ transition, outboxes });
+  return resolved.ok === true && resolved.status === "SENT";
 }
 
 function findTransition(transitions, transitionEvent) {
@@ -270,12 +308,29 @@ function buildPositionCanaryChecks({ row, config }) {
   const requiredTransitions = TRANSITION_ALERT_REQUIREMENTS[stage] || [];
   for (const transitionEvent of requiredTransitions) {
     const transition = findTransition(transitions, transitionEvent);
+    const resolvedOutbox = resolveAlertOutboxForTransition({ transition, outboxes });
     checks.push(Object.freeze({
-      id: `EXIT_RUNTIME_CANARY_${transitionEvent}_TRANSITION_ALERT_SENT`,
-      ok: !!transition && hasSentOutboxForTransition({ transition, outboxes }),
+      id: `EXIT_RUNTIME_CANARY_${transitionEvent}_TRANSITION_ALERT_OUTBOX_LINEAGE`,
+      ok: !!transition && resolvedOutbox.ok === true,
       position_cycle_id: positionCycleId,
       transition_event: transitionEvent,
       canonical_transition_id: trimOrNull(transition && transition.canonical_transition_id),
+      alert_outbox_id: resolvedOutbox.alert_outbox_id || null,
+      outbox_status: resolvedOutbox.status || null,
+      reason: resolvedOutbox.reason,
+      payload_transition_id: resolvedOutbox.payload_transition_id || null,
+      dedupe_fingerprint: resolvedOutbox.dedupe_fingerprint || null,
+      dedupe_key: resolvedOutbox.dedupe_key || null,
+    }));
+    checks.push(Object.freeze({
+      id: `EXIT_RUNTIME_CANARY_${transitionEvent}_TRANSITION_ALERT_SENT`,
+      ok: resolvedOutbox.ok !== true || resolvedOutbox.status === "SENT",
+      skipped: resolvedOutbox.ok !== true,
+      position_cycle_id: positionCycleId,
+      transition_event: transitionEvent,
+      canonical_transition_id: trimOrNull(transition && transition.canonical_transition_id),
+      alert_outbox_id: resolvedOutbox.alert_outbox_id || null,
+      outbox_status: resolvedOutbox.status || null,
     }));
   }
   return Object.freeze(checks);
@@ -288,7 +343,8 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
   const tp1Missing = failed.filter((check) => check.id === "EXIT_RUNTIME_CANARY_TP1_ORDER_PRESENT_WHILE_PRE_TP1").length;
   const nativeUnhealthy = failed.filter((check) => check.id === "EXIT_RUNTIME_CANARY_NATIVE_REFRESH_HEALTHY").length;
   const unprotectedWindow = failed.filter((check) => check.id === "EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_WITHIN_LIMIT" || check.id === "EXIT_RUNTIME_CANARY_NO_UNPROTECTED_ACTIVE_POSITION").length;
-  const alertSilentDrop = failed.filter((check) => check.id.endsWith("_TRANSITION_ALERT_SENT")).length;
+  const alertSilentDrop = failed.filter((check) => check.id.endsWith("_TRANSITION_ALERT_OUTBOX_LINEAGE")).length;
+  const alertRetryUnresolved = failed.filter((check) => check.id.endsWith("_TRANSITION_ALERT_SENT")).length;
   const trailActivationEvidenceGap = failed.filter((check) => [
     "EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_PRESENT",
     "EXIT_RUNTIME_CANARY_TRAIL_PROTECTION_EVIDENCE_PRESENT",
@@ -302,6 +358,7 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
   if (nativeUnhealthy > 0) blockers.push("EXIT_RUNTIME_CANARY_NATIVE_REFRESH_UNHEALTHY");
   if (unprotectedWindow > 0) blockers.push("EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_VIOLATION");
   if (alertSilentDrop > 0) blockers.push("EXIT_RUNTIME_CANARY_ALERT_SILENT_DROP");
+  if (alertRetryUnresolved > 0) blockers.push("EXIT_RUNTIME_CANARY_ALERT_RETRY_UNRESOLVED");
   if (trailActivationEvidenceGap > 0) blockers.push("EXIT_RUNTIME_CANARY_TRAIL_ACTIVATION_EVIDENCE_GAP");
   for (const id of failedIds) {
     if (id.includes("QUERY_LIMIT_REACHED") && !blockers.includes(id)) blockers.push(id);
@@ -312,6 +369,7 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
     native_refresh_unhealthy_n: nativeUnhealthy,
     unprotected_window_violation_n: unprotectedWindow,
     alert_silent_drop_n: alertSilentDrop,
+    alert_retry_unresolved_n: alertRetryUnresolved,
     trail_activation_evidence_gap_n: trailActivationEvidenceGap,
     blockers: Object.freeze(blockers),
   });
@@ -337,6 +395,7 @@ function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false,
     native_refresh_unhealthy_n: summary.native_refresh_unhealthy_n,
     unprotected_window_violation_n: summary.unprotected_window_violation_n,
     alert_silent_drop_n: summary.alert_silent_drop_n,
+    alert_retry_unresolved_n: summary.alert_retry_unresolved_n,
     trail_activation_evidence_gap_n: summary.trail_activation_evidence_gap_n,
     check_n: checks.length,
     fail_n: failedChecks.length,
@@ -403,6 +462,7 @@ module.exports = {
     parseNonNegativeNumber,
     hasPlacedOrder,
     buildPositionCanaryChecks,
+    resolveAlertOutboxForTransition,
     hasSentOutboxForTransition,
     findTransition,
     summarizeFailures,

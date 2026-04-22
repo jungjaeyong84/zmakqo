@@ -78,6 +78,8 @@ async function main({ env = process.env, db = null, setProcessExitCode = require
     exchange_write_performed: artifact.exchange_write_performed,
     active_position_n: artifact.active_position_n,
     fail_n: artifact.fail_n,
+    alert_silent_drop_n: artifact.alert_silent_drop_n,
+    alert_retry_unresolved_n: artifact.alert_retry_unresolved_n,
     blockers: artifact.blockers,
   }));
   if (!artifact.ok && setProcessExitCode) process.exitCode = 1;
