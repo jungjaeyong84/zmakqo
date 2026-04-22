@@ -35,6 +35,32 @@ const contractCheck = require("../../scripts/check-v2-promotion-submit-contract"
   assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_49"));
 })();
 
+(function openClawSupremeCloudbuildContextContractFailsWhenStatusLineTraceIsMissing() {
+  const cloudbuildText = contractCheck.__test.readText(contractCheck.__test.FILES.cloudbuildWrapper)
+    .replaceAll("openclaw_supreme=BLOCKED", "openclaw_supreme=UNKNOWN");
+  const result = contractCheck.__test.evaluateSubmitContract({
+    textOverrides: {
+      [contractCheck.__test.FILES.cloudbuildWrapper]: cloudbuildText,
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_72"));
+  assert.ok(!result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_71"));
+})();
+
+(function openClawSupremeCloudbuildContextContractFailsWhenRunbookVerifierTraceIsMissing() {
+  const runbookCheckerText = contractCheck.__test.readText(contractCheck.__test.FILES.runbookChecker)
+    .replaceAll("hasConsistentOpenClawSupremeBlockerTrace", "openClawSupremeTraceDisabled");
+  const result = contractCheck.__test.evaluateSubmitContract({
+    textOverrides: {
+      [contractCheck.__test.FILES.runbookChecker]: runbookCheckerText,
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_72"));
+  assert.ok(!result.failed_check_ids.includes("SUBMIT_CONTRACT_CHK_71"));
+})();
+
 (function formatterFixtureProducesCanonicalBlockedHeadline() {
   const summary = contractCheck.__test.buildFormatterFixtureResult();
   assert.strictEqual(summary.status, "BLOCKED");
