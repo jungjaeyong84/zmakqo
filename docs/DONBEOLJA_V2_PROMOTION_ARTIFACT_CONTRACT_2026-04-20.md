@@ -109,7 +109,7 @@ optional review artifact:
 
 `bounded_runtime_summary.repair_firestore_canary_streak`, `bounded_runtime_summary.production_entry_route_canary_streak`, `bounded_runtime_summary.exit_runtime_canary_streak` 도 동일하게 현재 artifact cycle provenance를 포함해야 한다. LIVE deploy decision은 각각 `v2_repair_queue_firestore_canary_streak_latest.json`, `v2_production_entry_route_canary_streak_latest.json`, `v2_exit_runtime_canary_streak_latest.json` 파일명이 현재 artifact dir과 1:1로 맞지 않으면 fail-closed 해야 한다.
 
-`bounded_runtime_summary.exit_runtime_canary_streak` 는 단일 latest 파일이 아니라 24시간 Firestore-backed 장기 실행 증거여야 한다. LIVE mode에서는 `reason=V2_EXIT_RUNTIME_CANARY_STREAK_PASS`, `history_source=FIRESTORE`, `coverage_minutes >= 1440`, `latest_age_minutes <= max_gap_minutes`, `max_observed_gap_minutes <= max_gap_minutes`, `tp1_missing_n=0`, `native_refresh_unhealthy_n=0`, `unprotected_window_violation_n=0`, `alert_silent_drop_n=0`, `blockers=[]` 를 모두 만족해야 한다.
+`bounded_runtime_summary.exit_runtime_canary_streak` 는 단일 latest 파일이 아니라 24시간 Firestore-backed 장기 실행 증거여야 한다. 원천 producer는 `run:v2-exit-runtime-canary` 이고, 이 producer는 `ACTIVE_PROTECTED` cycle을 bounded query로만 읽으며 `exchange_write_performed=false` 를 반드시 보존해야 한다. LIVE mode에서는 `reason=V2_EXIT_RUNTIME_CANARY_STREAK_PASS`, `history_source=FIRESTORE`, `coverage_minutes >= 1440`, `latest_age_minutes <= max_gap_minutes`, `max_observed_gap_minutes <= max_gap_minutes`, `tp1_missing_n=0`, `native_refresh_unhealthy_n=0`, `unprotected_window_violation_n=0`, `alert_silent_drop_n=0`, `blockers=[]` 를 모두 만족해야 한다.
 
 stale artifact provenance는 일반 bounded runtime 누락과 분리되어야 한다. `DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:*` blocker가 있으면 `blocker_summary.has_stale_artifact_provenance_blocker=true`, `submit_trace.blocker_families` 에 `STALE_ARTIFACT_PROVENANCE`, `recommended_next_action_reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER`, `final_status_line` 에 `stale_artifact=BLOCKED` 가 남아야 한다.
 
@@ -603,7 +603,7 @@ cloudbuild는 아래 원칙을 따른다.
 18. LIVE mode에서는 `production_cutover_readiness_summary` 가 `V2_PRODUCTION_CUTOVER_READINESS_PASS` 와 `legacy_webhook_blocked=true` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_15`/runbook 23으로 fail-closed 된다
 19. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
 20. LIVE mode에서는 `scheduler_traffic_cutover_readiness_summary` 가 `V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run service readiness를 증명해야 하며, 위반 시 `SUBMIT_CHK_16`/runbook 24로 fail-closed 된다
-21. LIVE mode에서는 `bounded_runtime_summary.exit_runtime_canary_streak` 이 `V2_EXIT_RUNTIME_CANARY_STREAK_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_21`/runbook 28로 fail-closed 된다
+21. LIVE mode에서는 `run:v2-exit-runtime-canary` 가 생산한 Firestore history를 기반으로 `bounded_runtime_summary.exit_runtime_canary_streak` 이 `V2_EXIT_RUNTIME_CANARY_STREAK_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_21`/runbook 28로 fail-closed 된다
 22. LIVE wrapper가 live cutover, production cutover, scheduler traffic 단계 중 어디서 실패하더라도 `promotion-cloudbuild-context.json` 은 직전까지 생성된 readiness summary와 실패 summary를 보존해야 한다
 22. wrapper가 runbook review 단계에서 실패하더라도 `promotion-cloudbuild-context.json` 은 `runbook_review_summary.ok=false`, `failed_check_ids`, `top_failed_checks[]`, `runbook_review_file` 을 보존해야 한다
 23. runbook review가 필수 artifact 누락/JSON 파싱 오류 등으로 review 생성 전에 throw 되더라도 context에는 synthetic `CHK_RUNBOOK_REVIEW_THROWN` 이 남아야 한다

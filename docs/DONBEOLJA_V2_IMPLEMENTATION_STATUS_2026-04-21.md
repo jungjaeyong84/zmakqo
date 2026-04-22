@@ -2241,3 +2241,30 @@ V1 약점 재발 방지:
 1. V1에서는 TP/보호주문 결함이 단일 최신 스냅샷 또는 수동 확인으로 묻힐 수 있었다
 2. 이번 단계는 exit runtime 장기 증거를 submit 차단 조건으로 승격해, 한 번의 최신 pass로 LIVE를 열 수 없게 한다
 3. OpenClaw부터 exit alert까지 같은 fixture에서 검증하므로 entry/protection/reducer/alert가 따로 통과하는 착시를 줄인다
+
+## 2026-04-22 LIVE Exit Runtime Canary Producer
+
+추가 증거:
+
+1. `src/v2/exitRuntimeCanary.js`
+2. `scripts/run-v2-exit-runtime-canary.js`
+3. `src/tests/v2-exit-runtime-canary.test.js`
+4. `src/tests/run-v2-exit-runtime-canary.test.js`
+5. `scripts/check-v2-promotion-submit-contract.js`
+6. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+7. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. `run:v2-exit-runtime-canary` 는 `ACTIVE_PROTECTED` position cycle만 bounded query로 읽고, 각 cycle의 projection/protection runtime/transition/outbox를 position 단위 직접 조회로 확인한다
+2. producer는 exchange write를 하지 않고 `exchange_write_performed=false` 를 artifact와 Firestore history에 남긴다
+3. PRE_TP1 상태에서는 TP1 native order 존재를 검사하고, TRAIL_ACTIVE 상태에서는 native stop 존재를 검사한다
+4. native refresh unhealthy, unprotected window 초과, transition-alert mismatch는 각각 `tp1_missing_n`, `native_refresh_unhealthy_n`, `unprotected_window_violation_n`, `alert_silent_drop_n` 카운트로 streak gate에 전달된다
+5. `test:v2-promotion` 은 이제 단일 producer 테스트와 24시간 streak checker 테스트를 모두 실행한다
+6. submit contract checker는 producer가 없거나 bounded read-only 증거 생산 경로가 빠지면 `SUBMIT_CONTRACT_CHK_48` 로 fail-closed 한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 watchdog/report가 경고만 만들고 장기 승격 증거와 직접 연결되지 않아 보호주문 누락이 반복됐다
+2. 이번 단계는 TP1 order missing/native refresh/unprotected gap/alert silent drop을 단일 canary producer에서 표준 카운트로 만들고, 그 history만 LIVE 승격 streak의 원천으로 삼는다
+3. Firestore 비용 폭발을 피하기 위해 full collection scan 대신 active cycle limit과 per-position linked doc limit을 계약으로 고정했다

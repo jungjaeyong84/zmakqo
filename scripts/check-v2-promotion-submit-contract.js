@@ -20,6 +20,8 @@ const FILES = Object.freeze({
   sendScript: path.resolve(__dirname, "send-v2-promotion-submit-operator-alert.js"),
   packageJson: path.resolve(__dirname, "..", "package.json"),
   cloudbuild: path.resolve(__dirname, "..", "cloudbuild.yaml"),
+  exitRuntimeCanaryRunner: path.resolve(__dirname, "run-v2-exit-runtime-canary.js"),
+  exitRuntimeCanaryModule: path.resolve(__dirname, "..", "src", "v2", "exitRuntimeCanary.js"),
 });
 
 function trimOrNull(value) {
@@ -295,6 +297,8 @@ function evaluateSubmitContract() {
   const submitTraceText = readText(FILES.submitTrace);
   const packageJsonText = readText(FILES.packageJson);
   const cloudbuildText = readText(FILES.cloudbuild);
+  const exitRuntimeCanaryRunnerText = readText(FILES.exitRuntimeCanaryRunner);
+  const exitRuntimeCanaryModuleText = readText(FILES.exitRuntimeCanaryModule);
   const operatorSummaryText = readText(SHARED_FORMATTER_MODULE_PATH);
   const summary = buildFormatterFixtureResult();
   const summaryPreview = operatorAlertPreview.buildOperatorAlertPreview({
@@ -1279,6 +1283,29 @@ function evaluateSubmitContract() {
         ? "exit runtime streak is trace-linked through runbook, artifact contract, deploy decision, submit wrapper, and pipeline refresh"
         : "exit runtime streak must be trace-linked through runbook, artifact contract, deploy decision, submit wrapper, and pipeline refresh",
       file: FILES.submitWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_48",
+      label: "exit runtime canary producer exists and is bounded read-only",
+      ok: packageJsonText.includes('"run:v2-exit-runtime-canary"')
+        && packageJsonText.includes('"test:v2-exit-runtime-canary"')
+        && packageJsonText.includes("npm run test:v2-exit-runtime-canary")
+        && exitRuntimeCanaryRunnerText.includes("runExitRuntimeCanary")
+        && exitRuntimeCanaryRunnerText.includes("persistExitRuntimeCanaryHistory")
+        && exitRuntimeCanaryRunnerText.includes("exchange_write_performed")
+        && exitRuntimeCanaryModuleText.includes("queryV2DocsByField")
+        && exitRuntimeCanaryModuleText.includes("activePositionLimit")
+        && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_TP1_ORDER_MISSING")
+        && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_NATIVE_REFRESH_UNHEALTHY")
+        && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_UNPROTECTED_WINDOW_VIOLATION")
+        && exitRuntimeCanaryModuleText.includes("EXIT_RUNTIME_CANARY_ALERT_SILENT_DROP")
+        && !exitRuntimeCanaryModuleText.includes("listV2Docs("),
+      reason: packageJsonText.includes('"run:v2-exit-runtime-canary"')
+        && exitRuntimeCanaryRunnerText.includes("persistExitRuntimeCanaryHistory")
+        && exitRuntimeCanaryModuleText.includes("activePositionLimit")
+        ? "exit runtime canary producer generates bounded read-only observations feeding Firestore-backed streak history"
+        : "exit runtime streak must have a bounded read-only producer, not only a checker",
+      file: FILES.exitRuntimeCanaryRunner,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
