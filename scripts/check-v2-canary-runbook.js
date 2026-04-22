@@ -306,6 +306,7 @@ function buildExpectedContextBlockerFamilies(blockerSummary) {
   const families = [];
   if (row.has_provenance_blocker === true) families.push("PROVENANCE");
   if (row.has_stale_artifact_provenance_blocker === true) families.push("STALE_ARTIFACT_PROVENANCE");
+  if (row.has_live_evidence_cycle_blocker === true) families.push("LIVE_EVIDENCE_CYCLE");
   if (row.has_candidate_selection_blocker === true) families.push("CANDIDATE_SELECTION");
   if (row.has_production_entry_protected_canary_blocker === true) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker === true) families.push("BOUNDED_RUNTIME");
@@ -341,6 +342,8 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
   const lineageOk = hasContextLineageConsistency({ cloudbuildContext: context });
   const protectedEntryCanaryOk = blockerSummary.has_production_entry_protected_canary_blocker !== true;
   const protectedEntryCanaryStatusLineOk = protectedEntryCanaryOk || finalStatusLine.includes("protected_entry_canary=BLOCKED");
+  const liveEvidenceCycleOk = blockerSummary.has_live_evidence_cycle_blocker !== true;
+  const liveEvidenceCycleStatusLineOk = liveEvidenceCycleOk || finalStatusLine.includes("live_evidence_cycle=BLOCKED");
   if (!artifactDirOk) failedSubmitChecks.push("SUBMIT_CHK_01A");
   if (!actionOk) failedSubmitChecks.push("SUBMIT_CHK_06");
   if (!blockerOk) failedSubmitChecks.push("SUBMIT_CHK_07");
@@ -385,9 +388,35 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
     arraysEqual(normalizeArray(trace.blocker_families), expectedFamilies) &&
     (trimOrNull(trace.primary_blocker_family) || null) === expectedPrimaryFamily &&
     protectedEntryCanaryStatusLineOk &&
+    liveEvidenceCycleStatusLineOk &&
     trimOrNull(trace.recommended_next_action_reason_code) === trimOrNull(context.recommended_next_action_reason_code) &&
     checks.length === expectedRelevantSubmitChecks.length &&
     checksMatch
+  );
+}
+
+function hasConsistentLiveEvidenceCycleBlockerTrace({ cloudbuildContext = null } = {}) {
+  const context = cloudbuildContext && typeof cloudbuildContext === "object" ? cloudbuildContext : null;
+  const trace = context && context.submit_trace && typeof context.submit_trace === "object"
+    ? context.submit_trace
+    : null;
+  const blockerSummary = context
+    && context.deploy_decision_summary
+    && typeof context.deploy_decision_summary === "object"
+    && context.deploy_decision_summary.blocker_summary
+    && typeof context.deploy_decision_summary.blocker_summary === "object"
+    ? context.deploy_decision_summary.blocker_summary
+    : null;
+  if (!blockerSummary || blockerSummary.has_live_evidence_cycle_blocker !== true) return true;
+  const finalStatusLine = trimOrNull(context && context.final_status_line) || "";
+  const blockerFamilies = normalizeArray(trace && trace.blocker_families);
+  return !!(
+    trace &&
+    finalStatusLine.includes("live_evidence_cycle=BLOCKED") &&
+    blockerFamilies.includes("LIVE_EVIDENCE_CYCLE") &&
+    trimOrNull(trace.primary_blocker_family) === "LIVE_EVIDENCE_CYCLE" &&
+    trimOrNull(trace.recommended_next_action_reason_code) === "LIVE_EVIDENCE_CYCLE_BLOCKER" &&
+    trimOrNull(context.recommended_next_action_reason_code) === "LIVE_EVIDENCE_CYCLE_BLOCKER"
   );
 }
 
@@ -892,6 +921,17 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
     field: "submit_trace.relevant_submit_check_ids,submit_trace.failed_submit_check_ids,submit_trace.failed_runbook_checklist,submit_trace.blocker_families,submit_trace.recommended_next_action_reason_code",
   }));
 
+  checks.push(buildCheck({
+    id: "CHK_13E",
+    label: "LIVE evidence cycle blocker is traceable to operator action",
+    status: hasConsistentLiveEvidenceCycleBlockerTrace({ cloudbuildContext }) ? "PASS" : "FAIL",
+    reason: hasConsistentLiveEvidenceCycleBlockerTrace({ cloudbuildContext })
+      ? "LIVE evidence cycle blocker is either absent or traceable through blocker summary, submit trace, reason code, and final status line"
+      : "LIVE evidence cycle blocker must surface as LIVE_EVIDENCE_CYCLE with reason_code=LIVE_EVIDENCE_CYCLE_BLOCKER and final_status_line live_evidence_cycle=BLOCKED",
+    file: artifacts.cloudbuildContext.filePath,
+    field: "deploy_decision_summary.blocker_summary.has_live_evidence_cycle_blocker,submit_trace.blocker_families,submit_trace.recommended_next_action_reason_code,final_status_line",
+  }));
+
   const deployMode = String(deployDecision && deployDecision.mode || "").trim().toUpperCase();
   if (deployMode === "LIVE" || artifacts.liveCutoverReadiness) {
     checks.push(buildCheck({
@@ -1059,6 +1099,7 @@ if (require.main === module) {
       normalizeWarnings,
       normalizeArray,
       hasConsistentContextSubmitTrace,
+      hasConsistentLiveEvidenceCycleBlockerTrace,
       hasConsistentWarningSummary,
       CONTEXT_SUBMIT_TRACE_FIELDS,
       collectExpectedWarningRunbookChecklist,

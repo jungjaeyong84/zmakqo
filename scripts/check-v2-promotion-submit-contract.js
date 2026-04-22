@@ -1208,14 +1208,18 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && artifactContractText.includes("has_live_evidence_cycle_blocker=true")
         && artifactContractText.includes("live_evidence_cycle=BLOCKED")
         && submitWrapperText.includes("has_live_evidence_cycle_blocker")
+        && runbookCheckerText.includes("hasConsistentLiveEvidenceCycleBlockerTrace")
+        && runbookCheckerText.includes("CHK_13E")
         && runbookText.includes("13E"),
       reason: liveEvidenceCycleSummary.lines.includes("live_evidence_cycle_blocker=YES")
         && liveEvidenceCyclePreviewTraceLines.includes("live_evidence_cycle_blocker=YES")
         && artifactContractText.includes("has_live_evidence_cycle_blocker=true")
         && submitWrapperText.includes("has_live_evidence_cycle_blocker")
+        && runbookCheckerText.includes("hasConsistentLiveEvidenceCycleBlockerTrace")
+        && runbookCheckerText.includes("CHK_13E")
         && runbookText.includes("13E")
-        ? "operator summary, approval verification contract, runbook, and submit wrapper preserve LIVE evidence cycle blocker"
-        : "LIVE evidence cycle blocker must be visible in operator summary, alert preview, contract, runbook, and submit wrapper",
+        ? "operator summary, approval verification contract, runbook verifier, and submit wrapper preserve LIVE evidence cycle blocker"
+        : "LIVE evidence cycle blocker must be visible in operator summary, alert preview, contract, runbook verifier, and submit wrapper",
       file: SHARED_FORMATTER_MODULE_PATH,
     }),
     buildCheck({

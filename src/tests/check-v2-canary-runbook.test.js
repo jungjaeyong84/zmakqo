@@ -359,6 +359,26 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
   };
 }
 
+(function runbookReviewIncludesLiveEvidenceCycleChecklist() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-live-evidence-cycle-check-"));
+  try {
+    const cycleId = "PCY__RUNBOOK__LIVE_EVIDENCE_CHECK";
+    const dir = path.join(root, cycleId);
+    fs.mkdirSync(dir, { recursive: true });
+    seedMinimalRunbookArtifacts(dir, cycleId);
+    const result = runbookCheck.runCanaryRunbookCheck({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
+    });
+    const check = result.review.checks.find((row) => row.id === "CHK_13E");
+    assert.ok(check);
+    assert.strictEqual(check.status, "PASS");
+    assert.strictEqual(check.field, "deploy_decision_summary.blocker_summary.has_live_evidence_cycle_blocker,submit_trace.blocker_families,submit_trace.recommended_next_action_reason_code,final_status_line");
+  } finally {
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (async function runbookCheckPassesForCoherentArtifactSet() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-pass-"));
   try {
@@ -1024,6 +1044,102 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       },
     },
   }), true);
+})();
+
+(function contextSubmitTraceHelperAcceptsLiveEvidenceCycleBlocker() {
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({
+    cloudbuildContext: {
+      artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__LIVE_EVIDENCE", "PCY__TRACE__LIVE_EVIDENCE"),
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      lineage_consistency_summary: buildLineageConsistencySummary(),
+      final_status_line: "HOLD ; cycle=PCY__TRACE__LIVE_EVIDENCE ; blockers=1 ; warnings=0 ; live_evidence_cycle=BLOCKED ; top=DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH",
+      recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE",
+      recommended_next_action_reason_code: "LIVE_EVIDENCE_CYCLE_BLOCKER",
+      submit_trace: {
+        relevant_submit_check_ids: ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"],
+        relevant_runbook_checklist: ["1", "5", "9", "11", "13", "16", "17"],
+        failed_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07"],
+        failed_runbook_checklist: ["11", "13"],
+        blocker_families: ["LIVE_EVIDENCE_CYCLE"],
+        primary_blocker_family: "LIVE_EVIDENCE_CYCLE",
+        recommended_next_action_reason_code: "LIVE_EVIDENCE_CYCLE_BLOCKER",
+        checks: [
+          {
+            id: "SUBMIT_CHK_01A",
+            ok: true,
+            runbook_checklist: ["1", "5", "9"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_01A,
+          },
+          {
+            id: "SUBMIT_CHK_06",
+            ok: false,
+            runbook_checklist: ["11"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_06,
+          },
+          {
+            id: "SUBMIT_CHK_07",
+            ok: false,
+            runbook_checklist: ["13"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_07,
+          },
+          {
+            id: "SUBMIT_CHK_08",
+            ok: true,
+            runbook_checklist: ["16", "17"],
+            fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_08,
+          },
+        ],
+      },
+      deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
+        blocker_summary: {
+          blocker_n: 1,
+          has_live_evidence_cycle_blocker: true,
+        },
+      },
+    },
+  }), true);
+})();
+
+(function contextSubmitTraceHelperRejectsLiveEvidenceCycleStatusLineDrift() {
+  const context = {
+    artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__LIVE_EVIDENCE_DRIFT", "PCY__TRACE__LIVE_EVIDENCE_DRIFT"),
+    lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+    lineage_consistency_summary: buildLineageConsistencySummary(),
+    final_status_line: "HOLD ; cycle=PCY__TRACE__LIVE_EVIDENCE_DRIFT ; blockers=1 ; warnings=0 ; top=DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH",
+    recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE",
+    recommended_next_action_reason_code: "LIVE_EVIDENCE_CYCLE_BLOCKER",
+    submit_trace: {
+      relevant_submit_check_ids: ["SUBMIT_CHK_01A", "SUBMIT_CHK_06", "SUBMIT_CHK_07", "SUBMIT_CHK_08"],
+      relevant_runbook_checklist: ["1", "5", "9", "11", "13", "16", "17"],
+      failed_submit_check_ids: ["SUBMIT_CHK_06", "SUBMIT_CHK_07"],
+      failed_runbook_checklist: ["11", "13"],
+      blocker_families: ["LIVE_EVIDENCE_CYCLE"],
+      primary_blocker_family: "LIVE_EVIDENCE_CYCLE",
+      recommended_next_action_reason_code: "LIVE_EVIDENCE_CYCLE_BLOCKER",
+      checks: [
+        { id: "SUBMIT_CHK_01A", ok: true, runbook_checklist: ["1", "5", "9"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_01A },
+        { id: "SUBMIT_CHK_06", ok: false, runbook_checklist: ["11"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_06 },
+        { id: "SUBMIT_CHK_07", ok: false, runbook_checklist: ["13"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_07 },
+        { id: "SUBMIT_CHK_08", ok: true, runbook_checklist: ["16", "17"], fields: runbookCheck.__test.CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_08 },
+      ],
+    },
+    deploy_decision_summary: {
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      bounded_runtime_summary: {
+        lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+      },
+      blocker_summary: {
+        blocker_n: 1,
+        has_live_evidence_cycle_blocker: true,
+      },
+    },
+  };
+  assert.strictEqual(runbookCheck.__test.hasConsistentContextSubmitTrace({ cloudbuildContext: context }), false);
+  assert.strictEqual(runbookCheck.__test.hasConsistentLiveEvidenceCycleBlockerTrace({ cloudbuildContext: context }), false);
 })();
 
 (function contextSubmitTraceHelperRejectsFieldTraceDrift() {
