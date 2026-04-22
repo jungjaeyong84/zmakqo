@@ -116,6 +116,19 @@ function buildBoundedRuntimeSummaryFixture() {
         stale_evaluation_n: 0,
         blockers: [],
       },
+      lineage_consistency_summary: {
+        ok: true,
+        expected_openclaw_decision_id: "OCDV2__CANARY__01",
+        expected_position_cycle_id: "PCY__CANARY__01",
+        expected_world_state_hash: "world-state-hash-fixture",
+        permit_lineage_match_n: 1,
+        permit_lineage_mismatch_n: 0,
+        outcome_lineage_match_n: 1,
+        outcome_lineage_mismatch_n: 0,
+        learner_lineage_match_n: 1,
+        learner_lineage_mismatch_n: 0,
+        blockers: [],
+      },
       blockers: [],
     },
     repair_firestore_canary_streak: {
@@ -369,6 +382,7 @@ function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
   summary.production_entry_route_canary_streak.position_cycle_id = positionCycleId;
   summary.exit_runtime_canary_streak.position_cycle_id = positionCycleId;
   summary.production_entry_protected_canary.route_result_summary.position_cycle_id = positionCycleId;
+  summary.openclaw_supreme_control_plane_summary.lineage_consistency_summary.expected_position_cycle_id = positionCycleId;
   return summary;
 }
 
@@ -2146,6 +2160,38 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH"));
+})();
+
+(function liveOpenClawSupremeLineageMismatchFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__OPENCLAW_LINEAGE");
+  bounded.openclaw_supreme_control_plane_summary.lineage_consistency_summary.learner_lineage_mismatch_n = 1;
+  bounded.openclaw_supreme_control_plane_summary.lineage_consistency_summary.ok = false;
+  bounded.openclaw_supreme_control_plane_summary.lineage_consistency_summary.blockers = [
+    "OPENCLAW_LEARNER_OUTCOME_LINEAGE_MISMATCH",
+  ];
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__OPENCLAW_LINEAGE",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__OPENCLAW_LINEAGE",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__OPENCLAW_LINEAGE",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED"));
 })();
 
 console.log("CHECK_V2_PROMOTION_DEPLOY_DECISION_TEST_OK");

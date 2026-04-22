@@ -386,6 +386,7 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
   const supreme = normalizeObject(row && row.openclaw_supreme_control_plane_summary);
   if (!supreme) return false;
   const learner = normalizeObject(supreme.learner_shadow_summary);
+  const lineage = normalizeObject(supreme.lineage_consistency_summary);
   return (
     supreme.ok === true &&
     Number(supreme.world_state_n) > 0 &&
@@ -401,8 +402,21 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
     Number(learner.shadow_only_n) === Number(learner.evaluation_n) &&
     Number(learner.live_applied_n || 0) === 0 &&
     Number(learner.stale_evaluation_n || 0) === 0 &&
+    lineage &&
+    lineage.ok === true &&
+    !!trimOrNull(lineage.expected_openclaw_decision_id) &&
+    !!trimOrNull(lineage.expected_position_cycle_id) &&
+    !!trimOrNull(lineage.expected_world_state_hash) &&
+    trimOrNull(lineage.expected_world_state_hash) === trimOrNull(supreme.latest_world_state_hash) &&
+    Number(lineage.permit_lineage_mismatch_n || 0) === 0 &&
+    Number(lineage.outcome_lineage_mismatch_n || 0) === 0 &&
+    Number(lineage.learner_lineage_mismatch_n || 0) === 0 &&
+    Number(lineage.permit_lineage_match_n) >= Number(supreme.execution_permit_n) &&
+    Number(lineage.outcome_lineage_match_n) >= Number(supreme.outcome_adjudication_n) &&
+    Number(lineage.learner_lineage_match_n) >= Number(learner.evaluation_n) &&
     ensureArray(supreme.blockers).length === 0 &&
-    ensureArray(learner.blockers).length === 0
+    ensureArray(learner.blockers).length === 0 &&
+    ensureArray(lineage.blockers).length === 0
   );
 }
 

@@ -14,6 +14,7 @@ const {
   buildOpenClawLearnerShadowEvaluation,
   evaluateOpenClawLearnerShadowPromotionReadiness,
 } = require("../v2/openclawLearnerShadow");
+const runtimeSnapshotCollector = require("../../scripts/collect-v2-promotion-runtime-snapshot");
 const storage = require("../v2/storage");
 
 function buildBundle(overrides = {}) {
@@ -178,6 +179,65 @@ function buildBundle(overrides = {}) {
   assert.strictEqual(readiness.ok, false);
   assert.ok(readiness.blockers.includes("LEARNER_SHADOW_ONLY_COVERAGE_REQUIRED"));
   assert.ok(readiness.blockers.includes("LEARNER_LIVE_APPLICATION_FORBIDDEN"));
+})();
+
+(function supremeSummaryRequiresSingleLineageAcrossPermitOutcomeAndLearner() {
+  const bundle = buildBundle();
+  const worldState = buildOpenClawWorldState({
+    mode: "CANARY",
+    generatedAt: "2026-04-22T00:00:00.000Z",
+  });
+  const permit = issueOpenClawExecutionPermit({
+    bundle,
+    worldState,
+    approvalReason: "TEST_PERMIT",
+    issuedAt: "2026-04-22T00:00:00.000Z",
+    ttlMinutes: 5,
+  });
+  const positionCycle = {
+    position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__SUPREME",
+  };
+  const adjudication = adjudicateOpenClawOutcome({
+    bundle,
+    positionCycle,
+    realizedExitEvent: "TP1_REACHED",
+    realizedPnl: 0.02,
+    adjudicatedAt: "2026-04-22T01:00:00.000Z",
+  });
+  const evaluation = buildOpenClawLearnerShadowEvaluation({
+    adjudication,
+    evaluatedAt: "2026-04-22T01:01:00.000Z",
+  });
+  const summary = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
+    worldState,
+    executionPermits: [permit],
+    outcomeAdjudications: [adjudication],
+    learnerShadowEvaluations: [evaluation],
+    expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
+    expectedPositionCycleId: positionCycle.position_cycle_id,
+  });
+  assert.strictEqual(summary.ok, true);
+  assert.strictEqual(summary.lineage_consistency_summary.ok, true);
+  assert.strictEqual(summary.lineage_consistency_summary.permit_lineage_mismatch_n, 0);
+  assert.strictEqual(summary.lineage_consistency_summary.outcome_lineage_mismatch_n, 0);
+  assert.strictEqual(summary.lineage_consistency_summary.learner_lineage_mismatch_n, 0);
+
+  const mismatchedLearner = {
+    ...evaluation,
+    openclaw_outcome_adjudication_id: "OCOAV2__OTHER",
+  };
+  const broken = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
+    worldState,
+    executionPermits: [permit],
+    outcomeAdjudications: [adjudication],
+    learnerShadowEvaluations: [mismatchedLearner],
+    expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
+    expectedPositionCycleId: positionCycle.position_cycle_id,
+  });
+  assert.strictEqual(broken.ok, false);
+  assert.strictEqual(broken.lineage_consistency_summary.ok, false);
+  assert.strictEqual(broken.lineage_consistency_summary.learner_lineage_mismatch_n, 1);
+  assert.ok(broken.blockers.includes("OPENCLAW_LEARNER_OUTCOME_LINEAGE_MISMATCH"));
 })();
 
 console.log("V2_OPENCLAW_SUPREME_CONTROL_PLANE_TEST_OK");

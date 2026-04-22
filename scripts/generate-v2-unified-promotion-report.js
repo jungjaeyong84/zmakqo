@@ -437,6 +437,7 @@ function buildOpenClawSupremeControlPlaneSummary(summary) {
   const row = normalizeObject(summary);
   if (!row) return null;
   const learner = normalizeObject(row.learner_shadow_summary);
+  const lineage = normalizeObject(row.lineage_consistency_summary);
   return Object.freeze({
     ok: row.ok === true,
     world_state_n: normalizeNumber(row.world_state_n),
@@ -453,6 +454,19 @@ function buildOpenClawSupremeControlPlaneSummary(summary) {
       live_applied_n: normalizeNumber(learner.live_applied_n),
       stale_evaluation_n: normalizeNumber(learner.stale_evaluation_n),
       blockers: Array.isArray(learner.blockers) ? learner.blockers.slice() : [],
+    }) : null,
+    lineage_consistency_summary: lineage ? Object.freeze({
+      ok: lineage.ok === true,
+      expected_openclaw_decision_id: trimOrNull(lineage.expected_openclaw_decision_id),
+      expected_position_cycle_id: trimOrNull(lineage.expected_position_cycle_id),
+      expected_world_state_hash: trimOrNull(lineage.expected_world_state_hash),
+      permit_lineage_match_n: normalizeNumber(lineage.permit_lineage_match_n),
+      permit_lineage_mismatch_n: normalizeNumber(lineage.permit_lineage_mismatch_n),
+      outcome_lineage_match_n: normalizeNumber(lineage.outcome_lineage_match_n),
+      outcome_lineage_mismatch_n: normalizeNumber(lineage.outcome_lineage_mismatch_n),
+      learner_lineage_match_n: normalizeNumber(lineage.learner_lineage_match_n),
+      learner_lineage_mismatch_n: normalizeNumber(lineage.learner_lineage_mismatch_n),
+      blockers: Array.isArray(lineage.blockers) ? lineage.blockers.slice() : [],
     }) : null,
     blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
   });

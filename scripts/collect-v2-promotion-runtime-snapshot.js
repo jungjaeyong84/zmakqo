@@ -489,13 +489,39 @@ function buildOpenClawSupremeControlPlaneSummary({
   executionPermits = [],
   outcomeAdjudications = [],
   learnerShadowEvaluations = [],
+  expectedOpenClawDecisionId = null,
+  expectedPositionCycleId = null,
 } = {}) {
   const permits = Array.isArray(executionPermits) ? executionPermits : [];
   const adjudications = Array.isArray(outcomeAdjudications) ? outcomeAdjudications : [];
   const learnerRows = Array.isArray(learnerShadowEvaluations) ? learnerShadowEvaluations : [];
+  const expectedDecisionId = trimOrNull(expectedOpenClawDecisionId);
+  const expectedCycleId = trimOrNull(expectedPositionCycleId);
+  const expectedWorldStateHash = trimOrNull(worldState && worldState.world_state_hash);
+  const adjudicationIds = new Set(adjudications.map((row) => trimOrNull(row && row.openclaw_outcome_adjudication_id)).filter(Boolean));
+  const permitLineageMatches = permits.filter((row) => {
+    const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
+    const worldOk = !expectedWorldStateHash || trimOrNull(row && row.world_state_hash) === expectedWorldStateHash;
+    return decisionOk && worldOk;
+  }).length;
+  const outcomeLineageMatches = adjudications.filter((row) => {
+    const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
+    const cycleOk = !expectedCycleId || trimOrNull(row && row.position_cycle_id) === expectedCycleId;
+    return decisionOk && cycleOk;
+  }).length;
+  const learnerLineageMatches = learnerRows.filter((row) => {
+    const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
+    const cycleOk = !expectedCycleId || trimOrNull(row && row.position_cycle_id) === expectedCycleId;
+    const sourceOk = adjudicationIds.has(trimOrNull(row && row.openclaw_outcome_adjudication_id));
+    return decisionOk && cycleOk && sourceOk;
+  }).length;
   const validationPassCount = permits.filter((row) => upper(row && row.permit_status) === "ISSUED" && trimOrNull(row && row.world_state_hash)).length;
   const liveAppliedCount = learnerRows.filter((row) => row && row.shadow_only === false).length;
   const shadowOnlyCount = learnerRows.filter((row) => row && row.shadow_only === true).length;
+  const lineageBlockers = [];
+  if (expectedDecisionId && permitLineageMatches < permits.length) lineageBlockers.push("OPENCLAW_PERMIT_DECISION_OR_WORLD_STATE_LINEAGE_MISMATCH");
+  if (expectedCycleId && outcomeLineageMatches < adjudications.length) lineageBlockers.push("OPENCLAW_OUTCOME_POSITION_OR_DECISION_LINEAGE_MISMATCH");
+  if (learnerRows.length && learnerLineageMatches < learnerRows.length) lineageBlockers.push("OPENCLAW_LEARNER_OUTCOME_LINEAGE_MISMATCH");
   const blockers = [];
   if (!worldState || !trimOrNull(worldState.world_state_hash)) blockers.push("OPENCLAW_WORLD_STATE_REQUIRED");
   if (!permits.length) blockers.push("OPENCLAW_EXECUTION_PERMIT_REQUIRED");
@@ -503,6 +529,7 @@ function buildOpenClawSupremeControlPlaneSummary({
   if (!adjudications.length) blockers.push("OPENCLAW_OUTCOME_ADJUDICATION_REQUIRED");
   if (!learnerRows.length) blockers.push("OPENCLAW_LEARNER_SHADOW_EVALUATION_REQUIRED");
   if (liveAppliedCount > 0) blockers.push("OPENCLAW_LEARNER_LIVE_APPLICATION_FORBIDDEN");
+  blockers.push(...lineageBlockers);
   return Object.freeze({
     ok: blockers.length === 0,
     world_state_n: worldState ? 1 : 0,
@@ -521,6 +548,19 @@ function buildOpenClawSupremeControlPlaneSummary({
       blockers: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0
         ? []
         : ["OPENCLAW_LEARNER_SHADOW_ONLY_REQUIRED"],
+    }),
+    lineage_consistency_summary: Object.freeze({
+      ok: lineageBlockers.length === 0,
+      expected_openclaw_decision_id: expectedDecisionId,
+      expected_position_cycle_id: expectedCycleId,
+      expected_world_state_hash: expectedWorldStateHash,
+      permit_lineage_match_n: permitLineageMatches,
+      permit_lineage_mismatch_n: Math.max(permits.length - permitLineageMatches, 0),
+      outcome_lineage_match_n: outcomeLineageMatches,
+      outcome_lineage_mismatch_n: Math.max(adjudications.length - outcomeLineageMatches, 0),
+      learner_lineage_match_n: learnerLineageMatches,
+      learner_lineage_mismatch_n: Math.max(learnerRows.length - learnerLineageMatches, 0),
+      blockers: Object.freeze(lineageBlockers),
     }),
     blockers: Object.freeze(blockers),
   });
@@ -914,6 +954,8 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
     executionPermits,
     outcomeAdjudications,
     learnerShadowEvaluations,
+    expectedOpenClawDecisionId: nativeDecisionId,
+    expectedPositionCycleId: cfg.positionCycleId,
   });
   const openclawExecutionSeparationAudit = evaluateOpenClawExecutionSeparation({
     bundle: {
