@@ -1647,7 +1647,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     const artifactDir = path.join(dir, "PCY__CANARY__LIVE_EVIDENCE_CYCLE");
     fs.mkdirSync(artifactDir, { recursive: true });
     seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__LIVE_EVIDENCE_CYCLE");
-    const blocker = "DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH";
+    const blocker = "DEPLOY_DECISION:LIVE_STREAK_POSITION_CYCLE_MISMATCH";
     const deployDecisionPath = path.join(artifactDir, "promotion-deploy-decision.json");
     const deployDecision = JSON.parse(fs.readFileSync(deployDecisionPath, "utf8"));
     deployDecision.approved = false;

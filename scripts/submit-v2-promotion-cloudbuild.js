@@ -139,6 +139,7 @@ function buildVerificationSummary(checks) {
   ));
   const hasLiveEvidenceCycleBlocker = deployBlockers.some((row) => (
     row.toUpperCase().includes("LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH") ||
+    row.toUpperCase().includes("LIVE_STREAK_POSITION_CYCLE_MISMATCH") ||
     row.toUpperCase().includes("LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH") ||
     row.toUpperCase().includes("LIVE_EVIDENCE_CYCLE")
   ));
