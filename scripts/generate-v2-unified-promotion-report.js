@@ -433,6 +433,31 @@ function buildProductionEntryProtectedCanarySummary(canary) {
   });
 }
 
+function buildOpenClawSupremeControlPlaneSummary(summary) {
+  const row = normalizeObject(summary);
+  if (!row) return null;
+  const learner = normalizeObject(row.learner_shadow_summary);
+  return Object.freeze({
+    ok: row.ok === true,
+    world_state_n: normalizeNumber(row.world_state_n),
+    latest_world_state_hash: trimOrNull(row.latest_world_state_hash),
+    execution_permit_n: normalizeNumber(row.execution_permit_n),
+    permit_validation_pass_n: normalizeNumber(row.permit_validation_pass_n),
+    permit_validation_fail_n: normalizeNumber(row.permit_validation_fail_n),
+    outcome_adjudication_n: normalizeNumber(row.outcome_adjudication_n),
+    outcome_unadjudicated_n: normalizeNumber(row.outcome_unadjudicated_n),
+    learner_shadow_summary: learner ? Object.freeze({
+      ok: learner.ok === true,
+      evaluation_n: normalizeNumber(learner.evaluation_n),
+      shadow_only_n: normalizeNumber(learner.shadow_only_n),
+      live_applied_n: normalizeNumber(learner.live_applied_n),
+      stale_evaluation_n: normalizeNumber(learner.stale_evaluation_n),
+      blockers: Array.isArray(learner.blockers) ? learner.blockers.slice() : [],
+    }) : null,
+    blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
+  });
+}
+
 function buildBoundedRuntimeSummary(manifest, selectorMeta, {
   repairFirestoreCanaryStreak = null,
   productionEntryRouteCanaryStreak = null,
@@ -456,6 +481,7 @@ function buildBoundedRuntimeSummary(manifest, selectorMeta, {
     runtime_chain_audit_summary: buildRuntimeChainAuditSummary(snapshotMeta && snapshotMeta.runtime_chain_audit_summary),
     repair_evidence_summary: buildRepairEvidenceSummary(snapshotMeta && snapshotMeta.repair_evidence_summary),
     openclaw_execution_audit_ledger_write: normalizeObject(snapshotMeta && snapshotMeta.openclaw_execution_audit_ledger_write),
+    openclaw_supreme_control_plane_summary: buildOpenClawSupremeControlPlaneSummary(snapshotMeta && snapshotMeta.openclaw_supreme_control_plane_summary),
     repair_firestore_canary_streak: buildRepairFirestoreCanaryStreakSummary(repairFirestoreCanaryStreak),
     production_entry_route_canary_streak: buildProductionEntryRouteCanaryStreakSummary(productionEntryRouteCanaryStreak),
     production_entry_protected_canary: buildProductionEntryProtectedCanarySummary(productionEntryProtectedCanary),
@@ -593,6 +619,7 @@ if (require.main === module) {
       buildOpenClawExecutionSeparationSummary,
       buildRuntimeChainAuditSummary,
       buildRepairEvidenceSummary,
+      buildOpenClawSupremeControlPlaneSummary,
       readOptionalJson,
       readCandidateSelectionArtifact,
       readRepairFirestoreCanaryStreakArtifact,

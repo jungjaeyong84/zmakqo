@@ -43,6 +43,8 @@ async function buildOpenClawSizingProtectedEntryExitFixture() {
       DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "0",
     },
     bundle: request.body.bundle,
+    worldState: request.worldState,
+    executionPermit: request.executionPermit,
     entryTransport: protectedCanary.__test.buildNoExchangeEntryTransport({
       sizingDecision: request.entrySizingDecision,
       nowIso,

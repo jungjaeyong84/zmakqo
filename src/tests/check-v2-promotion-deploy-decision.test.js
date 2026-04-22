@@ -99,6 +99,25 @@ function buildBoundedRuntimeSummaryFixture() {
       collection_key: "OPENCLAW_EXECUTION_AUDITS",
       doc_id: "OCEAUV2__CANARY__01",
     },
+    openclaw_supreme_control_plane_summary: {
+      ok: true,
+      world_state_n: 1,
+      latest_world_state_hash: "world-state-hash-fixture",
+      execution_permit_n: 1,
+      permit_validation_pass_n: 1,
+      permit_validation_fail_n: 0,
+      outcome_adjudication_n: 1,
+      outcome_unadjudicated_n: 0,
+      learner_shadow_summary: {
+        ok: true,
+        evaluation_n: 1,
+        shadow_only_n: 1,
+        live_applied_n: 0,
+        stale_evaluation_n: 0,
+        blockers: [],
+      },
+      blockers: [],
+    },
     repair_firestore_canary_streak: {
       ok: true,
       reason: "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS",
@@ -404,6 +423,7 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   assert.strictEqual(deployDecision.__test.hasRuntimeChainAuditCoverage(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasRepairEvidenceSummary(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasOpenClawExecutionAuditLedgerWrite(decision.bounded_runtime_summary), true);
+  assert.strictEqual(deployDecision.__test.hasOpenClawSupremeControlPlaneCoverage(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasRepairFirestoreCanaryStreak(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasFreshLongRunStreakCoverage(decision.bounded_runtime_summary.repair_firestore_canary_streak), true);
   assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(decision.bounded_runtime_summary), true);

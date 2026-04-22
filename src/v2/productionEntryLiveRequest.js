@@ -3,6 +3,8 @@
 const { resolveEntryIntentFromOpenClaw } = require("./signalAuthorityRouter");
 const { buildV2EntrySizingDecision } = require("./entrySizingDecision");
 const { LIVE_CONFIRM_PHRASE } = require("./productionEntryLiveEndpoint");
+const { buildOpenClawWorldState } = require("./openclawWorldState");
+const { issueOpenClawExecutionPermit } = require("./openclawExecutionPermit");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -27,6 +29,9 @@ function buildV2ProductionEntryLiveRequest({
   bundle,
   sizing = {},
   confirm = LIVE_CONFIRM_PHRASE,
+  worldState = null,
+  executionPermit = null,
+  env = process.env,
   now = () => new Date().toISOString(),
 } = {}) {
   const sourceBundle = asObject(bundle);
@@ -62,16 +67,61 @@ function buildV2ProductionEntryLiveRequest({
     ...sourceBundle,
     entrySizingDecision: sizingDecision,
   });
+  const decision = asObject(sourceBundle.openclawDecision);
+  const signal = asObject(sourceBundle.signalIntent);
+  const generatedAt = trimOrNull(now()) || new Date().toISOString();
+  const resolvedWorldState = asObject(worldState) || buildOpenClawWorldState({
+    env,
+    mode: decision && decision.decision_mode,
+    marketState: {
+      symbol: signal && signal.symbol,
+      side: signal && signal.side,
+    },
+    riskState: {
+      entry_qty_abs: sizingDecision.entry_qty_abs,
+      notional_quote: sizingDecision.notional_quote,
+    },
+    runtimeState: {
+      request_scope: "production_entry_live_request",
+      entry_intent_id: sizingDecision.entry_intent_id,
+    },
+    generatedAt,
+  });
+  const resolvedPermit = asObject(executionPermit) || issueOpenClawExecutionPermit({
+    bundle: sourceBundle,
+    worldState: resolvedWorldState,
+    sizingCap: {
+      entry_qty_abs_max: sizingDecision.entry_qty_abs,
+      notional_quote_max: sizingDecision.notional_quote,
+      size_ratio_max: sizingDecision.size_ratio || null,
+    },
+    riskBudget: {
+      max_notional_quote: sizingDecision.max_notional_quote,
+      min_notional_quote: sizingDecision.min_notional_quote,
+    },
+    exitContract: {
+      tp1_qty_ratio: 0.5,
+      tp1_target_pct: 0.0168,
+      tp0_supported: false,
+    },
+    approvalReason: "PRODUCTION_ENTRY_LIVE_REQUEST_APPROVED_BY_OPENCLAW",
+    issuedAt: generatedAt,
+    ttlMinutes: 5,
+  });
 
   return Object.freeze({
     ok: true,
     reason: "V2_PRODUCTION_ENTRY_LIVE_REQUEST_READY",
     routedDecision,
     entrySizingDecision: sizingDecision,
+    worldState: resolvedWorldState,
+    executionPermit: resolvedPermit,
     body: Object.freeze({
       confirm,
       bundle: enrichedBundle,
       entrySizingDecision: sizingDecision,
+      worldState: resolvedWorldState,
+      executionPermit: resolvedPermit,
       request_contract: Object.freeze({
         ok: true,
         reason: "V2_PRODUCTION_ENTRY_LIVE_REQUEST_EMBEDS_SIZING",
@@ -80,6 +130,8 @@ function buildV2ProductionEntryLiveRequest({
         side: sizingDecision.side,
         entry_qty_abs: sizingDecision.entry_qty_abs,
         notional_quote: sizingDecision.notional_quote,
+        world_state_hash: resolvedWorldState.world_state_hash,
+        openclaw_execution_permit_id: resolvedPermit.openclaw_execution_permit_id,
       }),
     }),
   });

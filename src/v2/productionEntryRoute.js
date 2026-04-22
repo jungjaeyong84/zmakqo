@@ -5,6 +5,7 @@ const { resolveEntryIntentFromOpenClaw } = require("./signalAuthorityRouter");
 const { runV2EntryExecutionKernel } = require("./entryExecutionKernel");
 const { evaluateOpenClawExecutionSeparation } = require("./openclawExecutionSeparationAudit");
 const { persistOpenClawExecutionAudit } = require("./openclawExecutionAuditLedger");
+const { validateOpenClawExecutionPermit } = require("./openclawExecutionPermit");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -58,8 +59,11 @@ async function runV2ProductionEntryRoute({
   bundle,
   entryTransport,
   protectionTransports,
+  executionPermit = null,
+  worldState = null,
   runEntryKernel = runV2EntryExecutionKernel,
   persistExecutionAudit = persistOpenClawExecutionAudit,
+  validateExecutionPermit = validateOpenClawExecutionPermit,
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
   stopLossPct = 0.0165,
@@ -68,6 +72,7 @@ async function runV2ProductionEntryRoute({
 } = {}) {
   if (typeof runEntryKernel !== "function") throw new Error("RUN_ENTRY_KERNEL_REQUIRED");
   if (typeof persistExecutionAudit !== "function") throw new Error("PERSIST_EXECUTION_AUDIT_REQUIRED");
+  if (typeof validateExecutionPermit !== "function") throw new Error("VALIDATE_EXECUTION_PERMIT_REQUIRED");
 
   const runtimeConfig = resolveV2RuntimeConfig(env);
   const runtime = summarizeRuntimeConfig(runtimeConfig);
@@ -77,6 +82,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision: null,
       kernelResult: null,
+      executionPermitValidation: null,
       openclawExecutionAudit: null,
       auditLedgerResult: null,
     });
@@ -86,6 +92,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision: null,
       kernelResult: null,
+      executionPermitValidation: null,
       openclawExecutionAudit: null,
       auditLedgerResult: null,
     });
@@ -103,6 +110,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult: null,
+      executionPermitValidation: null,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
@@ -114,6 +122,24 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult: null,
+      executionPermitValidation: null,
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+
+  const executionPermitValidation = validateExecutionPermit({
+    permit: executionPermit,
+    bundle,
+    worldState,
+    now,
+  });
+  if (!executionPermitValidation || executionPermitValidation.ok !== true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_PERMIT_BLOCKED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
@@ -136,6 +162,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult,
+      executionPermitValidation,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
@@ -164,6 +191,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult,
+      executionPermitValidation,
       openclawExecutionAudit,
       auditLedgerResult: Object.freeze({
         ok: false,
@@ -178,6 +206,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult,
+      executionPermitValidation,
       openclawExecutionAudit,
       auditLedgerResult,
     });
@@ -188,6 +217,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult,
+      executionPermitValidation,
       openclawExecutionAudit,
       auditLedgerResult,
     });
@@ -197,6 +227,7 @@ async function runV2ProductionEntryRoute({
     runtime,
     routedDecision,
     kernelResult,
+    executionPermitValidation,
     openclawExecutionAudit,
     auditLedgerResult,
   });

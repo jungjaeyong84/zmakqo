@@ -166,6 +166,44 @@ function buildOpenClawExecutionAuditId({
   return validateRequiredString("audit_id", auditId);
 }
 
+function buildOpenClawWorldStateId({
+  worldStateHash,
+} = {}) {
+  const hash = validateRequiredString("world_state_hash", worldStateHash);
+  return `OCWSV2__${hash12(hash)}`;
+}
+
+function buildOpenClawExecutionPermitId({
+  openclawDecisionId,
+  worldStateHash,
+  issuedAt,
+} = {}) {
+  const decisionId = validateRequiredString("openclaw_decision_id", openclawDecisionId);
+  const hash = validateRequiredString("world_state_hash", worldStateHash);
+  const at = validateRequiredString("issued_at", issuedAt);
+  return `OCEPV2__${hash12(`${decisionId}__${hash}__${at}`)}`;
+}
+
+function buildOpenClawOutcomeAdjudicationId({
+  openclawDecisionId,
+  positionCycleId,
+  adjudicatedAt,
+} = {}) {
+  const decisionId = validateRequiredString("openclaw_decision_id", openclawDecisionId);
+  const cycleId = validateRequiredString("position_cycle_id", positionCycleId);
+  const at = validateRequiredString("adjudicated_at", adjudicatedAt);
+  return `OCOADJV2__${hash12(`${decisionId}__${cycleId}__${at}`)}`;
+}
+
+function buildOpenClawLearnerShadowEvaluationId({
+  sourceAdjudicationId,
+  evaluatedAt,
+} = {}) {
+  const adjudicationId = validateRequiredString("openclaw_outcome_adjudication_id", sourceAdjudicationId);
+  const at = validateRequiredString("evaluated_at", evaluatedAt);
+  return `OCLSEV2__${hash12(`${adjudicationId}__${at}`)}`;
+}
+
 function buildTrailObservationId({
   positionCycleId,
   observedAt,
@@ -585,6 +623,157 @@ function buildOpenClawExecutionAuditDoc({
   };
 }
 
+function buildOpenClawWorldStateDoc({
+  worldStateHash,
+  generatedAt = null,
+  exchange = V2_EXCHANGE,
+  mode = "CANARY",
+  marketState = null,
+  positionState = null,
+  protectionState = null,
+  riskState = null,
+  runtimeState = null,
+  canaryState = null,
+  configState = null,
+  costState = null,
+  sourceRefs = null,
+} = {}) {
+  const hash = validateRequiredString("world_state_hash", worldStateHash);
+  return {
+    openclaw_world_state_id: buildOpenClawWorldStateId({ worldStateHash: hash }),
+    world_state_hash: hash,
+    generated_at: trimOrNull(generatedAt) || new Date().toISOString(),
+    exchange: validateRequiredString("exchange", upper(exchange)),
+    mode: validateEnum("mode", mode, V2_DECISION_MODES),
+    market_state: cloneJson(marketState) || {},
+    position_state: cloneJson(positionState) || {},
+    protection_state: cloneJson(protectionState) || {},
+    risk_state: cloneJson(riskState) || {},
+    runtime_state: cloneJson(runtimeState) || {},
+    canary_state: cloneJson(canaryState) || {},
+    config_state: cloneJson(configState) || {},
+    cost_state: cloneJson(costState) || {},
+    source_refs: cloneJson(sourceRefs) || {},
+    schema_version: 1,
+  };
+}
+
+function buildOpenClawExecutionPermitDoc({
+  openclawDecisionId,
+  signalIntentId,
+  worldStateHash,
+  decisionMode,
+  symbol,
+  side,
+  recommendedAction,
+  permitStatus = "ISSUED",
+  sizingCap = null,
+  riskBudget = null,
+  exitContract = null,
+  approvalReason,
+  issuedAt = null,
+  expiresAt,
+  source = "OPENCLAW_SUPREME_CONTROL_PLANE",
+} = {}) {
+  const issued = trimOrNull(issuedAt) || new Date().toISOString();
+  return {
+    openclaw_execution_permit_id: buildOpenClawExecutionPermitId({
+      openclawDecisionId,
+      worldStateHash,
+      issuedAt: issued,
+    }),
+    openclaw_decision_id: validateRequiredString("openclaw_decision_id", openclawDecisionId),
+    signal_intent_id: validateRequiredString("signal_intent_id", signalIntentId),
+    world_state_hash: validateRequiredString("world_state_hash", worldStateHash),
+    decision_mode: validateEnum("decision_mode", decisionMode, V2_DECISION_MODES),
+    symbol: validateRequiredString("symbol", upper(symbol)),
+    side: validateRequiredString("side", upper(side)),
+    recommended_action: validateRequiredString("recommended_action", upper(recommendedAction)),
+    permit_status: validateRequiredString("permit_status", upper(permitStatus)),
+    sizing_cap: cloneJson(sizingCap) || {},
+    risk_budget: cloneJson(riskBudget) || {},
+    exit_contract: cloneJson(exitContract) || {},
+    approval_reason: validateRequiredString("approval_reason", approvalReason),
+    issued_at: issued,
+    expires_at: validateRequiredString("expires_at", expiresAt),
+    source: validateRequiredString("source", upper(source)),
+    schema_version: 1,
+  };
+}
+
+function buildOpenClawOutcomeAdjudicationDoc({
+  openclawDecisionId,
+  signalIntentId,
+  positionCycleId,
+  adjudicationLabel,
+  adjudicationFamily,
+  realizedExitEvent = null,
+  realizedPnl = null,
+  executionOk = null,
+  protectionOk = null,
+  modelOk = null,
+  evidence = null,
+  source = "OPENCLAW_OUTCOME_ADJUDICATOR",
+  adjudicatedAt = null,
+} = {}) {
+  const at = trimOrNull(adjudicatedAt) || new Date().toISOString();
+  return {
+    openclaw_outcome_adjudication_id: buildOpenClawOutcomeAdjudicationId({
+      openclawDecisionId,
+      positionCycleId,
+      adjudicatedAt: at,
+    }),
+    openclaw_decision_id: validateRequiredString("openclaw_decision_id", openclawDecisionId),
+    signal_intent_id: trimOrNull(signalIntentId),
+    position_cycle_id: validateRequiredString("position_cycle_id", positionCycleId),
+    adjudication_label: validateRequiredString("adjudication_label", upper(adjudicationLabel)),
+    adjudication_family: validateRequiredString("adjudication_family", upper(adjudicationFamily)),
+    realized_exit_event: trimOrNull(upper(realizedExitEvent)),
+    realized_pnl: toNumberOrNull(realizedPnl),
+    execution_ok: executionOk === null || executionOk === undefined ? null : executionOk === true,
+    protection_ok: protectionOk === null || protectionOk === undefined ? null : protectionOk === true,
+    model_ok: modelOk === null || modelOk === undefined ? null : modelOk === true,
+    evidence: cloneJson(evidence) || {},
+    source: validateRequiredString("source", upper(source)),
+    adjudicated_at: at,
+    schema_version: 1,
+  };
+}
+
+function buildOpenClawLearnerShadowEvaluationDoc({
+  sourceAdjudicationId,
+  openclawDecisionId,
+  positionCycleId,
+  learnerVersion = "openclaw-shadow-learner-v1",
+  shadowOnly = true,
+  proposedAction,
+  proposedPolicyPatch = null,
+  confidence = null,
+  reasonTrace = [],
+  evaluatedAt = null,
+} = {}) {
+  const at = trimOrNull(evaluatedAt) || new Date().toISOString();
+  return {
+    openclaw_learner_shadow_evaluation_id: buildOpenClawLearnerShadowEvaluationId({
+      sourceAdjudicationId,
+      evaluatedAt: at,
+    }),
+    openclaw_outcome_adjudication_id: validateRequiredString("openclaw_outcome_adjudication_id", sourceAdjudicationId),
+    openclaw_decision_id: validateRequiredString("openclaw_decision_id", openclawDecisionId),
+    position_cycle_id: validateRequiredString("position_cycle_id", positionCycleId),
+    learner_version: validateRequiredString("learner_version", learnerVersion),
+    shadow_only: shadowOnly !== false,
+    proposed_action: validateRequiredString("proposed_action", upper(proposedAction)),
+    proposed_policy_patch: cloneJson(proposedPolicyPatch) || {},
+    confidence: toNumberOrNull(confidence),
+    reason_trace: Array.isArray(reasonTrace)
+      ? reasonTrace.map((reason) => validateRequiredString("reason_trace", upper(reason)))
+      : [],
+    evaluated_at: at,
+    schema_version: 1,
+  };
+}
+
 function buildTrailObservationDoc({
   positionCycleId,
   stage,
@@ -694,6 +883,10 @@ module.exports = {
   buildMlAiEvidenceDecisionId,
   buildOpenClawDecisionId,
   buildOpenClawExecutionAuditId,
+  buildOpenClawWorldStateId,
+  buildOpenClawExecutionPermitId,
+  buildOpenClawOutcomeAdjudicationId,
+  buildOpenClawLearnerShadowEvaluationId,
   buildTrailObservationId,
   buildRepairRequestId,
   buildRepairExecutionLedgerId,
@@ -708,6 +901,10 @@ module.exports = {
   buildMlAiEvidenceLedgerDoc,
   buildOpenClawDecisionDoc,
   buildOpenClawExecutionAuditDoc,
+  buildOpenClawWorldStateDoc,
+  buildOpenClawExecutionPermitDoc,
+  buildOpenClawOutcomeAdjudicationDoc,
+  buildOpenClawLearnerShadowEvaluationDoc,
   buildTrailObservationDoc,
   buildRepairRequestDoc,
   buildRepairExecutionLedgerDoc,

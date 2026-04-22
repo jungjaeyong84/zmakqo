@@ -6,6 +6,8 @@ const { buildV2ExecutedEntryFromIntent } = require("./entryExecutor");
 const { evaluateEntryExecutionKernelResult } = require("./entryExecutionKernel");
 const { runV2ProductionEntryRoute } = require("./productionEntryRoute");
 const { buildV2EntrySizingDecision } = require("./entrySizingDecision");
+const { buildOpenClawWorldState } = require("./openclawWorldState");
+const { issueOpenClawExecutionPermit } = require("./openclawExecutionPermit");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -189,9 +191,37 @@ async function runV2ProductionEntryRouteCanary({
   let kernelCalled = false;
   let persistCalled = false;
   const startedAt = trimOrNull(now()) || new Date().toISOString();
+  const worldState = buildOpenClawWorldState({
+    env: canaryEnv,
+    mode: "CANARY",
+    runtimeState: {
+      scope: "production_entry_route_canary",
+      exchange_write_performed: false,
+    },
+    canaryState: {
+      canary_mode: "NO_EXCHANGE_ROUTE_PROOF",
+    },
+    generatedAt: startedAt,
+  });
+  const executionPermit = issueOpenClawExecutionPermit({
+    bundle,
+    worldState,
+    sizingCap: {
+      notional_quote_max: 2500,
+      entry_qty_abs_max: 1,
+    },
+    riskBudget: {
+      canary_no_exchange_write: true,
+    },
+    approvalReason: "PRODUCTION_ENTRY_ROUTE_CANARY_APPROVED_BY_OPENCLAW",
+    issuedAt: startedAt,
+    ttlMinutes: 5,
+  });
   const routeResult = await runProductionEntryRoute({
     env: canaryEnv,
     bundle,
+    worldState,
+    executionPermit,
     now: () => startedAt,
     runEntryKernel: async () => {
       kernelCalled = true;
@@ -217,6 +247,7 @@ async function runV2ProductionEntryRouteCanary({
   const entrySizingDecision = asObject(submitterResult && submitterResult.entrySizingDecision);
   const kernelAudit = asObject(routeResult && routeResult.kernelResult && routeResult.kernelResult.kernelAudit);
   const openclawAudit = asObject(routeResult && routeResult.openclawExecutionAudit);
+  const permitValidation = asObject(routeResult && routeResult.executionPermitValidation);
   const ledgerResult = asObject(routeResult && routeResult.auditLedgerResult);
   const checks = Object.freeze([
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_ROUTE_OK", ok: routeResult && routeResult.ok === true }),
@@ -225,6 +256,7 @@ async function runV2ProductionEntryRouteCanary({
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_KERNEL_CALLED", ok: kernelCalled === true }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_KERNEL_AUDIT_OK", ok: kernelAudit && kernelAudit.ok === true }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_OPENCLAW_AUDIT_OK", ok: openclawAudit && openclawAudit.ok === true }),
+    Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_OPENCLAW_PERMIT_OK", ok: permitValidation && permitValidation.ok === true }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_APPROVED", ok: entrySizingDecision && entrySizingDecision.ok === true && entrySizingDecision.status === "APPROVED" }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_QTY_MATCHES_FILL", ok: entrySizingDecision && fill && Number(entrySizingDecision.entry_qty_abs) === Number(fill.qty_abs) }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_LEDGER_SKIPPED_INTENTIONALLY", ok: ledgerResult && ledgerResult.ok === true && ledgerResult.skipped === true && ledgerResult.reason === "PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED" }),
@@ -257,6 +289,8 @@ async function runV2ProductionEntryRouteCanary({
       entry_event_id: trimOrNull(kernelAudit && kernelAudit.entry_event_id),
       protection_runtime_id: trimOrNull(kernelAudit && kernelAudit.protection_runtime_id),
       openclaw_audit_id: trimOrNull(openclawAudit && openclawAudit.audit_id),
+      openclaw_execution_permit_id: trimOrNull(executionPermit && executionPermit.openclaw_execution_permit_id),
+      world_state_hash: trimOrNull(worldState && worldState.world_state_hash),
       audit_ledger_reason: trimOrNull(ledgerResult && ledgerResult.reason),
       entry_sizing_decision: entrySizingDecision ? Object.freeze({
         ok: entrySizingDecision.ok === true,

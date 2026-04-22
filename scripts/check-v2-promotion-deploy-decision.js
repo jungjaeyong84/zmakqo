@@ -381,6 +381,31 @@ function hasOpenClawExecutionAuditLedgerWrite(summary) {
   );
 }
 
+function hasOpenClawSupremeControlPlaneCoverage(summary) {
+  const row = normalizeObject(summary);
+  const supreme = normalizeObject(row && row.openclaw_supreme_control_plane_summary);
+  if (!supreme) return false;
+  const learner = normalizeObject(supreme.learner_shadow_summary);
+  return (
+    supreme.ok === true &&
+    Number(supreme.world_state_n) > 0 &&
+    !!trimOrNull(supreme.latest_world_state_hash) &&
+    Number(supreme.execution_permit_n) > 0 &&
+    Number(supreme.permit_validation_pass_n) >= Number(supreme.execution_permit_n) &&
+    Number(supreme.permit_validation_fail_n || 0) === 0 &&
+    Number(supreme.outcome_adjudication_n) > 0 &&
+    Number(supreme.outcome_unadjudicated_n || 0) === 0 &&
+    learner &&
+    learner.ok === true &&
+    Number(learner.evaluation_n) > 0 &&
+    Number(learner.shadow_only_n) === Number(learner.evaluation_n) &&
+    Number(learner.live_applied_n || 0) === 0 &&
+    Number(learner.stale_evaluation_n || 0) === 0 &&
+    ensureArray(supreme.blockers).length === 0 &&
+    ensureArray(learner.blockers).length === 0
+  );
+}
+
 function hasRepairFirestoreCanaryStreak(summary) {
   const row = normalizeObject(summary);
   const streak = normalizeObject(row && row.repair_firestore_canary_streak);
@@ -970,6 +995,12 @@ function buildDeployDecision(unifiedReport, {
   if (["CANARY", "LIVE"].includes(mode || "") && !hasOpenClawExecutionAuditLedgerWrite(boundedRuntimeSummary)) {
     blockers.push("DEPLOY_DECISION:OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_REQUIRED");
   }
+  if (mode === "LIVE" && !hasOpenClawSupremeControlPlaneCoverage(boundedRuntimeSummary)) {
+    blockers.push("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED");
+  }
+  if (mode === "CANARY" && !hasOpenClawSupremeControlPlaneCoverage(boundedRuntimeSummary)) {
+    warnings.push("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_NOT_READY");
+  }
   if (["CANARY", "LIVE"].includes(mode || "") && !hasEntryBoundaryAudit(entryBoundaryAudit)) {
     blockers.push("DEPLOY_DECISION:V2_ENTRY_BOUNDARY_AUDIT_REQUIRED");
   }
@@ -1147,6 +1178,7 @@ if (require.main === module) {
       REQUIRED_RUNTIME_CHAIN_CHECK_IDS,
       hasRepairEvidenceSummary,
       hasOpenClawExecutionAuditLedgerWrite,
+      hasOpenClawSupremeControlPlaneCoverage,
       buildV2EntryBoundaryAuditSummary,
       hasEntryBoundaryAudit,
       buildV2FillSyncCanonicalBoundaryAuditSummary,

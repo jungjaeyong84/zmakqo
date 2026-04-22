@@ -5,6 +5,8 @@ const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
 const { resolveEntryIntentFromOpenClaw } = require("../v2/signalAuthorityRouter");
 const { buildV2ExecutedEntryFromIntent } = require("../v2/entryExecutor");
 const { runV2ProductionEntryRoute } = require("../v2/productionEntryRoute");
+const { buildOpenClawWorldState } = require("../v2/openclawWorldState");
+const { issueOpenClawExecutionPermit } = require("../v2/openclawExecutionPermit");
 
 function buildEnv(overrides = {}) {
   return {
@@ -75,6 +77,24 @@ function buildKernelResultFromBundle(bundle) {
   };
 }
 
+function buildPermitForBundle(bundle, overrides = {}) {
+  const worldState = buildOpenClawWorldState({
+    env: buildEnv(),
+    mode: overrides.mode || (bundle.openclawDecision && bundle.openclawDecision.decision_mode) || "CANARY",
+    runtimeState: { test_scope: "v2-production-entry-route" },
+    generatedAt: "2026-04-21T06:00:00.000Z",
+  });
+  const executionPermit = issueOpenClawExecutionPermit({
+    bundle,
+    worldState,
+    approvalReason: "TEST_OPENCLAW_PERMIT",
+    issuedAt: "2026-04-21T06:00:00.000Z",
+    ttlMinutes: 5,
+    ...overrides,
+  });
+  return { worldState, executionPermit };
+}
+
 async function disabledRuntimeBlocksBeforeKernel() {
   const calls = [];
   const result = await runV2ProductionEntryRoute({
@@ -116,9 +136,11 @@ async function dryRunRuntimeBlocksBeforeKernel() {
 async function canaryRouteExecutesOnlyThroughKernelAndPersistsAudit() {
   const calls = [];
   const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
   const result = await runV2ProductionEntryRoute({
     env: buildEnv(),
     bundle,
+    ...permit,
     runEntryKernel: async ({ entryIntent }) => {
       calls.push({ type: "kernel", entryIntent });
       return buildKernelResultFromBundle(bundle);
@@ -132,6 +154,7 @@ async function canaryRouteExecutesOnlyThroughKernelAndPersistsAudit() {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED");
   assert.deepStrictEqual(calls.map((row) => row.type), ["kernel", "persist"]);
+  assert.strictEqual(result.executionPermitValidation.ok, true);
   assert.strictEqual(calls[0].entryIntent.decision_mode, "CANARY");
   assert.strictEqual(calls[1].source, "PRODUCTION_ENTRY_ROUTE");
   assert.strictEqual(result.openclawExecutionAudit.ok, true);
@@ -160,12 +183,36 @@ async function liveDecisionIsBlockedWhenRuntimeIsCanaryOnly() {
   assert.deepStrictEqual(calls, []);
 }
 
-async function kernelBlockDoesNotBecomeRouteSuccess() {
+async function missingExecutionPermitBlocksBeforeKernel() {
   const calls = [];
   const bundle = buildBundle();
   const result = await runV2ProductionEntryRoute({
     env: buildEnv(),
     bundle,
+    runEntryKernel: async () => {
+      calls.push("kernel");
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push("persist");
+      return { ok: true };
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_PERMIT_BLOCKED");
+  assert.ok(result.executionPermitValidation.failed_check_ids.includes("PERMIT_PRESENT"));
+  assert.deepStrictEqual(calls, []);
+}
+
+async function kernelBlockDoesNotBecomeRouteSuccess() {
+  const calls = [];
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
     runEntryKernel: async () => {
       calls.push("kernel");
       return {
@@ -182,6 +229,7 @@ async function kernelBlockDoesNotBecomeRouteSuccess() {
       calls.push("persist");
       throw new Error("audit ledger must not mask kernel failure");
     },
+    now: () => "2026-04-21T06:00:00.000Z",
   });
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED");
@@ -192,14 +240,17 @@ async function kernelBlockDoesNotBecomeRouteSuccess() {
 
 async function tamperedKernelExecutionLineageBlocksRouteSuccess() {
   const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
   const otherBundle = buildBundle({
     signalLineageId: "LINEAGE__ETH__PROD_ENTRY__OTHER",
   });
   const result = await runV2ProductionEntryRoute({
     env: buildEnv(),
     bundle,
+    ...permit,
     runEntryKernel: async () => buildKernelResultFromBundle(otherBundle),
     persistExecutionAudit: async () => ({ ok: true, skipped: true }),
+    now: () => "2026-04-21T06:00:00.000Z",
   });
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED");
@@ -209,13 +260,16 @@ async function tamperedKernelExecutionLineageBlocksRouteSuccess() {
 
 async function auditLedgerFailureDoesNotLookSuccessful() {
   const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
   const result = await runV2ProductionEntryRoute({
     env: buildEnv(),
     bundle,
+    ...permit,
     runEntryKernel: async () => buildKernelResultFromBundle(bundle),
     persistExecutionAudit: async () => {
       throw new Error("firestore write denied");
     },
+    now: () => "2026-04-21T06:00:00.000Z",
   });
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_AUDIT_LEDGER_FAILED");
@@ -227,6 +281,7 @@ async function main() {
   await dryRunRuntimeBlocksBeforeKernel();
   await canaryRouteExecutesOnlyThroughKernelAndPersistsAudit();
   await liveDecisionIsBlockedWhenRuntimeIsCanaryOnly();
+  await missingExecutionPermitBlocksBeforeKernel();
   await kernelBlockDoesNotBecomeRouteSuccess();
   await tamperedKernelExecutionLineageBlocksRouteSuccess();
   await auditLedgerFailureDoesNotLookSuccessful();

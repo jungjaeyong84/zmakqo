@@ -369,6 +369,8 @@ async function runV2ProductionEntryProtectedCanary({
     db: firestore,
     env: canaryEnv,
     bundle: request.body.bundle,
+    worldState: request.worldState,
+    executionPermit: request.executionPermit,
     entryTransport: buildNoExchangeEntryTransport({
       sizingDecision: request.entrySizingDecision,
       nowIso: startedAt,
@@ -432,6 +434,8 @@ async function runV2ProductionEntryProtectedCanary({
       runtime_health_status: trimOrNull(runtimeDoc && runtimeDoc.health_status),
       sl_order_id: trimOrNull(runtimeDoc && runtimeDoc.sl_order_id),
       tp1_order_id: trimOrNull(runtimeDoc && runtimeDoc.tp1_order_id),
+      world_state_hash: trimOrNull(request.worldState && request.worldState.world_state_hash),
+      openclaw_execution_permit_id: trimOrNull(request.executionPermit && request.executionPermit.openclaw_execution_permit_id),
       audit_ledger_reason: trimOrNull(ledgerResult && ledgerResult.reason),
       entry_sizing_decision: summarizeSizingDecision(request.entrySizingDecision),
     }),

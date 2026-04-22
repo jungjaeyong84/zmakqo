@@ -64,12 +64,30 @@ function extractDecisionMode(bundle) {
   return upper(decision && decision.decision_mode);
 }
 
+function extractExecutionPermit({ body = null, bundle = null, executionPermit = null } = {}) {
+  return asObject(executionPermit)
+    || asObject(asObject(body) && body.executionPermit)
+    || asObject(asObject(bundle) && bundle.executionPermit)
+    || asObject(asObject(body) && body.openclawExecutionPermit)
+    || null;
+}
+
+function extractWorldState({ body = null, bundle = null, worldState = null } = {}) {
+  return asObject(worldState)
+    || asObject(asObject(body) && body.worldState)
+    || asObject(asObject(bundle) && bundle.worldState)
+    || asObject(asObject(body) && body.openclawWorldState)
+    || null;
+}
+
 async function runV2ProductionEntryLiveEndpoint({
   db = null,
   env = process.env,
   body = null,
   bundle = null,
   confirm = null,
+  executionPermit = null,
+  worldState = null,
   requestId = null,
   entryTransport,
   protectionTransports,
@@ -85,6 +103,8 @@ async function runV2ProductionEntryLiveEndpoint({
   const endpointEnabled = parseBool(env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, false);
   const resolvedBundle = extractBundle({ body, bundle });
   const resolvedConfirm = extractConfirm({ body, confirm });
+  const resolvedExecutionPermit = extractExecutionPermit({ body, bundle: resolvedBundle, executionPermit });
+  const resolvedWorldState = extractWorldState({ body, bundle: resolvedBundle, worldState });
   const decisionMode = extractDecisionMode(resolvedBundle);
 
   const base = Object.freeze({
@@ -153,6 +173,8 @@ async function runV2ProductionEntryLiveEndpoint({
     db,
     env,
     bundle: resolvedBundle,
+    executionPermit: resolvedExecutionPermit,
+    worldState: resolvedWorldState,
     entryTransport: resolvedEntryTransport,
     protectionTransports: resolvedProtectionTransports,
     now: () => startedAt,
@@ -202,6 +224,8 @@ module.exports = {
     extractBundle,
     extractConfirm,
     extractDecisionMode,
+    extractExecutionPermit,
+    extractWorldState,
     summarizeTransportResolution,
     summarizeRuntimeConfig,
   },

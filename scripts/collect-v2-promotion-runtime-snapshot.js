@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 const { getV2Doc, queryV2DocsByField } = require("../src/v2/storage");
-const { buildExitRuntimeProjectionId, buildProtectionRuntimeId } = require("../src/v2/contracts");
+const { buildExitRuntimeProjectionId, buildProtectionRuntimeId, buildOpenClawWorldStateId } = require("../src/v2/contracts");
 const { evaluateOpenClawExecutionSeparation } = require("../src/v2/openclawExecutionSeparationAudit");
 const { persistOpenClawExecutionAudit } = require("../src/v2/openclawExecutionAuditLedger");
 const { __test: replayGateTest } = require("../src/v2/replayGate");
@@ -161,6 +161,9 @@ function resolveCollectorConfig(env = process.env) {
       outboxesLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_OUTBOXES_LIMIT, 50, { max: 200 }),
       repairRequestsLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_REPAIR_REQUESTS_LIMIT, 20, { max: 100 }),
       repairExecutionLedgersLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_REPAIR_EXECUTION_LEDGERS_LIMIT, 20, { max: 100 }),
+      openclawPermitLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_OPENCLAW_PERMIT_LIMIT, 20, { max: 50 }),
+      openclawOutcomeLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_OPENCLAW_OUTCOME_LIMIT, 20, { max: 50 }),
+      openclawLearnerLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_OPENCLAW_LEARNER_LIMIT, 20, { max: 50 }),
       linkedDocLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_LINKED_DOC_LIMIT, 20, { max: 50 }),
     }),
   });
@@ -481,6 +484,48 @@ function buildRepairEvidenceSummary({ repairRequests = [], repairExecutionLedger
   });
 }
 
+function buildOpenClawSupremeControlPlaneSummary({
+  worldState = null,
+  executionPermits = [],
+  outcomeAdjudications = [],
+  learnerShadowEvaluations = [],
+} = {}) {
+  const permits = Array.isArray(executionPermits) ? executionPermits : [];
+  const adjudications = Array.isArray(outcomeAdjudications) ? outcomeAdjudications : [];
+  const learnerRows = Array.isArray(learnerShadowEvaluations) ? learnerShadowEvaluations : [];
+  const validationPassCount = permits.filter((row) => upper(row && row.permit_status) === "ISSUED" && trimOrNull(row && row.world_state_hash)).length;
+  const liveAppliedCount = learnerRows.filter((row) => row && row.shadow_only === false).length;
+  const shadowOnlyCount = learnerRows.filter((row) => row && row.shadow_only === true).length;
+  const blockers = [];
+  if (!worldState || !trimOrNull(worldState.world_state_hash)) blockers.push("OPENCLAW_WORLD_STATE_REQUIRED");
+  if (!permits.length) blockers.push("OPENCLAW_EXECUTION_PERMIT_REQUIRED");
+  if (permits.length && validationPassCount < permits.length) blockers.push("OPENCLAW_EXECUTION_PERMIT_VALIDATION_REQUIRED");
+  if (!adjudications.length) blockers.push("OPENCLAW_OUTCOME_ADJUDICATION_REQUIRED");
+  if (!learnerRows.length) blockers.push("OPENCLAW_LEARNER_SHADOW_EVALUATION_REQUIRED");
+  if (liveAppliedCount > 0) blockers.push("OPENCLAW_LEARNER_LIVE_APPLICATION_FORBIDDEN");
+  return Object.freeze({
+    ok: blockers.length === 0,
+    world_state_n: worldState ? 1 : 0,
+    latest_world_state_hash: trimOrNull(worldState && worldState.world_state_hash),
+    execution_permit_n: permits.length,
+    permit_validation_pass_n: validationPassCount,
+    permit_validation_fail_n: Math.max(permits.length - validationPassCount, 0),
+    outcome_adjudication_n: adjudications.length,
+    outcome_unadjudicated_n: adjudications.length > 0 ? 0 : 1,
+    learner_shadow_summary: Object.freeze({
+      ok: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0,
+      evaluation_n: learnerRows.length,
+      shadow_only_n: shadowOnlyCount,
+      live_applied_n: liveAppliedCount,
+      stale_evaluation_n: 0,
+      blockers: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0
+        ? []
+        : ["OPENCLAW_LEARNER_SHADOW_ONLY_REQUIRED"],
+    }),
+    blockers: Object.freeze(blockers),
+  });
+}
+
 function buildCollectedRuntimeChainAudit(episode) {
   const row = replayGateTest.validateEpisode(episode);
   const blockers = Array.isArray(row.blockers) ? row.blockers : [];
@@ -675,7 +720,6 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
     limit: cfg.queryBudget.repairExecutionLedgersLimit,
     reason: "V2_PROMOTION_COLLECT_REPAIR_EXECUTION_LEDGERS_QUERY_LIMIT_REACHED",
   });
-
   const nativeSignalIntentId = cfg.nativeSignalIntentId || trimOrNull(positionCycle.signal_intent_id);
   if (!nativeSignalIntentId) throw new Error("V2_PROMOTION_COLLECT_NATIVE_SIGNAL_INTENT_ID_MISSING");
   const nativeDecisionId = cfg.nativeDecisionId || trimOrNull(positionCycle.openclaw_decision_id) || cfg.liveDecisionId;
@@ -727,6 +771,67 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
     collectionKey: "OPENCLAW_DECISIONS",
     docId: nativeDecisionId,
     reason: "V2_PROMOTION_COLLECT_NATIVE_DECISION_NOT_FOUND",
+  });
+  const executionPermits = sortRowsByTimestamp(
+    await listDocs({
+      db,
+      env,
+      collectionKey: "OPENCLAW_EXECUTION_PERMITS",
+      field: "openclaw_decision_id",
+      value: nativeDecisionId,
+      limit: cfg.queryBudget.openclawPermitLimit,
+    }),
+    ["issued_at"],
+    false
+  );
+  assertRowsWithinBudget({
+    rows: executionPermits,
+    limit: cfg.queryBudget.openclawPermitLimit,
+    reason: "V2_PROMOTION_COLLECT_OPENCLAW_PERMITS_QUERY_LIMIT_REACHED",
+  });
+  const latestPermit = pickLatest(executionPermits, ["issued_at"]);
+  const worldState = latestPermit && trimOrNull(latestPermit.world_state_hash)
+    ? await requireDoc({
+        db,
+        env,
+        collectionKey: "OPENCLAW_WORLD_STATES",
+        docId: buildOpenClawWorldStateId({ worldStateHash: latestPermit.world_state_hash }),
+        reason: "V2_PROMOTION_COLLECT_OPENCLAW_WORLD_STATE_NOT_FOUND",
+      }).catch(() => null)
+    : null;
+  const outcomeAdjudications = sortRowsByTimestamp(
+    await listDocs({
+      db,
+      env,
+      collectionKey: "OPENCLAW_OUTCOME_ADJUDICATIONS",
+      field: "position_cycle_id",
+      value: cfg.positionCycleId,
+      limit: cfg.queryBudget.openclawOutcomeLimit,
+    }),
+    ["adjudicated_at"],
+    false
+  );
+  assertRowsWithinBudget({
+    rows: outcomeAdjudications,
+    limit: cfg.queryBudget.openclawOutcomeLimit,
+    reason: "V2_PROMOTION_COLLECT_OPENCLAW_OUTCOMES_QUERY_LIMIT_REACHED",
+  });
+  const learnerShadowEvaluations = sortRowsByTimestamp(
+    await listDocs({
+      db,
+      env,
+      collectionKey: "OPENCLAW_LEARNER_SHADOW_EVALUATIONS",
+      field: "position_cycle_id",
+      value: cfg.positionCycleId,
+      limit: cfg.queryBudget.openclawLearnerLimit,
+    }),
+    ["evaluated_at"],
+    false
+  );
+  assertRowsWithinBudget({
+    rows: learnerShadowEvaluations,
+    limit: cfg.queryBudget.openclawLearnerLimit,
+    reason: "V2_PROMOTION_COLLECT_OPENCLAW_LEARNER_QUERY_LIMIT_REACHED",
   });
 
   const shadowProposal = await requireDoc({
@@ -804,6 +909,12 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
     repairRequests,
     repairExecutionLedgers,
   });
+  const openclawSupremeControlPlaneSummary = buildOpenClawSupremeControlPlaneSummary({
+    worldState,
+    executionPermits,
+    outcomeAdjudications,
+    learnerShadowEvaluations,
+  });
   const openclawExecutionSeparationAudit = evaluateOpenClawExecutionSeparation({
     bundle: {
       signalIntent,
@@ -859,10 +970,14 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
           outboxes: outboxes.length,
           repair_requests: repairRequests.length,
           repair_execution_ledgers: repairExecutionLedgers.length,
+          openclaw_execution_permits: executionPermits.length,
+          openclaw_outcome_adjudications: outcomeAdjudications.length,
+          openclaw_learner_shadow_evaluations: learnerShadowEvaluations.length,
         }),
       }),
       alert_retry_summary: alertRetrySummary,
       repair_evidence_summary: repairEvidenceSummary,
+      openclaw_supreme_control_plane_summary: openclawSupremeControlPlaneSummary,
       openclaw_execution_separation_audits: Object.freeze([openclawExecutionSeparationAudit]),
       runtime_chain_audits: Object.freeze([runtimeChainAudit]),
       openclaw_execution_audit_ledger_write: Object.freeze({
@@ -934,6 +1049,7 @@ if (require.main === module) {
       buildWatchdogSnapshot,
       buildAlertRetrySummary,
       buildRepairEvidenceSummary,
+      buildOpenClawSupremeControlPlaneSummary,
       buildCollectedRuntimeChainAudit,
       REQUIRED_COLLECTED_RUNTIME_CHAIN_CHECK_IDS,
       countBy,
