@@ -347,9 +347,15 @@ async function callEgressProxyOnce({
   timeoutMsFinal,
   requestId,
   attempt,
+  signal = null,
 }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMsFinal);
+  const relayAbort = () => controller.abort();
+  if (signal && signal.aborted) controller.abort();
+  if (signal && typeof signal.addEventListener === "function") {
+    signal.addEventListener("abort", relayAbort, { once: true });
+  }
   try {
     let res = null;
     try {
@@ -423,10 +429,13 @@ async function callEgressProxyOnce({
     return { json, res };
   } finally {
     clearTimeout(timeout);
+    if (signal && typeof signal.removeEventListener === "function") {
+      signal.removeEventListener("abort", relayAbort);
+    }
   }
 }
 
-async function callEgressProxy({ provider, action, payload, timeoutMs, maxAttempts } = {}) {
+async function callEgressProxy({ provider, action, payload, timeoutMs, maxAttempts, signal = null } = {}) {
   const requestIdRoot = buildEgressRequestId();
   const base = resolveEgressBaseUrlFor(provider, action);
   if (!base) throw new Error("EGRESS_PROXY_URL_MISSING");
@@ -469,6 +478,7 @@ async function callEgressProxy({ provider, action, payload, timeoutMs, maxAttemp
         timeoutMsFinal,
         requestId,
         attempt,
+        signal,
       });
       if (EGRESS_VERBOSE_SUCCESS_LOGS) {
         console.log("[egress][RESPONSE_OK]", {

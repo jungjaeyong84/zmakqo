@@ -18,6 +18,13 @@ function asObject(value) {
   return value && typeof value === "object" ? value : null;
 }
 
+function parseBoundedPermitTtlMinutes(env = process.env) {
+  const raw = Number(env && env.DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES);
+  const fallback = 15;
+  const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  return Math.min(30, Math.max(5, value));
+}
+
 function collectFailedChecks(routeResult) {
   const result = asObject(routeResult);
   const kernelAudit = asObject(result && result.kernelResult && result.kernelResult.kernelAudit);
@@ -215,7 +222,7 @@ async function runV2ProductionEntryRouteCanary({
     },
     approvalReason: "PRODUCTION_ENTRY_ROUTE_CANARY_APPROVED_BY_OPENCLAW",
     issuedAt: startedAt,
-    ttlMinutes: 5,
+    ttlMinutes: parseBoundedPermitTtlMinutes(canaryEnv),
   });
   const routeResult = await runProductionEntryRoute({
     env: canaryEnv,

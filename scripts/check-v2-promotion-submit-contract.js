@@ -57,6 +57,36 @@ function buildCheck({ id, label, ok, reason, file }) {
   });
 }
 
+function normalizeMarkdownCell(value) {
+  return String(value || "")
+    .replace(/`/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseRunbookReverseIndexRows(runbookText) {
+  return String(runbookText || "")
+    .split(/\r?\n/)
+    .map((line) => String(line || "").trim())
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .map((line) => line.split("|").slice(1, -1).map(normalizeMarkdownCell))
+    .filter((cells) => cells.length >= 3 && cells[0] && cells[1] && cells[2])
+    .map((cells) => Object.freeze({
+      submit_check_id: cells[0],
+      runbook_checklist: cells[1],
+      meaning: cells.slice(2).join(" | "),
+    }));
+}
+
+function hasRunbookReverseIndex({ runbookText, submitCheckId, checklist, meaningNeedle = null }) {
+  const expectedCheck = normalizeMarkdownCell(submitCheckId);
+  const expectedChecklist = normalizeMarkdownCell(checklist);
+  const expectedMeaning = meaningNeedle ? normalizeMarkdownCell(meaningNeedle).toLowerCase() : null;
+  return parseRunbookReverseIndexRows(runbookText).some((row) => row.submit_check_id === expectedCheck
+    && row.runbook_checklist === expectedChecklist
+    && (!expectedMeaning || row.meaning.toLowerCase().includes(expectedMeaning)));
+}
+
 function buildFormatterFixtureResult() {
   return operatorSummary.buildOperatorSummary({
     ok: false,
@@ -915,8 +945,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_13",
       label: "runbook maps V2 entry boundary submit check",
-      ok: runbookText.includes("| `SUBMIT_CHK_13` | `21` | V2 entry boundary audit complete |"),
-      reason: runbookText.includes("| `SUBMIT_CHK_13` | `21` | V2 entry boundary audit complete |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_13", checklist: "21", meaningNeedle: "V2 entry boundary audit complete" }),
+      reason: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_13", checklist: "21", meaningNeedle: "V2 entry boundary audit complete" })
         ? "runbook reverse index maps SUBMIT_CHK_13 to checklist 21"
         : "runbook must map SUBMIT_CHK_13 to checklist 21",
       file: FILES.runbook,
@@ -935,8 +965,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_15",
       label: "runbook maps V2 production cutover submit check",
-      ok: runbookText.includes("| `SUBMIT_CHK_14` | `22` | V2 production cutover audit complete |"),
-      reason: runbookText.includes("| `SUBMIT_CHK_14` | `22` | V2 production cutover audit complete |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_14", checklist: "22", meaningNeedle: "V2 production cutover audit complete" }),
+      reason: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_14", checklist: "22", meaningNeedle: "V2 production cutover audit complete" })
         ? "runbook reverse index maps SUBMIT_CHK_14 to checklist 22"
         : "runbook must map SUBMIT_CHK_14 to checklist 22",
       file: FILES.runbook,
@@ -955,8 +985,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_16A",
       label: "runbook maps V2 production live entry sizing submit check",
-      ok: runbookText.includes("| `SUBMIT_CHK_20` | `27` | V2 production live entry sizing contract complete |"),
-      reason: runbookText.includes("| `SUBMIT_CHK_20` | `27` | V2 production live entry sizing contract complete |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_20", checklist: "27", meaningNeedle: "V2 production live entry sizing contract complete" }),
+      reason: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_20", checklist: "27", meaningNeedle: "V2 production live entry sizing contract complete" })
         ? "runbook reverse index maps SUBMIT_CHK_20 to checklist 27"
         : "runbook must map SUBMIT_CHK_20 to checklist 27",
       file: FILES.runbook,
@@ -989,8 +1019,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_17",
       label: "runbook maps LIVE production cutover readiness submit check",
-      ok: runbookText.includes("| `SUBMIT_CHK_15` | `23` | LIVE production cutover readiness blocks legacy webhook |"),
-      reason: runbookText.includes("| `SUBMIT_CHK_15` | `23` | LIVE production cutover readiness blocks legacy webhook |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_15", checklist: "23", meaningNeedle: "LIVE production cutover readiness blocks legacy webhook" }),
+      reason: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_15", checklist: "23", meaningNeedle: "LIVE production cutover readiness blocks legacy webhook" })
         ? "runbook reverse index maps SUBMIT_CHK_15 to checklist 23"
         : "runbook must map SUBMIT_CHK_15 to checklist 23",
       file: FILES.runbook,
@@ -1009,8 +1039,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_19",
       label: "runbook maps LIVE scheduler traffic cutover submit check",
-      ok: runbookText.includes("| `SUBMIT_CHK_16` | `24` | LIVE scheduler traffic cutover uses OpenClaw cron only |"),
-      reason: runbookText.includes("| `SUBMIT_CHK_16` | `24` | LIVE scheduler traffic cutover uses OpenClaw cron only |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_16", checklist: "24", meaningNeedle: "LIVE scheduler traffic cutover uses OpenClaw cron only" }),
+      reason: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_16", checklist: "24", meaningNeedle: "LIVE scheduler traffic cutover uses OpenClaw cron only" })
         ? "runbook reverse index maps SUBMIT_CHK_16 to checklist 24"
         : "runbook must map SUBMIT_CHK_16 to checklist 24",
       file: FILES.runbook,
@@ -1029,8 +1059,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_21",
       label: "runbook maps LIVE scheduler traffic collector preflight submit check",
-      ok: runbookText.includes("| `SUBMIT_CHK_17` | `24A` | LIVE scheduler traffic collector preflight can read GCP state |"),
-      reason: runbookText.includes("| `SUBMIT_CHK_17` | `24A` | LIVE scheduler traffic collector preflight can read GCP state |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_17", checklist: "24A", meaningNeedle: "LIVE scheduler traffic collector preflight can read GCP state" }),
+      reason: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_17", checklist: "24A", meaningNeedle: "LIVE scheduler traffic collector preflight can read GCP state" })
         ? "runbook reverse index maps SUBMIT_CHK_17 to checklist 24A"
         : "runbook must map SUBMIT_CHK_17 to checklist 24A",
       file: FILES.runbook,
@@ -1049,8 +1079,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_23",
       label: "runbook maps V2 fill sync canonical boundary submit check",
-      ok: runbookText.includes("| `SUBMIT_CHK_18` | `25` | V2 fill sync canonical boundary audit complete |"),
-      reason: runbookText.includes("| `SUBMIT_CHK_18` | `25` | V2 fill sync canonical boundary audit complete |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_18", checklist: "25", meaningNeedle: "V2 fill sync canonical boundary audit complete" }),
+      reason: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_18", checklist: "25", meaningNeedle: "V2 fill sync canonical boundary audit complete" })
         ? "runbook reverse index maps SUBMIT_CHK_18 to checklist 25"
         : "runbook must map SUBMIT_CHK_18 to checklist 25",
       file: FILES.runbook,
@@ -1156,9 +1186,9 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       id: "SUBMIT_CONTRACT_CHK_31",
       label: "runbook candidate selection checklist requires runtime chain contract",
       ok: runbookText.includes("selected_runtime_chain_ok")
-        && runbookText.includes("| `SUBMIT_CHK_09` | `15` | candidate selection contract complete |"),
+        && hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_09", checklist: "15", meaningNeedle: "candidate selection contract complete" }),
       reason: runbookText.includes("selected_runtime_chain_ok")
-        && runbookText.includes("| `SUBMIT_CHK_09` | `15` | candidate selection contract complete |")
+        && hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_09", checklist: "15", meaningNeedle: "candidate selection contract complete" })
         ? "runbook maps SUBMIT_CHK_09 to checklist 15 and names selected_runtime_chain_ok"
         : "runbook must map SUBMIT_CHK_09 to checklist 15 and require selected_runtime_chain_ok",
       file: FILES.runbook,
@@ -1181,12 +1211,12 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && submitWrapperText.includes("hasRuntimeChainAuditCoverage")
         && submitWrapperText.includes("approval_contract.runtime_chain_audit_summary_required")
         && submitWrapperText.includes("approval_evidence_sources.runtime_chain_audit_summary")
-        && runbookText.includes("| `SUBMIT_CHK_04B` | `14A` | runtime chain audit complete |"),
+        && hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_04B", checklist: "14A", meaningNeedle: "runtime chain audit complete" }),
       reason: submitWrapperText.includes("SUBMIT_CHK_04B")
         && submitWrapperText.includes("hasRuntimeChainAuditCoverage")
         && submitWrapperText.includes("approval_contract.runtime_chain_audit_summary_required")
         && submitWrapperText.includes("approval_evidence_sources.runtime_chain_audit_summary")
-        && runbookText.includes("| `SUBMIT_CHK_04B` | `14A` | runtime chain audit complete |")
+        && hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_04B", checklist: "14A", meaningNeedle: "runtime chain audit complete" })
         ? "submit wrapper maps runtime chain audit to SUBMIT_CHK_04B and runbook 14A"
         : "submit wrapper must verify runtime chain audit and map SUBMIT_CHK_04B to runbook 14A",
       file: FILES.submitWrapper,
@@ -1213,13 +1243,13 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && submitWrapperText.includes("hasResolvedArtifactDirCoherence")
         && submitWrapperText.includes("artifact_dir_coherence")
         && submitTraceText.includes("SUBMIT_CHK_01A")
-        && runbookText.includes("| `SUBMIT_CHK_01A` | `1`, `5`, `9` | resolved artifact dir matches selected cycle |")
+        && hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_01A", checklist: "1, 5, 9", meaningNeedle: "resolved artifact dir matches selected cycle" })
         && artifactContractText.includes("approval_evidence_sources.resolved_artifact_dir"),
       reason: submitWrapperText.includes("SUBMIT_CHK_01A")
         && submitWrapperText.includes("hasResolvedArtifactDirCoherence")
         && submitWrapperText.includes("artifact_dir_coherence")
         && submitTraceText.includes("SUBMIT_CHK_01A")
-        && runbookText.includes("| `SUBMIT_CHK_01A` | `1`, `5`, `9` | resolved artifact dir matches selected cycle |")
+        && hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_01A", checklist: "1, 5, 9", meaningNeedle: "resolved artifact dir matches selected cycle" })
         && artifactContractText.includes("approval_evidence_sources.resolved_artifact_dir")
         ? "submit wrapper maps resolved artifact dir and context self-check coherence to SUBMIT_CHK_01A and runbook 1/5/9"
         : "submit wrapper must verify resolved artifact dir and artifact_dir_coherence and map SUBMIT_CHK_01A to runbook 1/5/9",
@@ -1489,7 +1519,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_47",
       label: "LIVE exit runtime canary streak is submit and runbook gated",
-      ok: runbookText.includes("| `SUBMIT_CHK_21` | `28` | LIVE exit runtime canary streak complete |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_21", checklist: "28", meaningNeedle: "LIVE exit runtime canary streak complete" })
         && artifactContractText.includes("approval_contract.exit_runtime_canary_streak_required")
         && artifactContractText.includes("approval_evidence_sources.exit_runtime_canary_streak")
         && artifactContractText.includes("bounded_runtime_summary.exit_runtime_canary_streak")
@@ -1520,7 +1550,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "check-v2-promotion-deploy-decision.js")).includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithJsonlExitRuntimeStreakStillFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithStaleExitRuntimeStreakProvenanceFailsClosed"),
-      reason: runbookText.includes("| `SUBMIT_CHK_21` | `28` | LIVE exit runtime canary streak complete |")
+      reason: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_21", checklist: "28", meaningNeedle: "LIVE exit runtime canary streak complete" })
         && artifactContractText.includes("approval_contract.exit_runtime_canary_streak_required")
         && submitWrapperText.includes("SUBMIT_CHK_21")
         ? "exit runtime streak is trace-linked through runbook, artifact contract, deploy decision, submit wrapper, and pipeline refresh"
@@ -1739,7 +1769,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && submitWrapperText.includes("has_production_runtime_config_blocker")
         && submitTraceText.includes("SUBMIT_CHK_22")
         && runbookText.includes("| 29 | `SUBMIT_CHK_22`")
-        && runbookText.includes("| `SUBMIT_CHK_22` | `29` | V2 production runtime config contract complete |")
+        && hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_22", checklist: "29", meaningNeedle: "V2 production runtime config contract complete" })
         && artifactContractText.includes("approval_evidence_sources.production_runtime_config_contract")
         && artifactContractText.includes("approval_verification.production_runtime_config_summary")
         && artifactContractText.includes("submit_trace_summary.production_runtime_config_summary")
@@ -2008,7 +2038,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_71",
       label: "LIVE submit requires OpenClaw supreme closed-loop evidence",
-      ok: runbookText.includes("| `SUBMIT_CHK_23` | `31` | LIVE OpenClaw supreme control plane closed loop complete |")
+      ok: hasRunbookReverseIndex({ runbookText, submitCheckId: "SUBMIT_CHK_23", checklist: "31", meaningNeedle: "LIVE OpenClaw supreme control plane closed loop complete" })
         && runbookText.includes("| 31 | `SUBMIT_CHK_23`")
         && artifactContractText.includes("approval_contract.openclaw_supreme_control_plane_closed_loop_required")
         && artifactContractText.includes("approval_evidence_sources.openclaw_supreme_control_plane_closed_loop")
@@ -2233,8 +2263,10 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       ok: packageJsonText.includes("v2-binance-protection-transport.test.js")
         && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS")
         && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("withProtectionWriteDeadline")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("new AbortController")
         && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED")
         && readText(path.resolve(__dirname, "..", "src", "v2", "binanceProtectionTransport.js")).includes("BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-binance-protection-transport.test.js")).includes("protectionWriteDeadlineAbortsInFlightOperationSignal")
         && readText(path.resolve(__dirname, "..", "src", "tests", "v2-binance-protection-transport.test.js")).includes("refreshTransportFailsClosedOnProtectionWriteDeadline")
         && readText(path.resolve(__dirname, "..", "src", "tests", "v2-binance-protection-transport.test.js")).includes("fullProtectionTransportFailsClosedPerLegOnProtectionWriteDeadline")
         && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED")
@@ -2330,6 +2362,9 @@ if (require.main === module) {
       trimOrNull,
       readText,
       buildCheck,
+      normalizeMarkdownCell,
+      parseRunbookReverseIndexRows,
+      hasRunbookReverseIndex,
       buildFormatterFixtureResult,
       buildLiveCutoverFormatterFixtureResult,
       buildLiveCutoverAlertPreviewFixtureResult,

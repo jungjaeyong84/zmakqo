@@ -167,9 +167,11 @@ npm run check:v2-canary-runbook
 
 추가 runtime hardening trace:
 
-1. `SUBMIT_CONTRACT_CHK_78` 은 V2 protection write transport가 `DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS` deadline을 갖고, deadline 초과를 `BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED` 등 실패 ack로 남기는지 확인한다
+1. `SUBMIT_CONTRACT_CHK_78` 은 V2 protection write transport가 `DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS` deadline과 abort signal을 갖고, deadline 초과를 `BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED` 등 실패 ack로 남기는지 확인한다
 2. `SUBMIT_CONTRACT_CHK_79` 는 repair delegated executor가 `V2_PROTECTION_WRITER_EXCHANGE_WRITE` lease 없이는 protection transport를 실행하지 못하고, 누락 시 `PROTECTION_WRITER_LEASE_REQUIRED` 로 실패하는지 확인한다
 3. promotion override is intentionally forbidden. `SUBMIT_CONTRACT_CHK_80` 은 submit/deploy 코드에 `V2_PROMOTION_OVERRIDE` bypass가 없는지 확인한다. false positive는 hidden override가 아니라 깨진 checker/artifact/runbook을 고쳐 재실행한다
+4. production OpenClaw permit TTL은 `DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES` 로 5~30분 사이에서만 조정한다. 기본 15분이며, expired permit은 재사용하지 않는다
+5. promotion latest artifact는 매 실행 overwrite 한다. freshness는 no-op skip이 아니라 `artifact_generated_at`, same artifact cycle, 30분 temporal skew 검증으로 증명한다
 
 실무 원칙:
 
@@ -332,7 +334,7 @@ Cloud Build에서는 개별 script를 직접 조합하지 않는다.
 12A. `test:v2-promotion` 은 `test:v2-exit-runtime-canary-history` 를 반드시 포함해야 하며, 이는 `v2-exit-runtime-canary-history.test.js` 로 exit runtime canary의 durable history append/source 계약과 secret-leak guard를 streak 판정보다 먼저 검증하기 위함이다
 12B. `test:v2-promotion` 은 `test:v2-openclaw-scheduler-binding` 도 반드시 포함해야 하며, 이는 `openclaw-cron-routes.test.js` 와 `openclaw-cron-manifest.test.js` 로 V2 production route canary 및 exit runtime canary의 endpoint, `requireSchedulerToken`, script boundary, Cloud Scheduler manifest job/schedule/timezone을 promotion CI에서 고정하기 위함이다
 12C. `test:v2-promotion` 은 `test:v2-repair-queue-runtime` 도 반드시 포함해야 하며, 이는 repair request fetch, delegated execution ledger, completion ledger, live worker, service entrypoint, canary/preflight가 함께 깨지는지 promotion CI에서 먼저 검증하기 위함이다
-12D. `test:v2-promotion` 은 `test:v2-core-invariants` 를 가장 먼저 실행해야 한다. 이 묶음은 `v2-canonical-exit-reducer.test.js`, `v2-tick-exit-worker.test.js`, `v2-exit-fill-ingestion.test.js`, `v2-watchdog-repair.test.js`, `v2-watchdog-repair-runtime.test.js`, `tp0-retirement.test.js`, `native-protection-unprotected-window.test.js`, `exit-stage-fast-tp0.test.js`, `legacy-tp0-live-namespace.test.js`, `binance-fills-canonical-lineage-guard.test.js` 를 포함해 token audit 전에 reducer/tick/fill/watchdog/TP0-retirement behavior invariant를 직접 검증한다.
+12D. `test:v2-promotion` 은 `test:v2-core-invariants` 를 가장 먼저 실행해야 한다. 이 묶음은 `v2-canonical-exit-reducer.test.js`, `v2-tick-exit-worker.test.js`, `v2-exit-fill-ingestion.test.js`, `v2-watchdog-repair.test.js`, `v2-watchdog-repair-runtime.test.js`, `v2-binance-protection-transport.test.js`, `v2-repair-delegated-executor.test.js`, `tp0-retirement.test.js`, `native-protection-unprotected-window.test.js`, `exit-stage-fast-tp0.test.js`, `legacy-tp0-live-namespace.test.js`, `binance-fills-canonical-lineage-guard.test.js` 를 포함해 token audit 전에 reducer/tick/fill/watchdog/protection transport/repair lease/TP0-retirement behavior invariant를 직접 검증한다.
 13. exit runtime streak의 원천은 `run:v2-exit-runtime-canary` 이며, 이 producer는 `ACTIVE_PROTECTED` cycle만 bounded query로 읽고 projection/protection/transitions/outbox를 position 단위로 직접 조회한다. full collection scan이나 exchange write가 발생하면 runbook 28 증거로 인정하지 않는다
 14. CANARY/LIVE submit은 `check:v2-production-runtime-config` 와 같은 계약을 wrapper 내부에서 다시 실행해야 하며, CloudBuild validation과 실제 submit request의 runtime env가 갈라지면 `SUBMIT_CHK_22`/runbook 29로 fail-closed 된다
 15. V2 production source는 TP0/P0/`EXIT_TP_P0` 계약명을 다시 포함하면 안 된다. `V2_TP0_EXIT_CONTRACT_FORBIDDEN` 이 깨지면 문제는 tuning이 아니라 V1 exit contract 재도입이므로 해당 source를 제거하고 `test:v2-promotion` 을 다시 실행한다

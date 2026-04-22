@@ -139,6 +139,8 @@ const {
   assert.strictEqual(calls[0].fallbackSide, "SELL");
   assert.strictEqual(calls[0].fallbackEntryPrice, 2500);
   assert.strictEqual(calls[0].fallbackLeverage, 2);
+  assert.ok(calls[0].signal);
+  assert.strictEqual(typeof calls[0].signal.addEventListener, "function");
 })();
 
 (async function transportRejectsMissingContextFieldsBeforeCallingRefresh() {
@@ -253,6 +255,7 @@ const {
   assert.strictEqual(calls[0].workingType, "MARK_PRICE");
   assert.strictEqual(calls[0].priceProtect, true);
   assert.strictEqual(calls[0].clientOrderId, "RTP1__PRATTV2__TP1_REPAIR");
+  assert.ok(calls[0].signal);
 })();
 
 (async function tp1RepairDryRunDoesNotWriteExchange() {
@@ -417,6 +420,8 @@ const {
   assert.strictEqual(calls[1].payload.reduceOnly, true);
   assert.strictEqual(calls[1].payload.closePosition, false);
   assert.strictEqual(calls[1].payload.quantity, 0.005);
+  assert.ok(calls[0].payload.signal);
+  assert.ok(calls[1].payload.signal);
 })();
 
 (async function fullProtectionDryRunDoesNotWriteExchange() {
@@ -522,6 +527,26 @@ const {
   assert.strictEqual(__test.resolveProtectionWriteDeadlineMs({ deadlineMs: 1 }), 250);
   assert.strictEqual(__test.resolveProtectionWriteDeadlineMs({ deadlineMs: 999999 }), 120000);
   assert.strictEqual(__test.resolveProtectionWriteDeadlineMs({ deadlineMs: 5000 }), 5000);
+})();
+
+(async function protectionWriteDeadlineAbortsInFlightOperationSignal() {
+  let aborted = false;
+  let err = null;
+  try {
+    await __test.withProtectionWriteDeadline(({ signal }) => new Promise(() => {
+      signal.addEventListener("abort", () => {
+        aborted = true;
+      }, { once: true });
+    }), {
+      deadlineMs: 5,
+      errorCode: "BINANCE_TEST_DEADLINE_EXCEEDED",
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.code, "BINANCE_TEST_DEADLINE_EXCEEDED");
+  assert.strictEqual(aborted, true);
 })();
 
 console.log("V2_BINANCE_PROTECTION_TRANSPORT_TEST_OK");

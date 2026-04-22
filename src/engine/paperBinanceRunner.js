@@ -9703,7 +9703,13 @@ async function refreshBinanceNativeProtectionWithRetry({
   exitRulesOverride,
   posMeta,
   writerSource = null,
+  signal = null,
+  abortSignal = null,
 } = {}) {
+  const protectionSignal = signal || abortSignal || null;
+  if (protectionSignal && protectionSignal.aborted) {
+    return { ok: false, skipped: true, reason: "NATIVE_REFRESH_ABORTED", attempts: 0, max_attempts: 0 };
+  }
   if (!isAuthorizedBinanceNativeStopWriter(writerSource)) {
     return {
       ok: false,
@@ -9734,6 +9740,15 @@ async function refreshBinanceNativeProtectionWithRetry({
       heartbeatBinanceNativeRefreshLease({ exchange, symbol, holderId: lease.holderId }).catch(() => {});
     }, heartbeatEveryMs);
     for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+      if (protectionSignal && protectionSignal.aborted) {
+        return {
+          ok: false,
+          skipped: true,
+          reason: "NATIVE_REFRESH_ABORTED",
+          attempts: Math.max(0, attempt - 1),
+          max_attempts: totalAttempts,
+        };
+      }
       const heartbeat = await heartbeatBinanceNativeRefreshLease({ exchange, symbol, holderId: lease.holderId });
       if (!heartbeat.ok) {
         return {
@@ -9754,6 +9769,7 @@ async function refreshBinanceNativeProtectionWithRetry({
         fallbackLeverage,
         exitRulesOverride,
         posMeta,
+        signal: protectionSignal,
       });
       const enriched = {
         ...(result && typeof result === "object" ? result : {}),
@@ -10344,6 +10360,7 @@ async function refreshBinanceNativeProtection({
   fallbackLeverage,
   exitRulesOverride,
   posMeta,
+  signal = null,
 } = {}) {
   // 2026-04-18 P1-2 (audit re-verified): native protection refresh is
   // cancel-first — we cancel existing open orders BEFORE placing the new
@@ -10375,6 +10392,7 @@ async function refreshBinanceNativeProtection({
   let stopAckMs = null;
   let tpAckMs = null;
   const ex = String(exchange || "").toUpperCase();
+  if (signal && signal.aborted) return { ok: false, skipped: true, reason: "NATIVE_REFRESH_ABORTED" };
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true, reason: "NOT_BINANCE" };
   if (!BINANCE_NATIVE_PROTECTION_ENABLED) return { ok: false, skipped: true, reason: "NATIVE_PROTECTION_DISABLED" };
   if (!liveCfg || !liveCfg.apiKey || !liveCfg.apiSecret) return { ok: false, skipped: true, reason: "BINANCEFUT_KEYS_MISSING" };
@@ -10392,6 +10410,7 @@ async function refreshBinanceNativeProtection({
         apiKey: liveCfg.apiKey,
         apiSecret: liveCfg.apiSecret,
         symbol,
+        signal,
       });
       return { ok: true, state: "FLAT", canceled: true };
     } catch (e) {
@@ -10475,6 +10494,7 @@ async function refreshBinanceNativeProtection({
       apiKey: liveCfg.apiKey,
       apiSecret: liveCfg.apiSecret,
       symbol,
+      signal,
     });
     cancelSucceeded = true;
   } catch (e) {
@@ -10515,6 +10535,7 @@ async function refreshBinanceNativeProtection({
         workingType: BINANCE_NATIVE_WORKING_TYPE,
         priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
         idempotencyKey: stopIdempotencyKey,
+        signal,
       });
       // Stop order acknowledged — the SL half of native protection is now
       // live again. This closes the SL-only unprotected window. TP gap (if
@@ -10619,6 +10640,7 @@ async function refreshBinanceNativeProtection({
             workingType: BINANCE_NATIVE_WORKING_TYPE,
             priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
             idempotencyKey: tpIdempotencyKey,
+            signal,
           });
           // 2026-04-20 senior-audit P2: TP1 native order acked. When both
           // legs are required (stageState.tp1Eligible === true), the

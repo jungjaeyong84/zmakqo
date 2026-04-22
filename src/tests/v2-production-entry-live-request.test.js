@@ -3,7 +3,7 @@
 const assert = require("assert");
 const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
 const { LIVE_CONFIRM_PHRASE } = require("../v2/productionEntryLiveEndpoint");
-const { buildV2ProductionEntryLiveRequest } = require("../v2/productionEntryLiveRequest");
+const { buildV2ProductionEntryLiveRequest, __test } = require("../v2/productionEntryLiveRequest");
 
 function buildBundle(overrides = {}) {
   return buildOpenClawDecisionBundle({
@@ -66,6 +66,21 @@ function buildSizing(overrides = {}) {
   assert.strictEqual(result.body.bundle.entrySizingDecision.entry_intent_id, result.routedDecision.entryIntent.entry_intent_id);
   assert.strictEqual(result.body.entrySizingDecision.entry_qty_abs, result.body.bundle.entrySizingDecision.entry_qty_abs);
   assert.strictEqual(result.body.request_contract.reason, "V2_PRODUCTION_ENTRY_LIVE_REQUEST_EMBEDS_SIZING");
+})();
+
+(function liveRequestUsesBoundedOpenClawExecutionPermitTtl() {
+  assert.strictEqual(__test.parseBoundedPermitTtlMinutes({}), 15);
+  assert.strictEqual(__test.parseBoundedPermitTtlMinutes({ DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES: "2" }), 5);
+  assert.strictEqual(__test.parseBoundedPermitTtlMinutes({ DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES: "120" }), 30);
+  const result = buildV2ProductionEntryLiveRequest({
+    bundle: buildBundle({ signalLineageId: "LINEAGE__ETH__PROD_ENTRY__TTL" }),
+    sizing: buildSizing(),
+    env: { DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES: "20" },
+    now: () => "2026-04-22T01:10:00.000Z",
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.executionPermit.issued_at, "2026-04-22T01:10:00.000Z");
+  assert.strictEqual(result.executionPermit.expires_at, "2026-04-22T01:30:00.000Z");
 })();
 
 (function blockedSizingDoesNotCreateEndpointBody() {

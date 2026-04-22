@@ -10,6 +10,27 @@ const contractCheck = require("../../scripts/check-v2-promotion-submit-contract"
   assert.ok(result.check_n >= 6);
 })();
 
+(function runbookReverseIndexParserSurvivesMarkdownSpacingDrift() {
+  const runbookText = [
+    "| Submit Check ID | Runbook Checklist | 의미 |",
+    "| --- | --- | --- |",
+    "|   `SUBMIT_CHK_13`   |   `21`   |   V2 entry boundary audit complete   |",
+    "| `SUBMIT_CHK_01A` | `1`, `5`, `9` | resolved artifact dir matches selected cycle |",
+  ].join("\n");
+  assert.strictEqual(contractCheck.__test.hasRunbookReverseIndex({
+    runbookText,
+    submitCheckId: "SUBMIT_CHK_13",
+    checklist: "21",
+    meaningNeedle: "entry boundary",
+  }), true);
+  assert.strictEqual(contractCheck.__test.hasRunbookReverseIndex({
+    runbookText,
+    submitCheckId: "SUBMIT_CHK_01A",
+    checklist: "1, 5, 9",
+    meaningNeedle: "resolved artifact dir",
+  }), true);
+})();
+
 (function schedulerBindingContractFailsWhenPromotionScriptIsMissing() {
   const packageJsonText = contractCheck.__test.readText(contractCheck.__test.FILES.packageJson)
     .replace(/,\n    "test:v2-openclaw-scheduler-binding": "node src\/tests\/openclaw-cron-routes\.test\.js && node src\/tests\/openclaw-cron-manifest\.test\.js"/, "")

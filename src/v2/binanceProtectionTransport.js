@@ -60,12 +60,19 @@ async function withProtectionWriteDeadline(operation, {
 } = {}) {
   if (typeof operation !== "function") throw new Error("BINANCE_PROTECTION_WRITE_OPERATION_REQUIRED");
   const resolvedDeadlineMs = resolveProtectionWriteDeadlineMs({ env, deadlineMs });
+  const controller = new AbortController();
   let timeout = null;
   try {
     return await Promise.race([
-      Promise.resolve().then(operation),
+      Promise.resolve().then(() => operation({
+        signal: controller.signal,
+        deadlineMs: resolvedDeadlineMs,
+      })),
       new Promise((_, reject) => {
-        timeout = setTimeout(() => reject(buildDeadlineExceededError(errorCode)), resolvedDeadlineMs);
+        timeout = setTimeout(() => {
+          controller.abort(buildDeadlineExceededError(errorCode));
+          reject(buildDeadlineExceededError(errorCode));
+        }, resolvedDeadlineMs);
       }),
     ]);
   } finally {
@@ -272,7 +279,7 @@ function buildBinanceRefreshNativeStopTransport({
     });
     let refreshResult;
     try {
-      refreshResult = await withProtectionWriteDeadline(() => refreshNativeProtectionWithRetry({
+      refreshResult = await withProtectionWriteDeadline(({ signal }) => refreshNativeProtectionWithRetry({
         liveCfg: context.liveCfg,
         exchange: context.exchange,
         symbol: context.symbol,
@@ -282,6 +289,8 @@ function buildBinanceRefreshNativeStopTransport({
         exitRulesOverride: context.exitRulesOverride,
         posMeta: context.posMeta,
         writerSource: BINANCE_NATIVE_STOP_WRITER_SOURCE,
+        signal,
+        abortSignal: signal,
       }), {
         env,
         deadlineMs,
@@ -376,7 +385,7 @@ function buildBinancePlaceOrReplaceTp1Transport({
     }
     let order;
     try {
-      order = await withProtectionWriteDeadline(() => placeTakeProfitMarketOrder({
+      order = await withProtectionWriteDeadline(({ signal }) => placeTakeProfitMarketOrder({
         apiKey: cfg.apiKey,
         apiSecret: cfg.apiSecret,
         symbol: upper(row.symbol) || context.symbol,
@@ -389,6 +398,7 @@ function buildBinancePlaceOrReplaceTp1Transport({
         priceProtect: DEFAULT_PRICE_PROTECT,
         clientOrderId: trimOrNull(row.client_order_key),
         idempotencyKey: trimOrNull(row.client_order_key) || trimOrNull(row.placement_attempt_id),
+        signal,
       }), {
         env,
         deadlineMs,
@@ -445,7 +455,7 @@ function buildBinancePlaceOrReplaceFullProtectionTransport({
       } else {
         let slOrder;
         try {
-          slOrder = await withProtectionWriteDeadline(() => placeStopMarketOrder({
+          slOrder = await withProtectionWriteDeadline(({ signal }) => placeStopMarketOrder({
             apiKey: cfg.apiKey,
             apiSecret: cfg.apiSecret,
             symbol: upper(sl.symbol) || context.symbol,
@@ -456,6 +466,7 @@ function buildBinancePlaceOrReplaceFullProtectionTransport({
             priceProtect: DEFAULT_PRICE_PROTECT,
             clientOrderId: trimOrNull(sl.client_order_key),
             idempotencyKey: trimOrNull(sl.client_order_key) || trimOrNull(sl.placement_attempt_id),
+            signal,
           }), {
             env,
             deadlineMs,
@@ -485,7 +496,7 @@ function buildBinancePlaceOrReplaceFullProtectionTransport({
       } else {
         let tp1Order;
         try {
-          tp1Order = await withProtectionWriteDeadline(() => placeTakeProfitMarketOrder({
+          tp1Order = await withProtectionWriteDeadline(({ signal }) => placeTakeProfitMarketOrder({
             apiKey: cfg.apiKey,
             apiSecret: cfg.apiSecret,
             symbol: upper(tp1.symbol) || context.symbol,
@@ -498,6 +509,7 @@ function buildBinancePlaceOrReplaceFullProtectionTransport({
             priceProtect: DEFAULT_PRICE_PROTECT,
             clientOrderId: trimOrNull(tp1.client_order_key),
             idempotencyKey: trimOrNull(tp1.client_order_key) || trimOrNull(tp1.placement_attempt_id),
+            signal,
           }), {
             env,
             deadlineMs,

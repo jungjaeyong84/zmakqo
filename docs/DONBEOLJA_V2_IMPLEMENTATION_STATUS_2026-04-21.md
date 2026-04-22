@@ -2791,17 +2791,22 @@ V1 약점 재발 방지:
 5. `src/tests/v2-binance-protection-transport.test.js`
 6. `src/tests/v2-repair-delegated-executor.test.js`
 7. `src/tests/v2-watchdog-repair-runtime.test.js`
-8. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
-9. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+8. `src/v2/productionEntryLiveRequest.js`
+9. `src/v2/productionEntryRouteCanary.js`
+10. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+11. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
 
 판정:
 
-1. Binance protection write transport는 `DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS` deadline을 갖고, native stop refresh/TP1/full protection 각 leg에서 deadline 초과를 실패 ack로 남긴다
-2. deadline 초과 사유는 `BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED`, `BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED`, `BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED`, `BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED` 로 고정된다
-3. watchdog repair delegation은 `V2_PROTECTION_WRITER_EXCHANGE_WRITE` lease를 포함한다
-4. delegated repair executor는 lease 누락, service mismatch, position cycle drift, placement attempt drift, command type drift를 runtime에서 거부한다
-5. `test:v2-core-invariants` 는 protection transport deadline test와 delegated repair lease test를 포함한다
-6. promotion contract는 `SUBMIT_CONTRACT_CHK_78`, `SUBMIT_CONTRACT_CHK_79`, `SUBMIT_CONTRACT_CHK_80` 으로 deadline, writer lease, override 금지 정책을 검증한다
+1. Binance protection write transport는 `DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS` deadline과 abort signal을 갖고, native stop refresh/TP1/full protection 각 leg에서 deadline 초과를 실패 ack로 남긴다
+2. deadline 초과 시 transport는 in-flight operation의 `AbortController` signal을 abort하고, 하위 Binance/egress fetch에도 signal을 전달한다
+3. deadline 초과 사유는 `BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED`, `BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED`, `BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED`, `BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED` 로 고정된다
+4. watchdog repair delegation은 `V2_PROTECTION_WRITER_EXCHANGE_WRITE` lease를 포함한다
+5. delegated repair executor는 lease 누락, service mismatch, position cycle drift, placement attempt drift, command type drift를 runtime에서 거부한다
+6. production OpenClaw execution permit TTL은 `DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES` 로 5~30분 범위에서만 조정되며, 기본값은 15분이다
+7. promotion latest artifact overwrite는 의도된 freshness contract다. no-op skip이 아니라 `artifact_generated_at`, same artifact cycle, temporal skew로 최신 실행 증거를 증명한다
+8. `test:v2-core-invariants` 는 protection transport deadline/abort test와 delegated repair lease test를 포함한다
+9. promotion contract는 `SUBMIT_CONTRACT_CHK_78`, `SUBMIT_CONTRACT_CHK_79`, `SUBMIT_CONTRACT_CHK_80` 으로 deadline, writer lease, override 금지 정책을 검증한다
 
 V1 약점 재발 방지:
 
@@ -2809,4 +2814,5 @@ V1 약점 재발 방지:
 2. 이번 단계는 write 시점에서 무기한 대기를 실패 ack로 닫아 repair ledger가 즉시 다룰 수 있게 한다
 3. V1에서는 repair/watchdog 계열이 복구 경로와 writer 권한 경계가 섞여 중복 주문 race가 생길 수 있었다
 4. 이번 단계는 repair가 exchange writer가 아니라 protection writer lease를 가진 delegated command만 실행한다는 계약을 코드와 테스트에 남긴다
-5. promotion bypass는 의도적으로 두지 않는다. 오탐은 hidden override가 아니라 깨진 artifact/checker/runbook/code를 수정해 해결한다
+5. V1에서는 짧은 암묵 TTL과 오래된 artifact 재사용이 운영 판단을 흐릴 수 있었다. 이번 단계는 TTL을 bounded env contract로 만들고, artifact freshness를 skip이 아닌 최신 timestamp/cycle coherence로 증명한다
+6. promotion bypass는 의도적으로 두지 않는다. 오탐은 hidden override가 아니라 깨진 artifact/checker/runbook/code를 수정해 해결한다

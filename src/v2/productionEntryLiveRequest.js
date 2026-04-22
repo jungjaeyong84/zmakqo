@@ -15,6 +15,13 @@ function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function parseBoundedPermitTtlMinutes(env = process.env) {
+  const raw = Number(env && env.DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES);
+  const fallback = 15;
+  const value = Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  return Math.min(30, Math.max(5, value));
+}
+
 function buildBlock(reason, extra = {}) {
   return Object.freeze({
     ok: false,
@@ -106,7 +113,7 @@ function buildV2ProductionEntryLiveRequest({
     },
     approvalReason: "PRODUCTION_ENTRY_LIVE_REQUEST_APPROVED_BY_OPENCLAW",
     issuedAt: generatedAt,
-    ttlMinutes: 5,
+    ttlMinutes: parseBoundedPermitTtlMinutes(env),
   });
 
   return Object.freeze({
@@ -142,5 +149,6 @@ module.exports = {
   __test: {
     trimOrNull,
     asObject,
+    parseBoundedPermitTtlMinutes,
   },
 };

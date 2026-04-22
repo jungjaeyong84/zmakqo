@@ -126,6 +126,8 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
   const protectionWriteDeadlineTokens = [
     "DONBEOLJA_V2_PROTECTION_WRITE_DEADLINE_MS",
     "withProtectionWriteDeadline",
+    "new AbortController",
+    "signal,",
     "BINANCE_NATIVE_STOP_REFRESH_DEADLINE_EXCEEDED",
     "BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED",
     "BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED",
