@@ -119,6 +119,21 @@ function auditV2ProductionCutoverContract({
       "OpenClaw cron endpoint must call the canary script boundary instead of inlining entry execution"
     ),
     buildCheck(
+      "V2_OPENCLAW_CRON_EXIT_RUNTIME_CANARY_ENDPOINT_EXISTS",
+      openclawCronRouteSource.includes("/api/openclaw/cron/v2-exit-runtime-canary"),
+      "OpenClaw cron route must expose a V2 exit runtime canary endpoint"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_EXIT_RUNTIME_CANARY_REQUIRES_TOKEN",
+      openclawCronRouteSource.includes('router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken'),
+      "OpenClaw V2 exit runtime canary endpoint must require scheduler token auth"
+    ),
+    buildCheck(
+      "V2_OPENCLAW_CRON_EXIT_RUNTIME_CANARY_USES_SCRIPT_BOUNDARY",
+      openclawCronRouteSource.includes("run-v2-exit-runtime-canary") && openclawCronRouteSource.includes("v2_exit_runtime_canary"),
+      "OpenClaw exit runtime canary endpoint must call the canary script boundary"
+    ),
+    buildCheck(
       "V2_OPENCLAW_CRON_ROUTE_CANARY_FORBIDS_ENTRY_BYPASS",
       !openclawCronBypassesProductionRoute,
       "OpenClaw cron endpoint must not call kernel, submitter, or protection activation directly"

@@ -300,6 +300,9 @@ function buildSubstitutions(plan) {
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE) || (enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : "JSONL"),
+    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
+    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
+    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE) || (enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : "JSONL"),
   });
 }
 

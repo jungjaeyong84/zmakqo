@@ -68,6 +68,7 @@ const {
     "openclaw_agent_calibration",
     "openclaw_agent_retrospect",
     "v2_production_entry_route_canary",
+    "v2_exit_runtime_canary",
   ]) {
     assert.ok(cloudJobIds.has(required),
       `required Cloud Scheduler job missing: ${required}`);
@@ -79,6 +80,12 @@ const {
   assert.strictEqual(v2ProductionEntryCanary.http_path, "/api/openclaw/cron/v2-production-entry-route-canary");
   assert.strictEqual(v2ProductionEntryCanary.criticality, "HIGH");
   assert.strictEqual(v2ProductionEntryCanary.canary_mode, "NO_EXCHANGE_ROUTE_PROOF");
+  const v2ExitRuntimeCanary = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "v2_exit_runtime_canary");
+  assert.ok(v2ExitRuntimeCanary, "v2 exit runtime canary missing");
+  assert.strictEqual(v2ExitRuntimeCanary.http_path, "/api/openclaw/cron/v2-exit-runtime-canary");
+  assert.strictEqual(v2ExitRuntimeCanary.criticality, "HIGH");
+  assert.strictEqual(v2ExitRuntimeCanary.canary_mode, "LIVE_EXIT_RUNTIME_OBSERVATION");
+  assert.strictEqual(v2ExitRuntimeCanary.scheduler_schedule, "35 * * * *");
   // weekly_summary intentionally not on Cloud Scheduler yet — dashboard
   // content is too sparse pre-Day 14 to warrant a weekly digest.
   assert.ok(!cloudJobIds.has("openclaw_agent_weekly_summary"),

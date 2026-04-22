@@ -20,6 +20,9 @@ const FILES = Object.freeze({
   sendScript: path.resolve(__dirname, "send-v2-promotion-submit-operator-alert.js"),
   packageJson: path.resolve(__dirname, "..", "package.json"),
   cloudbuild: path.resolve(__dirname, "..", "cloudbuild.yaml"),
+  openclawCronRoutes: path.resolve(__dirname, "..", "src", "routes", "openclaw.cron.routes.js"),
+  openclawCronManifest: path.resolve(__dirname, "lib", "openclaw-cron-manifest.js"),
+  productionRuntimeConfigAudit: path.resolve(__dirname, "..", "src", "v2", "productionRuntimeConfigAudit.js"),
   exitRuntimeCanaryRunner: path.resolve(__dirname, "run-v2-exit-runtime-canary.js"),
   exitRuntimeCanaryModule: path.resolve(__dirname, "..", "src", "v2", "exitRuntimeCanary.js"),
 });
@@ -297,6 +300,9 @@ function evaluateSubmitContract() {
   const submitTraceText = readText(FILES.submitTrace);
   const packageJsonText = readText(FILES.packageJson);
   const cloudbuildText = readText(FILES.cloudbuild);
+  const openclawCronRoutesText = readText(FILES.openclawCronRoutes);
+  const openclawCronManifestText = readText(FILES.openclawCronManifest);
+  const productionRuntimeConfigAuditText = readText(FILES.productionRuntimeConfigAudit);
   const exitRuntimeCanaryRunnerText = readText(FILES.exitRuntimeCanaryRunner);
   const exitRuntimeCanaryModuleText = readText(FILES.exitRuntimeCanaryModule);
   const operatorSummaryText = readText(SHARED_FORMATTER_MODULE_PATH);
@@ -1306,6 +1312,31 @@ function evaluateSubmitContract() {
         ? "exit runtime canary producer generates bounded read-only observations feeding Firestore-backed streak history"
         : "exit runtime streak must have a bounded read-only producer, not only a checker",
       file: FILES.exitRuntimeCanaryRunner,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_49",
+      label: "exit runtime canary producer is scheduler and CloudBuild wired",
+      ok: openclawCronRoutesText.includes("/api/openclaw/cron/v2-exit-runtime-canary")
+        && openclawCronRoutesText.includes("requireSchedulerToken")
+        && openclawCronRoutesText.includes("run-v2-exit-runtime-canary")
+        && openclawCronRoutesText.includes("v2_exit_runtime_canary")
+        && openclawCronManifestText.includes("v2_exit_runtime_canary")
+        && openclawCronManifestText.includes("/api/openclaw/cron/v2-exit-runtime-canary")
+        && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
+        && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED")
+        && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE")
+        && submitWrapperText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
+        && submitWrapperText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED")
+        && submitWrapperText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE")
+        && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
+        && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED")
+        && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE"),
+      reason: openclawCronRoutesText.includes("/api/openclaw/cron/v2-exit-runtime-canary")
+        && cloudbuildText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
+        && submitWrapperText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE")
+        ? "exit runtime canary producer is reachable through OpenClaw cron and receives CloudBuild submit/runtime env"
+        : "exit runtime canary producer must not exist without scheduler and CloudBuild runtime wiring",
+      file: FILES.openclawCronRoutes,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

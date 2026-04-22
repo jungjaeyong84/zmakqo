@@ -126,6 +126,22 @@ router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedu
   }
 });
 
+// v2-exit-runtime-canary: read-only collector for live exit runtime health.
+// This feeds the Firestore-backed 24h streak required before LIVE cutover.
+router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/run-v2-exit-runtime-canary");
+    const outcome = await runWithShortTimeout("v2_exit_runtime_canary", () => main({ setProcessExitCode: false }), 120000);
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // v2-production-entry-live: deliberately disabled by default. When enabled,
 // this endpoint still delegates only to the V2 production entry route.
 router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, express.json({ type: "*/*", limit: "128kb" }), async (req, res) => {
@@ -156,6 +172,7 @@ router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
       "POST /api/openclaw/cron/calibration",
       "POST /api/openclaw/cron/retrospect",
       "POST /api/openclaw/cron/v2-production-entry-route-canary",
+      "POST /api/openclaw/cron/v2-exit-runtime-canary",
       "POST /api/openclaw/cron/v2-production-entry-live",
     ],
     now_iso: new Date().toISOString(),

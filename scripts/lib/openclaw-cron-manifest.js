@@ -139,6 +139,17 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     criticality: "HIGH",
     canary_mode: "NO_EXCHANGE_ROUTE_PROOF",
   },
+  {
+    job_id: "v2_exit_runtime_canary",
+    scheduler_name: "v2-exit-runtime-canary",
+    scheduler_region: "asia-northeast3",
+    scheduler_schedule: "35 * * * *",
+    scheduler_time_zone: "Asia/Seoul",
+    http_path: "/api/openclaw/cron/v2-exit-runtime-canary",
+    owner: "openclaw",
+    criticality: "HIGH",
+    canary_mode: "LIVE_EXIT_RUNTIME_OBSERVATION",
+  },
   // weekly_summary intentionally not recreated until the evidence
   // ledger accumulates enough data to make the digest worth reading.
 ]);

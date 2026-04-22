@@ -559,3 +559,19 @@ npm run run:v2-production-entry-protected-canary
 
 이 항목 중 하나라도 깨지면 LIVE entry enable 금지다.
 또한 submit 차단 시 `approval_verification.blocker_summary.has_production_entry_protected_canary_blocker=true`, `submit_trace_summary.primary_blocker_family=PROTECTED_ENTRY_CANARY`, `operator_summary` 의 `protected_entry_canary_blocker=YES` 가 같이 남아야 한다.
+
+## LIVE exit runtime canary scheduler binding checklist
+
+Checklist 28의 `exit_runtime_canary_streak` 는 producer가 실제 운영 스케줄러에서 계속 실행된다는 전제를 포함한다.
+
+운영자는 LIVE 승격 전 아래 연결을 같이 확인해야 한다.
+
+1. OpenClaw cron route: `POST /api/openclaw/cron/v2-exit-runtime-canary`
+2. route guard: `requireSchedulerToken`
+3. scheduler manifest job id: `v2_exit_runtime_canary`
+4. CloudBuild substitution: `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`
+5. Cloud Run env: `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`
+6. submit contract: `SUBMIT_CONTRACT_CHK_49`
+
+이 항목 중 하나라도 빠지면 24시간 streak는 신뢰 가능한 LIVE evidence가 아니다.
+이 경우 runbook 28을 통과시키지 말고 OpenClaw cron/CloudBuild wiring부터 복구한다.

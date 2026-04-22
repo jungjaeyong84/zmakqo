@@ -2268,3 +2268,30 @@ V1 약점 재발 방지:
 1. V1에서는 watchdog/report가 경고만 만들고 장기 승격 증거와 직접 연결되지 않아 보호주문 누락이 반복됐다
 2. 이번 단계는 TP1 order missing/native refresh/unprotected gap/alert silent drop을 단일 canary producer에서 표준 카운트로 만들고, 그 history만 LIVE 승격 streak의 원천으로 삼는다
 3. Firestore 비용 폭발을 피하기 위해 full collection scan 대신 active cycle limit과 per-position linked doc limit을 계약으로 고정했다
+
+## 2026-04-22 LIVE Exit Runtime Canary Scheduler Binding
+
+추가 증거:
+
+1. `src/routes/openclaw.cron.routes.js`
+2. `scripts/lib/openclaw-cron-manifest.js`
+3. `src/v2/productionCutoverAudit.js`
+4. `src/v2/productionRuntimeConfigAudit.js`
+5. `cloudbuild.yaml`
+6. `scripts/submit-v2-promotion-cloudbuild.js`
+7. `scripts/check-v2-promotion-submit-contract.js`
+
+판정:
+
+1. `run:v2-exit-runtime-canary` 는 이제 `/api/openclaw/cron/v2-exit-runtime-canary` 로 OpenClaw cron에서 호출 가능해야 한다
+2. 해당 endpoint는 `requireSchedulerToken` 을 통과해야 하며, route timeout label은 `v2_exit_runtime_canary` 로 추적된다
+3. Cloud Scheduler manifest에는 `v2_exit_runtime_canary` job이 `35 * * * *` / `Asia/Seoul` 로 등록되어야 한다
+4. CloudBuild substitution과 main/exit-worker runtime env는 `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`, `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE` 를 모두 전달해야 한다
+5. submit wrapper는 CANARY/LIVE promotion에서 exit runtime canary history를 Firestore-backed 모드로 제출한다
+6. submit contract checker는 producer가 scheduler와 CloudBuild runtime env에 연결되지 않으면 `SUBMIT_CONTRACT_CHK_49` 로 fail-closed 한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 watcher/report producer가 있어도 실제 scheduler 또는 배포 env에 연결되지 않아 장기 증거가 비는 일이 발생할 수 있었다
+2. 이번 단계는 producer, scheduler route, scheduler manifest, CloudBuild substitution, Cloud Run env, submit substitution을 하나의 계약으로 묶었다
+3. 따라서 LIVE gate가 24시간 exit runtime canary streak를 요구하면서 실제 운영에서는 history가 쌓이지 않는 공백을 promotion 전에 차단한다

@@ -1130,3 +1130,22 @@ preflight는 아래를 dry-run으로 확인한다.
 4. unified promotion report review
 5. selector/collector/exporter bounded summary review
 6. gate
+
+## LIVE exit runtime canary scheduler and env contract
+
+`approval_contract.exit_runtime_canary_streak_required=true` 인 LIVE 제출은 아래 운영 연결을 요구한다.
+
+1. OpenClaw cron endpoint: `/api/openclaw/cron/v2-exit-runtime-canary`
+2. Cloud Scheduler manifest job id: `v2_exit_runtime_canary`
+3. CloudBuild substitutions:
+4. `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`
+5. `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`
+6. `_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`
+7. Cloud Run env:
+8. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED`
+9. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED`
+10. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE`
+11. Submit contract check: `SUBMIT_CONTRACT_CHK_49`
+
+이 계약은 producer-only 상태를 금지한다.
+즉, `run:v2-exit-runtime-canary` 가 존재해도 scheduler route, manifest, CloudBuild env, submit substitution 중 하나가 빠지면 LIVE promotion evidence로 인정하지 않는다.
