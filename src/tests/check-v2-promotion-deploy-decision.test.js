@@ -278,6 +278,18 @@ function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
   return summary;
 }
 
+function setLiveEvidenceArtifactDir(summary, artifactDir) {
+  summary.repair_firestore_canary_streak.artifact_dir = artifactDir;
+  summary.repair_firestore_canary_streak.artifact_file = path.join(artifactDir, "v2_repair_queue_firestore_canary_streak_latest.json");
+  summary.production_entry_route_canary_streak.artifact_dir = artifactDir;
+  summary.production_entry_route_canary_streak.artifact_file = path.join(artifactDir, "v2_production_entry_route_canary_streak_latest.json");
+  summary.exit_runtime_canary_streak.artifact_dir = artifactDir;
+  summary.exit_runtime_canary_streak.artifact_file = path.join(artifactDir, "v2_exit_runtime_canary_streak_latest.json");
+  summary.production_entry_protected_canary.artifact_dir = artifactDir;
+  summary.production_entry_protected_canary.artifact_file = path.join(artifactDir, "v2_production_entry_protected_canary_latest.json");
+  return summary;
+}
+
 (function shadowModeIsNeverDeployApproved() {
   const decision = deployDecision.__test.buildDeployDecision({
     pass: true,
@@ -1560,11 +1572,15 @@ function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
       position_cycle_id: "PCY__LIVE__01",
       lineage_contract: LINEAGE_CONTRACT_FIXTURE,
     }, null, 2), "utf8");
+    const bounded = setLiveEvidenceArtifactDir(
+      buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__01"),
+      dir
+    );
     fs.writeFileSync(path.join(dir, "unified-promotion-report.json"), JSON.stringify({
       pass: true,
       mode: "LIVE",
       position_cycle_id: "PCY__LIVE__01",
-      bounded_runtime_summary: buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__01"),
+      bounded_runtime_summary: bounded,
       candidate_selection_summary: buildCandidateSelectionSummaryFixture({
         selected_position_cycle_id: "PCY__LIVE__01",
         selected_preflight: {
@@ -1705,6 +1721,43 @@ function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
     }),
     blockers: [],
     warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH"));
+})();
+
+(function liveEvidenceArtifactDirMustMatchDeployArtifactDirFailsClosed() {
+  const bounded = setLiveEvidenceArtifactDir(
+    buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__ARTIFACT_DIR_EXPECTED"),
+    "/tmp/dbj-v2-stale-artifacts"
+  );
+  assert.deepStrictEqual(deployDecision.__test.collectLiveEvidenceCycleConsistencyBlockers(bounded, {
+    mode: "LIVE",
+    positionCycleId: "PCY__LIVE__ARTIFACT_DIR_EXPECTED",
+    artifactDir: "/tmp/dbj-v2-current-artifacts",
+  }), ["DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH"]);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__ARTIFACT_DIR_EXPECTED",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__ARTIFACT_DIR_EXPECTED",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__ARTIFACT_DIR_EXPECTED",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    artifactDir: "/tmp/dbj-v2-current-artifacts",
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH"));

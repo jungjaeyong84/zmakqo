@@ -608,10 +608,11 @@ function collectStaleArtifactProvenanceBlockers(summary, { mode = null } = {}) {
   return blockers;
 }
 
-function collectLiveEvidenceCycleConsistencyBlockers(summary, { mode = null, positionCycleId = null } = {}) {
+function collectLiveEvidenceCycleConsistencyBlockers(summary, { mode = null, positionCycleId = null, artifactDir = null } = {}) {
   const row = normalizeObject(summary);
   if (!row || mode !== "LIVE") return [];
   const blockers = [];
+  const expectedArtifactDir = trimOrNull(artifactDir);
   const evidenceRows = [
     row.repair_firestore_canary_streak,
     row.production_entry_route_canary_streak,
@@ -621,7 +622,11 @@ function collectLiveEvidenceCycleConsistencyBlockers(summary, { mode = null, pos
   const artifactDirs = Array.from(new Set(
     evidenceRows.map((entry) => trimOrNull(entry && entry.artifact_dir)).filter(Boolean)
   ));
-  if (artifactDirs.length !== 1 || evidenceRows.length !== 4) {
+  if (
+    artifactDirs.length !== 1 ||
+    evidenceRows.length !== 4 ||
+    (expectedArtifactDir && artifactDirs[0] !== expectedArtifactDir)
+  ) {
     blockers.push("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH");
   }
 
@@ -782,6 +787,7 @@ function buildDeployDecision(unifiedReport, {
   entryBoundaryAudit = buildV2EntryBoundaryAuditSummary(),
   fillSyncCanonicalBoundaryAudit = buildV2FillSyncCanonicalBoundaryAuditSummary(),
   productionCutoverAudit = buildV2ProductionCutoverAuditSummary(),
+  artifactDir = null,
 } = {}) {
   const report = unifiedReport && typeof unifiedReport === "object" ? unifiedReport : null;
   if (!report) {
@@ -874,7 +880,11 @@ function buildDeployDecision(unifiedReport, {
   if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionEntryProtectedCanary(boundedRuntimeSummary)) {
     blockers.push("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED");
   }
-  blockers.push(...collectLiveEvidenceCycleConsistencyBlockers(boundedRuntimeSummary, { mode, positionCycleId }));
+  blockers.push(...collectLiveEvidenceCycleConsistencyBlockers(boundedRuntimeSummary, {
+    mode,
+    positionCycleId,
+    artifactDir,
+  }));
   if (mode === "SHADOW") {
     blockers.push("DEPLOY_DECISION:SHADOW_MODE_NOT_DEPLOYABLE");
   }
@@ -953,7 +963,7 @@ function writeDeployDecisionArtifact(env = process.env) {
   const unifiedReport = resolveUnifiedPromotionReport(env);
   const preflightReport = readOptionalArtifact(artifactDir, "promotion-preflight.json");
   const decision = applyPreflightLineageChecks(
-    buildDeployDecision(unifiedReport),
+    buildDeployDecision(unifiedReport, { artifactDir }),
     { preflightReport }
   );
   ensureDir(artifactDir);

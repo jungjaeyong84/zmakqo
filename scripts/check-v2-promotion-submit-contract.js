@@ -1785,6 +1785,21 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "production cutover audit must fail closed when the legacy webhook guard is placed after legacy authority, persistence, or immediate process side effects",
       file: FILES.productionCutoverAudit,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_67",
+      label: "LIVE evidence cycle must match actual deploy artifact dir",
+      ok: deployDecisionCheckerText.includes("artifactDir = null")
+        && deployDecisionCheckerText.includes("artifactDirs[0] !== expectedArtifactDir")
+        && deployDecisionCheckerText.includes("buildDeployDecision(unifiedReport, { artifactDir })")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveEvidenceArtifactDirMustMatchDeployArtifactDirFailsClosed")
+        && artifactContractText.includes("V2_PROMOTION_ARTIFACT_DIR")
+        && runbookText.includes("V2_PROMOTION_ARTIFACT_DIR"),
+      reason: deployDecisionCheckerText.includes("artifactDirs[0] !== expectedArtifactDir")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveEvidenceArtifactDirMustMatchDeployArtifactDirFailsClosed")
+        ? "LIVE deploy decision now rejects evidence rows that agree with each other but point outside the actual promotion artifact dir"
+        : "LIVE deploy decision must compare long-run/protected-entry evidence artifact_dir values against the actual V2_PROMOTION_ARTIFACT_DIR",
+      file: FILES.deployDecisionChecker,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
