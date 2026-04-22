@@ -1124,12 +1124,15 @@ function evaluateSubmitContract() {
         && staleArtifactProvenanceSummary.lines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER")
         && staleArtifactProvenancePreviewTraceLines.includes("stale_artifact_provenance_blocker=YES")
         && staleArtifactProvenancePreviewTraceLines.includes("reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER")
-        && artifactContractText.includes("stale_artifact_provenance_blocker"),
+        && artifactContractText.includes("8. `has_stale_artifact_provenance_blocker`\n9. `has_production_entry_protected_canary_blocker`")
+        && artifactContractText.includes("`recommended_next_action` 은 `DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE`")
+        && submitWrapperText.includes("has_stale_artifact_provenance_blocker"),
       reason: staleArtifactProvenanceSummary.lines.includes("stale_artifact_provenance_blocker=YES")
         && staleArtifactProvenancePreviewTraceLines.includes("stale_artifact_provenance_blocker=YES")
-        && artifactContractText.includes("stale_artifact_provenance_blocker")
-        ? "operator summary and alert preserve stale artifact provenance blocker as a first-class line"
-        : "operator summary and alert must expose stale artifact provenance blocker explicitly",
+        && artifactContractText.includes("8. `has_stale_artifact_provenance_blocker`\n9. `has_production_entry_protected_canary_blocker`")
+        && submitWrapperText.includes("has_stale_artifact_provenance_blocker")
+        ? "operator summary, approval verification contract, and submit wrapper preserve stale artifact provenance blocker"
+        : "operator summary, approval verification contract, and submit wrapper must expose stale artifact provenance blocker explicitly",
       file: SHARED_FORMATTER_MODULE_PATH,
     }),
     buildCheck({

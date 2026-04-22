@@ -2151,3 +2151,23 @@ V1 약점 재발 방지:
 1. V1에서는 stale latest artifact와 실제 runtime 결함이 같은 bounded blocker처럼 보여 원인 판독이 늦었다
 2. 이번 단계는 최종 운영 메시지에서 stale artifact provenance를 별도 라인으로 올려, 본체 수정이 아니라 fresh promotion pipeline 재실행이 필요한 상황을 즉시 구분하게 한다
 3. 따라서 오래된 evidence 때문에 보호주문/route/repair 본체를 잘못 수정하는 운영 낭비와 원인 혼선을 줄인다
+
+## 2026-04-22 Approval Verification Stale Blocker Contract
+
+추가 증거:
+
+1. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+2. `scripts/check-v2-promotion-submit-contract.js`
+3. `scripts/submit-v2-promotion-cloudbuild.js`
+
+판정:
+
+1. `approval_verification.blocker_summary` 의 최소 필드에 `has_stale_artifact_provenance_blocker` 를 추가했다
+2. stale artifact provenance 실패의 운영 조치를 `DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE` 로 artifact contract에 고정했다
+3. submit contract checker는 operator summary, alert preview, artifact contract, submit wrapper가 같은 stale blocker 필드를 유지하는지 fail-closed로 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 최종 submit artifact와 operator 메시지가 서로 다른 blocker 언어를 써서 원인 판독이 늦었다
+2. 이번 단계는 stale artifact provenance를 `approval_verification` 최소 계약에 넣어, 문서-코드-운영 메시지가 같은 필드를 보도록 강제한다
+3. 따라서 stale latest 증거를 runtime 결함으로 오진하거나 fresh promotion 재실행 대신 본체 수정을 반복하는 경로를 차단한다
