@@ -693,6 +693,42 @@ function buildCandidateSelectionBlockers({ mode = null, positionCycleId = null, 
   return blockers;
 }
 
+function buildPromotionPositionLineageBlockers({
+  mode = null,
+  positionCycleId = null,
+  selectorMeta = null,
+  candidateSelectionSummary = null,
+} = {}) {
+  if (!["CANARY", "LIVE"].includes(mode || "")) return [];
+  const blockers = [];
+  const selector = normalizeObject(selectorMeta);
+  const candidate = normalizeObject(candidateSelectionSummary);
+  const selectedPreflight = normalizeObject(candidate && candidate.selected_preflight);
+  const selectorPositionCycleId = trimOrNull(selector && selector.position_cycle_id);
+  const selectedPositionCycleId = trimOrNull(candidate && candidate.selected_position_cycle_id);
+  const selectedPreflightPositionCycleId = trimOrNull(selectedPreflight && selectedPreflight.position_cycle_id);
+
+  if (selector && !selectorPositionCycleId) {
+    blockers.push("DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_REQUIRED");
+  } else if (selectorPositionCycleId && positionCycleId && selectorPositionCycleId !== positionCycleId) {
+    blockers.push("DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH");
+  }
+  if (selectedPreflightPositionCycleId && positionCycleId && selectedPreflightPositionCycleId !== positionCycleId) {
+    blockers.push("DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH");
+  }
+  if (
+    selectedPreflightPositionCycleId &&
+    selectedPositionCycleId &&
+    selectedPreflightPositionCycleId !== selectedPositionCycleId
+  ) {
+    blockers.push("DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH");
+  }
+  if (selectorPositionCycleId && selectedPositionCycleId && selectorPositionCycleId !== selectedPositionCycleId) {
+    blockers.push("DEPLOY_DECISION:SELECTOR_CANDIDATE_POSITION_CYCLE_MISMATCH");
+  }
+  return blockers;
+}
+
 function buildDeployDecision(unifiedReport, {
   entryBoundaryAudit = buildV2EntryBoundaryAuditSummary(),
   fillSyncCanonicalBoundaryAudit = buildV2FillSyncCanonicalBoundaryAuditSummary(),
@@ -723,6 +759,7 @@ function buildDeployDecision(unifiedReport, {
   const warnings = ensureArray(report.warnings).slice();
   const criticalWatchdogIssueCodes = ensureArray(report.critical_watchdog_issue_codes).map(upper).filter(Boolean);
   const boundedRuntimeSummary = normalizeObject(report.bounded_runtime_summary);
+  const selectorMeta = normalizeObject(report.selector_meta);
   const alertRetrySummary = buildAlertRetrySummary(boundedRuntimeSummary && boundedRuntimeSummary.alert_retry_summary);
   const candidateSelectionSummary = normalizeObject(report.candidate_selection_summary);
 
@@ -799,6 +836,12 @@ function buildDeployDecision(unifiedReport, {
     positionCycleId,
     candidateSelectionSummary,
   }));
+  blockers.push(...buildPromotionPositionLineageBlockers({
+    mode,
+    positionCycleId,
+    selectorMeta,
+    candidateSelectionSummary,
+  }));
   blockers.push(...ensureArray(report.blockers));
 
   const approved = blockers.length === 0 && report.pass === true;
@@ -809,6 +852,7 @@ function buildDeployDecision(unifiedReport, {
     position_cycle_id: positionCycleId,
     fail_closed: approved !== true,
     bounded_runtime_summary: boundedRuntimeSummary,
+    selector_meta: selectorMeta,
     entry_boundary_audit: entryBoundaryAudit,
     fill_sync_canonical_boundary_audit: fillSyncCanonicalBoundaryAudit,
     production_cutover_audit: productionCutoverAudit,
@@ -943,6 +987,7 @@ if (require.main === module) {
       hasExactCandidateSnapshotCounts,
       hasCandidateSelectionContract,
       buildCandidateSelectionBlockers,
+      buildPromotionPositionLineageBlockers,
       applyPreflightLineageChecks,
       resolveArtifactDir,
       resolveUnifiedPromotionReport,

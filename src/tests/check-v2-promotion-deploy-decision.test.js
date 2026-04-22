@@ -284,6 +284,10 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     pass: true,
     mode: "CANARY",
     position_cycle_id: "PCY__CANARY__01",
+    selector_meta: {
+      position_cycle_id: "PCY__CANARY__01",
+      lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+    },
     bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
     candidate_selection_summary: buildCandidateSelectionSummaryFixture(),
     blockers: [],
@@ -294,6 +298,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.strictEqual(decision.approved, true);
   assert.strictEqual(decision.decision, "APPROVE_DEPLOY");
   assert.strictEqual(decision.bounded_runtime_summary.selector_query_budget.query_limit, 25);
+  assert.strictEqual(decision.selector_meta.position_cycle_id, "PCY__CANARY__01");
   assert.strictEqual(decision.bounded_runtime_summary.lineage_contract.hash, "lineage-hash-fixture");
   assert.strictEqual(deployDecision.__test.hasEvidenceSnapshotCoverage(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasOpenClawExecutionSeparationCoverage(decision.bounded_runtime_summary), true);
@@ -313,6 +318,79 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.strictEqual(decision.alert_retry_summary.failed_n, 1);
   assert.strictEqual(decision.alert_retry_summary.latest_failed.retry_policy_code, "ALERT_RETRY_TRANSPORT");
   assert.strictEqual(decision.candidate_selection_summary.selection_status, "READY");
+})();
+
+(function canaryWithSelectorMetaPositionMismatchFailsClosed() {
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__LINEAGE_A",
+    selector_meta: {
+      position_cycle_id: "PCY__CANARY__LINEAGE_B",
+      lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+    },
+    bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__LINEAGE_A",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__LINEAGE_A",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionCutoverAudit: buildProductionCutoverAuditFixture(),
+  });
+  assert.strictEqual(deployDecision.__test.buildPromotionPositionLineageBlockers({
+    mode: "CANARY",
+    positionCycleId: "PCY__CANARY__LINEAGE_A",
+    selectorMeta: { position_cycle_id: "PCY__CANARY__LINEAGE_B" },
+    candidateSelectionSummary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__LINEAGE_A",
+    }),
+  }).includes("DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH"), true);
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH"));
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:SELECTOR_CANDIDATE_POSITION_CYCLE_MISMATCH"));
+})();
+
+(function canaryWithSelectedPreflightPositionMismatchFailsClosed() {
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__PREFLIGHT_A",
+    selector_meta: {
+      position_cycle_id: "PCY__CANARY__PREFLIGHT_A",
+      lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+    },
+    bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__PREFLIGHT_A",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__PREFLIGHT_B",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionCutoverAudit: buildProductionCutoverAuditFixture(),
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH"));
 })();
 
 (function canaryWithoutProductionLiveEntrySizingContractFailsClosed() {

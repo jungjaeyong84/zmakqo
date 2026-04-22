@@ -730,17 +730,18 @@ deploy decision artifact는 최종 승인/차단 판정 외에도 아래를 그�
 
 1. `bounded_runtime_summary`
 2. `candidate_selection_summary`
-3. `bounded_runtime_summary.lineage_contract`
-4. `bounded_runtime_summary.alert_retry_summary`
-5. `bounded_runtime_summary.openclaw_execution_audit_ledger_write`
-6. `bounded_runtime_summary.repair_firestore_canary_streak`
-7. `bounded_runtime_summary.exit_runtime_canary_streak`
-8. `entry_boundary_audit`
-9. `fill_sync_canonical_boundary_audit`
-10. `production_cutover_audit`
-11. `production_cutover_audit.contract.checks[]` 중 live entry sizing contract check
-12. `alert_retry_summary`
-13. `alert_retry_attention_required`
+3. `selector_meta`
+4. `bounded_runtime_summary.lineage_contract`
+5. `bounded_runtime_summary.alert_retry_summary`
+6. `bounded_runtime_summary.openclaw_execution_audit_ledger_write`
+7. `bounded_runtime_summary.repair_firestore_canary_streak`
+8. `bounded_runtime_summary.exit_runtime_canary_streak`
+9. `entry_boundary_audit`
+10. `fill_sync_canonical_boundary_audit`
+11. `production_cutover_audit`
+12. `production_cutover_audit.contract.checks[]` 중 live entry sizing contract check
+13. `alert_retry_summary`
+14. `alert_retry_attention_required`
 
 `candidate_selection_summary` 가 존재하는 경우 deploy decision은 `selection_contract` 도 그대로 보존해야 한다.
 즉, auto-select가 만든 후보 선택 근거를 마지막 승인 artifact에서 다시 복원할 수 있어야 한다.
@@ -749,6 +750,10 @@ deploy decision artifact는 최종 승인/차단 판정 외에도 아래를 그�
 동시에 `bounded_runtime_summary.lineage_contract` 도 보존해야 한다.
 이 값은 selector meta에서 계산한 canonical hash이며, `promotion-preflight.json.lineage_contract` 및 `promotion-runtime-manifest.json.snapshot_meta.lineage_contract` 와 같은 값이어야 한다.
 즉, 최종 승인 artifact 하나만 열어도 “이 판단이 정확히 어떤 bounded lineage 위에서 나왔는가”를 복원할 수 있어야 한다.
+
+동시에 `selector_meta` 도 top-level에 보존해야 한다.
+`selector_meta.position_cycle_id`, 최종 `position_cycle_id`, `candidate_selection_summary.selected_position_cycle_id`, `candidate_selection_summary.selected_preflight.position_cycle_id` 는 같은 값이어야 한다.
+불일치하면 deploy decision은 `DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH`, `DEPLOY_DECISION:SELECTOR_CANDIDATE_POSITION_CYCLE_MISMATCH`, `DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH` 중 해당 blocker로 fail-closed 해야 한다.
 
 동시에 `bounded_runtime_summary.alert_retry_summary` 도 보존해야 한다.
 
@@ -793,6 +798,8 @@ coverage summary가 없거나 `missing_transition_evidence_n`, `missing_protecti
 V1의 약점은 같은 cycle처럼 보여도 selector 재실행으로 linked doc와 query window가 조용히 바뀌는 경로에 있었다.
 
 또한 `candidate_selection_summary` 가 존재하는 경우에는 `selected_position_cycle_id` 와 최종 `position_cycle_id` 가 일치해야 한다.
+`selector_meta.position_cycle_id` 와 `candidate_selection_summary.selected_preflight.position_cycle_id` 도 같은 값이어야 한다.
+이 중 하나라도 다르면 `DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH`, `DEPLOY_DECISION:SELECTOR_CANDIDATE_POSITION_CYCLE_MISMATCH`, `DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH` 로 차단해야 한다.
 
 즉, auto-select가 끼어 있는 승격에서 “선택한 cycle” 과 “승인한 cycle” 이 다르면 마지막 승인 단계에서 즉시 차단돼야 한다.
 

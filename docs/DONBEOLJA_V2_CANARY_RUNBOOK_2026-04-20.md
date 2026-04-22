@@ -93,7 +93,7 @@ npm run check:v2-canary-runbook
 | 6 | - | `unified-promotion-report.json` | `position_cycle_id` | 입력 `position_cycle_id` 와 동일 | unified report 생성 축 재검토 |
 | 7 | `SUBMIT_CHK_02` | `promotion-deploy-decision.json` | `approved` | `true` | deploy decision blocker 검토 후 중단 |
 | 8 | `SUBMIT_CHK_03` | `promotion-deploy-decision.json` | `bounded_runtime_summary.selector_query_budget`, `collector_query_budget`, `exporter_snapshot_size_bytes`, `manifest_counts` | 네 묶음 모두 존재 | bounded runtime artifact 재생성 |
-| 9 | - | `promotion-deploy-decision.json` | `candidate_selection_summary.selected_position_cycle_id`, `position_cycle_id` | 두 값이 동일 | selected cycle 검토 후 canary flow 재실행 |
+| 9 | - | `promotion-deploy-decision.json` | `selector_meta.position_cycle_id`, `candidate_selection_summary.selected_position_cycle_id`, `candidate_selection_summary.selected_preflight.position_cycle_id`, `position_cycle_id` | 네 값이 동일. 불일치 시 `DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH`, `DEPLOY_DECISION:SELECTOR_CANDIDATE_POSITION_CYCLE_MISMATCH`, `DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH` 중 하나로 차단 | selected cycle 검토 후 canary flow 재실행 |
 | 10 | - | `promotion-cloudbuild-context.json` | `final_status_line` | `APPROVE_DEPLOY` 로 시작 | final status와 deploy decision 불일치 검토 |
 | 11 | `SUBMIT_CHK_06` | `promotion-cloudbuild-context.json` | `recommended_next_action` | `PROCEED_WITH_SUBMIT_WRAPPER` | action hint에 따라 중단/재실행 |
 | 12 | - | `promotion-cloudbuild-context.json` | `recommended_next_action_reason` | `recommended_next_action` 및 blocker family와 모순 없음 | reason과 blocker family 재검토 |
@@ -484,6 +484,7 @@ auto-select runtime finalize 경로에서는 같은 context file에 `requested_a
 또한 `CANARY/LIVE` 에서는 `bounded_runtime_summary` 의 핵심 필드가 비어 있으면 마지막 승인 단계에서 즉시 차단돼야 한다.
 
 `candidate_selection_summary` 가 있는 경우에는 `selected_position_cycle_id` 와 최종 `position_cycle_id` 가 다르면 마지막 승인 단계에서 즉시 차단돼야 한다.
+또한 `selector_meta.position_cycle_id`, `candidate_selection_summary.selected_position_cycle_id`, `candidate_selection_summary.selected_preflight.position_cycle_id`, 최종 `position_cycle_id` 가 서로 다르면 deploy decision은 `DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH`, `DEPLOY_DECISION:SELECTOR_CANDIDATE_POSITION_CYCLE_MISMATCH`, `DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH` 로 fail-closed 해야 한다.
 
 bounded explicit cycle 경로에서는 wrapper가 같은 artifact dir에 `promotion-runbook-review.json` 도 남겨야 한다.
 

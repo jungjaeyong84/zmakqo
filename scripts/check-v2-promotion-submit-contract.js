@@ -1560,6 +1560,23 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "promotion CI must not accept 24h exit runtime streak evidence without running the durable history append/source contract",
       file: path.resolve(__dirname, "..", "src", "tests", "v2-exit-runtime-canary-history.test.js"),
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_60",
+      label: "deploy decision enforces promotion position lineage consistency",
+      ok: deployDecisionCheckerText.includes("buildPromotionPositionLineageBlockers")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:SELECTOR_META_POSITION_CYCLE_MISMATCH")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:CANDIDATE_SELECTION_PREFLIGHT_POSITION_CYCLE_MISMATCH")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:SELECTOR_CANDIDATE_POSITION_CYCLE_MISMATCH")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithSelectorMetaPositionMismatchFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithSelectedPreflightPositionMismatchFailsClosed")
+        && artifactContractText.includes("SELECTOR_META_POSITION_CYCLE_MISMATCH")
+        && runbookText.includes("SELECTOR_META_POSITION_CYCLE_MISMATCH"),
+      reason: deployDecisionCheckerText.includes("buildPromotionPositionLineageBlockers")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithSelectorMetaPositionMismatchFailsClosed")
+        ? "deploy decision now blocks selector/candidate/preflight position cycle drift before submit"
+        : "deploy decision must not approve when selector, candidate, and selected preflight point to different position cycles",
+      file: FILES.deployDecisionChecker,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
