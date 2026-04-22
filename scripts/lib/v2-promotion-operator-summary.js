@@ -9,6 +9,23 @@ function normalizeObject(value) {
   return value && typeof value === "object" ? value : null;
 }
 
+function yesNoNa(value) {
+  if (value === true) return "YES";
+  if (value === false) return "NO";
+  return "N/A";
+}
+
+function buildArtifactDirCoherenceFlags(summary) {
+  const row = normalizeObject(summary);
+  if (!row) return "N/A";
+  return [
+    `dir_resolved:${yesNoNa(row.artifact_dir_matches_resolved_artifact_dir)}`,
+    `dir_cycle:${yesNoNa(row.artifact_dir_contains_position_cycle_id)}`,
+    `resolved_cycle:${yesNoNa(row.resolved_artifact_dir_contains_position_cycle_id)}`,
+    `context_cycle:${yesNoNa(row.context_cycle_matches_deploy_decision)}`,
+  ].join("|");
+}
+
 function buildOperatorSummaryLines(summary) {
   const row = normalizeObject(summary) || {};
   const failedSubmitCheckIds = Array.isArray(row.failed_submit_check_ids) ? row.failed_submit_check_ids.filter(Boolean) : [];
@@ -21,6 +38,7 @@ function buildOperatorSummaryLines(summary) {
   const schedulerTrafficCollectorPreflight = normalizeObject(row.scheduler_traffic_collector_preflight_summary);
   const schedulerTrafficCutover = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
   const runbookReview = normalizeObject(row.runbook_review_summary);
+  const artifactDirCoherence = normalizeObject(row.artifact_dir_coherence_summary);
   const runbookReviewFailedCheckIds = Array.isArray(runbookReview && runbookReview.failed_check_ids)
     ? runbookReview.failed_check_ids.filter(Boolean)
     : [];
@@ -56,6 +74,10 @@ function buildOperatorSummaryLines(summary) {
     `runbook_review_failures=${runbookReview && Number.isFinite(Number(runbookReview.fail_n)) ? Number(runbookReview.fail_n) : 0}`,
     `runbook_review_failed_checks=${runbookReviewFailedCheckIds.length ? runbookReviewFailedCheckIds.join(",") : "NONE"}`,
     `runbook_review_file=${trimOrNull(runbookReview && runbookReview.file) || "NONE"}`,
+    `artifact_dir_coherence=${artifactDirCoherence ? (artifactDirCoherence.ok === true ? "PASS" : "FAIL") : "N/A"}`,
+    `artifact_dir_coherence_reason=${trimOrNull(artifactDirCoherence && artifactDirCoherence.reason) || "NONE"}`,
+    `artifact_dir_coherence_flags=${buildArtifactDirCoherenceFlags(artifactDirCoherence)}`,
+    `artifact_dir_coherence_file=${trimOrNull(artifactDirCoherence && artifactDirCoherence.file) || "NONE"}`,
     `failed_submit_checks=${failedSubmitCheckIds.length ? failedSubmitCheckIds.join(",") : "NONE"}`,
     `runbook_checklist=${failedRunbookChecklist.length ? failedRunbookChecklist.join(",") : "NONE"}`,
     `next_action=${trimOrNull(row.recommended_next_action) || "NONE"}`,
@@ -110,6 +132,7 @@ function buildOperatorSummary(result) {
   const schedulerTrafficCollectorPreflightSummary = normalizeObject(trace && trace.scheduler_traffic_collector_preflight_summary);
   const schedulerTrafficCutoverReadinessSummary = normalizeObject(trace && trace.scheduler_traffic_cutover_readiness_summary);
   const runbookReviewSummary = normalizeObject(trace && trace.runbook_review_summary);
+  const artifactDirCoherenceSummary = normalizeObject(trace && trace.artifact_dir_coherence_summary);
   const readyStatus = deployWarningAttentionRequired && alertAttentionRequired
     ? "SUBMIT_READY_WITH_ATTENTION"
     : (deployWarningAttentionRequired
@@ -151,6 +174,7 @@ function buildOperatorSummary(result) {
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     runbook_review_summary: runbookReviewSummary,
+    artifact_dir_coherence_summary: artifactDirCoherenceSummary,
     failed_submit_check_ids: failedSubmitCheckIds,
     failed_runbook_checklist: failedRunbookChecklist,
     recommended_next_action: recommendedNextAction,
@@ -176,6 +200,7 @@ function buildOperatorSummary(result) {
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     runbook_review_summary: runbookReviewSummary,
+    artifact_dir_coherence_summary: artifactDirCoherenceSummary,
     failed_submit_check_ids: failedSubmitCheckIds,
     failed_runbook_checklist: failedRunbookChecklist,
     recommended_next_action: recommendedNextAction,
@@ -195,5 +220,7 @@ module.exports = {
   __test: {
     trimOrNull,
     normalizeObject,
+    yesNoNa,
+    buildArtifactDirCoherenceFlags,
   },
 };

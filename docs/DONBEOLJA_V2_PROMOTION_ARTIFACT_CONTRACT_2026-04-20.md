@@ -233,11 +233,16 @@ submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도
 13. `submit_trace_summary.live_cutover_readiness_summary`
 14. `submit_trace_summary.production_cutover_readiness_summary`
 15. `submit_trace_summary.scheduler_traffic_cutover_readiness_summary`
-16. `submit_trace_summary.recommended_next_action`
-17. `submit_trace_summary.recommended_next_action_reason`
-18. `submit_trace_summary.recommended_next_action_reason_code`
+16. `submit_trace_summary.artifact_dir_coherence_summary`
+17. `submit_trace_summary.recommended_next_action`
+18. `submit_trace_summary.recommended_next_action_reason`
+19. `submit_trace_summary.recommended_next_action_reason_code`
 
 `submit_trace_summary.deploy_warning_summary` 는 최소한 `warning_n`, `top_warnings`, `has_live_readiness_warning`, `has_repair_firestore_canary_streak_warning`, `has_production_entry_route_canary_streak_warning` 를 포함해야 한다. repair streak warning은 runbook 19, production entry route streak warning은 runbook 26으로 역추적 가능해야 한다.
+
+`submit_trace_summary.artifact_dir_coherence_summary` 는 `SUBMIT_CHK_01A` 의 사람이 읽는 원인이다. 최소한 `ok`, `reason`, `artifact_dir_matches_resolved_artifact_dir`, `artifact_dir_contains_position_cycle_id`, `resolved_artifact_dir_contains_position_cycle_id`, `context_cycle_matches_deploy_decision`, `file` 을 포함해야 한다.
+
+즉, `SUBMIT_CHK_01A` 가 실패했을 때 operator가 `approval_verification.checks[]` 를 펼치기 전에 `artifact_dir_coherence_summary.reason` 과 flag 조합만 보고 final artifact dir drift인지 cycle drift인지 먼저 구분할 수 있어야 한다.
 
 동시에 operator/alert 채널이 바로 재사용할 수 있는 `operator_summary` 도 같이 남아야 한다.
 
@@ -257,15 +262,16 @@ submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도
 12. `operator_summary.live_cutover_readiness_summary`
 13. `operator_summary.production_cutover_readiness_summary`
 14. `operator_summary.scheduler_traffic_cutover_readiness_summary`
-15. `operator_summary.failed_submit_check_ids`
-16. `operator_summary.failed_runbook_checklist`
-17. `operator_summary.recommended_next_action`
-18. `operator_summary.recommended_next_action_reason`
-19. `operator_summary.recommended_next_action_reason_code`
-20. `operator_summary.artifact_dir`
-21. `operator_summary.output_file`
-22. `operator_summary.lines[]`
-23. `operator_summary.text`
+15. `operator_summary.artifact_dir_coherence_summary`
+16. `operator_summary.failed_submit_check_ids`
+17. `operator_summary.failed_runbook_checklist`
+18. `operator_summary.recommended_next_action`
+19. `operator_summary.recommended_next_action_reason`
+20. `operator_summary.recommended_next_action_reason_code`
+21. `operator_summary.artifact_dir`
+22. `operator_summary.output_file`
+23. `operator_summary.lines[]`
+24. `operator_summary.text`
 
 즉, 이후 alert/CLI/ops 채널이 따로 문자열을 조립하지 않고도 같은 요약 구조를 재사용해야 한다.
 
@@ -288,6 +294,10 @@ LIVE submit에서는 같은 line set 안에 `production_cutover_ready`, `product
 LIVE submit에서는 같은 line set 안에 `scheduler_traffic_ready`, `scheduler_traffic_sot`, `scheduler_traffic_legacy_active`, `scheduler_traffic_file` 도 포함돼야 한다.
 
 즉, OpenClaw cron 정본/legacy scheduler 비활성/Cloud Run traffic readiness 증거가 최종 CLI/Telegram 직전 요약에서 사라지면 안 된다.
+
+같은 line set 안에는 `artifact_dir_coherence`, `artifact_dir_coherence_reason`, `artifact_dir_coherence_flags`, `artifact_dir_coherence_file` 도 포함돼야 한다.
+
+즉, `SUBMIT_CHK_01A` provenance 차단이 발생했을 때 운영자가 어느 self-check flag가 깨졌는지 확인하려고 raw context JSON을 먼저 열어야 하면 안 된다.
 
 `operator_summary.text` 는 위 라인셋을 줄바꿈으로 결합한 transport-agnostic 정본 문자열이다.
 
@@ -328,6 +338,10 @@ LIVE submit에서는 `operator_alert_preview.sections[]` 의 trace section에도
 즉, V2 full LIVE env 조건과 legacy webhook 차단 증거가 실제 발송 preview에서 빠지는 상태도 contract 위반이다.
 
 LIVE submit에서는 `operator_alert_preview.sections[]` 의 trace section에도 `scheduler_traffic_ready`, `scheduler_traffic_sot`, `scheduler_traffic_legacy_active`, `scheduler_traffic_file` 이 포함돼야 한다.
+
+`operator_alert_preview.sections[]` 의 trace section에도 `artifact_dir_coherence`, `artifact_dir_coherence_reason`, `artifact_dir_coherence_flags`, `artifact_dir_coherence_file` 이 포함돼야 한다.
+
+즉, Telegram/CLI preview에서만 `SUBMIT_CHK_01A` 의 artifact dir self-check 원인이 사라지는 상태도 contract 위반이다.
 
 즉, scheduler/traffic cutover 증거가 실제 발송 preview에서 빠지는 상태도 contract 위반이다.
 

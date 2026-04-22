@@ -30,6 +30,15 @@ const alertPreview = require("../../scripts/lib/v2-promotion-submit-operator-ale
         alert_retry_attention_required: false,
         alert_runbook_refs: [],
         alert_retry_summary: null,
+        artifact_dir_coherence_summary: {
+          ok: false,
+          reason: "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH",
+          artifact_dir_matches_resolved_artifact_dir: false,
+          artifact_dir_contains_position_cycle_id: true,
+          resolved_artifact_dir_contains_position_cycle_id: true,
+          context_cycle_matches_deploy_decision: true,
+          file: "/tmp/v2/PCY__OPS__01/promotion-cloudbuild-context.json",
+        },
         recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
         recommended_next_action_reason_code: "PROVENANCE_OR_CONTRACT_BLOCKER",
       },
@@ -50,6 +59,10 @@ const alertPreview = require("../../scripts/lib/v2-promotion-submit-operator-ale
   assert.ok(preview.sections[1].lines.includes("alert_runbook_refs=NONE"));
   assert.ok(preview.sections[1].lines.includes("alert_failed=0"));
   assert.ok(preview.sections[1].lines.includes("alert_pending=0"));
+  assert.ok(preview.sections[1].lines.includes("artifact_dir_coherence=FAIL"));
+  assert.ok(preview.sections[1].lines.includes("artifact_dir_coherence_reason=ARTIFACT_DIR_RESOLVED_DIR_MISMATCH"));
+  assert.ok(preview.sections[1].lines.includes("artifact_dir_coherence_flags=dir_resolved:NO|dir_cycle:YES|resolved_cycle:YES|context_cycle:YES"));
+  assert.ok(preview.sections[1].lines.includes("artifact_dir_coherence_file=/tmp/v2/PCY__OPS__01/promotion-cloudbuild-context.json"));
   assert.ok(preview.sections[1].lines.includes("reason_code=PROVENANCE_OR_CONTRACT_BLOCKER"));
 })();
 

@@ -295,6 +295,48 @@ function evaluateSubmitContract() {
   const deployWarningPreviewTraceLines = Array.isArray(deployWarningPreview.sections && deployWarningPreview.sections[1] && deployWarningPreview.sections[1].lines)
     ? deployWarningPreview.sections[1].lines
     : [];
+  const artifactDirCoherenceFixtureTrace = Object.freeze({
+    ok: false,
+    primary_blocker_family: "PROVENANCE",
+    failed_submit_check_ids: ["SUBMIT_CHK_01A"],
+    failed_runbook_checklist: ["1", "5", "9"],
+    artifact_dir_coherence_summary: {
+      ok: false,
+      reason: "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH",
+      artifact_dir_matches_resolved_artifact_dir: false,
+      artifact_dir_contains_position_cycle_id: true,
+      resolved_artifact_dir_contains_position_cycle_id: true,
+      context_cycle_matches_deploy_decision: true,
+      file: "/tmp/v2/PCY__OPS__01/promotion-cloudbuild-context.json",
+    },
+    recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
+    recommended_next_action_reason: "artifact dir self-check failed",
+    recommended_next_action_reason_code: "PROVENANCE_BLOCKER",
+  });
+  const artifactDirCoherenceSummary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/fake-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__OPS__01",
+      submit_trace_summary: artifactDirCoherenceFixtureTrace,
+    },
+  });
+  const artifactDirCoherencePreview = operatorAlertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/fake-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__OPS__01",
+      submit_trace_summary: artifactDirCoherenceFixtureTrace,
+      operator_summary: artifactDirCoherenceSummary,
+    },
+  });
+  const artifactDirCoherencePreviewTraceLines = Array.isArray(
+    artifactDirCoherencePreview.sections
+    && artifactDirCoherencePreview.sections[1]
+    && artifactDirCoherencePreview.sections[1].lines
+  )
+    ? artifactDirCoherencePreview.sections[1].lines
+    : [];
   const checks = [
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_01",
@@ -367,6 +409,10 @@ function evaluateSubmitContract() {
         "runbook_review_failures=0",
         "runbook_review_failed_checks=NONE",
         "runbook_review_file=NONE",
+        "artifact_dir_coherence=N/A",
+        "artifact_dir_coherence_reason=NONE",
+        "artifact_dir_coherence_flags=N/A",
+        "artifact_dir_coherence_file=NONE",
         "failed_submit_checks=SUBMIT_CHK_08",
         "runbook_checklist=16,17",
         "next_action=DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
@@ -407,6 +453,10 @@ function evaluateSubmitContract() {
         "runbook_review_failures=0",
         "runbook_review_failed_checks=NONE",
         "runbook_review_file=NONE",
+        "artifact_dir_coherence=N/A",
+        "artifact_dir_coherence_reason=NONE",
+        "artifact_dir_coherence_flags=N/A",
+        "artifact_dir_coherence_file=NONE",
         "failed_submit_checks=SUBMIT_CHK_08",
         "runbook_checklist=16,17",
         "next_action=DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
@@ -886,6 +936,33 @@ function evaluateSubmitContract() {
         ? "cloudbuild context self-reports artifact dir coherence and maps it to submit trace before runbook and submit checks"
         : "cloudbuild context must include artifact_dir_coherence, map it to SUBMIT_CHK_01A, and docs must require it",
       file: FILES.cloudbuildWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_38",
+      label: "operator summary and alert preserve artifact dir coherence trace",
+      ok: artifactDirCoherenceSummary.lines.includes("failed_submit_checks=SUBMIT_CHK_01A")
+        && artifactDirCoherenceSummary.lines.includes("runbook_checklist=1,5,9")
+        && artifactDirCoherenceSummary.lines.includes("artifact_dir_coherence=FAIL")
+        && artifactDirCoherenceSummary.lines.includes("artifact_dir_coherence_reason=ARTIFACT_DIR_RESOLVED_DIR_MISMATCH")
+        && artifactDirCoherenceSummary.lines.includes("artifact_dir_coherence_flags=dir_resolved:NO|dir_cycle:YES|resolved_cycle:YES|context_cycle:YES")
+        && artifactDirCoherencePreviewTraceLines.includes("artifact_dir_coherence=FAIL")
+        && artifactDirCoherencePreviewTraceLines.includes("artifact_dir_coherence_reason=ARTIFACT_DIR_RESOLVED_DIR_MISMATCH")
+        && artifactDirCoherencePreviewTraceLines.includes("artifact_dir_coherence_flags=dir_resolved:NO|dir_cycle:YES|resolved_cycle:YES|context_cycle:YES")
+        && artifactContractText.includes("operator_summary.artifact_dir_coherence_summary")
+        && artifactContractText.includes("artifact_dir_coherence_flags"),
+      reason: artifactDirCoherenceSummary.lines.includes("failed_submit_checks=SUBMIT_CHK_01A")
+        && artifactDirCoherenceSummary.lines.includes("runbook_checklist=1,5,9")
+        && artifactDirCoherenceSummary.lines.includes("artifact_dir_coherence=FAIL")
+        && artifactDirCoherenceSummary.lines.includes("artifact_dir_coherence_reason=ARTIFACT_DIR_RESOLVED_DIR_MISMATCH")
+        && artifactDirCoherenceSummary.lines.includes("artifact_dir_coherence_flags=dir_resolved:NO|dir_cycle:YES|resolved_cycle:YES|context_cycle:YES")
+        && artifactDirCoherencePreviewTraceLines.includes("artifact_dir_coherence=FAIL")
+        && artifactDirCoherencePreviewTraceLines.includes("artifact_dir_coherence_reason=ARTIFACT_DIR_RESOLVED_DIR_MISMATCH")
+        && artifactDirCoherencePreviewTraceLines.includes("artifact_dir_coherence_flags=dir_resolved:NO|dir_cycle:YES|resolved_cycle:YES|context_cycle:YES")
+        && artifactContractText.includes("operator_summary.artifact_dir_coherence_summary")
+        && artifactContractText.includes("artifact_dir_coherence_flags")
+        ? "operator summary and alert preserve SUBMIT_CHK_01A artifact dir coherence reason and flags"
+        : "operator summary and alert must preserve SUBMIT_CHK_01A artifact dir coherence reason and flags",
+      file: SHARED_FORMATTER_MODULE_PATH,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

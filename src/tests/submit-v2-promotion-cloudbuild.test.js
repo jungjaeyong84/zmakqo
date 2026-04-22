@@ -549,6 +549,30 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(dirCheck.field, "artifact_dir,resolved_artifact_dir,artifact_dir_coherence,position_cycle_id");
     assert.strictEqual(dirCheck.reason, "request artifact dir, context self-check, resolved dir, or selected cycle is inconsistent");
     assert.ok(verification.blocker_summary.has_provenance_blocker);
+    assert.strictEqual(verification.artifact_dir_coherence_summary.ok, false);
+    assert.strictEqual(verification.artifact_dir_coherence_summary.reason, "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH");
+    assert.strictEqual(verification.artifact_dir_coherence_summary.artifact_dir_matches_resolved_artifact_dir, false);
+    assert.strictEqual(verification.artifact_dir_coherence_summary.file, contextFile);
+    const trace = submit.__test.buildSubmitTraceSummary(verification);
+    assert.deepStrictEqual(trace.failed_submit_check_ids, ["SUBMIT_CHK_01A"]);
+    assert.deepStrictEqual(trace.failed_runbook_checklist, ["1", "5", "9"]);
+    assert.strictEqual(trace.primary_blocker_family, "PROVENANCE");
+    assert.strictEqual(trace.artifact_dir_coherence_summary.ok, false);
+    assert.strictEqual(trace.artifact_dir_coherence_summary.reason, "ARTIFACT_DIR_RESOLVED_DIR_MISMATCH");
+    const summary = submit.__test.buildOperatorSummary({
+      ok: false,
+      output_file: path.join(artifactDir, "promotion-cloudbuild-submit-request.json"),
+      request: {
+        artifact_dir: artifactDir,
+        submit_trace_summary: trace,
+      },
+    });
+    assert.ok(summary.lines.includes("failed_submit_checks=SUBMIT_CHK_01A"));
+    assert.ok(summary.lines.includes("runbook_checklist=1,5,9"));
+    assert.ok(summary.lines.includes("artifact_dir_coherence=FAIL"));
+    assert.ok(summary.lines.includes("artifact_dir_coherence_reason=ARTIFACT_DIR_RESOLVED_DIR_MISMATCH"));
+    assert.ok(summary.lines.includes("artifact_dir_coherence_flags=dir_resolved:NO|dir_cycle:YES|resolved_cycle:YES|context_cycle:YES"));
+    assert.ok(summary.lines.includes(`artifact_dir_coherence_file=${contextFile}`));
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

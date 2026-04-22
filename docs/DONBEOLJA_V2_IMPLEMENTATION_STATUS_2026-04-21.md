@@ -1846,3 +1846,29 @@ V1 약점 재발 방지:
 1. V1에서는 산출물 본문과 운영자용 trace가 같은 실패를 다르게 표현해 원인 추적이 늦어질 수 있었다
 2. 이번 단계는 context 본문, submit trace, runbook verifier가 같은 artifact dir self-check 결과를 공유하게 만든다
 3. 따라서 V2에서는 final dir drift가 발생했을 때 “무엇이 깨졌는지, runbook 몇 번을 봐야 하는지, 다음 행동이 무엇인지”가 context 하나에서 동시에 드러난다
+
+## 2026-04-22 Submit Operator Trace Exposes Artifact Dir Self-Check
+
+추가 증거:
+
+1. `scripts/submit-v2-promotion-cloudbuild.js`
+2. `scripts/lib/v2-promotion-operator-summary.js`
+3. `scripts/lib/v2-promotion-submit-operator-alert.js`
+4. `scripts/check-v2-promotion-submit-contract.js`
+5. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+6. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+7. `src/tests/v2-promotion-submit-operator-alert.test.js`
+
+판정:
+
+1. submit wrapper는 `promotion-cloudbuild-context.json.artifact_dir_coherence` 를 `approval_verification.artifact_dir_coherence_summary` 로 승격한다
+2. 같은 summary는 `submit_trace_summary.artifact_dir_coherence_summary` 로 이어져 operator summary와 alert preview가 재사용한다
+3. operator line set은 `artifact_dir_coherence`, `artifact_dir_coherence_reason`, `artifact_dir_coherence_flags`, `artifact_dir_coherence_file` 을 노출한다
+4. alert preview trace section도 같은 네 줄을 노출하므로 Telegram/CLI preview에서만 self-check 원인이 사라지지 않는다
+5. submit contract `SUBMIT_CONTRACT_CHK_38` 은 이 노출 경로와 문서 계약을 fail-closed 로 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 gate가 차단해도 운영자가 raw JSON 여러 개를 열어야 실제 원인을 확인하는 경우가 있었다
+2. 이번 단계는 `SUBMIT_CHK_01A` 차단 시 어느 self-check flag가 깨졌는지를 운영자 메시지 첫 화면에 올린다
+3. 따라서 V2에서는 provenance blocker가 단순한 `BLOCKED` 문구로 뭉개지지 않고, final dir drift / cycle drift / context self-check 실패가 같은 trace에서 분리된다

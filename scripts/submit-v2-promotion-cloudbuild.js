@@ -635,6 +635,25 @@ function hasResolvedArtifactDirCoherence({ artifactDir = null, artifacts = {}, d
   );
 }
 
+function buildArtifactDirCoherenceSummary({ cloudbuildContext = null, filePath = null } = {}) {
+  const row = normalizeObject(cloudbuildContext);
+  const selfCheck = normalizeObject(row && row.artifact_dir_coherence);
+  if (!selfCheck) return null;
+  return Object.freeze({
+    ok: selfCheck.ok === true,
+    reason: trimOrNull(selfCheck.reason),
+    artifact_dir: trimOrNull(selfCheck.artifact_dir),
+    resolved_artifact_dir: trimOrNull(selfCheck.resolved_artifact_dir),
+    position_cycle_id: trimOrNull(selfCheck.position_cycle_id),
+    deploy_decision_position_cycle_id: trimOrNull(selfCheck.deploy_decision_position_cycle_id),
+    artifact_dir_matches_resolved_artifact_dir: selfCheck.artifact_dir_matches_resolved_artifact_dir === true,
+    artifact_dir_contains_position_cycle_id: selfCheck.artifact_dir_contains_position_cycle_id === true,
+    resolved_artifact_dir_contains_position_cycle_id: selfCheck.resolved_artifact_dir_contains_position_cycle_id === true,
+    context_cycle_matches_deploy_decision: selfCheck.context_cycle_matches_deploy_decision === true,
+    file: trimOrNull(filePath),
+  });
+}
+
 function buildSubmitTraceFamilies(summary) {
   const row = normalizeObject(summary);
   if (!row) return Object.freeze([]);
@@ -981,6 +1000,7 @@ function buildSubmitTraceSummary(approvalVerification) {
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
       runbook_review_summary: null,
+      artifact_dir_coherence_summary: null,
       recommended_next_action: null,
       recommended_next_action_reason: null,
       recommended_next_action_reason_code: null,
@@ -1000,6 +1020,7 @@ function buildSubmitTraceSummary(approvalVerification) {
   const schedulerTrafficCollectorPreflightSummary = normalizeObject(row.scheduler_traffic_collector_preflight_summary);
   const schedulerTrafficCutoverReadinessSummary = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
   const runbookReviewSummary = normalizeObject(row.runbook_review_summary);
+  const artifactDirCoherenceSummary = normalizeObject(row.artifact_dir_coherence_summary);
   return Object.freeze({
     required: row.required === true,
     ok: row.ok === true,
@@ -1018,6 +1039,7 @@ function buildSubmitTraceSummary(approvalVerification) {
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     runbook_review_summary: runbookReviewSummary,
+    artifact_dir_coherence_summary: artifactDirCoherenceSummary,
     recommended_next_action: trimOrNull(row.recommended_next_action),
     recommended_next_action_reason: trimOrNull(row.recommended_next_action_reason),
     recommended_next_action_reason_code: trimOrNull(row.recommended_next_action_reason_code),
@@ -1046,6 +1068,7 @@ function buildApprovalVerification(request) {
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
       runbook_review_summary: null,
+      artifact_dir_coherence_summary: null,
       recommended_next_action: buildVerificationRecommendedAction(summary),
       recommended_next_action_reason: buildVerificationRecommendedActionReason(summary),
       recommended_next_action_reason_code: buildVerificationRecommendedActionReasonCode(summary),
@@ -1084,7 +1107,11 @@ function buildApprovalVerification(request) {
       deploy_warning_summary: null,
       deploy_warning_attention_required: false,
       live_cutover_readiness_summary: null,
+      production_cutover_readiness_summary: null,
+      scheduler_traffic_collector_preflight_summary: null,
+      scheduler_traffic_cutover_readiness_summary: null,
       runbook_review_summary: null,
+      artifact_dir_coherence_summary: null,
       recommended_next_action: buildVerificationRecommendedAction(summary),
       recommended_next_action_reason: buildVerificationRecommendedActionReason(summary),
       recommended_next_action_reason_code: buildVerificationRecommendedActionReasonCode(summary),
@@ -1117,6 +1144,10 @@ function buildApprovalVerification(request) {
   const schedulerTrafficCollectorPreflightSummary = extractSchedulerTrafficCollectorPreflightSummaryFromArtifacts(artifacts);
   const schedulerTrafficCutoverReadinessSummary = extractSchedulerTrafficCutoverReadinessSummaryFromArtifacts(artifacts);
   const runbookReviewSummary = extractRunbookReviewSummaryFromArtifacts(artifacts);
+  const artifactDirCoherenceSummary = buildArtifactDirCoherenceSummary({
+    cloudbuildContext,
+    filePath: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
+  });
   const checks = [];
 
   checks.push(withDocRefs(buildVerificationCheck({
@@ -1541,6 +1572,7 @@ function buildApprovalVerification(request) {
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     runbook_review_summary: runbookReviewSummary,
+    artifact_dir_coherence_summary: artifactDirCoherenceSummary,
     recommended_next_action: buildVerificationRecommendedAction(summary),
     recommended_next_action_reason: buildVerificationRecommendedActionReason(summary),
     recommended_next_action_reason_code: buildVerificationRecommendedActionReasonCode(summary),
@@ -1919,6 +1951,7 @@ if (require.main === module) {
       collectLineageHashes,
       resolvePathOrNull,
       hasResolvedArtifactDirCoherence,
+      buildArtifactDirCoherenceSummary,
       hasRequiredApprovalContract,
       normalizeObject,
       readJsonFile,
