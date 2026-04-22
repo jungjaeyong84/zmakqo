@@ -1105,6 +1105,37 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(summary.primary_blocker_family, "PROVENANCE");
 })();
 
+(function submitTraceSummaryExpandsRunbookAggregateFailures() {
+  const summary = submit.__test.buildSubmitTraceSummary({
+    required: true,
+    ok: false,
+    checks: [
+      { id: "SUBMIT_CHK_05", ok: false, reason: "runbook review must be PASS", file: "/tmp/promotion-runbook-review.json", field: "overall_status" },
+    ],
+    blocker_summary: {
+      blocker_n: 1,
+      has_runbook_blocker: true,
+    },
+    runbook_review_summary: {
+      ok: false,
+      overall_status: "FAIL",
+      fail_n: 2,
+      failed_check_ids: ["CHK_24B", "CHK_13E", "CHK_RUNBOOK_REVIEW_THROWN"],
+      top_failed_checks: [
+        { id: "CHK_24B", field: "artifact_generated_age_minutes" },
+        { id: "CHK_13E", field: "submit_trace.blocker_families" },
+      ],
+    },
+    recommended_next_action: "REVIEW_V2_CANARY_RUNBOOK_FAILURES",
+    recommended_next_action_reason: "runbook review failed",
+  });
+  assert.deepStrictEqual(summary.failed_submit_check_ids, ["SUBMIT_CHK_05"]);
+  assert.deepStrictEqual(summary.failed_runbook_checklist, ["13E", "24B"]);
+  assert.strictEqual(summary.failed_submit_check_details.length, 1);
+  assert.deepStrictEqual(summary.failed_submit_check_details[0].runbook_checklist, ["13E", "24B"]);
+  assert.deepStrictEqual(submit.__test.collectRunbookReviewChecklist(summary.runbook_review_summary), ["13E", "24B"]);
+})();
+
 (function cliResultPayloadExposesTopLevelSubmitTrace() {
   const payload = submit.__test.buildCliResultPayload({
     ok: false,

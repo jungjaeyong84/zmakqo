@@ -1214,6 +1214,40 @@ function collectAlertRunbookRefs(summary) {
   return Object.freeze(Array.from(refs).sort());
 }
 
+function collectRunbookReviewChecklist(summary) {
+  const row = normalizeObject(summary);
+  if (!row) return Object.freeze([]);
+  const ids = Array.isArray(row.failed_check_ids) ? row.failed_check_ids : [];
+  const seen = new Set();
+  ids.forEach((id) => {
+    const text = trimOrNull(id);
+    const match = text && text.match(/^CHK_(\d+[A-Z]?)$/);
+    if (match && match[1]) seen.add(match[1]);
+  });
+  return Object.freeze(Array.from(seen).sort((a, b) => {
+    const na = Number(String(a).match(/^\d+/)?.[0] || 0);
+    const nb = Number(String(b).match(/^\d+/)?.[0] || 0);
+    if (na !== nb) return na - nb;
+    return String(a).localeCompare(String(b));
+  }));
+}
+
+function mergeRunbookChecklist(...lists) {
+  const seen = new Set();
+  lists.forEach((list) => {
+    (Array.isArray(list) ? list : []).forEach((value) => {
+      const text = trimOrNull(value);
+      if (text) seen.add(text);
+    });
+  });
+  return Object.freeze(Array.from(seen).sort((a, b) => {
+    const na = Number(String(a).match(/^\d+/)?.[0] || 0);
+    const nb = Number(String(b).match(/^\d+/)?.[0] || 0);
+    if (na !== nb) return na - nb;
+    return String(a).localeCompare(String(b));
+  }));
+}
+
 function buildSubmitTraceSummary(approvalVerification) {
   const row = normalizeObject(approvalVerification);
   if (!row) {
@@ -1250,7 +1284,6 @@ function buildSubmitTraceSummary(approvalVerification) {
   const failedSubmitCheckIds = Object.freeze(
     failedChecks.map((entry) => trimOrNull(entry.id)).filter(Boolean)
   );
-  const failedSubmitCheckDetails = submitTrace.collectSubmitCheckTraceDetails(failedChecks);
   const blockerFamilies = buildSubmitTraceFamilies(row.blocker_summary);
   const alertRetrySummary = normalizeObject(row.alert_retry_summary);
   const deployWarningSummary = normalizeObject(row.deploy_warning_summary);
@@ -1260,6 +1293,18 @@ function buildSubmitTraceSummary(approvalVerification) {
   const schedulerTrafficCutoverReadinessSummary = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
   const productionRuntimeConfigSummary = normalizeObject(row.production_runtime_config_summary);
   const runbookReviewSummary = normalizeObject(row.runbook_review_summary);
+  const runbookReviewChecklist = collectRunbookReviewChecklist(runbookReviewSummary);
+  const failedSubmitCheckDetails = Object.freeze(
+    submitTrace.collectSubmitCheckTraceDetails(failedChecks).map((detail) => {
+      if (detail && detail.id === "SUBMIT_CHK_05" && !detail.runbook_checklist.length && runbookReviewChecklist.length) {
+        return Object.freeze({
+          ...detail,
+          runbook_checklist: runbookReviewChecklist,
+        });
+      }
+      return detail;
+    })
+  );
   const artifactDirCoherenceSummary = normalizeObject(row.artifact_dir_coherence_summary);
   const lineageConsistencySummary = normalizeObject(row.lineage_consistency_summary);
   return Object.freeze({
@@ -1267,7 +1312,10 @@ function buildSubmitTraceSummary(approvalVerification) {
     ok: row.ok === true,
     failed_submit_check_ids: failedSubmitCheckIds,
     failed_submit_check_details: failedSubmitCheckDetails,
-    failed_runbook_checklist: submitTrace.collectRunbookChecklist(failedSubmitCheckIds),
+    failed_runbook_checklist: mergeRunbookChecklist(
+      submitTrace.collectRunbookChecklist(failedSubmitCheckIds),
+      runbookReviewChecklist
+    ),
     blocker_families: blockerFamilies,
     primary_blocker_family: blockerFamilies[0] || null,
     alert_retry_attention_required: row.alert_retry_attention_required === true,
@@ -1827,6 +1875,7 @@ function buildApprovalVerification(request) {
     file: artifacts.runbookReview && artifacts.runbookReview.filePath,
     field: "overall_status",
   }), {
+    runbookChecklist: collectRunbookReviewChecklist(runbookReview),
     artifactContract: [
       "approval_contract.runbook_review_pass_required",
       "approval_evidence_sources.runbook_review",
@@ -2322,6 +2371,8 @@ if (require.main === module) {
       buildDeployWarningSummary,
       extractDeployWarningSummaryFromArtifacts,
       collectDeployWarningRunbookChecklist,
+      collectRunbookReviewChecklist,
+      mergeRunbookChecklist,
       extractLiveCutoverReadinessSummaryFromArtifacts,
       hasLiveCutoverReadinessSummary,
       extractSchedulerTrafficCollectorPreflightSummaryFromArtifacts,
