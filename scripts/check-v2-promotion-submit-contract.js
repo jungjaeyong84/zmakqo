@@ -1800,6 +1800,26 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "LIVE deploy decision must compare long-run/protected-entry evidence artifact_dir values against the actual V2_PROMOTION_ARTIFACT_DIR",
       file: FILES.deployDecisionChecker,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_68",
+      label: "LIVE exit runtime streak must include matching long-run quality summary",
+      ok: deployDecisionCheckerText.includes("hasExitRuntimeLongRunQualitySummary")
+        && deployDecisionCheckerText.includes("streak.firestore_source_required === true")
+        && deployDecisionCheckerText.includes("numericFieldsMatch(quality, row")
+        && deployDecisionCheckerText.includes("numericFieldsMatch(defectCounts, row")
+        && deployDecisionCheckerText.includes("defect_counts")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithExitRuntimeMissingLongRunQualitySummaryFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithExitRuntimeLongRunQualityDriftFailsClosed")
+        && artifactContractText.includes("long_run_quality_summary")
+        && artifactContractText.includes("top-level streak fields")
+        && runbookText.includes("long_run_quality_summary")
+        && runbookText.includes("top-level streak fields"),
+      reason: deployDecisionCheckerText.includes("numericFieldsMatch(defectCounts, row")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveWithExitRuntimeLongRunQualityDriftFailsClosed")
+        ? "LIVE deploy decision now rejects exit runtime streak evidence when the long-run quality summary is missing or drifts from top-level counters"
+        : "LIVE exit runtime streak must not pass from top-level counters alone; long-run quality summary must be present and match the top-level evidence",
+      file: FILES.deployDecisionChecker,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

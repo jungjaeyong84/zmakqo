@@ -158,6 +158,7 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_generated_at: "2026-04-22T12:00:00.000Z",
       artifact_generated_age_minutes: 15,
       history_source: "FIRESTORE",
+      firestore_source_required: true,
       history_file: "dbjv2__exit_runtime_canaries_v2",
       lookback_hours: 24,
       min_run_count: 12,
@@ -174,6 +175,21 @@ function buildBoundedRuntimeSummaryFixture() {
       native_refresh_unhealthy_n: 0,
       unprotected_window_violation_n: 0,
       alert_silent_drop_n: 0,
+      long_run_quality_summary: {
+        status: "PASS",
+        history_source: "FIRESTORE",
+        firestore_source_required: true,
+        coverage_minutes: 1440,
+        latest_age_minutes: 15,
+        max_observed_gap_minutes: 120,
+        defect_counts: {
+          tp1_missing_n: 0,
+          native_refresh_unhealthy_n: 0,
+          unprotected_window_violation_n: 0,
+          alert_silent_drop_n: 0,
+        },
+        blockers: [],
+      },
       blockers: [],
     },
     production_entry_protected_canary: {
@@ -332,6 +348,7 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   assert.strictEqual(deployDecision.__test.hasRepairFirestoreCanaryStreak(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasFreshLongRunStreakCoverage(decision.bounded_runtime_summary.repair_firestore_canary_streak), true);
   assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(decision.bounded_runtime_summary), true);
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeLongRunQualitySummary(decision.bounded_runtime_summary.exit_runtime_canary_streak), true);
   assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasFreshProtectedCanaryArtifact(decision.bounded_runtime_summary.production_entry_protected_canary), true);
   assert.strictEqual(deployDecision.__test.hasEntryBoundaryAudit(decision.entry_boundary_audit), true);
@@ -1049,6 +1066,72 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__JSONL_EXIT_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithExitRuntimeMissingLongRunQualitySummaryFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  delete bounded.exit_runtime_canary_streak.long_run_quality_summary;
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeLongRunQualitySummary(bounded.exit_runtime_canary_streak), false);
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__EXIT_QUALITY_MISSING",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__EXIT_QUALITY_MISSING",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__EXIT_QUALITY_MISSING",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithExitRuntimeLongRunQualityDriftFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.exit_runtime_canary_streak.long_run_quality_summary = {
+    ...bounded.exit_runtime_canary_streak.long_run_quality_summary,
+    defect_counts: {
+      ...bounded.exit_runtime_canary_streak.long_run_quality_summary.defect_counts,
+      native_refresh_unhealthy_n: 1,
+    },
+  };
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeLongRunQualitySummary(bounded.exit_runtime_canary_streak), false);
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__EXIT_QUALITY_DRIFT",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__EXIT_QUALITY_DRIFT",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__EXIT_QUALITY_DRIFT",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

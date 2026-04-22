@@ -461,6 +461,7 @@ function hasExitRuntimeCanaryStreak(summary) {
     !!trimOrNull(streak.artifact_dir) &&
     streak.artifact_current_dir_match === true &&
     trimOrNull(streak.history_source) === "FIRESTORE" &&
+    streak.firestore_source_required === true &&
     !!trimOrNull(streak.history_file) &&
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
     Number(streak.unhealthy_run_n) === 0 &&
@@ -469,9 +470,56 @@ function hasExitRuntimeCanaryStreak(summary) {
     Number(streak.native_refresh_unhealthy_n || 0) === 0 &&
     Number(streak.unprotected_window_violation_n || 0) === 0 &&
     Number(streak.alert_silent_drop_n || 0) === 0 &&
+    hasExitRuntimeLongRunQualitySummary(streak) &&
     hasFreshLongRunStreakCoverage(streak) &&
     ensureArray(streak.blockers).length === 0
   );
+}
+
+function hasExitRuntimeLongRunQualitySummary(streak) {
+  const row = normalizeObject(streak);
+  const quality = normalizeObject(row && row.long_run_quality_summary);
+  const defectCounts = normalizeObject(quality && quality.defect_counts);
+  if (!row || !quality || !defectCounts) return false;
+  const maxGapMinutes = Number(row.max_gap_minutes);
+  const latestAgeMinutes = Number(quality.latest_age_minutes);
+  const maxObservedGapMinutes = Number(quality.max_observed_gap_minutes);
+  return (
+    trimOrNull(quality.status) === "PASS" &&
+    trimOrNull(quality.history_source) === "FIRESTORE" &&
+    quality.firestore_source_required === true &&
+    Number(quality.coverage_minutes) >= MIN_LIVE_STREAK_COVERAGE_MINUTES &&
+    numericFieldsMatch(quality, row, [
+      "coverage_minutes",
+      "latest_age_minutes",
+      "max_observed_gap_minutes",
+    ]) &&
+    numericFieldsMatch(defectCounts, row, [
+      "tp1_missing_n",
+      "native_refresh_unhealthy_n",
+      "unprotected_window_violation_n",
+      "alert_silent_drop_n",
+    ]) &&
+    Number.isFinite(maxGapMinutes) &&
+    maxGapMinutes > 0 &&
+    Number.isFinite(latestAgeMinutes) &&
+    latestAgeMinutes <= maxGapMinutes &&
+    Number.isFinite(maxObservedGapMinutes) &&
+    maxObservedGapMinutes <= maxGapMinutes &&
+    Number(defectCounts.tp1_missing_n || 0) === 0 &&
+    Number(defectCounts.native_refresh_unhealthy_n || 0) === 0 &&
+    Number(defectCounts.unprotected_window_violation_n || 0) === 0 &&
+    Number(defectCounts.alert_silent_drop_n || 0) === 0 &&
+    ensureArray(quality.blockers).length === 0
+  );
+}
+
+function numericFieldsMatch(left, right, fields) {
+  return ensureArray(fields).every((field) => {
+    const leftValue = Number(left && left[field]);
+    const rightValue = Number(right && right[field]);
+    return Number.isFinite(leftValue) && Number.isFinite(rightValue) && Math.abs(leftValue - rightValue) <= 1e-9;
+  });
 }
 
 function hasProductionEntryProtectedCanary(summary) {
@@ -1037,6 +1085,7 @@ if (require.main === module) {
       hasProductionEntryRouteCanaryStreak,
       hasProductionEntryProtectedCanary,
       hasFreshProtectedCanaryArtifact,
+      hasExitRuntimeLongRunQualitySummary,
       hasFreshLongRunStreakCoverage,
       hasExitRuntimeCanaryStreak,
       hasStaleArtifactProvenance,
