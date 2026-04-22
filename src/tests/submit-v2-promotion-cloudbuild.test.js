@@ -1217,7 +1217,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.ok(summary.lines.includes("alert_failed=0"));
   assert.ok(summary.lines.includes("alert_pending=0"));
   assert.ok(summary.lines.includes("failed_submit_checks=SUBMIT_CHK_08"));
-  assert.ok(summary.lines.includes("failed_submit_check_details=SUBMIT_CHK_08[lineage hashes consistent across bounded artifacts;RUNBOOK:16,17;reason:lineage consistency failed]"));
+  assert.ok(summary.lines.includes("failed_submit_check_details=SUBMIT_CHK_08[lineage hashes consistent across bounded artifacts;RUNBOOK:16,17;reason:lineage consistency failed;file:/tmp/v2/PCY__OPS__01/promotion-cloudbuild-context.json;field:lineage_consistency_summary]"));
   assert.ok(summary.lines.includes("runbook_checklist=16,17"));
 })();
 

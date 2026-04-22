@@ -1590,6 +1590,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && submitTraceText.includes("buildSubmitCheckTraceDetail")
         && submitTraceText.includes("collectSubmitCheckTraceDetails")
         && submitTraceText.includes("formatSubmitCheckDetails")
+        && submitTraceText.includes(";file:")
+        && submitTraceText.includes(";field:")
         && readText(path.resolve(__dirname, "..", "scripts", "lib", "v2-promotion-operator-summary.js")).includes('require("./v2-promotion-submit-trace")')
         && readText(path.resolve(__dirname, "..", "scripts", "lib", "v2-promotion-operator-summary.js")).includes("failed_submit_check_details=")
         && readText(path.resolve(__dirname, "..", "scripts", "lib", "v2-promotion-submit-operator-alert.js")).includes('require("./v2-promotion-submit-trace")')
@@ -1598,6 +1600,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "..", "src", "tests", "v2-promotion-submit-operator-alert.test.js")).includes("failed_submit_check_details=SUBMIT_CHK_08"),
       reason: submitWrapperText.includes("failed_submit_check_details")
         && submitTraceText.includes("collectSubmitCheckTraceDetails")
+        && submitTraceText.includes(";file:")
+        && submitTraceText.includes(";field:")
         ? "submit blockers now carry id, meaning, runbook checklist, reason, file, and field into operator summary and alert preview"
         : "submit blockers must be actionable without manually cross-referencing SUBMIT_CHK ids",
       file: FILES.submitWrapper,

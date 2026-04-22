@@ -204,7 +204,9 @@ function formatSubmitCheckDetails(details) {
         ? row.runbook_checklist.map((value) => trimOrNull(value)).filter(Boolean)
         : [];
       const reason = trimOrNull(row && row.reason);
-      return `${id}[${summary};RUNBOOK:${runbookChecklist.length ? runbookChecklist.join(",") : "NONE"}${reason ? `;reason:${reason}` : ""}]`;
+      const file = trimOrNull(row && row.file);
+      const field = trimOrNull(row && row.field);
+      return `${id}[${summary};RUNBOOK:${runbookChecklist.length ? runbookChecklist.join(",") : "NONE"}${reason ? `;reason:${reason}` : ""}${file ? `;file:${file}` : ""}${field ? `;field:${field}` : ""}]`;
     })
     .join("|");
 }
