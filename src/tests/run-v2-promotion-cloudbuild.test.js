@@ -998,8 +998,10 @@ function seedRunbookArtifacts(dir, cycleId) {
 
 (function boundedDeployPathRunsRunbookReview() {
   const cycleId = "PCY__RUNBOOK__01";
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `dbj-v2-cloudbuild-${cycleId}-`));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-runbook-"));
+  const dir = path.join(root, cycleId);
   try {
+    fs.mkdirSync(dir, { recursive: true });
     seedRunbookArtifacts(dir, cycleId);
     const plan = {
       mode: "CANARY_FLOW",
@@ -1028,14 +1030,16 @@ function seedRunbookArtifacts(dir, cycleId) {
     assert.strictEqual(result.review.ok, true);
     assert.ok(fs.existsSync(result.output_file));
   } finally {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
 })();
 
 (function liveDeployPathGeneratesCutoverReadinessBeforeRunbookReview() {
   const cycleId = "PCY__RUNBOOK__LIVE_CUTOVER";
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `dbj-v2-cloudbuild-${cycleId}-`));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-cloudbuild-live-cutover-"));
+  const dir = path.join(root, cycleId);
   try {
+    fs.mkdirSync(dir, { recursive: true });
     seedRunbookArtifacts(dir, cycleId);
     writeJson(path.join(dir, "promotion-deploy-decision.json"), {
       mode: "LIVE",
@@ -1142,11 +1146,15 @@ function seedRunbookArtifacts(dir, cycleId) {
       liveCutoverReadinessFile: cutover.output_file,
       productionCutoverReadiness: productionCutover.report,
       productionCutoverReadinessFile: productionCutover.output_file,
+      schedulerTrafficCollectorPreflight: schedulerTrafficCutover.collector_preflight,
+      schedulerTrafficCollectorPreflightFile: schedulerTrafficCutover.collector_preflight_file,
       schedulerTrafficCutoverReadiness: schedulerTrafficCutover.report,
       schedulerTrafficCutoverReadinessFile: schedulerTrafficCutover.output_file,
     });
     const contextWithSchedulerTraffic = JSON.parse(fs.readFileSync(contextFileWithSchedulerTraffic, "utf8"));
     assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_file, schedulerTrafficCutover.output_file);
+    assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_collector_preflight_file, schedulerTrafficCutover.collector_preflight_file);
+    assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_collector_preflight_summary.ok, true);
     assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_summary.ok, true);
     assert.strictEqual(contextWithSchedulerTraffic.scheduler_traffic_cutover_readiness_summary.scheduler_sot, "OPENCLAW_CRON");
 
@@ -1161,8 +1169,11 @@ function seedRunbookArtifacts(dir, cycleId) {
     const schedulerTrafficCutoverCheck = result.review.checks.find((row) => row.id === "CHK_24");
     assert.ok(schedulerTrafficCutoverCheck);
     assert.strictEqual(schedulerTrafficCutoverCheck.status, "PASS");
+    const schedulerTrafficCollectorCheck = result.review.checks.find((row) => row.id === "CHK_24A");
+    assert.ok(schedulerTrafficCollectorCheck);
+    assert.strictEqual(schedulerTrafficCollectorCheck.status, "PASS");
   } finally {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
 })();
 

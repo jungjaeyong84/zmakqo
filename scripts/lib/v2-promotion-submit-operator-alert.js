@@ -1,5 +1,7 @@
 "use strict";
 
+const crypto = require("crypto");
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -46,6 +48,7 @@ function buildTraceLines(trace) {
   const schedulerTrafficCutover = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
   const runbookReview = normalizeObject(row.runbook_review_summary);
   const artifactDirCoherence = normalizeObject(row.artifact_dir_coherence_summary);
+  const lineageConsistency = normalizeObject(row.lineage_consistency_summary);
   const runbookReviewFailedCheckIds = Array.isArray(runbookReview && runbookReview.failed_check_ids)
     ? runbookReview.failed_check_ids.filter(Boolean)
     : [];
@@ -86,9 +89,32 @@ function buildTraceLines(trace) {
     `artifact_dir_coherence_reason=${trimOrNull(artifactDirCoherence && artifactDirCoherence.reason) || "NONE"}`,
     `artifact_dir_coherence_flags=${buildArtifactDirCoherenceFlags(artifactDirCoherence)}`,
     `artifact_dir_coherence_file=${trimOrNull(artifactDirCoherence && artifactDirCoherence.file) || "NONE"}`,
+    `lineage_consistency=${lineageConsistency ? (lineageConsistency.ok === true ? "PASS" : "FAIL") : "N/A"}`,
+    `lineage_consistency_reason=${trimOrNull(lineageConsistency && lineageConsistency.reason) || "NONE"}`,
+    `lineage_bounded_ok=${lineageConsistency ? yesNoNa(lineageConsistency.bounded_lineage_ok) : "N/A"}`,
+    `lineage_context_hash_match=${lineageConsistency ? yesNoNa(lineageConsistency.context_hash_matches_deploy_decision) : "N/A"}`,
+    `lineage_context_ok=${lineageConsistency ? yesNoNa(lineageConsistency.context_lineage_ok) : "N/A"}`,
     `next_action=${trimOrNull(row.recommended_next_action) || "NONE"}`,
     `reason_code=${trimOrNull(row.recommended_next_action_reason_code) || "NONE"}`,
   ]);
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map((row) => stableStringify(row)).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function buildPreviewSourceFingerprint({ summary = null, trace = null } = {}) {
+  const payload = {
+    summary_status: trimOrNull(summary && summary.status),
+    summary_text: trimOrNull(summary && summary.text),
+    summary_lines: Array.isArray(summary && summary.lines) ? summary.lines.slice() : [],
+    trace: normalizeObject(trace) || {},
+  };
+  return crypto.createHash("sha256").update(stableStringify(payload)).digest("hex");
 }
 
 function buildOperatorAlertPreview(result) {
@@ -116,6 +142,8 @@ function buildOperatorAlertPreview(result) {
   return Object.freeze({
     required: true,
     source: "promotion-cloudbuild-submit-request",
+    source_fingerprint_version: "V2_PROMOTION_OPERATOR_ALERT_PREVIEW_SHA256_V1",
+    source_fingerprint: buildPreviewSourceFingerprint({ summary, trace }),
     severity,
     title,
     dedupe_key: `v2-promotion-submit:${status}:${artifactDir || outputFile || "NO_ARTIFACT"}`,
@@ -159,5 +187,7 @@ module.exports = {
     yesNoNa,
     buildArtifactDirCoherenceFlags,
     buildTraceLines,
+    stableStringify,
+    buildPreviewSourceFingerprint,
   },
 };

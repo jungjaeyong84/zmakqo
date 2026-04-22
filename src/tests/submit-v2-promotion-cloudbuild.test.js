@@ -1312,7 +1312,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     });
     assert.strictEqual(result.request.submit_trace_summary.ok, false);
     assert.ok(result.request.submit_trace_summary.failed_submit_check_ids.includes("SUBMIT_CHK_17"));
-    assert.ok(result.request.submit_trace_summary.failed_runbook_checklist.includes("24"));
+    assert.ok(result.request.submit_trace_summary.failed_runbook_checklist.includes("24A"));
     assert.deepStrictEqual(result.request.submit_trace_summary.blocker_families, ["SCHEDULER_COLLECTOR"]);
     assert.strictEqual(result.request.submit_trace_summary.primary_blocker_family, "SCHEDULER_COLLECTOR");
     assert.strictEqual(result.request.submit_trace_summary.recommended_next_action, "FIX_V2_SCHEDULER_COLLECTOR_IAM_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER");
@@ -1439,6 +1439,18 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.ok(payload.operator_summary.lines.includes("alert_runbook_refs=NONE"));
     assert.ok(payload.operator_summary.lines.includes("alert_failed=0"));
     assert.ok(payload.operator_summary.lines.includes("alert_pending=0"));
+    assert.strictEqual(payload.submit_trace_summary.lineage_consistency_summary.ok, false);
+    assert.strictEqual(
+      payload.submit_trace_summary.lineage_consistency_summary.reason,
+      "CLOUDBUILD_CONTEXT_DEPLOY_DECISION_LINEAGE_MISMATCH"
+    );
+    assert.ok(payload.operator_summary.lines.includes("lineage_consistency=FAIL"));
+    assert.ok(payload.operator_summary.lines.includes("lineage_consistency_reason=CLOUDBUILD_CONTEXT_DEPLOY_DECISION_LINEAGE_MISMATCH"));
+    assert.ok(payload.operator_summary.lines.includes("lineage_bounded_ok=YES"));
+    assert.ok(payload.operator_summary.lines.includes("lineage_context_hash_match=NO"));
+    assert.ok(payload.operator_summary.lines.includes("lineage_context_ok=YES"));
+    assert.ok(payload.operator_alert_preview.sections[1].lines.includes("lineage_consistency=FAIL"));
+    assert.ok(payload.operator_alert_preview.sections[1].lines.includes("lineage_context_hash_match=NO"));
     assert.deepStrictEqual(payload.submit_trace_summary.failed_submit_check_ids, ["SUBMIT_CHK_08"]);
     assert.deepStrictEqual(payload.submit_trace_summary.failed_runbook_checklist, ["16", "17"]);
     assert.deepStrictEqual(payload.submit_trace_summary.blocker_families, ["PROVENANCE"]);

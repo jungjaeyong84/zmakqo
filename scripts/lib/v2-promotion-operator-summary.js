@@ -39,6 +39,7 @@ function buildOperatorSummaryLines(summary) {
   const schedulerTrafficCutover = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
   const runbookReview = normalizeObject(row.runbook_review_summary);
   const artifactDirCoherence = normalizeObject(row.artifact_dir_coherence_summary);
+  const lineageConsistency = normalizeObject(row.lineage_consistency_summary);
   const runbookReviewFailedCheckIds = Array.isArray(runbookReview && runbookReview.failed_check_ids)
     ? runbookReview.failed_check_ids.filter(Boolean)
     : [];
@@ -78,6 +79,11 @@ function buildOperatorSummaryLines(summary) {
     `artifact_dir_coherence_reason=${trimOrNull(artifactDirCoherence && artifactDirCoherence.reason) || "NONE"}`,
     `artifact_dir_coherence_flags=${buildArtifactDirCoherenceFlags(artifactDirCoherence)}`,
     `artifact_dir_coherence_file=${trimOrNull(artifactDirCoherence && artifactDirCoherence.file) || "NONE"}`,
+    `lineage_consistency=${lineageConsistency ? (lineageConsistency.ok === true ? "PASS" : "FAIL") : "N/A"}`,
+    `lineage_consistency_reason=${trimOrNull(lineageConsistency && lineageConsistency.reason) || "NONE"}`,
+    `lineage_bounded_ok=${lineageConsistency ? yesNoNa(lineageConsistency.bounded_lineage_ok) : "N/A"}`,
+    `lineage_context_hash_match=${lineageConsistency ? yesNoNa(lineageConsistency.context_hash_matches_deploy_decision) : "N/A"}`,
+    `lineage_context_ok=${lineageConsistency ? yesNoNa(lineageConsistency.context_lineage_ok) : "N/A"}`,
     `failed_submit_checks=${failedSubmitCheckIds.length ? failedSubmitCheckIds.join(",") : "NONE"}`,
     `runbook_checklist=${failedRunbookChecklist.length ? failedRunbookChecklist.join(",") : "NONE"}`,
     `next_action=${trimOrNull(row.recommended_next_action) || "NONE"}`,
@@ -133,6 +139,7 @@ function buildOperatorSummary(result) {
   const schedulerTrafficCutoverReadinessSummary = normalizeObject(trace && trace.scheduler_traffic_cutover_readiness_summary);
   const runbookReviewSummary = normalizeObject(trace && trace.runbook_review_summary);
   const artifactDirCoherenceSummary = normalizeObject(trace && trace.artifact_dir_coherence_summary);
+  const lineageConsistencySummary = normalizeObject(trace && trace.lineage_consistency_summary);
   const readyStatus = deployWarningAttentionRequired && alertAttentionRequired
     ? "SUBMIT_READY_WITH_ATTENTION"
     : (deployWarningAttentionRequired
@@ -175,6 +182,7 @@ function buildOperatorSummary(result) {
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     runbook_review_summary: runbookReviewSummary,
     artifact_dir_coherence_summary: artifactDirCoherenceSummary,
+    lineage_consistency_summary: lineageConsistencySummary,
     failed_submit_check_ids: failedSubmitCheckIds,
     failed_runbook_checklist: failedRunbookChecklist,
     recommended_next_action: recommendedNextAction,
@@ -201,6 +209,7 @@ function buildOperatorSummary(result) {
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     runbook_review_summary: runbookReviewSummary,
     artifact_dir_coherence_summary: artifactDirCoherenceSummary,
+    lineage_consistency_summary: lineageConsistencySummary,
     failed_submit_check_ids: failedSubmitCheckIds,
     failed_runbook_checklist: failedRunbookChecklist,
     recommended_next_action: recommendedNextAction,

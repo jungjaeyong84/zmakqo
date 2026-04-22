@@ -83,6 +83,17 @@ function rowsLength(rows) {
   return Array.isArray(rows) ? rows.length : 0;
 }
 
+function buildLineageConsistencySummary(hash = LINEAGE_CONTRACT_FIXTURE.hash) {
+  return {
+    ok: true,
+    reason: "LINEAGE_CONSISTENT",
+    hashes: {
+      cloudbuild_context: hash,
+      deploy_decision_summary: hash,
+    },
+  };
+}
+
 function buildBoundedRuntimeSummaryFixture() {
   return {
     selector_query_budget: { query_limit: 25 },
@@ -195,6 +206,21 @@ function buildSchedulerTrafficCutoverReadinessFixture() {
   };
 }
 
+function buildSchedulerTrafficCollectorPreflightFixture(filePath = null) {
+  return {
+    ok: true,
+    reason: "V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS",
+    fail_n: 0,
+    failed_check_ids: [],
+    blocker_n: 0,
+    project_id: "donbeolja-dev",
+    region: "asia-northeast3",
+    service_names: ["donbeolja", "donbeolja-exit-worker"],
+    scheduler_job_n: 4,
+    ...(filePath ? { artifact_file: filePath, file: filePath } : {}),
+  };
+}
+
 function buildEntryBoundaryAuditFixture() {
   return {
     ok: true,
@@ -278,8 +304,13 @@ function seedMinimalRunbookArtifacts(dir, cycleId, { deployDecisionPatch = {}, c
     recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
     recommended_next_action_reason: "deploy decision approved with no blocking families",
     recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+    lineage_consistency_summary: buildLineageConsistencySummary(),
     submit_trace: buildWarningSubmitTrace([]),
     deploy_decision_summary: {
+      lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      bounded_runtime_summary: {
+        lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+      },
       warning_summary: {
         warning_n: 0,
         top_warnings: [],
@@ -373,8 +404,13 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      lineage_consistency_summary: buildLineageConsistencySummary(),
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
         warning_summary: {
           warning_n: 0,
           top_warnings: [],
@@ -387,6 +423,13 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
         },
       },
     });
+
+    const contextFile = path.join(dir, "promotion-cloudbuild-context.json");
+    const context = JSON.parse(fs.readFileSync(contextFile, "utf8"));
+    context.lineage_consistency_summary = buildLineageConsistencySummary();
+    context.deploy_decision_summary.lineage_contract_hash = LINEAGE_CONTRACT_FIXTURE.hash;
+    context.deploy_decision_summary.bounded_runtime_summary = { lineage_contract: LINEAGE_CONTRACT_FIXTURE };
+    fs.writeFileSync(contextFile, JSON.stringify(context, null, 2), "utf8");
 
     const result = await runbookCheck.main({
       V2_PROMOTION_ARTIFACT_DIR: dir,
@@ -505,8 +548,13 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      lineage_consistency_summary: buildLineageConsistencySummary(),
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
         warning_summary: {
           warning_n: 0,
           top_warnings: [],
@@ -577,6 +625,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      lineage_consistency_summary: buildLineageConsistencySummary(),
       submit_trace: buildWarningSubmitTrace([]),
       production_cutover_readiness_file: path.join(dir, "v2_production_cutover_readiness_latest.json"),
       production_cutover_readiness_summary: {
@@ -586,12 +635,18 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
         guard_reason: "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
         legacy_webhook_blocked: true,
       },
+      scheduler_traffic_collector_preflight_file: path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json"),
+      scheduler_traffic_collector_preflight_summary: buildSchedulerTrafficCollectorPreflightFixture(path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json")),
       scheduler_traffic_cutover_readiness_file: path.join(dir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
       scheduler_traffic_cutover_readiness_summary: {
         ...buildSchedulerTrafficCutoverReadinessFixture(),
         blocker_n: 0,
       },
       deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
         warning_summary: {
           warning_n: 0,
           top_warnings: [],
@@ -606,6 +661,7 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     });
     writeJson(dir, "v2_repair_live_cutover_readiness_latest.json", buildLiveCutoverReadinessFixture());
     writeJson(dir, "v2_production_cutover_readiness_latest.json", buildProductionCutoverReadinessFixture());
+    writeJson(dir, "v2_scheduler_traffic_collector_preflight_latest.json", buildSchedulerTrafficCollectorPreflightFixture(path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json")));
     writeJson(dir, "v2_scheduler_traffic_cutover_readiness_latest.json", buildSchedulerTrafficCutoverReadinessFixture());
 
     const result = runbookCheck.runCanaryRunbookCheck({
@@ -622,6 +678,9 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     const schedulerTrafficCutoverCheck = result.review.checks.find((row) => row.id === "CHK_24");
     assert.ok(schedulerTrafficCutoverCheck);
     assert.strictEqual(schedulerTrafficCutoverCheck.status, "PASS");
+    const schedulerTrafficCollectorCheck = result.review.checks.find((row) => row.id === "CHK_24A");
+    assert.ok(schedulerTrafficCollectorCheck);
+    assert.strictEqual(schedulerTrafficCollectorCheck.status, "PASS");
   } finally {
     try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }
@@ -674,8 +733,13 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      lineage_consistency_summary: buildLineageConsistencySummary(),
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
         warning_summary: {
           warning_n: 0,
           top_warnings: [],
@@ -809,10 +873,12 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     cloudbuildContext: {
       artifact_dir_coherence: buildArtifactDirCoherenceFixture("/tmp/PCY__TRACE__OK", "PCY__TRACE__OK"),
       lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+      lineage_consistency_summary: buildLineageConsistencySummary(),
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
         blocker_summary: {
           blocker_n: 0,
         },
@@ -951,8 +1017,13 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
       recommended_next_action: "PROCEED_WITH_SUBMIT_WRAPPER",
       recommended_next_action_reason: "deploy decision approved with no blocking families",
       recommended_next_action_reason_code: "APPROVED_NO_BLOCKING_FAMILIES",
+      lineage_consistency_summary: buildLineageConsistencySummary(),
       submit_trace: buildWarningSubmitTrace([]),
       deploy_decision_summary: {
+        lineage_contract_hash: LINEAGE_CONTRACT_FIXTURE.hash,
+        bounded_runtime_summary: {
+          lineage_contract: LINEAGE_CONTRACT_FIXTURE,
+        },
         warning_summary: {
           warning_n: 0,
           top_warnings: [],
@@ -1127,6 +1198,13 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
         },
       },
     });
+
+    const contextFile = path.join(dir, "promotion-cloudbuild-context.json");
+    const context = JSON.parse(fs.readFileSync(contextFile, "utf8"));
+    context.lineage_consistency_summary = buildLineageConsistencySummary();
+    context.deploy_decision_summary.lineage_contract_hash = LINEAGE_CONTRACT_FIXTURE.hash;
+    context.deploy_decision_summary.bounded_runtime_summary = { lineage_contract: LINEAGE_CONTRACT_FIXTURE };
+    fs.writeFileSync(contextFile, JSON.stringify(context, null, 2), "utf8");
 
     const result = await runbookCheck.main({
       V2_PROMOTION_ARTIFACT_DIR: dir,

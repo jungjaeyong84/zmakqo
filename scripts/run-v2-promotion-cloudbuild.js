@@ -222,12 +222,40 @@ const CONTEXT_SUBMIT_TRACE_FIELDS = Object.freeze({
   SUBMIT_CHK_01A: Object.freeze(["artifact_dir", "resolved_artifact_dir", "artifact_dir_coherence", "position_cycle_id"]),
   SUBMIT_CHK_06: Object.freeze(["recommended_next_action"]),
   SUBMIT_CHK_07: Object.freeze(["deploy_decision_summary.blocker_summary.blocker_n"]),
-  SUBMIT_CHK_08: Object.freeze(["lineage_contract_hash", "deploy_decision_summary.lineage_contract_hash"]),
+  SUBMIT_CHK_08: Object.freeze(["lineage_contract_hash", "deploy_decision_summary.bounded_runtime_summary.lineage_contract.hash", "lineage_consistency_summary"]),
 });
 
 function resolvePathOrNull(value) {
   const text = trimOrNull(value);
   return text ? path.resolve(text) : null;
+}
+
+function pathHasExactSegment(filePath, segment) {
+  const resolved = resolvePathOrNull(filePath);
+  const expected = trimOrNull(segment);
+  if (!resolved || !expected) return false;
+  return resolved.split(path.sep).includes(expected);
+}
+
+function buildLineageConsistencySummary({ deployDecisionSummary = null } = {}) {
+  const summary = normalizeObject(deployDecisionSummary);
+  const contextHash = trimOrNull(summary && summary.lineage_contract_hash);
+  const deployHash = trimOrNull(
+    summary
+    && summary.bounded_runtime_summary
+    && summary.bounded_runtime_summary.lineage_contract
+    && summary.bounded_runtime_summary.lineage_contract.hash
+  );
+  const hashes = Object.freeze({
+    cloudbuild_context: contextHash,
+    deploy_decision_summary: deployHash,
+  });
+  const rows = [contextHash, deployHash].filter(Boolean);
+  const ok = rows.length === 2 && rows.every((value) => value === rows[0]);
+  let reason = "LINEAGE_CONSISTENT";
+  if (rows.length < 2) reason = "LINEAGE_HASH_MISSING";
+  else if (!ok) reason = "LINEAGE_HASH_MISMATCH";
+  return Object.freeze({ ok, reason, hashes });
 }
 
 function buildArtifactDirCoherence({ plan = null, requestedDir = null, resolvedDir = null, deployDecisionSummary = null } = {}) {
@@ -250,12 +278,12 @@ function buildArtifactDirCoherence({ plan = null, requestedDir = null, resolvedD
   const artifactDirContainsPositionCycleId = !positionCycleRequired || !!(
     artifactDir &&
     positionCycleId &&
-    artifactDir.includes(positionCycleId)
+    pathHasExactSegment(artifactDir, positionCycleId)
   );
   const resolvedArtifactDirContainsPositionCycleId = !positionCycleRequired || !!(
     resolvedArtifactDir &&
     positionCycleId &&
-    resolvedArtifactDir.includes(positionCycleId)
+    pathHasExactSegment(resolvedArtifactDir, positionCycleId)
   );
   const contextCycleMatchesDeployDecision = !deployDecisionPositionCycleId || deployDecisionPositionCycleId === positionCycleId;
   const positionCyclePresent = !positionCycleRequired || !!positionCycleId;
@@ -358,7 +386,7 @@ function collectContextDeployWarningRunbookChecklist(summary) {
   return Object.freeze(Array.from(refs).sort((a, b) => Number(a) - Number(b)));
 }
 
-function buildContextSubmitTrace(summary, { artifactDirCoherence = null } = {}) {
+function buildContextSubmitTrace(summary, { artifactDirCoherence = null, lineageConsistencySummary = null } = {}) {
   const row = normalizeObject(summary);
   const artifactCoherenceOk = artifactDirCoherence && artifactDirCoherence.ok === true;
   if (!row) {
@@ -409,7 +437,9 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null } = {}) 
 
   const recommendedNextAction = buildContextRecommendedNextAction(row, artifactDirCoherence);
   const blockerSummary = normalizeObject(row.blocker_summary);
-  const lineageHash = trimOrNull(row.lineage_contract_hash);
+  const lineageConsistency = normalizeObject(lineageConsistencySummary)
+    || buildLineageConsistencySummary({ deployDecisionSummary: row });
+  const lineageOk = lineageConsistency && lineageConsistency.ok === true;
   const checks = Object.freeze([
     Object.freeze({
       id: "SUBMIT_CHK_01A",
@@ -440,12 +470,12 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null } = {}) 
     }),
     Object.freeze({
       id: "SUBMIT_CHK_08",
-      ok: !!lineageHash,
+      ok: lineageOk,
       runbook_checklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_08"),
       fields: CONTEXT_SUBMIT_TRACE_FIELDS.SUBMIT_CHK_08,
-      reason: lineageHash
-        ? "cloudbuild lineage hash present for bounded provenance trace"
-        : "cloudbuild lineage hash missing",
+      reason: lineageOk
+        ? "cloudbuild lineage hashes are consistent for bounded provenance trace"
+        : `cloudbuild lineage consistency failed: ${trimOrNull(lineageConsistency && lineageConsistency.reason) || "LINEAGE_CONSISTENCY_FAILED"}`,
     }),
   ]);
   const failedSubmitCheckIds = Object.freeze(
@@ -467,6 +497,7 @@ function buildContextSubmitTrace(summary, { artifactDirCoherence = null } = {}) 
     deploy_warning_attention_required: Number(warningSummary && warningSummary.warning_n || 0) > 0,
     deploy_warning_summary: warningSummary,
     deploy_warning_runbook_checklist: collectContextDeployWarningRunbookChecklist(row),
+    lineage_consistency_summary: lineageConsistency,
     recommended_next_action_reason_code: buildContextRecommendedNextActionReasonCode(row, artifactDirCoherence),
     checks,
   });
@@ -494,7 +525,7 @@ function deriveArtifactDir({ env = process.env, mode, positionCycleId = null }) 
     if (!positionCycleId) throw new Error("V2_PROMOTION_CLOUDBUILD_ARTIFACT_DIR_REQUIRED");
     return path.resolve("tmp", "v2-promotion-artifacts", String(mode || "unknown").toLowerCase(), positionCycleId);
   }
-  if (positionCycleId && !explicit.includes(positionCycleId)) {
+  if (positionCycleId && !pathHasExactSegment(explicit, positionCycleId)) {
     throw new Error("V2_PROMOTION_CLOUDBUILD_ARTIFACT_DIR_POSITION_CYCLE_MISMATCH");
   }
   return path.resolve(explicit);
@@ -775,7 +806,11 @@ function writeContextArtifact(plan, {
     resolvedDir,
     deployDecisionSummary,
   });
-  const contextSubmitTrace = buildContextSubmitTrace(deployDecisionSummary, { artifactDirCoherence });
+  const lineageConsistencySummary = buildLineageConsistencySummary({ deployDecisionSummary });
+  const contextSubmitTrace = buildContextSubmitTrace(deployDecisionSummary, {
+    artifactDirCoherence,
+    lineageConsistencySummary,
+  });
   writeJson(filePath, {
     mode: plan.mode,
     promotion_mode: plan.promotionMode,
@@ -785,6 +820,7 @@ function writeContextArtifact(plan, {
     resolved_artifact_dir: resolvedDir,
     artifact_dir: plan.artifactDir,
     artifact_dir_coherence: artifactDirCoherence,
+    lineage_consistency_summary: lineageConsistencySummary,
     script: plan.script,
     generated_at: new Date().toISOString(),
     final_status_line: buildStatusLine(deployDecisionSummary),
@@ -999,7 +1035,7 @@ function shouldRunCanaryRunbookReview(plan, deployApproval) {
   const artifactDir = trimOrNull(row.artifactDir);
   const decisionCycleId = trimOrNull(approval.decision && approval.decision.position_cycle_id);
   if (!artifactDir || !decisionCycleId) return false;
-  return artifactDir.includes(decisionCycleId);
+  return pathHasExactSegment(artifactDir, decisionCycleId);
 }
 
 function runCanaryRunbookReview(plan, deployApproval) {
@@ -1162,25 +1198,21 @@ function generateSchedulerTrafficCutoverReadiness(plan, deployApproval) {
   }
   const outputFile = path.join(plan.artifactDir, SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME);
   const inlineStateJson = trimOrNull(plan.effectiveEnv && plan.effectiveEnv.DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON);
-  let collectorPreflight = null;
-  let collectorPreflightFile = null;
-  if (!inlineStateJson) {
-    collectorPreflightFile = path.join(plan.artifactDir, SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME);
-    collectorPreflight = runV2SchedulerTrafficCollectorPreflight({ env: plan.effectiveEnv });
-    writeJson(collectorPreflightFile, {
-      ...collectorPreflight,
-      artifact_file: collectorPreflightFile,
-      generated_at: new Date().toISOString(),
-    });
-    if (!collectorPreflight || collectorPreflight.ok !== true) {
-      const error = new Error("V2_PROMOTION_CLOUDBUILD_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_BLOCKED");
-      error.details = collectorPreflight || null;
-      error.scheduler_traffic_collector_preflight = collectorPreflight || null;
-      error.scheduler_traffic_collector_preflight_file = collectorPreflightFile;
-      error.scheduler_traffic_cutover_readiness = null;
-      error.scheduler_traffic_cutover_readiness_file = null;
-      throw error;
-    }
+  const collectorPreflightFile = path.join(plan.artifactDir, SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME);
+  const collectorPreflight = runV2SchedulerTrafficCollectorPreflight({ env: plan.effectiveEnv });
+  writeJson(collectorPreflightFile, {
+    ...collectorPreflight,
+    artifact_file: collectorPreflightFile,
+    generated_at: new Date().toISOString(),
+  });
+  if (!collectorPreflight || collectorPreflight.ok !== true) {
+    const error = new Error("V2_PROMOTION_CLOUDBUILD_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_BLOCKED");
+    error.details = collectorPreflight || null;
+    error.scheduler_traffic_collector_preflight = collectorPreflight || null;
+    error.scheduler_traffic_collector_preflight_file = collectorPreflightFile;
+    error.scheduler_traffic_cutover_readiness = null;
+    error.scheduler_traffic_cutover_readiness_file = null;
+    throw error;
   }
   const auditEnv = inlineStateJson
     ? plan.effectiveEnv
@@ -1451,6 +1483,8 @@ if (require.main === module) {
       buildContextRecommendedNextActionReasonCode,
       buildContextBlockerFamilies,
       resolvePathOrNull,
+      pathHasExactSegment,
+      buildLineageConsistencySummary,
       buildArtifactDirCoherence,
       buildContextSubmitTrace,
       resolveExecutionMode,

@@ -24,16 +24,31 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(path.resolve(filePath), "utf8"));
 }
 
+function buildExpectedPreview(payload, filePath) {
+  return alertPreview.buildOperatorAlertPreview({
+    ok: payload && payload.approval_verification && payload.approval_verification.ok === true,
+    output_file: filePath,
+    request: payload,
+  });
+}
+
+function assertEmbeddedPreviewFresh(payload, filePath) {
+  if (!payload || !payload.operator_alert_preview) return null;
+  const embedded = payload.operator_alert_preview;
+  const expected = buildExpectedPreview(payload, filePath);
+  if (
+    trimOrNull(embedded.source_fingerprint_version) !== trimOrNull(expected.source_fingerprint_version) ||
+    trimOrNull(embedded.source_fingerprint) !== trimOrNull(expected.source_fingerprint)
+  ) {
+    throw new Error("V2_PROMOTION_OPERATOR_ALERT_PREVIEW_STALE");
+  }
+  return embedded;
+}
+
 function renderAlert(env = process.env) {
   const filePath = resolveSubmitRequestFile(env);
   const payload = readJson(filePath);
-  const preview = payload && payload.operator_alert_preview
-    ? payload.operator_alert_preview
-    : alertPreview.buildOperatorAlertPreview({
-        ok: payload && payload.approval_verification && payload.approval_verification.ok === true,
-        output_file: filePath,
-        request: payload,
-      });
+  const preview = assertEmbeddedPreviewFresh(payload, filePath) || buildExpectedPreview(payload, filePath);
   return Object.freeze({
     ok: true,
     file: filePath,
@@ -62,6 +77,8 @@ if (require.main === module) {
       trimOrNull,
       resolveSubmitRequestFile,
       readJson,
+      buildExpectedPreview,
+      assertEmbeddedPreviewFresh,
     },
   };
 }

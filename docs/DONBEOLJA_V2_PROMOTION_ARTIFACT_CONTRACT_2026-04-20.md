@@ -328,6 +328,20 @@ LIVE submit에서는 같은 line set 안에 `scheduler_traffic_ready`, `schedule
 5. `operator_alert_preview.dedupe_key`
 6. `operator_alert_preview.summary_text`
 7. `operator_alert_preview.sections[]`
+8. `operator_alert_preview.source_fingerprint_version`
+9. `operator_alert_preview.source_fingerprint`
+
+`operator_alert_preview.source_fingerprint` 는 `operator_summary` 와 `submit_trace_summary` 기준 SHA-256이어야 한다. renderer는 embedded preview가 최신 source fingerprint와 다르면 `V2_PROMOTION_OPERATOR_ALERT_PREVIEW_STALE` 로 중단한다.
+
+`SUBMIT_CHK_08` 이 실패하거나 검증되는 경우 `operator_summary.lines[]` 와 `operator_alert_preview.sections[]` 의 trace section에는 아래 lineage consistency line set이 포함돼야 한다.
+
+1. `lineage_consistency`
+2. `lineage_consistency_reason`
+3. `lineage_bounded_ok`
+4. `lineage_context_hash_match`
+5. `lineage_context_ok`
+
+즉, 최종 submit 단계는 단순 `lineage_contract_hash` 존재 여부가 아니라 bounded artifact hash, CloudBuild context hash, context `lineage_consistency_summary` 가 모두 같은 의미로 통과했는지를 운영자 메시지에서 복원 가능해야 한다.
 
 LIVE submit에서는 `operator_alert_preview.sections[]` 의 trace section에도 `live_cutover_ready`, `live_cutover_auto_apply`, `live_cutover_mutates_env`, `live_cutover_env_changes`, `live_cutover_file` 이 포함돼야 한다.
 
@@ -553,7 +567,7 @@ cloudbuild는 아래 원칙을 따른다.
 15. bounded canary/live mode에서는 `fill_sync_canonical_boundary_audit` 이 `V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_18`/runbook 25로 fail-closed 된다
 16. bounded canary/live mode에서는 `production_cutover_audit` 이 `V2_PRODUCTION_CUTOVER_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_14`/runbook 22로 fail-closed 된다
 17. LIVE mode에서는 `production_cutover_readiness_summary` 가 `V2_PRODUCTION_CUTOVER_READINESS_PASS` 와 `legacy_webhook_blocked=true` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_15`/runbook 23으로 fail-closed 된다
-18. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24로 fail-closed 된다
+18. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
 19. LIVE mode에서는 `scheduler_traffic_cutover_readiness_summary` 가 `V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run service readiness를 증명해야 하며, 위반 시 `SUBMIT_CHK_16`/runbook 24로 fail-closed 된다
 20. LIVE wrapper가 live cutover, production cutover, scheduler traffic 단계 중 어디서 실패하더라도 `promotion-cloudbuild-context.json` 은 직전까지 생성된 readiness summary와 실패 summary를 보존해야 한다
 21. wrapper가 runbook review 단계에서 실패하더라도 `promotion-cloudbuild-context.json` 은 `runbook_review_summary.ok=false`, `failed_check_ids`, `top_failed_checks[]`, `runbook_review_file` 을 보존해야 한다

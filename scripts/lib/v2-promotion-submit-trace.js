@@ -58,7 +58,7 @@ const TRACE_INDEX = Object.freeze([
   }),
   Object.freeze({
     id: "SUBMIT_CHK_17",
-    runbookChecklist: Object.freeze(["24"]),
+    runbookChecklist: Object.freeze(["24A"]),
     summary: "LIVE scheduler traffic collector preflight can read GCP state",
   }),
   Object.freeze({

@@ -20,6 +20,10 @@ function trimOrNull(value) {
   return text || null;
 }
 
+function upper(value) {
+  return String(value || "").trim().toUpperCase() || null;
+}
+
 function isEnabled(value) {
   return String(value || "0").trim() === "1";
 }
@@ -518,8 +522,14 @@ function buildApprovalEvidenceSources(plan) {
   });
 }
 
-function hasRequiredApprovalContract(contract) {
+function mustBeLiveTrue(row, field, liveRequired) {
+  if (liveRequired) return row && row[field] === true;
+  return row && typeof row[field] === "boolean";
+}
+
+function hasRequiredApprovalContract(contract, { promotionMode = null } = {}) {
   const row = normalizeObject(contract);
+  const liveRequired = upper(promotionMode) === "LIVE";
   return !!(
     row &&
     row.required === true &&
@@ -532,13 +542,13 @@ function hasRequiredApprovalContract(contract) {
     row.entry_boundary_audit_required === true &&
     row.fill_sync_canonical_boundary_audit_required === true &&
     row.production_cutover_audit_required === true &&
-    typeof row.production_cutover_readiness_summary_required === "boolean" &&
-    typeof row.scheduler_traffic_collector_preflight_summary_required === "boolean" &&
-    typeof row.scheduler_traffic_cutover_readiness_summary_required === "boolean" &&
+    mustBeLiveTrue(row, "production_cutover_readiness_summary_required", liveRequired) &&
+    mustBeLiveTrue(row, "scheduler_traffic_collector_preflight_summary_required", liveRequired) &&
+    mustBeLiveTrue(row, "scheduler_traffic_cutover_readiness_summary_required", liveRequired) &&
     row.openclaw_execution_audit_ledger_write_required === true &&
-    typeof row.repair_firestore_canary_streak_required === "boolean" &&
-    typeof row.production_entry_route_canary_streak_required === "boolean" &&
-    typeof row.live_cutover_readiness_summary_required === "boolean" &&
+    mustBeLiveTrue(row, "repair_firestore_canary_streak_required", liveRequired) &&
+    mustBeLiveTrue(row, "production_entry_route_canary_streak_required", liveRequired) &&
+    mustBeLiveTrue(row, "live_cutover_readiness_summary_required", liveRequired) &&
     row.runbook_review_pass_required === true &&
     typeof row.candidate_selection_ready_required === "boolean" &&
     typeof row.selected_preflight_required === "boolean" &&
@@ -583,6 +593,13 @@ function resolvePathOrNull(value) {
   return text ? path.resolve(text) : null;
 }
 
+function pathHasExactSegment(filePath, segment) {
+  const resolved = resolvePathOrNull(filePath);
+  const expected = trimOrNull(segment);
+  if (!resolved || !expected) return false;
+  return resolved.split(path.sep).includes(expected);
+}
+
 function hasResolvedArtifactDirCoherence({ artifactDir = null, artifacts = {}, deployDecision = null, cloudbuildContext = null } = {}) {
   const submittedArtifactDir = resolvePathOrNull(artifactDir);
   const contextArtifactDir = resolvePathOrNull(cloudbuildContext && cloudbuildContext.artifact_dir);
@@ -622,7 +639,7 @@ function hasResolvedArtifactDirCoherence({ artifactDir = null, artifacts = {}, d
     submittedArtifactDir === contextResolvedArtifactDir &&
     submittedArtifactDir === selfCheckArtifactDir &&
     submittedArtifactDir === selfCheckResolvedArtifactDir &&
-    submittedArtifactDir.includes(decisionCycleId) &&
+    pathHasExactSegment(submittedArtifactDir, decisionCycleId) &&
     contextCycleId === decisionCycleId &&
     selfCheckCycleId === decisionCycleId &&
     selfCheckDeployCycleId === decisionCycleId &&
@@ -1001,6 +1018,7 @@ function buildSubmitTraceSummary(approvalVerification) {
       scheduler_traffic_cutover_readiness_summary: null,
       runbook_review_summary: null,
       artifact_dir_coherence_summary: null,
+      lineage_consistency_summary: null,
       recommended_next_action: null,
       recommended_next_action_reason: null,
       recommended_next_action_reason_code: null,
@@ -1021,6 +1039,7 @@ function buildSubmitTraceSummary(approvalVerification) {
   const schedulerTrafficCutoverReadinessSummary = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
   const runbookReviewSummary = normalizeObject(row.runbook_review_summary);
   const artifactDirCoherenceSummary = normalizeObject(row.artifact_dir_coherence_summary);
+  const lineageConsistencySummary = normalizeObject(row.lineage_consistency_summary);
   return Object.freeze({
     required: row.required === true,
     ok: row.ok === true,
@@ -1040,6 +1059,7 @@ function buildSubmitTraceSummary(approvalVerification) {
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     runbook_review_summary: runbookReviewSummary,
     artifact_dir_coherence_summary: artifactDirCoherenceSummary,
+    lineage_consistency_summary: lineageConsistencySummary,
     recommended_next_action: trimOrNull(row.recommended_next_action),
     recommended_next_action_reason: trimOrNull(row.recommended_next_action_reason),
     recommended_next_action_reason_code: trimOrNull(row.recommended_next_action_reason_code),
@@ -1069,6 +1089,7 @@ function buildApprovalVerification(request) {
       scheduler_traffic_cutover_readiness_summary: null,
       runbook_review_summary: null,
       artifact_dir_coherence_summary: null,
+      lineage_consistency_summary: null,
       recommended_next_action: buildVerificationRecommendedAction(summary),
       recommended_next_action_reason: buildVerificationRecommendedActionReason(summary),
       recommended_next_action_reason_code: buildVerificationRecommendedActionReasonCode(summary),
@@ -1112,6 +1133,7 @@ function buildApprovalVerification(request) {
       scheduler_traffic_cutover_readiness_summary: null,
       runbook_review_summary: null,
       artifact_dir_coherence_summary: null,
+      lineage_consistency_summary: null,
       recommended_next_action: buildVerificationRecommendedAction(summary),
       recommended_next_action_reason: buildVerificationRecommendedActionReason(summary),
       recommended_next_action_reason_code: buildVerificationRecommendedActionReasonCode(summary),
@@ -1153,8 +1175,8 @@ function buildApprovalVerification(request) {
   checks.push(withDocRefs(buildVerificationCheck({
     id: "SUBMIT_CHK_01",
     label: "approval contract complete",
-    ok: hasRequiredApprovalContract(row.approval_contract),
-    reason: hasRequiredApprovalContract(row.approval_contract)
+    ok: hasRequiredApprovalContract(row.approval_contract, { promotionMode: row.promotion_mode }),
+    reason: hasRequiredApprovalContract(row.approval_contract, { promotionMode: row.promotion_mode })
       ? "approval contract contains required bounded checks"
       : "approval contract is incomplete",
     file: artifacts.deployDecision && artifacts.deployDecision.filePath,
@@ -1417,7 +1439,7 @@ function buildApprovalVerification(request) {
     }));
   }
 
-  if (row.approval_contract && row.approval_contract.scheduler_traffic_cutover_readiness_summary_required === true) {
+  if (row.approval_contract && row.approval_contract.scheduler_traffic_collector_preflight_summary_required === true) {
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_17",
       label: "LIVE scheduler traffic collector preflight can read GCP state",
@@ -1434,7 +1456,9 @@ function buildApprovalVerification(request) {
         "approval_evidence_sources.scheduler_traffic_collector_preflight_summary",
       ],
     }));
+  }
 
+  if (row.approval_contract && row.approval_contract.scheduler_traffic_cutover_readiness_summary_required === true) {
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_16",
       label: "LIVE scheduler traffic cutover uses OpenClaw cron only",
@@ -1506,23 +1530,43 @@ function buildApprovalVerification(request) {
     artifactContract: ["approval_evidence_sources.blocker_summary"],
   }));
 
-  const lineageOk = runbookCheck.__test.hasConsistentLineageContract({
+  const boundedLineageOk = runbookCheck.__test.hasConsistentLineageContract({
     preflight: artifacts.preflight && artifacts.preflight.payload,
     runtimeManifest: artifacts.runtimeManifest && artifacts.runtimeManifest.payload,
     deployDecision,
-  }) && runbookCheck.__test.hasContextLineageHashMatch({
+  });
+  const contextHashMatchesDeployDecision = runbookCheck.__test.hasContextLineageHashMatch({
     cloudbuildContext,
     deployDecision,
+  });
+  const contextLineageOk = runbookCheck.__test.hasContextLineageConsistency({
+    cloudbuildContext,
+  });
+  const lineageOk = boundedLineageOk && contextHashMatchesDeployDecision && contextLineageOk;
+  const contextLineageSummary = normalizeObject(cloudbuildContext && cloudbuildContext.lineage_consistency_summary);
+  const lineageConsistencySummary = Object.freeze({
+    ok: lineageOk,
+    reason: lineageOk
+      ? "SUBMIT_LINEAGE_CONSISTENT"
+      : (!boundedLineageOk
+        ? "BOUNDED_LINEAGE_HASH_MISMATCH"
+        : (!contextHashMatchesDeployDecision
+          ? "CLOUDBUILD_CONTEXT_DEPLOY_DECISION_LINEAGE_MISMATCH"
+          : (trimOrNull(contextLineageSummary && contextLineageSummary.reason) || "CONTEXT_LINEAGE_CONSISTENCY_FAILED"))),
+    bounded_lineage_ok: boundedLineageOk,
+    context_hash_matches_deploy_decision: contextHashMatchesDeployDecision,
+    context_lineage_ok: contextLineageOk,
+    context_summary: contextLineageSummary,
   });
   checks.push(withDocRefs(buildVerificationCheck({
     id: "SUBMIT_CHK_08",
     label: "lineage hashes consistent across bounded artifacts",
     ok: lineageOk,
     reason: lineageOk
-      ? "lineage hashes consistent across preflight manifest deploy decision and cloudbuild context"
-      : "lineage hashes are missing or mismatched",
+      ? "lineage hashes consistent across bounded artifacts and cloudbuild context lineage summary"
+      : `lineage consistency failed: ${lineageConsistencySummary.reason}`,
     file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
-    field: "lineage_contract_hash",
+    field: "lineage_consistency_summary",
   }), {
     runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_08"),
     artifactContract: [
@@ -1573,6 +1617,7 @@ function buildApprovalVerification(request) {
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
     runbook_review_summary: runbookReviewSummary,
     artifact_dir_coherence_summary: artifactDirCoherenceSummary,
+    lineage_consistency_summary: lineageConsistencySummary,
     recommended_next_action: buildVerificationRecommendedAction(summary),
     recommended_next_action_reason: buildVerificationRecommendedActionReason(summary),
     recommended_next_action_reason_code: buildVerificationRecommendedActionReasonCode(summary),
@@ -1950,8 +1995,10 @@ if (require.main === module) {
       buildOperatorSummaryResult,
       collectLineageHashes,
       resolvePathOrNull,
+      pathHasExactSegment,
       hasResolvedArtifactDirCoherence,
       buildArtifactDirCoherenceSummary,
+      mustBeLiveTrue,
       hasRequiredApprovalContract,
       normalizeObject,
       readJsonFile,

@@ -1872,3 +1872,27 @@ V1 약점 재발 방지:
 1. V1에서는 gate가 차단해도 운영자가 raw JSON 여러 개를 열어야 실제 원인을 확인하는 경우가 있었다
 2. 이번 단계는 `SUBMIT_CHK_01A` 차단 시 어느 self-check flag가 깨졌는지를 운영자 메시지 첫 화면에 올린다
 3. 따라서 V2에서는 provenance blocker가 단순한 `BLOCKED` 문구로 뭉개지지 않고, final dir drift / cycle drift / context self-check 실패가 같은 trace에서 분리된다
+
+## 2026-04-22 Submit Lineage Consistency Trace
+
+추가 증거:
+
+1. `scripts/submit-v2-promotion-cloudbuild.js`
+2. `scripts/lib/v2-promotion-operator-summary.js`
+3. `scripts/lib/v2-promotion-submit-operator-alert.js`
+4. `scripts/check-v2-promotion-submit-contract.js`
+5. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+6. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+
+판정:
+
+1. submit wrapper `SUBMIT_CHK_08` 은 이제 bounded artifact hash 일치, CloudBuild context와 deploy decision hash 일치, context `lineage_consistency_summary` 를 모두 요구한다
+2. `approval_verification.lineage_consistency_summary` 는 `bounded_lineage_ok`, `context_hash_matches_deploy_decision`, `context_lineage_ok` 를 분리해 보존한다
+3. 같은 summary는 `submit_trace_summary.lineage_consistency_summary` 로 이어지고, operator summary / alert preview trace에 `lineage_consistency`, `lineage_consistency_reason`, `lineage_bounded_ok`, `lineage_context_hash_match`, `lineage_context_ok` 로 노출된다
+4. submit contract는 이 노출 경로를 `SUBMIT_CONTRACT_CHK_45` 로 fail-closed 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 provenance mismatch가 단순 hash mismatch나 generic blocker로만 보이면 어느 레이어가 틀어졌는지 바로 알기 어려웠다
+2. 이번 단계는 context trace와 최종 submit wrapper의 `SUBMIT_CHK_08` 의미를 실제 lineage consistency로 맞췄다
+3. 따라서 V2에서는 preflight/runtime/deploy는 맞는데 CloudBuild context만 stale인 경우, 또는 context 내부 summary만 틀어진 경우를 운영자 메시지에서 분리해 볼 수 있다

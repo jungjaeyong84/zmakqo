@@ -151,9 +151,37 @@ function hasContextLineageHashMatch({ cloudbuildContext = null, deployDecision =
   return !!(contextHash && deployHash && contextHash === deployHash);
 }
 
+function hasContextLineageConsistency({ cloudbuildContext = null } = {}) {
+  const context = cloudbuildContext && typeof cloudbuildContext === "object" ? cloudbuildContext : null;
+  const deploySummary = context && context.deploy_decision_summary && typeof context.deploy_decision_summary === "object"
+    ? context.deploy_decision_summary
+    : null;
+  const summary = context && context.lineage_consistency_summary && typeof context.lineage_consistency_summary === "object"
+    ? context.lineage_consistency_summary
+    : null;
+  if (summary) return summary.ok === true;
+  const contextHash = trimOrNull(context && context.lineage_contract_hash);
+  const deploySummaryHash = trimOrNull(deploySummary && deploySummary.lineage_contract_hash);
+  const boundedHash = trimOrNull(
+    deploySummary
+    && deploySummary.bounded_runtime_summary
+    && deploySummary.bounded_runtime_summary.lineage_contract
+    && deploySummary.bounded_runtime_summary.lineage_contract.hash
+  );
+  const hashes = [contextHash, deploySummaryHash, boundedHash].filter(Boolean);
+  return hashes.length >= 2 && hashes.every((value) => value === hashes[0]);
+}
+
 function resolvePathOrNull(value) {
   const text = trimOrNull(value);
   return text ? path.resolve(text) : null;
+}
+
+function pathHasExactSegment(filePath, segment) {
+  const resolved = resolvePathOrNull(filePath);
+  const expected = trimOrNull(segment);
+  if (!resolved || !expected) return false;
+  return resolved.split(path.sep).includes(expected);
 }
 
 function hasContextArtifactDirCoherence({
@@ -201,7 +229,7 @@ function hasContextArtifactDirCoherence({
     artifactPath === contextResolvedPath &&
     artifactPath === selfCheckArtifactPath &&
     artifactPath === selfCheckResolvedPath &&
-    artifactPath.includes(expectedCycleId) &&
+    pathHasExactSegment(artifactPath, expectedCycleId) &&
     preflightCycleId === expectedCycleId &&
     manifestCycleId === expectedCycleId &&
     deployCycleId === expectedCycleId &&
@@ -267,7 +295,7 @@ function hasConsistentContextSubmitTrace({ cloudbuildContext = null } = {}) {
   const artifactDirOk = artifactDirCoherence && artifactDirCoherence.ok === true;
   const actionOk = trimOrNull(context.recommended_next_action) === "PROCEED_WITH_SUBMIT_WRAPPER";
   const blockerOk = Number(blockerSummary.blocker_n) === 0;
-  const lineageOk = !!trimOrNull(context.lineage_contract_hash);
+  const lineageOk = hasContextLineageConsistency({ cloudbuildContext: context });
   if (!artifactDirOk) failedSubmitChecks.push("SUBMIT_CHK_01A");
   if (!actionOk) failedSubmitChecks.push("SUBMIT_CHK_06");
   if (!blockerOk) failedSubmitChecks.push("SUBMIT_CHK_07");
@@ -439,6 +467,40 @@ function hasSchedulerTrafficCutoverReadinessPlan({ readiness = null, cloudbuildC
   );
 }
 
+function hasSchedulerTrafficCollectorPreflightPlan({ preflight = null, cloudbuildContext = null } = {}) {
+  const row = preflight && typeof preflight === "object" ? preflight : null;
+  const summary = cloudbuildContext && cloudbuildContext.scheduler_traffic_collector_preflight_summary
+    && typeof cloudbuildContext.scheduler_traffic_collector_preflight_summary === "object"
+    ? cloudbuildContext.scheduler_traffic_collector_preflight_summary
+    : null;
+  const contextFile = trimOrNull(cloudbuildContext && cloudbuildContext.scheduler_traffic_collector_preflight_file);
+  const artifactFile = trimOrNull(row && (row.artifact_file || row.file));
+  const summaryFile = trimOrNull(summary && summary.file);
+  return !!(
+    row &&
+    summary &&
+    row.ok === true &&
+    summary.ok === true &&
+    trimOrNull(row.reason) === "V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS" &&
+    trimOrNull(summary.reason) === "V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS" &&
+    Number(row.fail_n || 0) === 0 &&
+    Number(summary.blocker_n || 0) === 0 &&
+    trimOrNull(row.project_id) &&
+    trimOrNull(summary.project_id) === trimOrNull(row.project_id) &&
+    trimOrNull(row.region) &&
+    trimOrNull(summary.region) === trimOrNull(row.region) &&
+    Array.isArray(row.service_names) &&
+    row.service_names.length >= 2 &&
+    Array.isArray(summary.service_names) &&
+    summary.service_names.length >= 2 &&
+    artifactFile &&
+    summaryFile &&
+    contextFile &&
+    artifactFile === summaryFile &&
+    contextFile === summaryFile
+  );
+}
+
 function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts }) {
   const checks = [];
   const preflight = artifacts.preflight.payload;
@@ -449,15 +511,16 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
   const cloudbuildContext = artifacts.cloudbuildContext.payload;
   const liveCutoverReadiness = artifacts.liveCutoverReadiness && artifacts.liveCutoverReadiness.payload;
   const productionCutoverReadiness = artifacts.productionCutoverReadiness && artifacts.productionCutoverReadiness.payload;
+  const schedulerTrafficCollectorPreflight = artifacts.schedulerTrafficCollectorPreflight && artifacts.schedulerTrafficCollectorPreflight.payload;
   const schedulerTrafficCutoverReadiness = artifacts.schedulerTrafficCutoverReadiness && artifacts.schedulerTrafficCutoverReadiness.payload;
 
   checks.push(buildCheck({
     id: "CHK_01",
     label: "artifact dir contains expected position cycle id",
-    status: artifactDir.includes(expectedPositionCycleId) ? "PASS" : "FAIL",
-    reason: artifactDir.includes(expectedPositionCycleId)
+    status: pathHasExactSegment(artifactDir, expectedPositionCycleId) ? "PASS" : "FAIL",
+    reason: pathHasExactSegment(artifactDir, expectedPositionCycleId)
       ? "artifact dir is bounded by expected cycle id"
-      : "artifact dir does not contain expected cycle id",
+      : "artifact dir does not contain expected cycle id as an exact path segment",
     file: artifactDir,
     field: "path",
   }));
@@ -791,6 +854,19 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
     }));
   }
 
+  if (deployMode === "LIVE" || artifacts.schedulerTrafficCollectorPreflight) {
+    checks.push(buildCheck({
+      id: "CHK_24A",
+      label: "LIVE scheduler traffic collector preflight can read GCP state",
+      status: hasSchedulerTrafficCollectorPreflightPlan({ preflight: schedulerTrafficCollectorPreflight, cloudbuildContext }) ? "PASS" : "FAIL",
+      reason: hasSchedulerTrafficCollectorPreflightPlan({ preflight: schedulerTrafficCollectorPreflight, cloudbuildContext })
+        ? "LIVE scheduler traffic collector preflight is recorded in context and can read GCP scheduler/service state"
+        : "LIVE scheduler traffic collector preflight is missing, failed, or not traceable to context",
+      file: artifacts.schedulerTrafficCollectorPreflight ? artifacts.schedulerTrafficCollectorPreflight.filePath : path.join(artifactDir, "v2_scheduler_traffic_collector_preflight_latest.json"),
+      field: "reason,project_id,region,service_names,scheduler_traffic_collector_preflight_summary",
+    }));
+  }
+
   if (deployMode === "LIVE" || artifacts.schedulerTrafficCutoverReadiness) {
     checks.push(buildCheck({
       id: "CHK_24",
@@ -838,6 +914,7 @@ function runCanaryRunbookCheck(env = process.env) {
     cloudbuildContext: readRequiredArtifact(artifactDir, "promotion-cloudbuild-context.json"),
     liveCutoverReadiness: readOptionalArtifact(artifactDir, "v2_repair_live_cutover_readiness_latest.json"),
     productionCutoverReadiness: readOptionalArtifact(artifactDir, "v2_production_cutover_readiness_latest.json"),
+    schedulerTrafficCollectorPreflight: readOptionalArtifact(artifactDir, "v2_scheduler_traffic_collector_preflight_latest.json"),
     schedulerTrafficCutoverReadiness: readOptionalArtifact(artifactDir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
   });
   const review = evaluateRunbookReview({
@@ -908,7 +985,9 @@ if (require.main === module) {
       hasCandidateSelectionContract,
       hasConsistentLineageContract,
       hasContextLineageHashMatch,
+      hasContextLineageConsistency,
       resolvePathOrNull,
+      pathHasExactSegment,
       hasContextArtifactDirCoherence,
       normalizeWarnings,
       normalizeArray,
@@ -917,6 +996,7 @@ if (require.main === module) {
       collectExpectedWarningRunbookChecklist,
       hasLiveCutoverReadinessPlan,
       hasProductionCutoverReadinessPlan,
+      hasSchedulerTrafficCollectorPreflightPlan,
       hasSchedulerTrafficCutoverReadinessPlan,
       evaluateRunbookReview,
     },

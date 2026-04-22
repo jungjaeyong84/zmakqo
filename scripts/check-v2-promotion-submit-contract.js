@@ -18,6 +18,8 @@ const FILES = Object.freeze({
   submitTrace: path.resolve(__dirname, "lib", "v2-promotion-submit-trace.js"),
   renderScript: path.resolve(__dirname, "render-v2-promotion-submit-operator-alert.js"),
   sendScript: path.resolve(__dirname, "send-v2-promotion-submit-operator-alert.js"),
+  packageJson: path.resolve(__dirname, "..", "package.json"),
+  cloudbuild: path.resolve(__dirname, "..", "cloudbuild.yaml"),
 });
 
 function trimOrNull(value) {
@@ -53,6 +55,13 @@ function buildFormatterFixtureResult() {
         alert_retry_summary: null,
         failed_submit_check_ids: ["SUBMIT_CHK_08"],
         failed_runbook_checklist: ["16", "17"],
+        lineage_consistency_summary: {
+          ok: false,
+          reason: "CLOUDBUILD_CONTEXT_DEPLOY_DECISION_LINEAGE_MISMATCH",
+          bounded_lineage_ok: true,
+          context_hash_matches_deploy_decision: false,
+          context_lineage_ok: true,
+        },
         recommended_next_action: "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
         recommended_next_action_reason: "bounded lineage or approval contract integrity failed",
         recommended_next_action_reason_code: "PROVENANCE_OR_CONTRACT_BLOCKER",
@@ -284,7 +293,34 @@ function evaluateSubmitContract() {
   const cloudbuildWrapperText = readText(FILES.cloudbuildWrapper);
   const submitWrapperText = readText(FILES.submitWrapper);
   const submitTraceText = readText(FILES.submitTrace);
+  const packageJsonText = readText(FILES.packageJson);
+  const cloudbuildText = readText(FILES.cloudbuild);
+  const operatorSummaryText = readText(SHARED_FORMATTER_MODULE_PATH);
   const summary = buildFormatterFixtureResult();
+  const summaryPreview = operatorAlertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/fake-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__OPS__01",
+      submit_trace_summary: {
+        ok: false,
+        primary_blocker_family: "PROVENANCE",
+        failed_submit_check_ids: ["SUBMIT_CHK_08"],
+        failed_runbook_checklist: ["16", "17"],
+        lineage_consistency_summary: {
+          ok: false,
+          reason: "CLOUDBUILD_CONTEXT_DEPLOY_DECISION_LINEAGE_MISMATCH",
+          bounded_lineage_ok: true,
+          context_hash_matches_deploy_decision: false,
+          context_lineage_ok: true,
+        },
+      },
+      operator_summary: summary,
+    },
+  });
+  const alertPreviewTraceLines = Array.isArray(summaryPreview.sections && summaryPreview.sections[1] && summaryPreview.sections[1].lines)
+    ? summaryPreview.sections[1].lines
+    : [];
   const liveCutoverSummary = buildLiveCutoverFormatterFixtureResult();
   const liveCutoverPreview = buildLiveCutoverAlertPreviewFixtureResult();
   const liveCutoverPreviewTraceLines = Array.isArray(liveCutoverPreview.sections && liveCutoverPreview.sections[1] && liveCutoverPreview.sections[1].lines)
@@ -337,6 +373,41 @@ function evaluateSubmitContract() {
   )
     ? artifactDirCoherencePreview.sections[1].lines
     : [];
+  const staleSourceTrace = {
+    ok: false,
+    failed_submit_check_ids: ["SUBMIT_CHK_08"],
+    failed_runbook_checklist: ["16", "17"],
+    primary_blocker_family: "PROVENANCE",
+  };
+  const staleSourceSummary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/fingerprint-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__FINGERPRINT__01",
+      submit_trace_summary: staleSourceTrace,
+    },
+  });
+  const staleSourcePreview = operatorAlertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/fingerprint-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__FINGERPRINT__01",
+      submit_trace_summary: staleSourceTrace,
+      operator_summary: staleSourceSummary,
+    },
+  });
+  const changedSourcePreview = operatorAlertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/fingerprint-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__FINGERPRINT__01",
+      submit_trace_summary: {
+        ...staleSourceTrace,
+        failed_submit_check_ids: ["SUBMIT_CHK_01A"],
+      },
+      operator_summary: staleSourceSummary,
+    },
+  });
   const checks = [
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_01",
@@ -413,6 +484,11 @@ function evaluateSubmitContract() {
         "artifact_dir_coherence_reason=NONE",
         "artifact_dir_coherence_flags=N/A",
         "artifact_dir_coherence_file=NONE",
+        "lineage_consistency=FAIL",
+        "lineage_consistency_reason=CLOUDBUILD_CONTEXT_DEPLOY_DECISION_LINEAGE_MISMATCH",
+        "lineage_bounded_ok=YES",
+        "lineage_context_hash_match=NO",
+        "lineage_context_ok=YES",
         "failed_submit_checks=SUBMIT_CHK_08",
         "runbook_checklist=16,17",
         "next_action=DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
@@ -457,6 +533,11 @@ function evaluateSubmitContract() {
         "artifact_dir_coherence_reason=NONE",
         "artifact_dir_coherence_flags=N/A",
         "artifact_dir_coherence_file=NONE",
+        "lineage_consistency=FAIL",
+        "lineage_consistency_reason=CLOUDBUILD_CONTEXT_DEPLOY_DECISION_LINEAGE_MISMATCH",
+        "lineage_bounded_ok=YES",
+        "lineage_context_hash_match=NO",
+        "lineage_context_ok=YES",
         "failed_submit_checks=SUBMIT_CHK_08",
         "runbook_checklist=16,17",
         "next_action=DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT",
@@ -699,10 +780,10 @@ function evaluateSubmitContract() {
     buildCheck({
       id: "SUBMIT_CONTRACT_CHK_21",
       label: "runbook maps LIVE scheduler traffic collector preflight submit check",
-      ok: runbookText.includes("| `SUBMIT_CHK_17` | `24` | LIVE scheduler traffic collector preflight can read GCP state |"),
-      reason: runbookText.includes("| `SUBMIT_CHK_17` | `24` | LIVE scheduler traffic collector preflight can read GCP state |")
-        ? "runbook reverse index maps SUBMIT_CHK_17 to checklist 24"
-        : "runbook must map SUBMIT_CHK_17 to checklist 24",
+      ok: runbookText.includes("| `SUBMIT_CHK_17` | `24A` | LIVE scheduler traffic collector preflight can read GCP state |"),
+      reason: runbookText.includes("| `SUBMIT_CHK_17` | `24A` | LIVE scheduler traffic collector preflight can read GCP state |")
+        ? "runbook reverse index maps SUBMIT_CHK_17 to checklist 24A"
+        : "runbook must map SUBMIT_CHK_17 to checklist 24A",
       file: FILES.runbook,
     }),
     buildCheck({
@@ -963,6 +1044,106 @@ function evaluateSubmitContract() {
         ? "operator summary and alert preserve SUBMIT_CHK_01A artifact dir coherence reason and flags"
         : "operator summary and alert must preserve SUBMIT_CHK_01A artifact dir coherence reason and flags",
       file: SHARED_FORMATTER_MODULE_PATH,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_39",
+      label: "package and CloudBuild require V2 promotion test path",
+      ok: packageJsonText.includes('"test:v2-promotion"')
+        && packageJsonText.includes("check:v2-promotion-submit-contract")
+        && cloudbuildText.includes("npm run test:v2-promotion"),
+      reason: packageJsonText.includes('"test:v2-promotion"')
+        && packageJsonText.includes("check:v2-promotion-submit-contract")
+        && cloudbuildText.includes("npm run test:v2-promotion")
+        ? "package and CloudBuild execute the V2 promotion regression path"
+        : "package.json and cloudbuild.yaml must require test:v2-promotion",
+      file: FILES.packageJson,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_40",
+      label: "LIVE approval contract flags require true values",
+      ok: submitWrapperText.includes("mustBeLiveTrue")
+        && submitWrapperText.includes("upper(promotionMode) === \"LIVE\"")
+        && submitWrapperText.includes("scheduler_traffic_collector_preflight_summary_required")
+        && submitWrapperText.includes("production_entry_route_canary_streak_required"),
+      reason: submitWrapperText.includes("mustBeLiveTrue")
+        && submitWrapperText.includes("upper(promotionMode) === \"LIVE\"")
+        ? "submit wrapper enforces true-valued LIVE required approval flags"
+        : "submit wrapper must not accept false boolean LIVE required flags",
+      file: FILES.submitWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_41",
+      label: "artifact dir cycle checks use exact path segment matching",
+      ok: cloudbuildWrapperText.includes("function pathHasExactSegment")
+        && runbookCheckerText.includes("function pathHasExactSegment")
+        && submitWrapperText.includes("function pathHasExactSegment")
+        && !cloudbuildWrapperText.includes(".includes(positionCycleId)")
+        && !cloudbuildWrapperText.includes(".includes(decisionCycleId)")
+        && !submitWrapperText.includes(".includes(decisionCycleId)")
+        && !runbookCheckerText.includes(".includes(expectedCycleId)")
+        && !runbookCheckerText.includes(".includes(expectedPositionCycleId)"),
+      reason: cloudbuildWrapperText.includes("function pathHasExactSegment")
+        && runbookCheckerText.includes("function pathHasExactSegment")
+        && submitWrapperText.includes("function pathHasExactSegment")
+        ? "cloudbuild, runbook, and submit checks use exact path segment matching"
+        : "cycle-bound artifact dir validation must reject substring-only matches",
+      file: FILES.cloudbuildWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_42",
+      label: "operator alert preview has stale-source fingerprint",
+      ok: staleSourcePreview.source_fingerprint_version === "V2_PROMOTION_OPERATOR_ALERT_PREVIEW_SHA256_V1"
+        && trimOrNull(staleSourcePreview.source_fingerprint)
+        && staleSourcePreview.source_fingerprint !== changedSourcePreview.source_fingerprint
+        && readText(FILES.renderScript).includes("V2_PROMOTION_OPERATOR_ALERT_PREVIEW_STALE"),
+      reason: staleSourcePreview.source_fingerprint_version === "V2_PROMOTION_OPERATOR_ALERT_PREVIEW_SHA256_V1"
+        && trimOrNull(staleSourcePreview.source_fingerprint)
+        && staleSourcePreview.source_fingerprint !== changedSourcePreview.source_fingerprint
+        ? "operator preview fingerprint changes when source trace changes and renderer rejects stale previews"
+        : "operator preview must carry source fingerprint and renderer must reject stale embedded previews",
+      file: SHARED_ALERT_PREVIEW_MODULE_PATH,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_43",
+      label: "runbook verifier has separate LIVE scheduler collector preflight check",
+      ok: runbookCheckerText.includes("CHK_24A")
+        && runbookCheckerText.includes("hasSchedulerTrafficCollectorPreflightPlan")
+        && runbookText.includes("| 24A | `SUBMIT_CHK_17`")
+        && submitTraceText.includes("runbookChecklist: Object.freeze([\"24A\"])"),
+      reason: runbookCheckerText.includes("CHK_24A")
+        && runbookText.includes("| 24A | `SUBMIT_CHK_17`")
+        ? "collector preflight is independently verified and trace-linked to SUBMIT_CHK_17"
+        : "runbook verifier must independently validate collector preflight as CHK_24A",
+      file: FILES.runbookChecker,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_44",
+      label: "context SUBMIT_CHK_08 uses lineage consistency summary",
+      ok: cloudbuildWrapperText.includes("lineage_consistency_summary")
+        && cloudbuildWrapperText.includes("buildLineageConsistencySummary")
+        && runbookCheckerText.includes("hasContextLineageConsistency")
+        && !cloudbuildWrapperText.includes("cloudbuild lineage hash present for bounded provenance trace"),
+      reason: cloudbuildWrapperText.includes("lineage_consistency_summary")
+        && runbookCheckerText.includes("hasContextLineageConsistency")
+        ? "context SUBMIT_CHK_08 is tied to lineage consistency instead of hash presence"
+        : "context SUBMIT_CHK_08 must fail on lineage inconsistency, not only missing hash",
+      file: FILES.cloudbuildWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_45",
+      label: "submit SUBMIT_CHK_08 exposes lineage consistency to operator trace",
+      ok: submitWrapperText.includes("context_hash_matches_deploy_decision")
+        && submitWrapperText.includes("hasContextLineageConsistency")
+        && submitWrapperText.includes("field: \"lineage_consistency_summary\"")
+        && operatorSummaryText.includes("lineage_consistency=")
+        && operatorSummaryText.includes("lineage_context_hash_match=")
+        && alertPreviewTraceLines.includes("lineage_consistency=FAIL")
+        && alertPreviewTraceLines.includes("lineage_context_hash_match=NO"),
+      reason: submitWrapperText.includes("context_hash_matches_deploy_decision")
+        && operatorSummaryText.includes("lineage_consistency=")
+        ? "submit wrapper and operator preview surface the real lineage consistency verdict"
+        : "submit SUBMIT_CHK_08 must not hide lineage consistency details from operator trace",
+      file: FILES.submitWrapper,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
