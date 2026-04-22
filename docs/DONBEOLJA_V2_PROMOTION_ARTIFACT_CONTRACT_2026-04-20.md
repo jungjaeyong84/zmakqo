@@ -115,6 +115,8 @@ optional review artifact:
 
 `bounded_runtime_summary.exit_runtime_canary_streak` 는 단일 latest 파일이 아니라 24시간 Firestore-backed 장기 실행 증거여야 한다. 원천 producer는 `run:v2-exit-runtime-canary` 이고, 이 producer는 `ACTIVE_PROTECTED` cycle을 bounded query로만 읽으며 `exchange_write_performed=false` 를 반드시 보존해야 한다. LIVE mode에서는 `reason=V2_EXIT_RUNTIME_CANARY_STREAK_PASS`, `history_source=FIRESTORE`, `coverage_minutes >= 1440`, `latest_age_minutes <= max_gap_minutes`, `max_observed_gap_minutes <= max_gap_minutes`, `artifact_generated_age_minutes <= max_gap_minutes`, `tp1_missing_n=0`, `native_refresh_unhealthy_n=0`, `unprotected_window_violation_n=0`, `alert_silent_drop_n=0`, `blockers=[]` 를 모두 만족해야 한다.
 
+`bounded_runtime_summary.exit_runtime_canary_streak` 도 streak 판정만으로 충분하지 않다. promotion CI의 `test:v2-promotion` 은 `v2-exit-runtime-canary-history.test.js` 를 실행해 exit runtime canary가 durable history에 append되고 `history_source=FIRESTORE` 로 읽히는 계약, `exchange_write_performed=false`, secret-leak guard를 같이 검증해야 한다. 이는 TP1 missing, native refresh unhealthy, 무보호 구간, silent alert drop 관측 producer가 CI 밖에서 조용히 깨지는 V1식 운영 공백을 차단하기 위한 계약이다.
+
 stale artifact provenance는 일반 bounded runtime 누락과 분리되어야 한다. 여기서 stale은 파일 경로 mismatch뿐 아니라 `generated_at`/`artifact_generated_at` 누락 또는 `artifact_generated_age_minutes` 초과를 포함한다. `DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:*` blocker가 있으면 `blocker_summary.has_stale_artifact_provenance_blocker=true`, `submit_trace.blocker_families` 에 `STALE_ARTIFACT_PROVENANCE`, `recommended_next_action_reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER`, `final_status_line` 에 `stale_artifact=BLOCKED` 가 남아야 한다.
 
 최소 포함 항목:

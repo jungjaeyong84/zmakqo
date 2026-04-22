@@ -1513,6 +1513,22 @@ function evaluateSubmitContract() {
         : "V2 promotion must not allow TP0/P0 exit contract names to re-enter V2 production source",
       file: path.resolve(__dirname, "..", "src", "v2", "entryBoundaryAudit.js"),
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_59",
+      label: "promotion CI requires exit runtime canary history contract",
+      ok: packageJsonText.includes('"test:v2-exit-runtime-canary-history": "node src/tests/v2-exit-runtime-canary-history.test.js"')
+        && packageJsonText.includes("npm run test:v2-exit-runtime-canary-history")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-exit-runtime-canary-history.test.js")).includes("enabledWriteUsesV2PrefixedCollectionAndCanBeLoaded")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-exit-runtime-canary-history.test.js")).includes("secretLeakGuardRejectsSuspiciousArtifacts")
+        && artifactContractText.includes("v2-exit-runtime-canary-history.test.js")
+        && artifactContractText.includes("secret-leak guard")
+        && runbookText.includes("v2-exit-runtime-canary-history.test.js")
+        && runbookText.includes("test:v2-exit-runtime-canary-history"),
+      reason: packageJsonText.includes("npm run test:v2-exit-runtime-canary-history")
+        ? "promotion CI now checks exit runtime canary history append/source and secret-leak contracts before accepting 24h streak evidence"
+        : "promotion CI must not accept 24h exit runtime streak evidence without running the durable history append/source contract",
+      file: path.resolve(__dirname, "..", "src", "tests", "v2-exit-runtime-canary-history.test.js"),
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
