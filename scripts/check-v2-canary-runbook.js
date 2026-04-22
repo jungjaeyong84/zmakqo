@@ -268,6 +268,7 @@ function buildExpectedContextBlockerFamilies(blockerSummary) {
   if (!row) return [];
   const families = [];
   if (row.has_provenance_blocker === true) families.push("PROVENANCE");
+  if (row.has_stale_artifact_provenance_blocker === true) families.push("STALE_ARTIFACT_PROVENANCE");
   if (row.has_candidate_selection_blocker === true) families.push("CANDIDATE_SELECTION");
   if (row.has_production_entry_protected_canary_blocker === true) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker === true) families.push("BOUNDED_RUNTIME");

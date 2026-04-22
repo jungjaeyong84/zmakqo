@@ -55,6 +55,7 @@ function summarizeBlockers(blockers) {
     blocker_n: normalized.length,
     top_blockers: normalized.slice(0, 3),
     has_provenance_blocker: normalized.some((row) => row.includes("PROVENANCE:")),
+    has_stale_artifact_provenance_blocker: normalized.some((row) => row.includes("STALE_ARTIFACT_PROVENANCE")),
     has_watchdog_blocker: normalized.some((row) => row.includes("WATCHDOG")),
     has_candidate_selection_blocker: normalized.some((row) => row.includes("CANDIDATE_SELECTION")),
     has_bounded_runtime_blocker: normalized.some((row) => row.includes("BOUNDED_RUNTIME") || row.includes("EVIDENCE_SNAPSHOT")),
@@ -133,6 +134,9 @@ function buildStatusLine(summary) {
   if (blockerSummary && blockerSummary.has_production_entry_protected_canary_blocker === true) {
     parts.push("protected_entry_canary=BLOCKED");
   }
+  if (blockerSummary && blockerSummary.has_stale_artifact_provenance_blocker === true) {
+    parts.push("stale_artifact=BLOCKED");
+  }
   if (topBlockers.length) parts.push(`top=${topBlockers.join("|")}`);
   const warningSummary = normalizeObject(row.warning_summary);
   const topWarnings = Array.isArray(warningSummary && warningSummary.top_warnings)
@@ -149,6 +153,9 @@ function buildRecommendedNextAction(summary) {
   const blockerSummary = normalizeObject(row.blocker_summary);
   if (blockerSummary && blockerSummary.has_provenance_blocker) {
     return "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT";
+  }
+  if (blockerSummary && blockerSummary.has_stale_artifact_provenance_blocker) {
+    return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
   }
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
     return "RECHECK_SELECTED_POSITION_CYCLE_AND_RERUN_CANARY_FLOW";
@@ -181,6 +188,9 @@ function buildRecommendedNextActionReason(summary) {
   if (blockerSummary && blockerSummary.has_provenance_blocker) {
     return "provenance blocker detected; bounded artifact lineage is not trustworthy";
   }
+  if (blockerSummary && blockerSummary.has_stale_artifact_provenance_blocker) {
+    return "stale artifact provenance blocker detected; required canary or streak evidence is not from the current artifact cycle";
+  }
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
     return "candidate selection blocker detected; selected cycle and approved cycle must be revalidated";
   }
@@ -209,6 +219,9 @@ function buildRecommendedNextActionReasonCode(summary) {
   const blockerSummary = normalizeObject(row.blocker_summary);
   if (blockerSummary && blockerSummary.has_provenance_blocker) {
     return "PROVENANCE_BLOCKER";
+  }
+  if (blockerSummary && blockerSummary.has_stale_artifact_provenance_blocker) {
+    return "STALE_ARTIFACT_PROVENANCE_BLOCKER";
   }
   if (blockerSummary && blockerSummary.has_candidate_selection_blocker) {
     return "CANDIDATE_SELECTION_BLOCKER";
@@ -367,6 +380,7 @@ function buildContextBlockerFamilies(summary) {
   if (!row) return Object.freeze([]);
   const families = [];
   if (row.has_provenance_blocker) families.push("PROVENANCE");
+  if (row.has_stale_artifact_provenance_blocker) families.push("STALE_ARTIFACT_PROVENANCE");
   if (row.has_candidate_selection_blocker) families.push("CANDIDATE_SELECTION");
   if (row.has_production_entry_protected_canary_blocker) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker) families.push("BOUNDED_RUNTIME");

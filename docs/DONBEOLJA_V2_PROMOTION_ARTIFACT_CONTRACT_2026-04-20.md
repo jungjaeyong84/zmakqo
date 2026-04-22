@@ -109,6 +109,8 @@ optional review artifact:
 
 `bounded_runtime_summary.repair_firestore_canary_streak` 와 `bounded_runtime_summary.production_entry_route_canary_streak` 도 동일하게 현재 artifact cycle provenance를 포함해야 한다. LIVE deploy decision은 각각 `v2_repair_queue_firestore_canary_streak_latest.json`, `v2_production_entry_route_canary_streak_latest.json` 파일명이 현재 artifact dir과 1:1로 맞지 않으면 fail-closed 해야 한다.
 
+stale artifact provenance는 일반 bounded runtime 누락과 분리되어야 한다. `DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:*` blocker가 있으면 `blocker_summary.has_stale_artifact_provenance_blocker=true`, `submit_trace.blocker_families` 에 `STALE_ARTIFACT_PROVENANCE`, `recommended_next_action_reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER`, `final_status_line` 에 `stale_artifact=BLOCKED` 가 남아야 한다.
+
 최소 포함 항목:
 
 1. `relevant_submit_check_ids`
@@ -142,9 +144,10 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 2. `top_blockers`
 3. `has_provenance_blocker`
 4. `has_watchdog_blocker`
-5. `has_candidate_selection_blocker`
-6. `has_bounded_runtime_blocker`
-7. `has_production_entry_protected_canary_blocker`
+5. `has_stale_artifact_provenance_blocker`
+6. `has_candidate_selection_blocker`
+7. `has_bounded_runtime_blocker`
+8. `has_production_entry_protected_canary_blocker`
 
 `promotion-cloudbuild-submit-request.json` 에도 runbook review 정책이 같이 남아야 한다.
 

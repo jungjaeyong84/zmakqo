@@ -458,6 +458,50 @@ function hasProductionEntryProtectedCanary(summary) {
   );
 }
 
+function hasStaleArtifactProvenance(row, expectedFilename) {
+  const artifact = normalizeObject(row);
+  const filename = trimOrNull(expectedFilename);
+  if (!artifact || !filename) return false;
+  const hasArtifactFields = !!(
+    trimOrNull(artifact.artifact_file) ||
+    trimOrNull(artifact.artifact_dir) ||
+    trimOrNull(artifact.artifact_filename) ||
+    Object.prototype.hasOwnProperty.call(artifact, "artifact_current_dir_match")
+  );
+  if (!hasArtifactFields) return false;
+  return !(
+    trimOrNull(artifact.artifact_filename) === filename &&
+    !!trimOrNull(artifact.artifact_file) &&
+    !!trimOrNull(artifact.artifact_dir) &&
+    artifact.artifact_current_dir_match === true
+  );
+}
+
+function collectStaleArtifactProvenanceBlockers(summary, { mode = null } = {}) {
+  const row = normalizeObject(summary);
+  if (!row || !["CANARY", "LIVE"].includes(mode || "")) return [];
+  const blockers = [];
+  if (mode === "LIVE" && hasStaleArtifactProvenance(
+    row.repair_firestore_canary_streak,
+    "v2_repair_queue_firestore_canary_streak_latest.json"
+  )) {
+    blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK");
+  }
+  if (mode === "LIVE" && hasStaleArtifactProvenance(
+    row.production_entry_route_canary_streak,
+    "v2_production_entry_route_canary_streak_latest.json"
+  )) {
+    blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK");
+  }
+  if (hasStaleArtifactProvenance(
+    row.production_entry_protected_canary,
+    "v2_production_entry_protected_canary_latest.json"
+  )) {
+    blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_PROTECTED_CANARY");
+  }
+  return blockers;
+}
+
 function hasExactCandidateSnapshotCounts(summary) {
   const row = normalizeObject(summary);
   const selectedPreflight = normalizeObject(row && row.selected_preflight);
@@ -617,6 +661,7 @@ function buildDeployDecision(unifiedReport, {
   if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionLiveEntrySizingContract(productionCutoverAudit)) {
     blockers.push("DEPLOY_DECISION:V2_PRODUCTION_LIVE_ENTRY_SIZING_CONTRACT_REQUIRED");
   }
+  blockers.push(...collectStaleArtifactProvenanceBlockers(boundedRuntimeSummary, { mode }));
   if (mode === "LIVE" && !hasRepairFirestoreCanaryStreak(boundedRuntimeSummary)) {
     blockers.push("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED");
   }
@@ -774,6 +819,8 @@ if (require.main === module) {
       hasRepairFirestoreCanaryStreak,
       hasProductionEntryRouteCanaryStreak,
       hasProductionEntryProtectedCanary,
+      hasStaleArtifactProvenance,
+      collectStaleArtifactProvenanceBlockers,
       buildAlertRetrySummary,
       hasAlertRetryAttention,
       hasExactCandidateSnapshotCounts,

@@ -601,16 +601,45 @@ function seedRunbookArtifacts(dir, cycleId) {
       "REPLAY:WATCHDOG_FAIL:WATCHDOG_ISSUES_PRESENT:TERMINAL_PROJECTION_MISMATCH",
       "DEPLOY_DECISION:BOUNDED_RUNTIME_SUMMARY_REQUIRED",
       "DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED",
+      "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK",
     ],
     warnings: [],
   });
-  assert.strictEqual(summary.blocker_summary.blocker_n, 5);
+  assert.strictEqual(summary.blocker_summary.blocker_n, 6);
   assert.strictEqual(summary.blocker_summary.top_blockers.length, 3);
   assert.strictEqual(summary.blocker_summary.has_provenance_blocker, true);
+  assert.strictEqual(summary.blocker_summary.has_stale_artifact_provenance_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_watchdog_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_candidate_selection_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_bounded_runtime_blocker, true);
   assert.strictEqual(summary.blocker_summary.has_production_entry_protected_canary_blocker, true);
+})();
+
+(function staleArtifactProvenanceBlockerHasSpecificCloudbuildAction() {
+  const decision = {
+    approved: false,
+    blocker_summary: {
+      blocker_n: 1,
+      has_provenance_blocker: false,
+      has_stale_artifact_provenance_blocker: true,
+      has_candidate_selection_blocker: false,
+      has_production_entry_protected_canary_blocker: false,
+      has_bounded_runtime_blocker: false,
+      has_watchdog_blocker: false,
+    },
+  };
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextAction(decision),
+    "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE"
+  );
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextActionReasonCode(decision),
+    "STALE_ARTIFACT_PROVENANCE_BLOCKER"
+  );
+  assert.deepStrictEqual(
+    cloudbuild.__test.buildContextBlockerFamilies(decision.blocker_summary),
+    ["STALE_ARTIFACT_PROVENANCE"]
+  );
 })();
 
 (function protectedEntryCanaryBlockerHasSpecificCloudbuildAction() {
@@ -720,6 +749,22 @@ function seedRunbookArtifacts(dir, cycleId) {
   });
   assert.ok(statusLine.includes("protected_entry_canary=BLOCKED"));
   assert.ok(statusLine.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED"));
+})();
+
+(function statusLineSurfacesStaleArtifactProvenanceBlocker() {
+  const statusLine = cloudbuild.__test.buildStatusLine({
+    approved: false,
+    decision: "HOLD",
+    position_cycle_id: "PCY__READ__STALE_ARTIFACT",
+    blocker_n: 1,
+    warning_n: 0,
+    blocker_summary: {
+      top_blockers: ["DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK"],
+      has_stale_artifact_provenance_blocker: true,
+    },
+  });
+  assert.ok(statusLine.includes("stale_artifact=BLOCKED"));
+  assert.ok(statusLine.includes("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK"));
 })();
 
 (function statusLineShowsAlertAttentionWithoutChangingApproval() {

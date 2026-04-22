@@ -477,6 +477,9 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     artifact_current_dir_match: false,
   };
   assert.strictEqual(deployDecision.__test.hasRepairFirestoreCanaryStreak(bounded), false);
+  assert.deepStrictEqual(deployDecision.__test.collectStaleArtifactProvenanceBlockers(bounded, { mode: "LIVE" }), [
+    "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK",
+  ]);
   const decision = deployDecision.__test.buildDeployDecision({
     pass: true,
     mode: "LIVE",
@@ -499,6 +502,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     warnings: [],
   });
   assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:REPAIR_FIRESTORE_CANARY_STREAK"));
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
 })();
 
@@ -643,6 +647,9 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     artifact_current_dir_match: false,
   };
   assert.strictEqual(deployDecision.__test.hasProductionEntryRouteCanaryStreak(bounded), false);
+  assert.deepStrictEqual(deployDecision.__test.collectStaleArtifactProvenanceBlockers(bounded, { mode: "LIVE" }), [
+    "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK",
+  ]);
   const decision = deployDecision.__test.buildDeployDecision({
     pass: true,
     mode: "LIVE",
@@ -665,6 +672,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
     warnings: [],
   });
   assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK"));
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED"));
 })();
 

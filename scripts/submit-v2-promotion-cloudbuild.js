@@ -97,6 +97,13 @@ function buildVerificationSummary(checks) {
     .filter(Boolean)
     .slice(0, 3);
   const hasProvenanceBlocker = ids.some((id) => ["SUBMIT_CHK_01", "SUBMIT_CHK_01A", "SUBMIT_CHK_08"].includes(id));
+  const deployBlockers = rows
+    .map((row) => trimOrNull(row && row.reason))
+    .filter(Boolean);
+  const hasStaleArtifactProvenanceBlocker = deployBlockers.some((row) => (
+    row.toUpperCase().includes("STALE_ARTIFACT_PROVENANCE") ||
+    row.toUpperCase().includes("STALE ARTIFACT PROVENANCE")
+  ));
   const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19", "SUBMIT_CHK_20A"].includes(id));
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
@@ -112,6 +119,7 @@ function buildVerificationSummary(checks) {
     blocker_n: failed.length,
     top_failures: topFailures,
     has_provenance_blocker: hasProvenanceBlocker,
+    has_stale_artifact_provenance_blocker: hasStaleArtifactProvenanceBlocker,
     has_bounded_runtime_blocker: hasBoundedRuntimeBlocker,
     has_entry_boundary_blocker: hasEntryBoundaryBlocker,
     has_fill_sync_canonical_boundary_blocker: hasFillSyncCanonicalBoundaryBlocker,
@@ -130,6 +138,7 @@ function buildVerificationRecommendedAction(summary) {
   const row = normalizeObject(summary);
   if (!row || Number(row.blocker_n) === 0) return "PROCEED_WITH_SUBMIT_WRAPPER";
   if (row.has_provenance_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FROM_PREFLIGHT";
+  if (row.has_stale_artifact_provenance_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
   if (row.has_production_entry_protected_canary_blocker) return "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_bounded_runtime_blocker) return "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_entry_boundary_blocker) return "FIX_V2_ENTRY_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
@@ -151,6 +160,9 @@ function buildVerificationRecommendedActionReason(summary) {
   }
   if (row.has_provenance_blocker) {
     return "bounded lineage or approval contract integrity failed";
+  }
+  if (row.has_stale_artifact_provenance_blocker) {
+    return "required canary or streak evidence is stale and must be regenerated in the current artifact cycle";
   }
   if (row.has_production_entry_protected_canary_blocker) {
     return "protected entry canary failed; production entry must prove SL and TP1 protection before submit";
@@ -195,6 +207,9 @@ function buildVerificationRecommendedActionReasonCode(summary) {
   }
   if (row.has_provenance_blocker) {
     return "PROVENANCE_OR_CONTRACT_BLOCKER";
+  }
+  if (row.has_stale_artifact_provenance_blocker) {
+    return "STALE_ARTIFACT_PROVENANCE_BLOCKER";
   }
   if (row.has_production_entry_protected_canary_blocker) {
     return "PROTECTED_ENTRY_CANARY_BLOCKER";
@@ -712,6 +727,7 @@ function buildSubmitTraceFamilies(summary) {
   if (!row) return Object.freeze([]);
   const families = [];
   if (row.has_provenance_blocker) families.push("PROVENANCE");
+  if (row.has_stale_artifact_provenance_blocker) families.push("STALE_ARTIFACT_PROVENANCE");
   if (row.has_production_entry_protected_canary_blocker) families.push("PROTECTED_ENTRY_CANARY");
   if (row.has_bounded_runtime_blocker) families.push("BOUNDED_RUNTIME");
   if (row.has_entry_boundary_blocker) families.push("ENTRY_BOUNDARY");
@@ -1208,6 +1224,10 @@ function buildApprovalVerification(request) {
     cloudbuildContext,
     filePath: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
   });
+  const staleArtifactBlockers = deployDecisionCheck.__test.collectStaleArtifactProvenanceBlockers(
+    deployDecision && deployDecision.bounded_runtime_summary,
+    { mode: upper(deployDecision && deployDecision.mode) }
+  );
   const checks = [];
 
   checks.push(withDocRefs(buildVerificationCheck({
@@ -1420,12 +1440,15 @@ function buildApprovalVerification(request) {
   }));
 
   if (row.approval_contract && row.approval_contract.repair_firestore_canary_streak_required === true) {
+    const hasStaleRepairStreak = staleArtifactBlockers.some((value) => String(value).includes("REPAIR_FIRESTORE_CANARY_STREAK"));
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_11",
       label: "LIVE repair Firestore canary streak complete",
       ok: deployDecisionCheck.__test.hasRepairFirestoreCanaryStreak(deployDecision && deployDecision.bounded_runtime_summary),
       reason: deployDecisionCheck.__test.hasRepairFirestoreCanaryStreak(deployDecision && deployDecision.bounded_runtime_summary)
         ? "LIVE repair Firestore canary streak evidence complete"
+        : hasStaleRepairStreak
+          ? "LIVE repair Firestore canary streak evidence has stale artifact provenance"
         : "LIVE repair Firestore canary streak evidence is missing or blocked",
       file: artifacts.deployDecision && artifacts.deployDecision.filePath,
       field: "bounded_runtime_summary.repair_firestore_canary_streak",
@@ -1439,12 +1462,15 @@ function buildApprovalVerification(request) {
   }
 
   if (row.approval_contract && row.approval_contract.production_entry_route_canary_streak_required === true) {
+    const hasStaleRouteStreak = staleArtifactBlockers.some((value) => String(value).includes("PRODUCTION_ENTRY_ROUTE_CANARY_STREAK"));
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_19",
       label: "LIVE production entry route canary streak complete",
       ok: deployDecisionCheck.__test.hasProductionEntryRouteCanaryStreak(deployDecision && deployDecision.bounded_runtime_summary),
       reason: deployDecisionCheck.__test.hasProductionEntryRouteCanaryStreak(deployDecision && deployDecision.bounded_runtime_summary)
         ? "LIVE production entry route canary streak evidence complete"
+        : hasStaleRouteStreak
+          ? "LIVE production entry route canary streak evidence has stale artifact provenance"
         : "LIVE production entry route canary streak evidence is missing or blocked",
       file: artifacts.deployDecision && artifacts.deployDecision.filePath,
       field: "bounded_runtime_summary.production_entry_route_canary_streak",
@@ -1458,12 +1484,15 @@ function buildApprovalVerification(request) {
   }
 
   if (row.approval_contract && row.approval_contract.production_entry_protected_canary_required === true) {
+    const hasStaleProtectedCanary = staleArtifactBlockers.some((value) => String(value).includes("PRODUCTION_ENTRY_PROTECTED_CANARY"));
     checks.push(withDocRefs(buildVerificationCheck({
       id: "SUBMIT_CHK_20A",
       label: "production entry protected canary complete",
       ok: deployDecisionCheck.__test.hasProductionEntryProtectedCanary(deployDecision && deployDecision.bounded_runtime_summary),
       reason: deployDecisionCheck.__test.hasProductionEntryProtectedCanary(deployDecision && deployDecision.bounded_runtime_summary)
         ? "production entry protected canary evidence complete"
+        : hasStaleProtectedCanary
+          ? "production entry protected canary evidence has stale artifact provenance"
         : "production entry protected canary evidence is missing or blocked",
       file: artifacts.deployDecision && artifacts.deployDecision.filePath,
       field: "bounded_runtime_summary.production_entry_protected_canary",

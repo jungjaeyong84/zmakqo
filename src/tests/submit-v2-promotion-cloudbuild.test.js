@@ -843,6 +843,24 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["PROTECTED_ENTRY_CANARY", "BOUNDED_RUNTIME"]);
 })();
 
+(function verificationSummaryMapsStaleArtifactProvenanceFailureToAction() {
+  const summary = submit.__test.buildVerificationSummary([
+    { id: "SUBMIT_CHK_11", ok: false, reason: "LIVE repair Firestore canary streak evidence has stale artifact provenance" },
+  ]);
+  assert.strictEqual(summary.blocker_n, 1);
+  assert.strictEqual(summary.has_stale_artifact_provenance_blocker, true);
+  assert.strictEqual(summary.has_bounded_runtime_blocker, true);
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedAction(summary),
+    "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE"
+  );
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedActionReasonCode(summary),
+    "STALE_ARTIFACT_PROVENANCE_BLOCKER"
+  );
+  assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["STALE_ARTIFACT_PROVENANCE", "BOUNDED_RUNTIME"]);
+})();
+
 (function verificationSummarySeparatesSchedulerCollectorAndTrafficFailures() {
   const collectorSummary = submit.__test.buildVerificationSummary([
     { id: "SUBMIT_CHK_17", ok: false, reason: "collector preflight missing" },

@@ -2101,3 +2101,30 @@ V1 약점 재발 방지:
 1. V1에서는 비용 절감/감사 artifact가 많아지면서 latest 파일과 현재 실행 cycle의 경계가 흐려졌다
 2. 이번 단계는 보호주문 canary뿐 아니라 repair/route streak도 “현재 artifact dir에서 방금 생성된 증거”인지 확인한다
 3. 따라서 과거 streak pass 파일을 재사용해 LIVE 승격 조건을 만족한 것처럼 보이는 경로를 차단한다
+
+## 2026-04-22 Stale Artifact Provenance Blocker Family
+
+추가 증거:
+
+1. `scripts/check-v2-promotion-deploy-decision.js`
+2. `scripts/run-v2-promotion-cloudbuild.js`
+3. `scripts/submit-v2-promotion-cloudbuild.js`
+4. `scripts/check-v2-canary-runbook.js`
+5. `src/tests/check-v2-promotion-deploy-decision.test.js`
+6. `src/tests/run-v2-promotion-cloudbuild.test.js`
+7. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+8. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+9. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. deploy decision은 current artifact dir과 맞지 않는 repair streak, production route streak, protected canary를 `DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:*` 로 별도 차단한다
+2. CloudBuild context는 `has_stale_artifact_provenance_blocker=true`, `STALE_ARTIFACT_PROVENANCE` family, `STALE_ARTIFACT_PROVENANCE_BLOCKER` reason code를 노출한다
+3. final status line은 `stale_artifact=BLOCKED` 를 포함해 첫 판독 지점에서 stale artifact 문제를 드러낸다
+4. submit verification도 stale artifact provenance를 bounded runtime 누락보다 먼저 `DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE` 로 안내한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 “증거 없음”과 “증거는 있지만 오래됨”이 같은 운영 조치로 묶여 원인 판독이 늦었다
+2. 이번 단계는 stale artifact를 독립 family로 승격해, 보호주문/route/repair 본체가 아니라 artifact cycle을 다시 만드는 문제임을 분리한다
+3. 따라서 stale latest 파일 때문에 실제 시스템 품질을 잘못 평가하거나 엉뚱한 본체 수정을 반복하는 경로를 줄인다
