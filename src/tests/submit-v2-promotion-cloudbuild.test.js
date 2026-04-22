@@ -111,11 +111,15 @@ function seedBoundedSubmitArtifacts(
     alertRetrySummary = null,
     deployWarnings = [],
     liveCutoverReadinessSummary = null,
+    liveEvidenceReadinessSummary,
     productionCutoverReadinessSummary = null,
     schedulerTrafficCollectorPreflightSummary = null,
     schedulerTrafficCutoverReadinessSummary = null,
   } = {}
 ) {
+  const liveEvidenceReadiness = liveEvidenceReadinessSummary === undefined
+    ? buildLiveEvidenceReadinessSummaryFixture(path.join(dir, "v2_live_evidence_readiness_latest.json"), cycleId)
+    : liveEvidenceReadinessSummary;
   writeJson(path.join(dir, "promotion-preflight.json"), {
     ok: true,
     position_cycle_id: cycleId,
@@ -465,6 +469,10 @@ function seedBoundedSubmitArtifacts(
       live_cutover_readiness_file: path.join(dir, "v2_repair_live_cutover_readiness_latest.json"),
       live_cutover_readiness_summary: liveCutoverReadinessSummary,
     } : {}),
+    ...(liveEvidenceReadiness ? {
+      live_evidence_readiness_file: path.join(dir, "v2_live_evidence_readiness_latest.json"),
+      live_evidence_readiness_summary: liveEvidenceReadiness,
+    } : {}),
     ...(productionCutoverReadinessSummary ? {
       production_cutover_readiness_file: path.join(dir, "v2_production_cutover_readiness_latest.json"),
       production_cutover_readiness_summary: productionCutoverReadinessSummary,
@@ -522,6 +530,9 @@ function seedBoundedSubmitArtifacts(
       ],
     });
   }
+  if (liveEvidenceReadiness) {
+    writeJson(path.join(dir, "v2_live_evidence_readiness_latest.json"), liveEvidenceReadiness);
+  }
   if (productionCutoverReadinessSummary) {
     writeJson(path.join(dir, "v2_production_cutover_readiness_latest.json"), {
       ...productionCutoverReadinessSummary,
@@ -576,6 +587,29 @@ function buildLiveCutoverReadinessSummaryFixture(filePath = null) {
     runbook_checklist: ["19"],
     ...(filePath ? { file: filePath } : {}),
     ...withReadinessArtifactProvenance(filePath, "v2_repair_live_cutover_readiness_latest.json"),
+  };
+}
+
+function buildLiveEvidenceReadinessSummaryFixture(filePath = null, cycleId = "PCY__LIVE__EVIDENCE") {
+  return {
+    ok: true,
+    reason: "V2_LIVE_EVIDENCE_READY",
+    mode: "LIVE",
+    position_cycle_id: cycleId,
+    deploy_decision_approved: true,
+    evidence_ready: true,
+    deploy_ready: true,
+    blocker_n: 0,
+    blockers: [],
+    failed_axis_ids: [],
+    submit_check_ids: [],
+    runbook_refs: [],
+    temporal_coherence: {
+      ok: true,
+      blockers: [],
+    },
+    ...(filePath ? { file: filePath } : {}),
+    ...withReadinessArtifactProvenance(filePath, "v2_live_evidence_readiness_latest.json"),
   };
 }
 
@@ -698,6 +732,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.exit_runtime_canary_streak_required, false);
   assert.strictEqual(request.approval_contract.production_entry_protected_canary_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, false);
+  assert.strictEqual(request.approval_contract.live_evidence_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.runbook_review_pass_required, true);
   assert.strictEqual(request.approval_contract.candidate_selection_ready_required, false);
   assert.strictEqual(request.approval_contract.selected_preflight_required, false);
@@ -990,6 +1025,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.scheduler_traffic_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.production_runtime_config_contract_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, true);
+  assert.strictEqual(request.approval_contract.live_evidence_readiness_summary_required, true);
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_CANARY_ONLY, "0");
@@ -1038,6 +1074,10 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(
     request.approval_evidence_sources.live_cutover_readiness_summary.field,
     "live_cutover_readiness_summary"
+  );
+  assert.strictEqual(
+    request.approval_evidence_sources.live_evidence_readiness_summary.field,
+    "live_evidence_readiness_summary"
   );
   assert.strictEqual(
     request.approval_evidence_sources.production_cutover_readiness_summary.field,
@@ -2100,6 +2140,8 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     });
     assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_REQUEST_READY");
     assert.strictEqual(result.request.submit_trace_summary.live_cutover_readiness_summary.ok, true);
+    assert.strictEqual(result.request.submit_trace_summary.live_evidence_readiness_summary.ok, true);
+    assert.deepStrictEqual(result.request.submit_trace_summary.live_evidence_readiness_summary.failed_axis_ids, []);
     assert.strictEqual(result.request.submit_trace_summary.live_cutover_readiness_summary.auto_apply, false);
     assert.strictEqual(result.request.submit_trace_summary.live_cutover_readiness_summary.mutates_environment, false);
     assert.strictEqual(result.request.submit_trace_summary.live_cutover_readiness_summary.required_env_change_n, 4);
@@ -2110,6 +2152,11 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.strictEqual(result.request.submit_trace_summary.scheduler_traffic_cutover_readiness_summary.ok, true);
     assert.strictEqual(result.request.submit_trace_summary.scheduler_traffic_cutover_readiness_summary.scheduler_sot, "OPENCLAW_CRON");
     assert.ok(result.request.operator_summary.lines.includes("live_cutover_ready=YES"));
+    assert.ok(result.request.operator_summary.lines.includes("live_evidence_ready=YES"));
+    assert.ok(result.request.operator_summary.lines.includes("live_evidence_failed_axes=NONE"));
+    assert.ok(result.request.operator_summary.lines.includes("live_evidence_submit_checks=NONE"));
+    assert.ok(result.request.operator_summary.lines.includes("live_evidence_runbook=NONE"));
+    assert.ok(result.request.operator_summary.lines.includes(`live_evidence_file=${path.join(artifactDir, "v2_live_evidence_readiness_latest.json")}`));
     assert.ok(result.request.operator_summary.lines.includes("live_cutover_auto_apply=NO"));
     assert.ok(result.request.operator_summary.lines.includes("live_cutover_mutates_env=NO"));
     assert.ok(result.request.operator_summary.lines.includes("live_cutover_env_changes=4"));
@@ -2126,6 +2173,10 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     assert.ok(result.request.operator_summary.lines.includes("scheduler_traffic_legacy_active=0"));
     assert.ok(result.request.operator_summary.lines.includes(`scheduler_traffic_file=${schedulerTrafficCutoverFile}`));
     assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_cutover_ready=YES"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_evidence_ready=YES"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_evidence_failed_axes=NONE"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_evidence_submit_checks=NONE"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_evidence_runbook=NONE"));
     assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_cutover_auto_apply=NO"));
     assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_cutover_mutates_env=NO"));
     assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_cutover_env_changes=4"));
@@ -2143,10 +2194,12 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
 
     const stored = JSON.parse(fs.readFileSync(result.output_file, "utf8"));
     assert.strictEqual(stored.submit_trace_summary.live_cutover_readiness_summary.ok, true);
+    assert.strictEqual(stored.submit_trace_summary.live_evidence_readiness_summary.ok, true);
     assert.strictEqual(stored.submit_trace_summary.production_cutover_readiness_summary.ok, true);
     assert.strictEqual(stored.submit_trace_summary.scheduler_traffic_collector_preflight_summary.ok, true);
     assert.strictEqual(stored.submit_trace_summary.scheduler_traffic_cutover_readiness_summary.ok, true);
     assert.ok(stored.operator_summary.lines.includes("live_cutover_ready=YES"));
+    assert.ok(stored.operator_summary.lines.includes("live_evidence_ready=YES"));
     assert.ok(stored.operator_summary.lines.includes("production_cutover_ready=YES"));
     assert.ok(stored.operator_summary.lines.includes("scheduler_collector_preflight=YES"));
     assert.ok(stored.operator_summary.lines.includes("scheduler_traffic_ready=YES"));
@@ -2154,18 +2207,61 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
       V2_PROMOTION_ARTIFACT_DIR: artifactDir,
     });
     assert.ok(rendered.preview.sections[1].lines.includes("live_cutover_ready=YES"));
+    assert.ok(rendered.preview.sections[1].lines.includes("live_evidence_ready=YES"));
     assert.ok(rendered.preview.sections[1].lines.includes("production_cutover_ready=YES"));
     assert.ok(rendered.preview.sections[1].lines.includes("scheduler_collector_preflight=YES"));
     assert.ok(rendered.preview.sections[1].lines.includes("scheduler_traffic_ready=YES"));
     const cliPayload = submit.__test.buildCliResultPayload(result);
     assert.strictEqual(cliPayload.submit_trace_summary.live_cutover_readiness_summary.ok, true);
+    assert.strictEqual(cliPayload.submit_trace_summary.live_evidence_readiness_summary.ok, true);
     assert.strictEqual(cliPayload.submit_trace_summary.production_cutover_readiness_summary.ok, true);
     assert.strictEqual(cliPayload.submit_trace_summary.scheduler_traffic_collector_preflight_summary.ok, true);
     assert.strictEqual(cliPayload.submit_trace_summary.scheduler_traffic_cutover_readiness_summary.ok, true);
     assert.ok(cliPayload.operator_summary.lines.includes("live_cutover_ready=YES"));
+    assert.ok(cliPayload.operator_summary.lines.includes("live_evidence_ready=YES"));
     assert.ok(cliPayload.operator_summary.lines.includes("production_cutover_ready=YES"));
     assert.ok(cliPayload.operator_summary.lines.includes("scheduler_collector_preflight=YES"));
     assert.ok(cliPayload.operator_summary.lines.includes("scheduler_traffic_ready=YES"));
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function liveSubmitBlocksWithoutLiveEvidenceReadinessSummary() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-live-evidence-missing-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__LIVE__EVIDENCE_MISSING");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    const cutoverFile = path.join(artifactDir, "v2_repair_live_cutover_readiness_latest.json");
+    const productionCutoverFile = path.join(artifactDir, "v2_production_cutover_readiness_latest.json");
+    const schedulerTrafficCollectorPreflightFile = path.join(artifactDir, "v2_scheduler_traffic_collector_preflight_latest.json");
+    const schedulerTrafficCutoverFile = path.join(artifactDir, "v2_scheduler_traffic_cutover_readiness_latest.json");
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__LIVE__EVIDENCE_MISSING", {
+      liveEvidenceReadinessSummary: null,
+      liveCutoverReadinessSummary: buildLiveCutoverReadinessSummaryFixture(cutoverFile),
+      productionCutoverReadinessSummary: buildProductionCutoverReadinessSummaryFixture(productionCutoverFile),
+      schedulerTrafficCollectorPreflightSummary: buildSchedulerTrafficCollectorPreflightSummaryFixture(schedulerTrafficCollectorPreflightFile),
+      schedulerTrafficCutoverReadinessSummary: buildSchedulerTrafficCutoverReadinessSummaryFixture(schedulerTrafficCutoverFile),
+    });
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "LIVE",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__LIVE__EVIDENCE_MISSING",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+    });
+    assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_BLOCKED");
+    assert.strictEqual(result.request.submit_trace_summary.ok, false);
+    assert.ok(result.request.submit_trace_summary.failed_submit_check_ids.includes("SUBMIT_CHK_24"));
+    assert.ok(result.request.submit_trace_summary.failed_runbook_checklist.includes("13G"));
+    assert.deepStrictEqual(result.request.submit_trace_summary.blocker_families, ["LIVE_EVIDENCE_READINESS"]);
+    assert.strictEqual(result.request.submit_trace_summary.primary_blocker_family, "LIVE_EVIDENCE_READINESS");
+    assert.strictEqual(result.request.submit_trace_summary.recommended_next_action, "REGENERATE_LIVE_EVIDENCE_READINESS_AND_RECHECK_DEPLOY_DECISION");
+    assert.strictEqual(result.request.submit_trace_summary.recommended_next_action_reason_code, "LIVE_EVIDENCE_READINESS_BLOCKER");
+    assert.strictEqual(result.request.submit_trace_summary.live_evidence_readiness_summary, null);
+    assert.ok(result.request.operator_summary.lines.includes("live_evidence_ready=N/A"));
+    assert.ok(result.request.operator_alert_preview.sections[1].lines.includes("live_evidence_ready=N/A"));
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

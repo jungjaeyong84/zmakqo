@@ -2658,3 +2658,30 @@ V1 약점 재발 방지:
 1. V1에서는 검증 스크립트가 있어도 실제 CloudBuild context에는 요약이 남지 않아, 실패 원인이 로그나 개별 JSON에 흩어졌다
 2. 이번 단계는 LIVE evidence readiness를 promotion context의 1급 summary로 올려 “승인은 막혔는데 무엇을 고쳐야 하는지 모르는” 운영 공백을 줄인다
 3. summary는 승인 권한을 갖지 않고 deploy decision을 판독만 하므로, 진단용 artifact가 승인 우회로 변질되는 위험은 만들지 않는다
+
+## 2026-04-23 LIVE Evidence Readiness Submit Trace
+
+추가 증거:
+
+1. `scripts/submit-v2-promotion-cloudbuild.js`
+2. `scripts/lib/v2-promotion-submit-trace.js`
+3. `scripts/lib/v2-promotion-operator-summary.js`
+4. `scripts/lib/v2-promotion-submit-operator-alert.js`
+5. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+6. `scripts/check-v2-promotion-submit-contract.js`
+7. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+8. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. LIVE submit approval contract는 이제 `live_evidence_readiness_summary_required=true` 를 요구한다
+2. `promotion-cloudbuild-context.json.live_evidence_readiness_summary` 는 `promotion-cloudbuild-submit-request.json.submit_trace_summary.live_evidence_readiness_summary` 로 전달된다
+3. 운영자 summary와 alert preview에는 `live_evidence_ready`, `live_evidence_failed_axes`, `live_evidence_submit_checks`, `live_evidence_runbook`, `live_evidence_file` 이 남는다
+4. summary가 누락, 만료, 실패, temporal coherence 실패 상태이면 `SUBMIT_CHK_24` / runbook `13G` / `LIVE_EVIDENCE_READINESS_BLOCKER` 로 submit이 차단된다
+5. `liveSubmitBlocksWithoutLiveEvidenceReadinessSummary` fixture가 수동 submit으로 readiness summary를 우회하는 경로를 막는다
+
+V1 약점 재발 방지:
+
+1. V1에서는 진단 artifact와 실제 제출/알림 계층이 분리되어, 운영자는 마지막 단계에서 어떤 증거 축이 빠졌는지 다시 추적해야 했다
+2. 이번 단계는 CloudBuild context에서 만든 LIVE evidence readiness를 최종 submit request, operator summary, Telegram preview 직전까지 같은 필드명으로 운반한다
+3. 따라서 “검사는 했지만 최종 제출자가 보지 않는다”는 V1식 관측성 단절을 줄인다

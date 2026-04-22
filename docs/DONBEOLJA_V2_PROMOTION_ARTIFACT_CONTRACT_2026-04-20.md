@@ -290,13 +290,14 @@ submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도
 11. `submit_trace_summary.deploy_warning_summary`
 12. `submit_trace_summary.deploy_warning_runbook_checklist`
 13. `submit_trace_summary.live_cutover_readiness_summary`
-14. `submit_trace_summary.production_cutover_readiness_summary`
-15. `submit_trace_summary.scheduler_traffic_cutover_readiness_summary`
-16. `submit_trace_summary.artifact_dir_coherence_summary`
-17. `submit_trace_summary.recommended_next_action`
-18. `submit_trace_summary.recommended_next_action_reason`
-19. `submit_trace_summary.recommended_next_action_reason_code`
-20. `submit_trace_summary.production_runtime_config_summary`
+14. `submit_trace_summary.live_evidence_readiness_summary`
+15. `submit_trace_summary.production_cutover_readiness_summary`
+16. `submit_trace_summary.scheduler_traffic_cutover_readiness_summary`
+17. `submit_trace_summary.artifact_dir_coherence_summary`
+18. `submit_trace_summary.recommended_next_action`
+19. `submit_trace_summary.recommended_next_action_reason`
+20. `submit_trace_summary.recommended_next_action_reason_code`
+21. `submit_trace_summary.production_runtime_config_summary`
 
 `submit_trace_summary.deploy_warning_summary` 는 최소한 `warning_n`, `top_warnings`, `has_live_readiness_warning`, `has_repair_firestore_canary_streak_warning`, `has_production_entry_route_canary_streak_warning` 를 포함해야 한다. repair streak warning은 runbook 19, production entry route streak warning은 runbook 26으로 역추적 가능해야 한다.
 
@@ -320,18 +321,19 @@ submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도
 10. `operator_summary.deploy_warning_runbook_checklist`
 11. `operator_summary.deploy_top_warnings`
 12. `operator_summary.live_cutover_readiness_summary`
-13. `operator_summary.production_cutover_readiness_summary`
-14. `operator_summary.scheduler_traffic_cutover_readiness_summary`
-15. `operator_summary.artifact_dir_coherence_summary`
-16. `operator_summary.failed_submit_check_ids`
-17. `operator_summary.failed_runbook_checklist`
-18. `operator_summary.recommended_next_action`
-19. `operator_summary.recommended_next_action_reason`
-20. `operator_summary.recommended_next_action_reason_code`
-21. `operator_summary.artifact_dir`
-22. `operator_summary.output_file`
-23. `operator_summary.lines[]`
-24. `operator_summary.text`
+13. `operator_summary.live_evidence_readiness_summary`
+14. `operator_summary.production_cutover_readiness_summary`
+15. `operator_summary.scheduler_traffic_cutover_readiness_summary`
+16. `operator_summary.artifact_dir_coherence_summary`
+17. `operator_summary.failed_submit_check_ids`
+18. `operator_summary.failed_runbook_checklist`
+19. `operator_summary.recommended_next_action`
+20. `operator_summary.recommended_next_action_reason`
+21. `operator_summary.recommended_next_action_reason_code`
+22. `operator_summary.artifact_dir`
+23. `operator_summary.output_file`
+24. `operator_summary.lines[]`
+25. `operator_summary.text`
 
 즉, 이후 alert/CLI/ops 채널이 따로 문자열을 조립하지 않고도 같은 요약 구조를 재사용해야 한다.
 
@@ -412,6 +414,9 @@ LIVE submit에서는 같은 line set 안에 `scheduler_traffic_ready`, `schedule
 즉, 최종 submit 단계는 단순 `lineage_contract_hash` 존재 여부가 아니라 bounded artifact hash, CloudBuild context hash, context `lineage_consistency_summary` 가 모두 같은 의미로 통과했는지를 운영자 메시지에서 복원 가능해야 한다.
 
 LIVE submit에서는 `operator_alert_preview.sections[]` 의 trace section에도 `live_cutover_ready`, `live_cutover_auto_apply`, `live_cutover_mutates_env`, `live_cutover_env_changes`, `live_cutover_file` 이 포함돼야 한다.
+
+LIVE submit에서는 `operator_summary.lines[]` 와 `operator_alert_preview.sections[]` 의 trace section에도 `live_evidence_ready`, `live_evidence_failed_axes`, `live_evidence_submit_checks`, `live_evidence_runbook`, `live_evidence_file` 이 포함돼야 한다.
+`SUBMIT_CHK_24` 는 `promotion-cloudbuild-context.json.live_evidence_readiness_summary` 가 최종 submit request까지 보존됐는지 검증하는 항목이며, 실패 시 `LIVE_EVIDENCE_READINESS_BLOCKER` 와 runbook `13G` 로 fail-closed 한다.
 
 즉, `operator_summary.lines[]` 에는 있는데 실제 발송 preview trace에서 빠지는 상태도 contract 위반이다.
 
@@ -1288,6 +1293,7 @@ LIVE submit은 `artifact_current_dir_match=true`, 기대 filename 일치, `gener
 `v2_live_evidence_readiness_latest.json` 은 LIVE 승격 직전에 운영자가 보는 단일 증거 요약이다.
 이 파일은 `scripts/check-v2-live-evidence-readiness.js` 가 현재 artifact dir의 `promotion-deploy-decision.json` 을 읽어 생성한다.
 LIVE cloudbuild wrapper는 이 파일을 자동 생성하고 같은 내용을 `promotion-cloudbuild-context.json.live_evidence_readiness_summary` 와 `live_evidence_readiness_file` 에 보존해야 한다.
+최종 submit wrapper는 이를 `promotion-cloudbuild-submit-request.json.submit_trace_summary.live_evidence_readiness_summary`, `operator_summary.live_evidence_readiness_summary`, `operator_alert_preview.sections[]` 까지 전달해야 하며, 누락/만료/실패 시 `SUBMIT_CHK_24` 로 LIVE submit을 차단한다.
 
 필수 축:
 

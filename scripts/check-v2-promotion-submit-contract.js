@@ -102,6 +102,14 @@ function buildLiveCutoverFormatterFixtureResult() {
         deploy_warning_summary: null,
         failed_submit_check_ids: [],
         failed_runbook_checklist: [],
+        live_evidence_readiness_summary: {
+          ok: true,
+          reason: "V2_LIVE_EVIDENCE_READY",
+          failed_axis_ids: [],
+          submit_check_ids: [],
+          runbook_refs: [],
+          file: "/tmp/v2/PCY__LIVE__01/v2_live_evidence_readiness_latest.json",
+        },
         live_cutover_readiness_summary: {
           ok: true,
           auto_apply: false,
@@ -186,6 +194,14 @@ function buildLiveCutoverAlertPreviewFixtureResult() {
         deploy_warning_summary: null,
         failed_submit_check_ids: [],
         failed_runbook_checklist: [],
+        live_evidence_readiness_summary: {
+          ok: true,
+          reason: "V2_LIVE_EVIDENCE_READY",
+          failed_axis_ids: [],
+          submit_check_ids: [],
+          runbook_refs: [],
+          file: "/tmp/v2/PCY__LIVE__01/v2_live_evidence_readiness_latest.json",
+        },
         live_cutover_readiness_summary: {
           ok: true,
           auto_apply: false,
@@ -616,6 +632,11 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "deploy_warning_count=0",
         "deploy_warning_runbook=NONE",
         "deploy_top_warnings=NONE",
+        "live_evidence_ready=N/A",
+        "live_evidence_failed_axes=NONE",
+        "live_evidence_submit_checks=NONE",
+        "live_evidence_runbook=NONE",
+        "live_evidence_file=NONE",
         "live_cutover_ready=N/A",
         "live_cutover_auto_apply=N/A",
         "live_cutover_mutates_env=N/A",
@@ -670,6 +691,11 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "deploy_warning_count=0",
         "deploy_warning_runbook=NONE",
         "deploy_top_warnings=NONE",
+        "live_evidence_ready=N/A",
+        "live_evidence_failed_axes=NONE",
+        "live_evidence_submit_checks=NONE",
+        "live_evidence_runbook=NONE",
+        "live_evidence_file=NONE",
         "live_cutover_ready=N/A",
         "live_cutover_auto_apply=N/A",
         "live_cutover_mutates_env=N/A",
@@ -716,6 +742,11 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       id: "SUBMIT_CONTRACT_CHK_06",
       label: "shared formatter exposes LIVE cutover readiness values",
       ok: [
+        "live_evidence_ready=YES",
+        "live_evidence_failed_axes=NONE",
+        "live_evidence_submit_checks=NONE",
+        "live_evidence_runbook=NONE",
+        "live_evidence_file=/tmp/v2/PCY__LIVE__01/v2_live_evidence_readiness_latest.json",
         "live_cutover_ready=YES",
         "live_cutover_auto_apply=NO",
         "live_cutover_mutates_env=NO",
@@ -738,6 +769,11 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "runbook_review_file=/tmp/v2/PCY__LIVE__01/promotion-runbook-review.json",
       ].every((line) => liveCutoverSummary.lines.includes(line)),
       reason: [
+        "live_evidence_ready=YES",
+        "live_evidence_failed_axes=NONE",
+        "live_evidence_submit_checks=NONE",
+        "live_evidence_runbook=NONE",
+        "live_evidence_file=/tmp/v2/PCY__LIVE__01/v2_live_evidence_readiness_latest.json",
         "live_cutover_ready=YES",
         "live_cutover_auto_apply=NO",
         "live_cutover_mutates_env=NO",
@@ -767,6 +803,11 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       id: "SUBMIT_CONTRACT_CHK_07",
       label: "shared alert preview exposes LIVE cutover readiness values",
       ok: [
+        "live_evidence_ready=YES",
+        "live_evidence_failed_axes=NONE",
+        "live_evidence_submit_checks=NONE",
+        "live_evidence_runbook=NONE",
+        "live_evidence_file=/tmp/v2/PCY__LIVE__01/v2_live_evidence_readiness_latest.json",
         "live_cutover_ready=YES",
         "live_cutover_auto_apply=NO",
         "live_cutover_mutates_env=NO",
@@ -789,6 +830,11 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         "runbook_review_file=/tmp/v2/PCY__LIVE__01/promotion-runbook-review.json",
       ].every((line) => liveCutoverPreviewTraceLines.includes(line)),
       reason: [
+        "live_evidence_ready=YES",
+        "live_evidence_failed_axes=NONE",
+        "live_evidence_submit_checks=NONE",
+        "live_evidence_runbook=NONE",
+        "live_evidence_file=/tmp/v2/PCY__LIVE__01/v2_live_evidence_readiness_latest.json",
         "live_cutover_ready=YES",
         "live_cutover_auto_apply=NO",
         "live_cutover_mutates_env=NO",
@@ -2127,10 +2173,22 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && cloudbuildWrapperText.includes("generateLiveEvidenceReadiness")
         && cloudbuildWrapperText.includes("live_evidence_readiness_summary")
         && cloudbuildWrapperText.includes("LIVE_EVIDENCE_READINESS_FILENAME")
+        && submitTraceText.includes("SUBMIT_CHK_24")
+        && submitWrapperText.includes("live_evidence_readiness_summary_required")
+        && submitWrapperText.includes("LIVE_EVIDENCE_READINESS_FILENAME")
+        && submitWrapperText.includes("hasLiveEvidenceReadinessSummary")
+        && submitWrapperText.includes("SUBMIT_CHK_24")
+        && submitWrapperText.includes("LIVE_EVIDENCE_READINESS_BLOCKER")
+        && operatorSummaryText.includes("live_evidence_ready=")
+        && operatorAlertPreviewText.includes("live_evidence_ready=")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-live-evidence-readiness.test.js")).includes("missingExitRuntimeStreakFailsWithRunbook28")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-live-evidence-readiness.test.js")).includes("temporalMismatchFailsWithRunbook30")
         && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("contextArtifactPersistsLiveEvidenceReadinessSummary")
         && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("liveEvidenceReadinessFailureContextPreservesCause")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitBlocksWithoutLiveEvidenceReadinessSummary")
+        && runbookText.includes("SUBMIT_CHK_24")
+        && artifactContractText.includes("submit_trace_summary.live_evidence_readiness_summary")
+        && artifactContractText.includes("operator_summary.live_evidence_readiness_summary")
         && runbookText.includes("v2_live_evidence_readiness_latest.json")
         && artifactContractText.includes("v2_live_evidence_readiness_latest.json")
         && artifactContractText.includes("failed_axis_ids")

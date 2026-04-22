@@ -17,6 +17,7 @@ const OUTPUT_FILENAME = "promotion-cloudbuild-submit-request.json";
 const OPERATOR_ALERT_SEND_SCRIPT = path.resolve(__dirname, "send-v2-promotion-submit-operator-alert.js");
 const LIVE_READINESS_ARTIFACT_MAX_AGE_MINUTES = 180;
 const LIVE_CUTOVER_READINESS_FILENAME = "v2_repair_live_cutover_readiness_latest.json";
+const LIVE_EVIDENCE_READINESS_FILENAME = "v2_live_evidence_readiness_latest.json";
 const PRODUCTION_CUTOVER_READINESS_FILENAME = "v2_production_cutover_readiness_latest.json";
 const SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME = "v2_scheduler_traffic_collector_preflight_latest.json";
 const SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME = "v2_scheduler_traffic_cutover_readiness_latest.json";
@@ -174,6 +175,7 @@ function buildVerificationSummary(checks) {
         text.includes("SUPREME_CONTROL_PLANE") ||
         text.includes("CLOSED_LOOP");
     });
+  const hasLiveEvidenceReadinessBlocker = ids.some((id) => id === "SUBMIT_CHK_24");
   const hasSchedulerTrafficBlocker = ids.some((id) => id === "SUBMIT_CHK_16");
   const hasSchedulerCollectorBlocker = ids.some((id) => id === "SUBMIT_CHK_17");
   const hasRunbookBlocker = ids.some((id) => id === "SUBMIT_CHK_05");
@@ -193,6 +195,7 @@ function buildVerificationSummary(checks) {
     has_production_live_entry_sizing_blocker: hasProductionLiveEntrySizingBlocker,
     has_production_entry_protected_canary_blocker: hasProductionEntryProtectedCanaryBlocker,
     has_openclaw_supreme_control_plane_blocker: hasOpenClawSupremeControlPlaneBlocker,
+    has_live_evidence_readiness_blocker: hasLiveEvidenceReadinessBlocker,
     has_scheduler_traffic_blocker: hasSchedulerTrafficBlocker,
     has_scheduler_collector_blocker: hasSchedulerCollectorBlocker,
     has_runbook_blocker: hasRunbookBlocker,
@@ -209,6 +212,7 @@ function buildVerificationRecommendedAction(summary) {
   if (row.has_live_evidence_cycle_blocker) return "DISCARD_ARTIFACT_DIR_AND_RERUN_FRESH_PROMOTION_PIPELINE";
   if (row.has_production_entry_protected_canary_blocker) return "FIX_V2_PROTECTED_ENTRY_CANARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_openclaw_supreme_control_plane_blocker) return "FIX_OPENCLAW_SUPREME_CONTROL_PLANE_AND_RECHECK_DEPLOY_DECISION";
+  if (row.has_live_evidence_readiness_blocker) return "REGENERATE_LIVE_EVIDENCE_READINESS_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_bounded_runtime_blocker) return "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_entry_boundary_blocker) return "FIX_V2_ENTRY_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
   if (row.has_fill_sync_canonical_boundary_blocker) return "FIX_V2_FILL_SYNC_CANONICAL_BOUNDARY_AND_RECHECK_DEPLOY_DECISION";
@@ -242,6 +246,9 @@ function buildVerificationRecommendedActionReason(summary) {
   }
   if (row.has_openclaw_supreme_control_plane_blocker) {
     return "OpenClaw closed-loop control evidence is missing or failed for LIVE submit";
+  }
+  if (row.has_live_evidence_readiness_blocker) {
+    return "LIVE evidence readiness summary is missing, stale, or failed";
   }
   if (row.has_bounded_runtime_blocker) {
     return "bounded runtime or evidence snapshot coverage failed";
@@ -298,6 +305,9 @@ function buildVerificationRecommendedActionReasonCode(summary) {
   }
   if (row.has_openclaw_supreme_control_plane_blocker) {
     return "OPENCLAW_SUPREME_CONTROL_PLANE_BLOCKER";
+  }
+  if (row.has_live_evidence_readiness_blocker) {
+    return "LIVE_EVIDENCE_READINESS_BLOCKER";
   }
   if (row.has_bounded_runtime_blocker) {
     return "BOUNDED_RUNTIME_BLOCKER";
@@ -474,6 +484,7 @@ function buildApprovalContract(plan) {
       production_cutover_readiness_summary_required: false,
       scheduler_traffic_collector_preflight_summary_required: false,
       scheduler_traffic_cutover_readiness_summary_required: false,
+      live_evidence_readiness_summary_required: false,
       openclaw_execution_audit_ledger_write_required: false,
       repair_firestore_canary_streak_required: false,
       production_entry_route_canary_streak_required: false,
@@ -507,6 +518,7 @@ function buildApprovalContract(plan) {
     production_cutover_readiness_summary_required: row.promotionMode === "LIVE",
     scheduler_traffic_collector_preflight_summary_required: row.promotionMode === "LIVE",
     scheduler_traffic_cutover_readiness_summary_required: row.promotionMode === "LIVE",
+    live_evidence_readiness_summary_required: row.promotionMode === "LIVE",
     openclaw_execution_audit_ledger_write_required: true,
     repair_firestore_canary_streak_required: row.promotionMode === "LIVE",
     production_entry_route_canary_streak_required: row.promotionMode === "LIVE",
@@ -547,6 +559,7 @@ function buildApprovalEvidenceSources(plan) {
       production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
+      live_evidence_readiness_summary: null,
       production_entry_route_canary_streak: null,
       exit_runtime_canary_streak: null,
       production_entry_protected_canary: null,
@@ -635,6 +648,13 @@ function buildApprovalEvidenceSources(plan) {
           file: "promotion-cloudbuild-context.json",
           field: "scheduler_traffic_cutover_readiness_summary",
           note: "LIVE requires OpenClaw cron ownership, inactive legacy scheduler tick, disabled Cloud Run scheduler autostart, and ready 100% service traffic",
+        })
+      : null,
+    live_evidence_readiness_summary: row.promotionMode === "LIVE"
+      ? buildEvidenceRef({
+          file: "promotion-cloudbuild-context.json",
+          field: "live_evidence_readiness_summary",
+          note: "LIVE requires a current-dir evidence readiness summary with all axes passing and temporal coherence ok",
         })
       : null,
     openclaw_execution_audit_ledger_write: buildEvidenceRef({
@@ -750,6 +770,7 @@ function hasRequiredApprovalContract(contract, { promotionMode = null } = {}) {
     mustBeLiveTrue(row, "production_cutover_readiness_summary_required", liveRequired) &&
     mustBeLiveTrue(row, "scheduler_traffic_collector_preflight_summary_required", liveRequired) &&
     mustBeLiveTrue(row, "scheduler_traffic_cutover_readiness_summary_required", liveRequired) &&
+    mustBeLiveTrue(row, "live_evidence_readiness_summary_required", liveRequired) &&
     row.openclaw_execution_audit_ledger_write_required === true &&
     mustBeLiveTrue(row, "repair_firestore_canary_streak_required", liveRequired) &&
     mustBeLiveTrue(row, "production_entry_route_canary_streak_required", liveRequired) &&
@@ -893,6 +914,7 @@ function buildSubmitTraceFamilies(summary) {
   if (row.has_production_runtime_config_blocker) families.push("PRODUCTION_RUNTIME_CONFIG");
   if (row.has_production_live_entry_sizing_blocker) families.push("ENTRY_SIZING");
   if (row.has_openclaw_supreme_control_plane_blocker) families.push("OPENCLAW_SUPREME_CONTROL_PLANE");
+  if (row.has_live_evidence_readiness_blocker) families.push("LIVE_EVIDENCE_READINESS");
   if (row.has_scheduler_collector_blocker) families.push("SCHEDULER_COLLECTOR");
   if (row.has_scheduler_traffic_blocker) families.push("SCHEDULER_TRAFFIC");
   if (row.has_runbook_blocker) families.push("RUNBOOK");
@@ -1003,6 +1025,49 @@ function extractLiveCutoverReadinessSummaryFromArtifacts(artifacts = {}) {
         .filter(Boolean)
     ),
     file: trimOrNull(cloudbuildContext && cloudbuildContext.live_cutover_readiness_file),
+    artifact_file: trimOrNull(summary.artifact_file),
+    artifact_dir: trimOrNull(summary.artifact_dir),
+    artifact_filename: trimOrNull(summary.artifact_filename),
+    artifact_current_dir_match: summary.artifact_current_dir_match === true,
+    generated_at: trimOrNull(summary.generated_at),
+    artifact_generated_at: trimOrNull(summary.artifact_generated_at),
+    artifact_generated_age_minutes: Number.isFinite(Number(summary.artifact_generated_age_minutes))
+      ? Number(summary.artifact_generated_age_minutes)
+      : null,
+  });
+}
+
+function extractLiveEvidenceReadinessSummaryFromArtifacts(artifacts = {}) {
+  const cloudbuildContext = normalizeObject(artifacts.cloudbuildContext && artifacts.cloudbuildContext.payload);
+  const summary = normalizeObject(cloudbuildContext && cloudbuildContext.live_evidence_readiness_summary);
+  if (!summary) return null;
+  return Object.freeze({
+    ok: summary.ok === true,
+    reason: trimOrNull(summary.reason),
+    mode: trimOrNull(summary.mode),
+    position_cycle_id: trimOrNull(summary.position_cycle_id),
+    deploy_decision_approved: summary.deploy_decision_approved === true,
+    evidence_ready: summary.evidence_ready === true,
+    deploy_ready: summary.deploy_ready === true,
+    blocker_n: Number.isFinite(Number(summary.blocker_n)) ? Number(summary.blocker_n) : 0,
+    blockers: Object.freeze(Array.isArray(summary.blockers) ? summary.blockers.slice() : []),
+    failed_axis_ids: Object.freeze(
+      (Array.isArray(summary.failed_axis_ids) ? summary.failed_axis_ids : [])
+        .map((value) => trimOrNull(value))
+        .filter(Boolean)
+    ),
+    submit_check_ids: Object.freeze(
+      (Array.isArray(summary.submit_check_ids) ? summary.submit_check_ids : [])
+        .map((value) => trimOrNull(value))
+        .filter(Boolean)
+    ),
+    runbook_refs: Object.freeze(
+      (Array.isArray(summary.runbook_refs) ? summary.runbook_refs : [])
+        .map((value) => trimOrNull(value))
+        .filter(Boolean)
+    ),
+    temporal_coherence: normalizeObject(summary.temporal_coherence),
+    file: trimOrNull(cloudbuildContext && cloudbuildContext.live_evidence_readiness_file) || trimOrNull(summary.file),
     artifact_file: trimOrNull(summary.artifact_file),
     artifact_dir: trimOrNull(summary.artifact_dir),
     artifact_filename: trimOrNull(summary.artifact_filename),
@@ -1196,6 +1261,29 @@ function hasLiveCutoverReadinessSummary(summary) {
   );
 }
 
+function hasLiveEvidenceReadinessSummary(summary) {
+  const row = normalizeObject(summary);
+  const temporal = normalizeObject(row && row.temporal_coherence);
+  return !!(
+    row &&
+    row.ok === true &&
+    trimOrNull(row.reason) === "V2_LIVE_EVIDENCE_READY" &&
+    trimOrNull(row.mode) === "LIVE" &&
+    row.deploy_decision_approved === true &&
+    row.evidence_ready === true &&
+    row.deploy_ready === true &&
+    Number(row.blocker_n || 0) === 0 &&
+    Array.isArray(row.blockers) &&
+    row.blockers.length === 0 &&
+    Array.isArray(row.failed_axis_ids) &&
+    row.failed_axis_ids.length === 0 &&
+    temporal &&
+    temporal.ok === true &&
+    trimOrNull(row.file) &&
+    hasFreshCurrentReadinessArtifact(row, LIVE_EVIDENCE_READINESS_FILENAME)
+  );
+}
+
 function hasProductionCutoverReadinessSummary(summary) {
   const row = normalizeObject(summary);
   return !!(
@@ -1370,6 +1458,7 @@ function buildSubmitTraceSummary(approvalVerification) {
       deploy_warning_summary: null,
       deploy_warning_runbook_checklist: Object.freeze([]),
       live_cutover_readiness_summary: null,
+      live_evidence_readiness_summary: null,
       production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
@@ -1392,6 +1481,7 @@ function buildSubmitTraceSummary(approvalVerification) {
   const alertRetrySummary = normalizeObject(row.alert_retry_summary);
   const deployWarningSummary = normalizeObject(row.deploy_warning_summary);
   const liveCutoverReadinessSummary = normalizeObject(row.live_cutover_readiness_summary);
+  const liveEvidenceReadinessSummary = normalizeObject(row.live_evidence_readiness_summary);
   const productionCutoverReadinessSummary = normalizeObject(row.production_cutover_readiness_summary);
   const schedulerTrafficCollectorPreflightSummary = normalizeObject(row.scheduler_traffic_collector_preflight_summary);
   const schedulerTrafficCutoverReadinessSummary = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
@@ -1429,6 +1519,7 @@ function buildSubmitTraceSummary(approvalVerification) {
     deploy_warning_summary: deployWarningSummary,
     deploy_warning_runbook_checklist: collectDeployWarningRunbookChecklist(deployWarningSummary),
     live_cutover_readiness_summary: liveCutoverReadinessSummary,
+    live_evidence_readiness_summary: liveEvidenceReadinessSummary,
     production_cutover_readiness_summary: productionCutoverReadinessSummary,
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
@@ -1460,6 +1551,7 @@ function buildApprovalVerification(request) {
       deploy_warning_summary: null,
       deploy_warning_attention_required: false,
       live_cutover_readiness_summary: null,
+      live_evidence_readiness_summary: null,
       production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
@@ -1505,6 +1597,7 @@ function buildApprovalVerification(request) {
       deploy_warning_summary: null,
       deploy_warning_attention_required: false,
       live_cutover_readiness_summary: null,
+      live_evidence_readiness_summary: null,
       production_cutover_readiness_summary: null,
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
@@ -1540,6 +1633,7 @@ function buildApprovalVerification(request) {
   const deployWarningSummary = extractDeployWarningSummaryFromArtifacts(artifacts);
   const deployWarningAttentionRequired = Number(deployWarningSummary.warning_n || 0) > 0;
   const liveCutoverReadinessSummary = extractLiveCutoverReadinessSummaryFromArtifacts(artifacts);
+  const liveEvidenceReadinessSummary = extractLiveEvidenceReadinessSummaryFromArtifacts(artifacts);
   const productionCutoverReadinessSummary = extractProductionCutoverReadinessSummaryFromArtifacts(artifacts);
   const schedulerTrafficCollectorPreflightSummary = extractSchedulerTrafficCollectorPreflightSummaryFromArtifacts(artifacts);
   const schedulerTrafficCutoverReadinessSummary = extractSchedulerTrafficCutoverReadinessSummaryFromArtifacts(artifacts);
@@ -1583,6 +1677,7 @@ function buildApprovalVerification(request) {
       "approval_contract.openclaw_supreme_control_plane_closed_loop_required",
       "approval_contract.production_cutover_readiness_summary_required",
       "approval_contract.scheduler_traffic_cutover_readiness_summary_required",
+      "approval_contract.live_evidence_readiness_summary_required",
       "approval_contract.openclaw_execution_audit_ledger_write_required",
       "approval_contract.repair_firestore_canary_streak_required",
       "approval_contract.live_cutover_readiness_summary_required",
@@ -1932,6 +2027,29 @@ function buildApprovalVerification(request) {
     }));
   }
 
+  if (row.approval_contract && row.approval_contract.live_evidence_readiness_summary_required === true) {
+    const liveEvidenceReadinessOk = hasLiveEvidenceReadinessSummary(liveEvidenceReadinessSummary);
+    const liveEvidenceReadinessStale = hasStaleReadinessArtifact(liveEvidenceReadinessSummary, LIVE_EVIDENCE_READINESS_FILENAME);
+    checks.push(withDocRefs(buildVerificationCheck({
+      id: "SUBMIT_CHK_24",
+      label: "LIVE evidence readiness summary visible",
+      ok: liveEvidenceReadinessOk,
+      reason: liveEvidenceReadinessOk
+        ? "LIVE evidence readiness summary proves all evidence axes are ready"
+        : liveEvidenceReadinessStale
+          ? "LIVE evidence readiness summary has stale artifact provenance"
+          : "LIVE evidence readiness summary is missing, failed, or not temporally coherent",
+      file: artifacts.cloudbuildContext && artifacts.cloudbuildContext.filePath,
+      field: "live_evidence_readiness_summary",
+    }), {
+      runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_24"),
+      artifactContract: [
+        "approval_contract.live_evidence_readiness_summary_required",
+        "approval_evidence_sources.live_evidence_readiness_summary",
+      ],
+    }));
+  }
+
   if (row.approval_contract && row.approval_contract.production_cutover_readiness_summary_required === true) {
     const productionCutoverReadinessOk = hasProductionCutoverReadinessSummary(productionCutoverReadinessSummary);
     const productionCutoverReadinessStale = hasStaleReadinessArtifact(productionCutoverReadinessSummary, PRODUCTION_CUTOVER_READINESS_FILENAME);
@@ -2165,6 +2283,7 @@ function buildApprovalVerification(request) {
     deploy_warning_summary: deployWarningSummary,
     deploy_warning_attention_required: deployWarningAttentionRequired,
     live_cutover_readiness_summary: liveCutoverReadinessSummary,
+    live_evidence_readiness_summary: liveEvidenceReadinessSummary,
     production_cutover_readiness_summary: productionCutoverReadinessSummary,
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
@@ -2531,6 +2650,8 @@ if (require.main === module) {
       mergeRunbookChecklist,
       extractLiveCutoverReadinessSummaryFromArtifacts,
       hasLiveCutoverReadinessSummary,
+      extractLiveEvidenceReadinessSummaryFromArtifacts,
+      hasLiveEvidenceReadinessSummary,
       extractSchedulerTrafficCollectorPreflightSummaryFromArtifacts,
       extractRunbookReviewSummaryFromArtifacts,
       hasSchedulerTrafficCollectorPreflightSummary,

@@ -38,6 +38,7 @@ function buildOperatorSummaryLines(summary) {
   const deployWarningRunbookChecklist = Array.isArray(row.deploy_warning_runbook_checklist) ? row.deploy_warning_runbook_checklist.filter(Boolean) : [];
   const deployTopWarnings = Array.isArray(row.deploy_top_warnings) ? row.deploy_top_warnings.filter(Boolean) : [];
   const liveCutover = normalizeObject(row.live_cutover_readiness_summary);
+  const liveEvidenceReadiness = normalizeObject(row.live_evidence_readiness_summary);
   const productionCutover = normalizeObject(row.production_cutover_readiness_summary);
   const schedulerTrafficCollectorPreflight = normalizeObject(row.scheduler_traffic_collector_preflight_summary);
   const schedulerTrafficCutover = normalizeObject(row.scheduler_traffic_cutover_readiness_summary);
@@ -70,6 +71,11 @@ function buildOperatorSummaryLines(summary) {
     `deploy_warning_count=${Number.isFinite(Number(row.deploy_warning_n)) ? Number(row.deploy_warning_n) : 0}`,
     `deploy_warning_runbook=${deployWarningRunbookChecklist.length ? deployWarningRunbookChecklist.join(",") : "NONE"}`,
     `deploy_top_warnings=${deployTopWarnings.length ? deployTopWarnings.join("|") : "NONE"}`,
+    `live_evidence_ready=${liveEvidenceReadiness ? (liveEvidenceReadiness.ok === true ? "YES" : "NO") : "N/A"}`,
+    `live_evidence_failed_axes=${liveEvidenceReadiness && Array.isArray(liveEvidenceReadiness.failed_axis_ids) && liveEvidenceReadiness.failed_axis_ids.length ? liveEvidenceReadiness.failed_axis_ids.join(",") : "NONE"}`,
+    `live_evidence_submit_checks=${liveEvidenceReadiness && Array.isArray(liveEvidenceReadiness.submit_check_ids) && liveEvidenceReadiness.submit_check_ids.length ? liveEvidenceReadiness.submit_check_ids.join(",") : "NONE"}`,
+    `live_evidence_runbook=${liveEvidenceReadiness && Array.isArray(liveEvidenceReadiness.runbook_refs) && liveEvidenceReadiness.runbook_refs.length ? liveEvidenceReadiness.runbook_refs.join(",") : "NONE"}`,
+    `live_evidence_file=${trimOrNull(liveEvidenceReadiness && liveEvidenceReadiness.file) || "NONE"}`,
     `live_cutover_ready=${liveCutover ? (liveCutover.ok === true ? "YES" : "NO") : "N/A"}`,
     `live_cutover_auto_apply=${liveCutover ? (liveCutover.auto_apply === true ? "YES" : "NO") : "N/A"}`,
     `live_cutover_mutates_env=${liveCutover ? (liveCutover.mutates_environment === true ? "YES" : "NO") : "N/A"}`,
@@ -154,6 +160,7 @@ function buildOperatorSummary(result) {
       .filter(Boolean)
   );
   const liveCutoverReadinessSummary = normalizeObject(trace && trace.live_cutover_readiness_summary);
+  const liveEvidenceReadinessSummary = normalizeObject(trace && trace.live_evidence_readiness_summary);
   const productionCutoverReadinessSummary = normalizeObject(trace && trace.production_cutover_readiness_summary);
   const schedulerTrafficCollectorPreflightSummary = normalizeObject(trace && trace.scheduler_traffic_collector_preflight_summary);
   const schedulerTrafficCutoverReadinessSummary = normalizeObject(trace && trace.scheduler_traffic_cutover_readiness_summary);
@@ -198,6 +205,7 @@ function buildOperatorSummary(result) {
     deploy_warning_runbook_checklist: deployWarningRunbookChecklist,
     deploy_top_warnings: deployTopWarnings,
     live_cutover_readiness_summary: liveCutoverReadinessSummary,
+    live_evidence_readiness_summary: liveEvidenceReadinessSummary,
     production_cutover_readiness_summary: productionCutoverReadinessSummary,
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
@@ -226,6 +234,7 @@ function buildOperatorSummary(result) {
     deploy_warning_runbook_checklist: deployWarningRunbookChecklist,
     deploy_top_warnings: deployTopWarnings,
     live_cutover_readiness_summary: liveCutoverReadinessSummary,
+    live_evidence_readiness_summary: liveEvidenceReadinessSummary,
     production_cutover_readiness_summary: productionCutoverReadinessSummary,
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
