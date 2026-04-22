@@ -30,6 +30,7 @@ const {
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_LIVE_REQUEST_BUILDER_EMBEDS_SIZING"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_ROUTE_CANARY_SCRIPT_FORBIDS_ENTRY_BYPASS"));
   assert.ok(result.checks.some((row) => row.id === "V2_ENTRY_BOUNDARY_FORBIDS_KERNEL_BYPASS"));
+  assert.ok(result.checks.some((row) => row.id === "V2_ENTRY_BOUNDARY_FORBIDS_TP0_CONTRACT"));
 })();
 
 (function openclawCronBypassFailsClosed() {
@@ -43,7 +44,7 @@ const {
     productionEntryLiveRequestSource: "buildV2ProductionEntryLiveRequest resolveEntryIntentFromOpenClaw buildV2EntrySizingDecision confirm = LIVE_CONFIRM_PHRASE entrySizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED",
     openclawCronRouteSource: 'router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedulerToken, async () => runV2EntryExecutionKernel({})) router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken, async () => { const { main } = require("../../scripts/run-v2-exit-runtime-canary"); return main({ setProcessExitCode: false }); }) v2_exit_runtime_canary router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, async () => runV2ProductionEntryLiveEndpoint({}))',
     productionEntryRouteCanaryScriptSource: "runV2ProductionEntryRouteCanary",
-    entryBoundaryAuditSource: "V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN src/v2/productionEntryRoute.js",
+    entryBoundaryAuditSource: "V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN src/v2/productionEntryRoute.js V2_TP0_EXIT_CONTRACT_FORBIDDEN TP0/P0 exit contract names EXIT_TP_P0",
   });
   assert.strictEqual(result.ok, false);
   assert.ok(result.failed_check_ids.includes("V2_OPENCLAW_CRON_ROUTE_CANARY_USES_SCRIPT_BOUNDARY"));
@@ -61,7 +62,7 @@ const {
     productionEntryLiveRequestSource: "buildV2ProductionEntryLiveRequest resolveEntryIntentFromOpenClaw buildV2EntrySizingDecision confirm = LIVE_CONFIRM_PHRASE entrySizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED",
     openclawCronRouteSource: 'router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedulerToken, async () => { const { main } = require("../../scripts/run-v2-production-entry-route-canary"); return main({ setProcessExitCode: false }); }) router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken, async () => { const { main } = require("../../scripts/run-v2-exit-runtime-canary"); return main({ setProcessExitCode: false }); }) v2_exit_runtime_canary router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, async () => runV2ProductionEntryLiveEndpoint({}))',
     productionEntryRouteCanaryScriptSource: "runV2ProductionEntryRouteCanary",
-    entryBoundaryAuditSource: "V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN src/v2/productionEntryRoute.js",
+    entryBoundaryAuditSource: "V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN src/v2/productionEntryRoute.js V2_TP0_EXIT_CONTRACT_FORBIDDEN TP0/P0 exit contract names EXIT_TP_P0",
   });
   assert.strictEqual(result.ok, false);
   assert.ok(result.failed_check_ids.includes("V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_FAILS_CLOSED"));

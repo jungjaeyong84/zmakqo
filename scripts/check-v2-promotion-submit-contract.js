@@ -1496,6 +1496,23 @@ function evaluateSubmitContract() {
         : "promotion CI must not accept 24h route streak evidence without running the durable history append/source contract",
       file: FILES.packageJson,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_58",
+      label: "V2 promotion forbids TP0 contract reintroduction",
+      ok: readText(path.resolve(__dirname, "..", "src", "v2", "entryBoundaryAudit.js")).includes("V2_TP0_EXIT_CONTRACT_FORBIDDEN")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "productionCutoverAudit.js")).includes("V2_ENTRY_BOUNDARY_FORBIDS_TP0_CONTRACT")
+        && packageJsonText.includes("node src/tests/v2-entry-boundary-audit.test.js")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-entry-boundary-audit.test.js")).includes("tp0ContractNamesInV2SourceFailClosed")
+        && artifactContractText.includes("V2_TP0_EXIT_CONTRACT_FORBIDDEN")
+        && artifactContractText.includes("EXIT_TP_P0")
+        && runbookText.includes("V2_TP0_EXIT_CONTRACT_FORBIDDEN")
+        && runbookText.includes("EXIT_TP_P0"),
+      reason: readText(path.resolve(__dirname, "..", "src", "v2", "entryBoundaryAudit.js")).includes("V2_TP0_EXIT_CONTRACT_FORBIDDEN")
+        && packageJsonText.includes("node src/tests/v2-entry-boundary-audit.test.js")
+        ? "V2 promotion now fails closed if TP0/P0 exit contract names re-enter V2 production source"
+        : "V2 promotion must not allow TP0/P0 exit contract names to re-enter V2 production source",
+      file: path.resolve(__dirname, "..", "src", "v2", "entryBoundaryAudit.js"),
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

@@ -603,7 +603,7 @@ cloudbuild는 아래 원칙을 따른다.
 11. auto-select 경로는 runtime이 candidate selection 후 `<requested-artifact-dir>/<selected-position-cycle-id>` 로 artifact dir를 finalize 하고, wrapper는 그 final dir에서 `promotion-runbook-review.json` 을 자동 생성하고 `overall_status=PASS` 가 아니면 즉시 실패해야 한다
 12. bounded canary/live mode에서는 `DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=1` 이 runtime env로 전달되어야 한다
 13. LIVE mode에서는 `bounded_runtime_summary.repair_firestore_canary_streak` 이 `V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS` 를 증명해야 하며, CANARY mode에서는 이 증거가 없으면 deploy decision warning으로만 남긴다
-14. bounded canary/live mode에서는 `entry_boundary_audit` 이 `V2_ENTRY_BOUNDARY_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_13`/runbook 21로 fail-closed 된다
+14. bounded canary/live mode에서는 `entry_boundary_audit` 이 `V2_ENTRY_BOUNDARY_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_13`/runbook 21로 fail-closed 된다. 이 감사에는 `V2_TP0_EXIT_CONTRACT_FORBIDDEN` 이 포함되어야 하고, `test:v2-promotion` 은 `v2-entry-boundary-audit.test.js` 를 실행해 V2 production source에 TP0/P0/`EXIT_TP_P0` 계약명이 다시 들어오는 것을 차단해야 한다
 15. bounded canary/live mode에서는 `fill_sync_canonical_boundary_audit` 이 `V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_18`/runbook 25로 fail-closed 된다
 16. bounded canary/live mode에서는 `production_cutover_audit` 이 `V2_PRODUCTION_CUTOVER_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_14`/runbook 22로 fail-closed 된다
 17. bounded canary/live mode에서는 `production_cutover_audit.contract.checks[]` 가 live endpoint가 sizing-backed transport를 route 전에 만들고, live transport가 approved `entrySizingDecision` 없이 막히며, body/bundle sizing drift를 거부하고, live request builder가 approved sizing을 bundle에 포함한다는 것을 증명해야 하며, 위반 시 `SUBMIT_CHK_20`/runbook 27로 fail-closed 된다

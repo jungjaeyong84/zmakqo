@@ -54,6 +54,15 @@ const DEFAULT_RULES = Object.freeze([
       "src/v2/entryBoundaryAudit.js",
     ]),
   }),
+  Object.freeze({
+    code: "V2_TP0_EXIT_CONTRACT_FORBIDDEN",
+    description: "V2 production source must not reintroduce TP0/P0 exit contract names.",
+    pattern: /\b(?:TP0|tp0|TP_P0|EXIT_TP_P0|TP0_REACHED)\b/,
+    allowedFiles: Object.freeze([
+      "src/v2/entryBoundaryAudit.js",
+      "src/v2/productionCutoverAudit.js",
+    ]),
+  }),
 ]);
 
 function relativeToRoot(filePath, rootDir = process.cwd()) {

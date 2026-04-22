@@ -220,6 +220,13 @@ function auditV2ProductionCutoverContract({
       entryBoundaryAuditSource.includes("V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN") && entryBoundaryAuditSource.includes("src/v2/productionEntryRoute.js"),
       "entry boundary audit must forbid direct entry execution kernel calls outside productionEntryRoute"
     ),
+    buildCheck(
+      "V2_ENTRY_BOUNDARY_FORBIDS_TP0_CONTRACT",
+      entryBoundaryAuditSource.includes("V2_TP0_EXIT_CONTRACT_FORBIDDEN")
+        && entryBoundaryAuditSource.includes("TP0/P0 exit contract names")
+        && entryBoundaryAuditSource.includes("EXIT_TP_P0"),
+      "entry boundary audit must forbid TP0/P0 exit contract names in V2 production source"
+    ),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
