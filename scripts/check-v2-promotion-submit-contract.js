@@ -1437,6 +1437,31 @@ function evaluateSubmitContract() {
         : "LIVE readiness summaries must not pass submit from copied or stale PASS artifacts",
       file: FILES.submitWrapper,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_55",
+      label: "LIVE submit forces V2 production cutover substitutions",
+      ok: submitWrapperText.includes("function buildV2RuntimeCutoverSubstitutions")
+        && submitWrapperText.includes("_DONBEOLJA_V2_ENABLED: live ? \"1\"")
+        && submitWrapperText.includes("_DONBEOLJA_V2_DRY_RUN: live ? \"0\"")
+        && submitWrapperText.includes("_DONBEOLJA_V2_CANARY_ONLY: live ? \"0\"")
+        && submitWrapperText.includes("_DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER: live ? \"1\"")
+        && submitWrapperText.includes("_DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: \"0\"")
+        && submitWrapperText.includes("_DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE: \"OPENCLAW_CRON\"")
+        && submitWrapperText.includes("_DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: row.promotionMode === \"LIVE\" ? \"1\"")
+        && submitWrapperText.includes("_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: enablesProductionEntryRouteCanaryFirestore ? \"1\"")
+        && submitWrapperText.includes("_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: enablesProductionEntryRouteCanaryFirestore ? \"FIRESTORE\"")
+        && cloudbuildText.includes("DONBEOLJA_V2_ENABLED=$_DONBEOLJA_V2_ENABLED")
+        && cloudbuildText.includes("DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER=$_DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER")
+        && cloudbuildText.includes("DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED=$_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED")
+        && cloudbuildText.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED=$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED")
+        && productionRuntimeConfigAuditText.includes("CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_V2_CUTOVER_ENV")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitForcesProductionCutoverSubstitutionsEvenWhenEnvIsUnsafe"),
+      reason: submitWrapperText.includes("function buildV2RuntimeCutoverSubstitutions")
+        && cloudbuildText.includes("DONBEOLJA_V2_ENABLED=$_DONBEOLJA_V2_ENABLED")
+        ? "LIVE submit overrides safe CloudBuild defaults with explicit V2 production cutover values and forwards them to readiness checks"
+        : "LIVE submit must not rely on safe CloudBuild defaults for V2 enabled/dry-run/canary-only/cutover flags",
+      file: FILES.submitWrapper,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

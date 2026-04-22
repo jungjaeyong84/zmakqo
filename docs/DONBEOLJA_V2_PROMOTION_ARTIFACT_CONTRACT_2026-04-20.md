@@ -684,6 +684,7 @@ Cloud Build submit wrapper:
 4. 기본값은 submit disabled 이고 request artifact만 생성한다
 5. `V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED=1` 일 때만 실제 `gcloud builds submit` 을 호출한다
 6. bounded CANARY/LIVE request는 `_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=1` substitution을 포함해야 한다
+7. LIVE request는 안전 기본값에 의존하지 않고 `_DONBEOLJA_V2_ENABLED=1`, `_DONBEOLJA_V2_DRY_RUN=0`, `_DONBEOLJA_V2_CANARY_ONLY=0`, `_DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER=1`, `_DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL=1`, `_DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL=0`, `_DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE=OPENCLAW_CRON` 을 강제 substitution으로 남겨야 한다
 
 핵심은 “무슨 substitutions로 build를 제출했는가”가 artifact로 남아야 한다는 점이다.
 

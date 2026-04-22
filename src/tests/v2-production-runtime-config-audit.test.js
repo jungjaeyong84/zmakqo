@@ -12,7 +12,7 @@ const {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PRODUCTION_RUNTIME_CONFIG_CONTRACT_PASS");
   assert.strictEqual(result.fail_n, 0);
-  assert.ok(result.check_n >= 42);
+  assert.ok(result.check_n >= 43);
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON, "");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "0");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "0");
@@ -70,6 +70,7 @@ const {
   assert.ok(result.failed_check_ids.includes("MAIN_SERVICE_SCHEDULER_AUTOSTART_MAPPED"));
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_VALIDATION_RUNS_RUNTIME_CONFIG_AUDIT"));
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_SCHEDULER_TRAFFIC_STATE"));
+  assert.ok(result.failed_check_ids.includes("CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_V2_CUTOVER_ENV"));
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_PROMOTION_RUNTIME_HAS_GCLOUD_AND_NODE"));
 })();
 
@@ -82,6 +83,17 @@ const {
   const result = auditV2ProductionRuntimeConfigContract({ cloudbuildSource: source });
   assert.strictEqual(__test.hasPromotionRuntimeGcloudAvailable(source), false);
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_PROMOTION_RUNTIME_HAS_GCLOUD_AND_NODE"));
+})();
+
+(function promotionRuntimeMustForwardLiveCutoverFlagsToReadinessChecks() {
+  const source = [
+    "steps:",
+    "  - name: \"gcr.io/google.com/cloudsdktool/cloud-sdk:alpine\"",
+    "    args: [\"-lc\", \"apk add --no-cache nodejs npm && DONBEOLJA_V2_ENABLED=$_DONBEOLJA_V2_ENABLED DONBEOLJA_V2_DRY_RUN=$_DONBEOLJA_V2_DRY_RUN DONBEOLJA_V2_CANARY_ONLY=$_DONBEOLJA_V2_CANARY_ONLY npm run run:v2-promotion-cloudbuild\"]",
+  ].join("\n");
+  const result = auditV2ProductionRuntimeConfigContract({ cloudbuildSource: source });
+  assert.strictEqual(__test.hasV2CutoverEnvForwardedToPromotionRuntime(source), false);
+  assert.ok(result.failed_check_ids.includes("CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_V2_CUTOVER_ENV"));
 })();
 
 (function parserExtractsDeployEnvVarsForServiceToken() {

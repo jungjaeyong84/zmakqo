@@ -107,6 +107,27 @@ function hasSchedulerTrafficStateForwardedToPromotionRuntime(cloudbuildSource = 
     && source.includes("npm run run:v2-promotion-cloudbuild");
 }
 
+function hasV2CutoverEnvForwardedToPromotionRuntime(cloudbuildSource = "") {
+  const source = String(cloudbuildSource || "");
+  return [
+    "DONBEOLJA_V2_ENABLED=$_DONBEOLJA_V2_ENABLED",
+    "DONBEOLJA_V2_DRY_RUN=$_DONBEOLJA_V2_DRY_RUN",
+    "DONBEOLJA_V2_CANARY_ONLY=$_DONBEOLJA_V2_CANARY_ONLY",
+    "DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER=$_DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER",
+    "DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL=$_DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL",
+    "DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL=$_DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL",
+    "DONBEOLJA_V2_COLLECTION_PREFIX=$_DONBEOLJA_V2_COLLECTION_PREFIX",
+    "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE=$_DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE",
+    "DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED=$_DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED",
+    "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED=$_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED",
+    "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED=$_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED",
+    "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE=$_DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE",
+    "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED=$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED",
+    "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED=$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED",
+    "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE=$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE",
+  ].every((needle) => source.includes(needle)) && source.includes("npm run run:v2-promotion-cloudbuild");
+}
+
 function hasPromotionRuntimeGcloudAvailable(cloudbuildSource = "") {
   const source = String(cloudbuildSource || "");
   return source.includes('name: "gcr.io/google.com/cloudsdktool/cloud-sdk:alpine"')
@@ -149,6 +170,11 @@ function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) 
       "CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_SCHEDULER_TRAFFIC_STATE",
       hasSchedulerTrafficStateForwardedToPromotionRuntime(cloudbuildSource),
       "Cloud Build promotion runtime must forward DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON into run:v2-promotion-cloudbuild"
+    ),
+    buildCheck(
+      "CLOUDBUILD_PROMOTION_RUNTIME_FORWARDS_V2_CUTOVER_ENV",
+      hasV2CutoverEnvForwardedToPromotionRuntime(cloudbuildSource),
+      "Cloud Build promotion runtime must forward V2 cutover env substitutions into run:v2-promotion-cloudbuild"
     ),
     buildCheck(
       "CLOUDBUILD_PROMOTION_RUNTIME_HAS_GCLOUD_AND_NODE",
@@ -209,6 +235,7 @@ module.exports = {
     extractDeploySetEnvVars,
     hasSelfCheckInCloudBuildValidation,
     hasSchedulerTrafficStateForwardedToPromotionRuntime,
+    hasV2CutoverEnvForwardedToPromotionRuntime,
     hasPromotionRuntimeGcloudAvailable,
   },
 };

@@ -308,6 +308,26 @@ function buildEvidenceRef({ file, field, expectedValue = null, note = null }) {
   });
 }
 
+function envOrDefault(row, name, fallback) {
+  const value = trimOrNull(row && row.effectiveEnv && row.effectiveEnv[name]);
+  return value || fallback;
+}
+
+function buildV2RuntimeCutoverSubstitutions(plan) {
+  const row = plan && typeof plan === "object" ? plan : {};
+  const live = row.promotionMode === "LIVE";
+  return Object.freeze({
+    _DONBEOLJA_V2_ENABLED: live ? "1" : envOrDefault(row, "DONBEOLJA_V2_ENABLED", "0"),
+    _DONBEOLJA_V2_DRY_RUN: live ? "0" : envOrDefault(row, "DONBEOLJA_V2_DRY_RUN", "1"),
+    _DONBEOLJA_V2_CANARY_ONLY: live ? "0" : envOrDefault(row, "DONBEOLJA_V2_CANARY_ONLY", "1"),
+    _DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER: live ? "1" : envOrDefault(row, "DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER", "0"),
+    _DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "1",
+    _DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "0",
+    _DONBEOLJA_V2_COLLECTION_PREFIX: envOrDefault(row, "DONBEOLJA_V2_COLLECTION_PREFIX", "v2__"),
+    _DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE: "OPENCLAW_CRON",
+  });
+}
+
 function buildSubstitutions(plan) {
   const row = plan && typeof plan === "object" ? plan : {};
   const requiresOpenClawExecutionAuditLedgerWrite = ["CANARY_FLOW", "PIPELINE"].includes(row.mode)
@@ -327,14 +347,15 @@ function buildSubstitutions(plan) {
     _V2_PROMOTION_REPLAY_FIXTURE_PROFILE: trimOrNull(row.effectiveEnv && row.effectiveEnv.V2_PROMOTION_REPLAY_FIXTURE_PROFILE) || "REFERENCE_PASS",
     _V2_PROMOTION_COMPARISON_FIXTURE_PROFILE: trimOrNull(row.effectiveEnv && row.effectiveEnv.V2_PROMOTION_COMPARISON_FIXTURE_PROFILE) || "REFERENCE_CLEAN",
     _DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: requiresOpenClawExecutionAuditLedgerWrite ? "1" : "0",
-    _DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED) || (row.promotionMode === "LIVE" ? "1" : "0"),
+    ...buildV2RuntimeCutoverSubstitutions(row),
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: row.promotionMode === "LIVE" ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED) || "0"),
     _DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON) || "",
-    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
-    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
-    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE) || (enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : "JSONL"),
-    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
-    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
-    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE) || (enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : "JSONL"),
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED) || "0"),
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED) || "0"),
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE) || "JSONL"),
+    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED) || "0"),
+    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED) || "0"),
+    _DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: enablesProductionEntryRouteCanaryFirestore ? "FIRESTORE" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE) || "JSONL"),
   });
 }
 

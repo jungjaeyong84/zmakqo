@@ -202,6 +202,8 @@ submit trace에서 `SUBMIT_CHK_17` 은 `SCHEDULER_COLLECTOR_BLOCKER`, `SUBMIT_CH
 
 이 파일이 없거나 `DONBEOLJA_V2_ENABLED=1`, `DONBEOLJA_V2_DRY_RUN=0`, `DONBEOLJA_V2_CANARY_ONLY=0`, `DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER=1` 조건이 깨지면 LIVE runbook review는 실패해야 한다.
 
+LIVE submit wrapper는 위 네 플래그를 운영자가 넘긴 임시 env와 무관하게 CloudBuild substitution으로 강제해야 한다. 또한 `DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL=1`, `DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL=0`, `DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE=OPENCLAW_CRON` 도 강제해야 하며, 이 값과 production entry/exit canary Firestore write/read/source env가 promotion runtime readiness check와 실제 Cloud Run deploy env 양쪽에 전달되어야 한다.
+
 LIVE 전환 전에는 별도로 `npm run check:v2-production-runtime-config` 도 통과해야 한다.
 
 이 검사는 실제 Cloud Run deploy step이 아래 V2 cutover env를 substitution으로 받을 수 있는지 확인한다.

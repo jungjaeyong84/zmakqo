@@ -1232,6 +1232,7 @@ V1 약점 재발 방지:
 8. Firestore source의 `history_file` 필드는 파일 경로가 아니라 실제 V2 collection name으로 기록되어, submit 차단 시 어떤 durable evidence를 봤는지 역추적할 수 있다
 9. LIVE deploy/submit 판단은 `history_source=FIRESTORE` 와 non-empty `history_file` 을 요구하므로, JSONL streak는 개발 fallback으로만 통과한다
 10. `cloudbuild.yaml` 과 `productionRuntimeConfigAudit` 는 canary Firestore write/read/source env 전달을 검사하므로, 코드가 Firestore evidence를 요구하면서 Cloud Run env가 빠지는 단절을 막는다
+11. LIVE submit wrapper는 CloudBuild 안전 기본값을 그대로 쓰지 않고 V2 enabled/dry-run/canary-only/production-cutover/legacy-block/scheduler-SOT substitution을 운영 전환값으로 강제한다
 
 V1 약점 재발 방지:
 

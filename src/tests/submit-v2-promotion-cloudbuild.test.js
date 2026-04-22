@@ -566,6 +566,14 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_FLOW_ENABLED, "1");
   assert.strictEqual(request.substitutions._V2_PROMOTION_SELECT_POSITION_CYCLE_ID, "PCY__CANARY__01");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_CANARY_ONLY, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_COLLECTION_PREFIX, "v2__");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
@@ -611,6 +619,12 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.candidate_selection.field, "candidate_selection_summary.selection_contract");
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_CANARY_ONLY, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
@@ -767,6 +781,14 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.scheduler_traffic_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, true);
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_CANARY_ONLY, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_COLLECTION_PREFIX, "v2__");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
@@ -802,6 +824,43 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     request.approval_evidence_sources.scheduler_traffic_cutover_readiness_summary.field,
     "scheduler_traffic_cutover_readiness_summary"
   );
+})();
+
+(function liveSubmitForcesProductionCutoverSubstitutionsEvenWhenEnvIsUnsafe() {
+  const request = submit.__test.buildSubmitRequest({
+    GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+    V2_PROMOTION_PIPELINE_ENABLED: "1",
+    V2_PROMOTION_MODE: "LIVE",
+    V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__LIVE__UNSAFE_ENV",
+    V2_PROMOTION_ARTIFACT_DIR: "tmp/v2-promotion-artifacts/live/PCY__LIVE__UNSAFE_ENV",
+    DONBEOLJA_V2_ENABLED: "0",
+    DONBEOLJA_V2_DRY_RUN: "1",
+    DONBEOLJA_V2_CANARY_ONLY: "1",
+    DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER: "0",
+    DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "1",
+    DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE: "LEGACY_CLOUD_SCHEDULER",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "0",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: "0",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: "0",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE: "JSONL",
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED: "0",
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: "0",
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: "JSONL",
+  });
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_CANARY_ONLY, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE, "FIRESTORE");
 })();
 
 (function gateModeSubmitRequestDoesNotRequireBoundedApprovalContract() {
