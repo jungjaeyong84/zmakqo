@@ -95,6 +95,14 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function normalizeStringArray(value) {
+  return Array.from(new Set(ensureArray(value).map(trimOrNull).filter(Boolean))).sort();
+}
+
+function sameStringArray(left, right) {
+  return JSON.stringify(normalizeStringArray(left)) === JSON.stringify(normalizeStringArray(right));
+}
+
 function normalizeObject(value) {
   return value && typeof value === "object" ? value : null;
 }
@@ -432,6 +440,8 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
   const collector = normalizeObject(supreme.collector_execution_summary);
   const maxLearnerAgeMinutes = Number(learner && learner.max_evaluation_age_minutes);
   const maxObservedLearnerAgeMinutes = Number(learner && learner.max_observed_evaluation_age_minutes);
+  const expectedPermitIds = normalizeStringArray(lineage && lineage.expected_openclaw_execution_permit_ids);
+  const expectedOutcomeIds = normalizeStringArray(lineage && lineage.expected_openclaw_outcome_adjudication_ids);
   return (
     supreme.ok === true &&
     Number(supreme.world_state_n) > 0 &&
@@ -472,9 +482,13 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
     !!trimOrNull(lineage.expected_openclaw_decision_id) &&
     !!trimOrNull(lineage.expected_position_cycle_id) &&
     !!trimOrNull(lineage.expected_world_state_hash) &&
+    expectedPermitIds.length > 0 &&
+    expectedOutcomeIds.length > 0 &&
     trimOrNull(lineage.expected_world_state_hash) === trimOrNull(supreme.latest_world_state_hash) &&
     trimOrNull(collector.position_cycle_id) === trimOrNull(lineage.expected_position_cycle_id) &&
     trimOrNull(collector.openclaw_decision_id) === trimOrNull(lineage.expected_openclaw_decision_id) &&
+    sameStringArray(collector.openclaw_execution_permit_ids, expectedPermitIds) &&
+    sameStringArray(collector.openclaw_outcome_adjudication_ids, expectedOutcomeIds) &&
     Number(lineage.permit_lineage_mismatch_n || 0) === 0 &&
     Number(lineage.outcome_lineage_mismatch_n || 0) === 0 &&
     Number(lineage.learner_lineage_mismatch_n || 0) === 0 &&

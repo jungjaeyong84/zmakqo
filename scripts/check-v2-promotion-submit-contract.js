@@ -1342,6 +1342,16 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       id: "SUBMIT_CONTRACT_CHK_40",
       label: "package and CloudBuild require V2 promotion test path",
       ok: packageJsonText.includes('"test:v2-promotion"')
+        && packageJsonText.includes('"test:v2-core-invariants"')
+        && packageJsonText.includes("npm run test:v2-core-invariants")
+        && packageJsonText.includes("v2-canonical-exit-reducer.test.js")
+        && packageJsonText.includes("v2-tick-exit-worker.test.js")
+        && packageJsonText.includes("v2-exit-fill-ingestion.test.js")
+        && packageJsonText.includes("v2-watchdog-repair.test.js")
+        && packageJsonText.includes("v2-watchdog-repair-runtime.test.js")
+        && packageJsonText.includes("tp0-retirement.test.js")
+        && packageJsonText.includes("native-protection-unprotected-window.test.js")
+        && packageJsonText.includes("binance-fills-canonical-lineage-guard.test.js")
         && packageJsonText.includes("v2-production-cutover-audit.test.js")
         && packageJsonText.includes("v2-fill-sync-canonical-boundary-audit.test.js")
         && packageJsonText.includes('"test:v2-scheduler-traffic-cutover"')
@@ -1364,6 +1374,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && cloudbuildText.includes("npm run test:v2-promotion")
         && cloudbuildText.includes("npm run check:v2-production-cutover"),
       reason: packageJsonText.includes('"test:v2-promotion"')
+        && packageJsonText.includes("npm run test:v2-core-invariants")
+        && packageJsonText.includes("v2-canonical-exit-reducer.test.js")
         && packageJsonText.includes("v2-production-cutover-audit.test.js")
         && packageJsonText.includes("v2-fill-sync-canonical-boundary-audit.test.js")
         && packageJsonText.includes("npm run test:v2-repair-queue-runtime")
@@ -1383,7 +1395,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && cloudbuildText.includes("npm run test:v2-promotion")
         && cloudbuildText.includes("npm run check:v2-production-cutover")
         ? "package and CloudBuild execute V2 promotion, fill sync boundary, repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E regression paths"
-        : "package.json and cloudbuild.yaml must require test:v2-promotion plus fill sync boundary, repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E audits",
+        : "package.json and cloudbuild.yaml must require test:v2-promotion plus core V2 invariant, fill sync boundary, repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E audits",
       file: FILES.packageJson,
     }),
     buildCheck({
@@ -2005,6 +2017,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && artifactContractText.includes("learner_shadow_summary.stale_evaluation_n=0")
         && artifactContractText.includes("learner_shadow_summary.max_observed_evaluation_age_minutes")
         && artifactContractText.includes("learner_shadow_summary.latest_evaluated_at")
+        && artifactContractText.includes("expected_openclaw_execution_permit_ids")
+        && artifactContractText.includes("expected_openclaw_outcome_adjudication_ids")
         && artifactContractText.includes("collector_execution_summary.status=PASS")
         && artifactContractText.includes("producer_script=collect-v2-promotion-runtime-snapshot")
         && artifactContractText.includes("producer_scope=openclaw_supreme_control_plane")
@@ -2024,6 +2038,10 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && deployDecisionCheckerText.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED")
         && deployDecisionCheckerText.includes("hasOpenClawSupremeControlPlaneCoverage")
         && deployDecisionCheckerText.includes("expected_openclaw_decision_id")
+        && deployDecisionCheckerText.includes("expected_openclaw_execution_permit_ids")
+        && deployDecisionCheckerText.includes("expected_openclaw_outcome_adjudication_ids")
+        && deployDecisionCheckerText.includes("openclaw_execution_permit_ids")
+        && deployDecisionCheckerText.includes("openclaw_outcome_adjudication_ids")
         && deployDecisionCheckerText.includes("stale_evaluation_n")
         && deployDecisionCheckerText.includes("max_observed_evaluation_age_minutes")
         && deployDecisionCheckerText.includes("latest_evaluated_at")
@@ -2032,6 +2050,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && deployDecisionCheckerText.includes("openclaw_supreme_control_plane")
         && deployDecisionCheckerText.includes("learner_lineage_mismatch_n")
         && runbookText.includes("learner_lineage_mismatch_n")
+        && runbookText.includes("expected_openclaw_execution_permit_ids")
+        && runbookText.includes("expected_openclaw_outcome_adjudication_ids")
         && runbookText.includes("max_evaluation_age_minutes")
         && runbookText.includes("max_observed_evaluation_age_minutes")
         && runbookText.includes("collector_execution_summary.status=PASS")
@@ -2039,6 +2059,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "..", "src", "tests", "v2-openclaw-supreme-control-plane.test.js")).includes("supremeSummaryRejectsExpiredPermitAndStaleLearnerEvidence")
         && readText(path.resolve(__dirname, "..", "src", "tests", "v2-openclaw-supreme-control-plane.test.js")).includes("supremeSummaryRejectsMissingCollectorProvenance")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremeLineageMismatchFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremePermitOutcomeIdMismatchFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremeStaleLearnerEvidenceFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremeMissingLearnerFreshnessContractFailsClosed")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveOpenClawSupremeMissingCollectorProvenanceFailsClosed")

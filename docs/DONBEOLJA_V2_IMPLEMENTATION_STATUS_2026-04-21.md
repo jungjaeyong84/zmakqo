@@ -2742,3 +2742,40 @@ V1 약점 재발 방지:
 
 1. 이 변경은 LIVE 24시간 evidence의 계약을 강화하지만, 실제 24시간 canary를 대신 생성하지는 않는다
 2. 실제 LIVE 전에는 같은 artifact cycle에서 production entry route, exit runtime, repair Firestore, OpenClaw supreme closed-loop가 24시간 이상 stale 없이 축적된 결과를 다시 확인해야 한다
+
+## 2026-04-23 Core Invariant Promotion Gate Hardening
+
+추가 증거:
+
+1. `package.json`
+2. `src/services/binanceFuturesFillsSync.js`
+3. `src/v2/fillSyncCanonicalBoundaryAudit.js`
+4. `src/v2/productionRuntimeChainAudit.js`
+5. `scripts/collect-v2-promotion-runtime-snapshot.js`
+6. `scripts/check-v2-promotion-deploy-decision.js`
+7. `scripts/generate-v2-unified-promotion-report.js`
+8. `src/tests/binance-fills-canonical-lineage-guard.test.js`
+9. `src/tests/check-v2-promotion-deploy-decision.test.js`
+10. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+11. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. `test:v2-promotion` 은 이제 첫 단계로 `test:v2-core-invariants` 를 실행한다
+2. core invariant 묶음은 canonical reducer, tick worker, exit fill ingestion, watchdog repair, TP0 retirement, native protection unprotected window, legacy TP0 namespace, fill canonical lineage guard behavior test를 직접 실행한다
+3. V2 batch가 이미 canonical artifact를 쓴 뒤에는 `DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED=1` 이 켜져도 legacy canonical write가 `V2_BATCH_CANONICAL_ALREADY_WRITTEN` 으로 skip된다
+4. OpenClaw supreme closed-loop는 `expected_openclaw_execution_permit_ids` 와 `expected_openclaw_outcome_adjudication_ids` 를 collector provenance의 permit/outcome id 배열과 대조한다
+5. unified promotion report도 OpenClaw collector artifact provenance와 permit/outcome id 배열을 보존한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 audit script가 있어도 실제 reducer/tick/fill/watchdog behavior invariant가 배포 게이트 밖에 남아 회귀를 놓칠 수 있었다
+2. 이번 단계는 token audit 전에 behavior tests를 promotion CI에 직접 묶어, 함수명/문자열 존재만으로 PASS하는 공백을 줄인다
+3. V1에서는 legacy backfill/repair 성격의 경로가 본선 truth를 덮는 위험이 있었다
+4. 이번 단계는 V2 batch ownership 이후 legacy canonical overwrite를 env flag로도 열 수 없게 하여, explicit backfill을 V2 ownership이 없는 과거/복구 케이스로 제한한다
+5. OpenClaw 폐루프도 decision id만이 아니라 permit/outcome id까지 연결되어, 서로 다른 실행 증거를 조합한 PASS를 더 강하게 차단한다
+
+남은 한계:
+
+1. fill sync와 production runtime chain audit 자체는 여전히 source token 기반 검사를 포함한다
+2. 이번 단계는 그 약점을 promotion core behavior tests로 보완하지만, 장기적으로는 AST/호출그래프 기반 감사로 전환하는 것이 더 안전하다

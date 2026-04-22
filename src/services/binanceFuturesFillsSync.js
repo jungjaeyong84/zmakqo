@@ -2779,18 +2779,21 @@ function resolveLegacyCanonicalWriteDecision({
     legacyCanonicalStopGate,
     legacyCanonicalExternalCloseGate,
   });
-  if (v2BatchWritten && !isLegacyCanonicalBackfillEnabled(env)) {
+  if (v2BatchWritten) {
     return {
       ok: true,
       write: false,
       reason: "V2_BATCH_CANONICAL_ALREADY_WRITTEN",
       v2_batch_written: true,
+      legacy_backfill_enabled: isLegacyCanonicalBackfillEnabled(env),
     };
   }
   return {
     ok: true,
     write: true,
-    reason: v2BatchWritten ? "LEGACY_CANONICAL_BACKFILL_ENABLED" : "LEGACY_CANONICAL_WRITE_ALLOWED",
+    reason: isLegacyCanonicalBackfillEnabled(env)
+      ? "LEGACY_CANONICAL_BACKFILL_ENABLED"
+      : "LEGACY_CANONICAL_WRITE_ALLOWED",
     v2_batch_written: v2BatchWritten,
   };
 }

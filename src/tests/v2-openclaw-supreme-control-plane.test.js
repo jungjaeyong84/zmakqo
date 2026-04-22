@@ -60,6 +60,8 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
     source: "V2_FIRESTORE_COLLECTOR",
     position_cycle_id: positionCycle.position_cycle_id,
     openclaw_decision_id: bundle.openclawDecision.openclaw_decision_id,
+    openclaw_execution_permit_ids: [],
+    openclaw_outcome_adjudication_ids: [],
     collected_at: "2026-04-22T01:02:00.000Z",
         artifact_file: "/tmp/dbj-v2-artifacts/promotion-runtime-snapshot.json",
         artifact_dir: "/tmp/dbj-v2-artifacts",
@@ -237,7 +239,10 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
     learnerShadowEvaluations: [evaluation],
     expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
     expectedPositionCycleId: positionCycle.position_cycle_id,
-    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle),
+    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle, {
+      openclaw_execution_permit_ids: [permit.openclaw_execution_permit_id],
+      openclaw_outcome_adjudication_ids: [adjudication.openclaw_outcome_adjudication_id],
+    }),
     nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
   });
   assert.strictEqual(summary.ok, true);
@@ -248,6 +253,8 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
   assert.strictEqual(summary.learner_shadow_summary.max_observed_evaluation_age_minutes, 1);
   assert.strictEqual(summary.learner_shadow_summary.latest_evaluated_at, "2026-04-22T01:01:00.000Z");
   assert.strictEqual(summary.collector_execution_summary.producer_script, "collect-v2-promotion-runtime-snapshot");
+  assert.deepStrictEqual(summary.lineage_consistency_summary.expected_openclaw_execution_permit_ids, [permit.openclaw_execution_permit_id]);
+  assert.deepStrictEqual(summary.lineage_consistency_summary.expected_openclaw_outcome_adjudication_ids, [adjudication.openclaw_outcome_adjudication_id]);
 
   const mismatchedLearner = {
     ...evaluation,
@@ -260,7 +267,10 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
     learnerShadowEvaluations: [mismatchedLearner],
     expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
     expectedPositionCycleId: positionCycle.position_cycle_id,
-    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle),
+    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle, {
+      openclaw_execution_permit_ids: [permit.openclaw_execution_permit_id],
+      openclaw_outcome_adjudication_ids: [adjudication.openclaw_outcome_adjudication_id],
+    }),
     nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
   });
   assert.strictEqual(broken.ok, false);
@@ -303,7 +313,10 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
     learnerShadowEvaluations: [staleEvaluation],
     expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
     expectedPositionCycleId: positionCycle.position_cycle_id,
-    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle),
+    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle, {
+      openclaw_execution_permit_ids: [expiredPermit.openclaw_execution_permit_id],
+      openclaw_outcome_adjudication_ids: [adjudication.openclaw_outcome_adjudication_id],
+    }),
     nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
     maxLearnerEvaluationAgeMinutes: 1440,
   });

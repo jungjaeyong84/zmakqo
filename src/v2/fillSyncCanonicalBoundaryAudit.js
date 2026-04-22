@@ -60,10 +60,11 @@ function reducedFillWriterReturnsOperatorEvidence(source) {
 
 function legacyCanonicalBackfillIsExplicitOnly(source) {
   const block = sliceFunctionBlock(source, "resolveLegacyCanonicalWriteDecision");
-  return block.includes("v2BatchWritten && !isLegacyCanonicalBackfillEnabled(env)")
+  return block.includes("if (v2BatchWritten)")
     && block.includes("V2_BATCH_CANONICAL_ALREADY_WRITTEN")
     && block.includes("LEGACY_CANONICAL_BACKFILL_ENABLED")
     && block.includes("LEGACY_CANONICAL_WRITE_ALLOWED")
+    && block.includes("legacy_backfill_enabled: isLegacyCanonicalBackfillEnabled(env)")
     && String(source || "").includes("DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED");
 }
 

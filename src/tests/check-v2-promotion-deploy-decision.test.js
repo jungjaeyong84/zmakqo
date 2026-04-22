@@ -126,6 +126,8 @@ function buildBoundedRuntimeSummaryFixture() {
         source: "V2_FIRESTORE_COLLECTOR",
         position_cycle_id: "PCY__CANARY__01",
         openclaw_decision_id: "OCDV2__CANARY__01",
+        openclaw_execution_permit_ids: ["OCEPV2__CANARY__01"],
+        openclaw_outcome_adjudication_ids: ["OCOAV2__CANARY__01"],
         collected_at: "2026-04-22T00:02:00.000Z",
         artifact_file: "/tmp/dbj-v2-artifacts/promotion-runtime-snapshot.json",
         artifact_dir: "/tmp/dbj-v2-artifacts",
@@ -142,6 +144,8 @@ function buildBoundedRuntimeSummaryFixture() {
         expected_openclaw_decision_id: "OCDV2__CANARY__01",
         expected_position_cycle_id: "PCY__CANARY__01",
         expected_world_state_hash: "world-state-hash-fixture",
+        expected_openclaw_execution_permit_ids: ["OCEPV2__CANARY__01"],
+        expected_openclaw_outcome_adjudication_ids: ["OCOAV2__CANARY__01"],
         permit_lineage_match_n: 1,
         permit_lineage_mismatch_n: 0,
         outcome_lineage_match_n: 1,
@@ -451,7 +455,7 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   }, {
     productionCutoverAudit: buildProductionCutoverAuditFixture(),
   });
-  assert.strictEqual(decision.approved, true);
+  assert.strictEqual(decision.approved, true, JSON.stringify(decision.blockers));
   assert.strictEqual(decision.decision, "APPROVE_DEPLOY");
   assert.strictEqual(decision.bounded_runtime_summary.selector_query_budget.query_limit, 25);
   assert.strictEqual(decision.selector_meta.position_cycle_id, "PCY__CANARY__01");
@@ -2276,6 +2280,39 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__OPENCLAW_LINEAGE",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED"));
+})();
+
+(function liveOpenClawSupremePermitOutcomeIdMismatchFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__OPENCLAW_ID_LINEAGE");
+  bounded.openclaw_supreme_control_plane_summary.collector_execution_summary.openclaw_execution_permit_ids = [
+    "OCEPV2__OTHER",
+  ];
+  bounded.openclaw_supreme_control_plane_summary.collector_execution_summary.openclaw_outcome_adjudication_ids = [
+    "OCOAV2__OTHER",
+  ];
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__OPENCLAW_ID_LINEAGE",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__OPENCLAW_ID_LINEAGE",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__OPENCLAW_ID_LINEAGE",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

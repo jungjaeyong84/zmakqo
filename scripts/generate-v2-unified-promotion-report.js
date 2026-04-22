@@ -38,6 +38,14 @@ function normalizeNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function normalizeIdList(value) {
+  return Object.freeze(Array.from(new Set(
+    (Array.isArray(value) ? value : [])
+      .map(trimOrNull)
+      .filter(Boolean)
+  )).sort());
+}
+
 function toMs(value) {
   const ms = Date.parse(String(value || "").trim());
   return Number.isFinite(ms) ? ms : null;
@@ -466,7 +474,16 @@ function buildOpenClawSupremeControlPlaneSummary(summary) {
       source: trimOrNull(collector.source),
       position_cycle_id: trimOrNull(collector.position_cycle_id),
       openclaw_decision_id: trimOrNull(collector.openclaw_decision_id),
+      openclaw_execution_permit_ids: normalizeIdList(collector.openclaw_execution_permit_ids),
+      openclaw_outcome_adjudication_ids: normalizeIdList(collector.openclaw_outcome_adjudication_ids),
       collected_at: trimOrNull(collector.collected_at),
+      artifact_file: trimOrNull(collector.artifact_file),
+      artifact_dir: trimOrNull(collector.artifact_dir),
+      artifact_filename: trimOrNull(collector.artifact_filename),
+      artifact_current_dir_match: collector.artifact_current_dir_match === true,
+      generated_at: trimOrNull(collector.generated_at),
+      artifact_generated_at: trimOrNull(collector.artifact_generated_at),
+      artifact_generated_age_minutes: normalizeNumber(collector.artifact_generated_age_minutes),
       exchange_write_performed: collector.exchange_write_performed === true,
       blockers: Array.isArray(collector.blockers) ? collector.blockers.slice() : [],
     }) : null,
@@ -475,6 +492,8 @@ function buildOpenClawSupremeControlPlaneSummary(summary) {
       expected_openclaw_decision_id: trimOrNull(lineage.expected_openclaw_decision_id),
       expected_position_cycle_id: trimOrNull(lineage.expected_position_cycle_id),
       expected_world_state_hash: trimOrNull(lineage.expected_world_state_hash),
+      expected_openclaw_execution_permit_ids: normalizeIdList(lineage.expected_openclaw_execution_permit_ids),
+      expected_openclaw_outcome_adjudication_ids: normalizeIdList(lineage.expected_openclaw_outcome_adjudication_ids),
       permit_lineage_match_n: normalizeNumber(lineage.permit_lineage_match_n),
       permit_lineage_mismatch_n: normalizeNumber(lineage.permit_lineage_mismatch_n),
       outcome_lineage_match_n: normalizeNumber(lineage.outcome_lineage_match_n),

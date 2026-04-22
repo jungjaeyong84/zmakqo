@@ -74,6 +74,14 @@ function countBy(items = [], mapper) {
   return Object.freeze(counts);
 }
 
+function normalizeIdList(values) {
+  return Object.freeze(Array.from(new Set(
+    (Array.isArray(values) ? values : [])
+      .map(trimOrNull)
+      .filter(Boolean)
+  )).sort());
+}
+
 function sortRowsByTimestamp(rows = [], candidateFields = ["created_at", "snapshot_at", "observed_at"], descending = true) {
   return (Array.isArray(rows) ? rows.slice() : []).sort((left, right) => {
     const leftMs = candidateFields.map((field) => parseIsoMs(left && left[field])).find((v) => v != null) ?? 0;
@@ -506,6 +514,8 @@ function buildOpenClawSupremeControlPlaneSummary({
   const expectedDecisionId = trimOrNull(expectedOpenClawDecisionId);
   const expectedCycleId = trimOrNull(expectedPositionCycleId);
   const expectedWorldStateHash = trimOrNull(worldState && worldState.world_state_hash);
+  const permitIds = normalizeIdList(permits.map((row) => row && row.openclaw_execution_permit_id));
+  const outcomeAdjudicationIds = normalizeIdList(adjudications.map((row) => row && row.openclaw_outcome_adjudication_id));
   const adjudicationIds = new Set(adjudications.map((row) => trimOrNull(row && row.openclaw_outcome_adjudication_id)).filter(Boolean));
   const isPermitFresh = (row) => {
     const expiresMs = parseIsoMs(row && row.expires_at);
@@ -535,6 +545,8 @@ function buildOpenClawSupremeControlPlaneSummary({
     trimOrNull(collector.source) === "V2_FIRESTORE_COLLECTOR" &&
     trimOrNull(collector.position_cycle_id) === expectedCycleId &&
     trimOrNull(collector.openclaw_decision_id) === expectedDecisionId &&
+    JSON.stringify(normalizeIdList(collector.openclaw_execution_permit_ids)) === JSON.stringify(permitIds) &&
+    JSON.stringify(normalizeIdList(collector.openclaw_outcome_adjudication_ids)) === JSON.stringify(outcomeAdjudicationIds) &&
     trimOrNull(collector.collected_at) &&
     trimOrNull(collector.artifact_filename) === SNAPSHOT_FILENAME &&
     trimOrNull(collector.artifact_file) &&
@@ -550,12 +562,14 @@ function buildOpenClawSupremeControlPlaneSummary({
     const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
     const worldOk = !expectedWorldStateHash || trimOrNull(row && row.world_state_hash) === expectedWorldStateHash;
     return decisionOk && worldOk;
-  }).length;
+  });
   const outcomeLineageMatches = adjudications.filter((row) => {
     const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
     const cycleOk = !expectedCycleId || trimOrNull(row && row.position_cycle_id) === expectedCycleId;
     return decisionOk && cycleOk;
-  }).length;
+  });
+  const permitLineageMatchIds = normalizeIdList(permitLineageMatches.map((row) => row && row.openclaw_execution_permit_id));
+  const outcomeLineageMatchIds = normalizeIdList(outcomeLineageMatches.map((row) => row && row.openclaw_outcome_adjudication_id));
   const learnerLineageMatches = learnerRows.filter((row) => {
     const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
     const cycleOk = !expectedCycleId || trimOrNull(row && row.position_cycle_id) === expectedCycleId;
@@ -567,8 +581,8 @@ function buildOpenClawSupremeControlPlaneSummary({
   const shadowOnlyCount = learnerRows.filter((row) => row && row.shadow_only === true).length;
   const staleEvaluationCount = learnerRows.filter((row) => !isLearnerFresh(row)).length;
   const lineageBlockers = [];
-  if (expectedDecisionId && permitLineageMatches < permits.length) lineageBlockers.push("OPENCLAW_PERMIT_DECISION_OR_WORLD_STATE_LINEAGE_MISMATCH");
-  if (expectedCycleId && outcomeLineageMatches < adjudications.length) lineageBlockers.push("OPENCLAW_OUTCOME_POSITION_OR_DECISION_LINEAGE_MISMATCH");
+  if (expectedDecisionId && permitLineageMatches.length < permits.length) lineageBlockers.push("OPENCLAW_PERMIT_DECISION_OR_WORLD_STATE_LINEAGE_MISMATCH");
+  if (expectedCycleId && outcomeLineageMatches.length < adjudications.length) lineageBlockers.push("OPENCLAW_OUTCOME_POSITION_OR_DECISION_LINEAGE_MISMATCH");
   if (learnerRows.length && learnerLineageMatches < learnerRows.length) lineageBlockers.push("OPENCLAW_LEARNER_OUTCOME_LINEAGE_MISMATCH");
   const blockers = [];
   if (!worldState || !trimOrNull(worldState.world_state_hash)) blockers.push("OPENCLAW_WORLD_STATE_REQUIRED");
@@ -613,6 +627,8 @@ function buildOpenClawSupremeControlPlaneSummary({
           source: trimOrNull(collector.source),
           position_cycle_id: trimOrNull(collector.position_cycle_id),
           openclaw_decision_id: trimOrNull(collector.openclaw_decision_id),
+          openclaw_execution_permit_ids: normalizeIdList(collector.openclaw_execution_permit_ids),
+          openclaw_outcome_adjudication_ids: normalizeIdList(collector.openclaw_outcome_adjudication_ids),
           collected_at: trimOrNull(collector.collected_at),
           artifact_file: trimOrNull(collector.artifact_file),
           artifact_dir: trimOrNull(collector.artifact_dir),
@@ -632,10 +648,12 @@ function buildOpenClawSupremeControlPlaneSummary({
       expected_openclaw_decision_id: expectedDecisionId,
       expected_position_cycle_id: expectedCycleId,
       expected_world_state_hash: expectedWorldStateHash,
-      permit_lineage_match_n: permitLineageMatches,
-      permit_lineage_mismatch_n: Math.max(permits.length - permitLineageMatches, 0),
-      outcome_lineage_match_n: outcomeLineageMatches,
-      outcome_lineage_mismatch_n: Math.max(adjudications.length - outcomeLineageMatches, 0),
+      expected_openclaw_execution_permit_ids: permitLineageMatchIds,
+      expected_openclaw_outcome_adjudication_ids: outcomeLineageMatchIds,
+      permit_lineage_match_n: permitLineageMatches.length,
+      permit_lineage_mismatch_n: Math.max(permits.length - permitLineageMatches.length, 0),
+      outcome_lineage_match_n: outcomeLineageMatches.length,
+      outcome_lineage_mismatch_n: Math.max(adjudications.length - outcomeLineageMatches.length, 0),
       learner_lineage_match_n: learnerLineageMatches,
       learner_lineage_mismatch_n: Math.max(learnerRows.length - learnerLineageMatches, 0),
       blockers: Object.freeze(lineageBlockers),
@@ -1044,6 +1062,8 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
       source: "V2_FIRESTORE_COLLECTOR",
       position_cycle_id: cfg.positionCycleId,
       openclaw_decision_id: nativeDecisionId,
+      openclaw_execution_permit_ids: normalizeIdList(executionPermits.map((row) => row && row.openclaw_execution_permit_id)),
+      openclaw_outcome_adjudication_ids: normalizeIdList(outcomeAdjudications.map((row) => row && row.openclaw_outcome_adjudication_id)),
       collected_at: collectedAt,
       artifact_file: snapshotFile,
       artifact_dir: artifactDir,

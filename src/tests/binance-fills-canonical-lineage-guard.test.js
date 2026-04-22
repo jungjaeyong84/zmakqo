@@ -471,8 +471,9 @@ async function run() {
     },
   });
   assert.strictEqual(explicitBackfillLegacyWriteDecision.ok, true);
-  assert.strictEqual(explicitBackfillLegacyWriteDecision.write, true);
-  assert.strictEqual(explicitBackfillLegacyWriteDecision.reason, "LEGACY_CANONICAL_BACKFILL_ENABLED");
+  assert.strictEqual(explicitBackfillLegacyWriteDecision.write, false);
+  assert.strictEqual(explicitBackfillLegacyWriteDecision.reason, "V2_BATCH_CANONICAL_ALREADY_WRITTEN");
+  assert.strictEqual(explicitBackfillLegacyWriteDecision.legacy_backfill_enabled, true);
 
   const v2DisabledLegacyWriteDecision = __test.resolveLegacyCanonicalWriteDecision({
     canonicalExitMutationAllowed: true,

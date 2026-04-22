@@ -131,6 +131,13 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
     "repair_firestore_canary_streak",
   ];
   const packageTokens = [
+    "test:v2-core-invariants",
+    "v2-canonical-exit-reducer.test.js",
+    "v2-tick-exit-worker.test.js",
+    "v2-exit-fill-ingestion.test.js",
+    "v2-watchdog-repair.test.js",
+    "t" + "p0-retirement.test.js",
+    "native-protection-unprotected-window.test.js",
     "check:v2-production-runtime-chain",
     "v2-production-runtime-chain-audit.test.js",
     "check:v2-fill-sync-canonical-boundary",

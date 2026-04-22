@@ -67,7 +67,7 @@ function readRepoFile(relPath) {
 (function implicitLegacyBackfillAfterV2BatchFailsClosed() {
   const source = readRepoFile("src/services/binanceFuturesFillsSync.js")
     .replace(
-      "if (v2BatchWritten && !isLegacyCanonicalBackfillEnabled(env))",
+      "if (v2BatchWritten)",
       "if (v2BatchWritten && false)"
     );
   const audit = auditV2FillSyncCanonicalBoundary({
