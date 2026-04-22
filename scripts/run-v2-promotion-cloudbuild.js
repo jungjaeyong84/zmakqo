@@ -95,7 +95,11 @@ function summarizeBlockers(blockers) {
     has_live_evidence_cycle_blocker: hasLiveEvidenceCycleBlocker,
     has_watchdog_blocker: normalized.some((row) => row.includes("WATCHDOG")),
     has_candidate_selection_blocker: normalized.some((row) => row.includes("CANDIDATE_SELECTION")),
-    has_bounded_runtime_blocker: normalized.some((row) => row.includes("BOUNDED_RUNTIME") || row.includes("EVIDENCE_SNAPSHOT")),
+    has_bounded_runtime_blocker: normalized.some((row) => (
+      row.includes("BOUNDED_RUNTIME") ||
+      row.includes("EVIDENCE_SNAPSHOT") ||
+      row.includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED")
+    )),
     has_production_entry_protected_canary_blocker: normalized.some((row) => row.includes("PRODUCTION_ENTRY_PROTECTED_CANARY")),
     has_entry_boundary_blocker: normalized.some((row) => row.includes("ENTRY_BOUNDARY")),
     has_production_cutover_blocker: normalized.some((row) => row.includes("PRODUCTION_CUTOVER")),

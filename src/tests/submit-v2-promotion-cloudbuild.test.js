@@ -1136,6 +1136,26 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.deepStrictEqual(submit.__test.collectRunbookReviewChecklist(summary.runbook_review_summary), ["13E", "24B"]);
 })();
 
+(function repairEvidenceSummaryRequiredIsBoundedRuntimeSubmitBlocker() {
+  const summary = submit.__test.buildVerificationSummary([
+    {
+      id: "SUBMIT_CHK_07",
+      ok: false,
+      reason: "cloudbuild blocker count must be zero: DEPLOY_DECISION:REPAIR_EVIDENCE_SUMMARY_REQUIRED",
+    },
+  ]);
+  assert.strictEqual(summary.has_bounded_runtime_blocker, true);
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedAction(summary),
+    "REGENERATE_BOUNDED_RUNTIME_ARTIFACTS_AND_RECHECK_DEPLOY_DECISION"
+  );
+  assert.strictEqual(
+    submit.__test.buildVerificationRecommendedActionReasonCode(summary),
+    "BOUNDED_RUNTIME_BLOCKER"
+  );
+  assert.deepStrictEqual(submit.__test.buildSubmitTraceFamilies(summary), ["BOUNDED_RUNTIME", "CONTEXT"]);
+})();
+
 (function cliResultPayloadExposesTopLevelSubmitTrace() {
   const payload = submit.__test.buildCliResultPayload({
     ok: false,

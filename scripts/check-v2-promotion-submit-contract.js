@@ -1727,10 +1727,16 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       id: "SUBMIT_CONTRACT_CHK_64",
       label: "repair evidence summary requires concrete order evidence",
       ok: deployDecisionCheckerText.includes("orderEvidenceCount > 0")
+        && cloudbuildWrapperText.includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED")
+        && submitWrapperText.includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("repairEvidenceSummaryRequiredIsBoundedRuntimeBlocker")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("repairEvidenceSummaryRequiredIsBoundedRuntimeSubmitBlocker")
         && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("canaryWithRepairCompletionButNoOrderEvidenceFailsClosed"),
       reason: deployDecisionCheckerText.includes("orderEvidenceCount > 0")
-        ? "repair request completion cannot satisfy promotion evidence without concrete SL/TP1 order evidence"
-        : "promotion must not accept repair completion summaries that omit concrete exchange order evidence",
+        && cloudbuildWrapperText.includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED")
+        && submitWrapperText.includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED")
+        ? "repair request completion cannot satisfy promotion evidence without concrete SL/TP1 order evidence, and missing repair evidence is classified as bounded runtime evidence"
+        : "promotion must not accept or misclassify repair completion summaries that omit concrete exchange order evidence",
       file: FILES.deployDecisionChecker,
     }),
   ];

@@ -815,6 +815,27 @@ function seedRunbookArtifacts(dir, cycleId) {
   assert.ok(cloudbuild.__test.buildStatusLine(summary).includes("live_evidence_cycle=BLOCKED"));
 })();
 
+(function repairEvidenceSummaryRequiredIsBoundedRuntimeBlocker() {
+  const summary = cloudbuild.__test.buildDeployDecisionSummary({
+    approved: false,
+    decision: "HOLD",
+    position_cycle_id: "PCY__READ__REPAIR_EVIDENCE",
+    blockers: [
+      "DEPLOY_DECISION:REPAIR_EVIDENCE_SUMMARY_REQUIRED",
+    ],
+    warnings: [],
+  });
+  assert.strictEqual(summary.blocker_summary.has_bounded_runtime_blocker, true);
+  assert.strictEqual(
+    cloudbuild.__test.buildRecommendedNextActionReasonCode(summary),
+    "BOUNDED_RUNTIME_BLOCKER"
+  );
+  assert.deepStrictEqual(
+    cloudbuild.__test.buildContextBlockerFamilies(summary.blocker_summary),
+    ["BOUNDED_RUNTIME"]
+  );
+})();
+
 (function protectedEntryCanaryBlockerHasSpecificCloudbuildAction() {
   const decision = {
     approved: false,

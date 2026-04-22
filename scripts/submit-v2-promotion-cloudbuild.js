@@ -143,7 +143,8 @@ function buildVerificationSummary(checks) {
     row.toUpperCase().includes("LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH") ||
     row.toUpperCase().includes("LIVE_EVIDENCE_CYCLE")
   ));
-  const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19", "SUBMIT_CHK_20A", "SUBMIT_CHK_21"].includes(id));
+  const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19", "SUBMIT_CHK_20A", "SUBMIT_CHK_21"].includes(id))
+    || deployBlockers.some((row) => row.toUpperCase().includes("REPAIR_EVIDENCE_SUMMARY_REQUIRED"));
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
   const hasProductionCutoverBlocker = ids.some((id) => ["SUBMIT_CHK_14", "SUBMIT_CHK_15"].includes(id));
