@@ -1,6 +1,8 @@
 "use strict";
 
-const REPO_ROOT = "/Users/jeongjaeyong/Projects/donbeolja";
+const path = require("path");
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const OPENCLAW_SCHEDULER_SOT = "OPENCLAW_CRON";
 
 const OPENCLAW_CRON_JOBS = Object.freeze([
