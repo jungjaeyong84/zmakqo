@@ -13,10 +13,13 @@ const deployDecision = require("./check-v2-promotion-deploy-decision");
 const gate = require("./check-v2-promotion-gate");
 const repairFirestoreCanaryStreak = require("./check-v2-repair-queue-firestore-canary-streak");
 const productionEntryRouteCanaryStreak = require("./check-v2-production-entry-route-canary-streak");
+const productionEntryProtectedCanary = require("./run-v2-production-entry-protected-canary");
 
 const REPAIR_FIRESTORE_CANARY_STREAK_FILENAME = "v2_repair_queue_firestore_canary_streak_latest.json";
 const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
+const PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME = "v2_production_entry_protected_canary_latest.json";
 const REPAIR_FIRESTORE_CANARY_HISTORY_FILENAME = "v2_repair_queue_firestore_canary_history.jsonl";
+const PRODUCTION_ENTRY_PROTECTED_CANARY_HISTORY_FILENAME = "v2_production_entry_protected_canary_history.jsonl";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -54,6 +57,10 @@ function resolveArtifactDir(env = process.env) {
 }
 
 function shouldRefreshProductionEntryRouteCanaryStreak(env = process.env) {
+  return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
+}
+
+function shouldRefreshProductionEntryProtectedCanary(env = process.env) {
   return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
 }
 
@@ -171,6 +178,56 @@ async function refreshProductionEntryRouteCanaryStreak(env = process.env, { db =
   });
 }
 
+async function refreshProductionEntryProtectedCanary(env = process.env) {
+  if (!shouldRefreshProductionEntryProtectedCanary(env)) {
+    return Object.freeze({
+      required: false,
+      skipped: true,
+      reason: "PRODUCTION_ENTRY_PROTECTED_CANARY_REFRESH_SKIPPED",
+      report: null,
+      output_file: null,
+    });
+  }
+  const artifactDir = resolveArtifactDir(env);
+  const outputFile = path.join(artifactDir, PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME);
+  const historyFile = path.join(artifactDir, PRODUCTION_ENTRY_PROTECTED_CANARY_HISTORY_FILENAME);
+  const canaryEnv = Object.freeze({
+    ...env,
+    V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    DONBEOLJA_V2_PRODUCTION_ENTRY_PROTECTED_CANARY_ARTIFACT_DIR: artifactDir,
+    DONBEOLJA_V2_PRODUCTION_ENTRY_PROTECTED_CANARY_FILE: outputFile,
+    DONBEOLJA_V2_PRODUCTION_ENTRY_PROTECTED_CANARY_HISTORY_FILE: historyFile,
+  });
+  let report = null;
+  try {
+    report = await productionEntryProtectedCanary.main({
+      env: canaryEnv,
+      setProcessExitCode: false,
+    });
+  } catch (error) {
+    report = Object.freeze({
+      ok: false,
+      reason: "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_THROWN",
+      scope: "production_entry_protected_canary",
+      canary_mode: "PROTECTED_ENTRY_NO_EXCHANGE_PROOF",
+      exchange_write_performed: false,
+      error: Object.freeze({
+        message: error && error.message ? error.message : String(error),
+      }),
+    });
+    writeJson(outputFile, report);
+  }
+  return Object.freeze({
+    required: true,
+    skipped: false,
+    reason: report && report.ok === true
+      ? "PRODUCTION_ENTRY_PROTECTED_CANARY_REFRESH_PASS"
+      : "PRODUCTION_ENTRY_PROTECTED_CANARY_REFRESH_BLOCKED",
+    report,
+    output_file: outputFile,
+  });
+}
+
 async function runPipeline(env = process.env, {
   selectorDb = null,
   collectorDb = null,
@@ -198,6 +255,7 @@ async function runPipeline(env = process.env, {
   const productionEntryRouteCanaryStreakRefresh = await refreshProductionEntryRouteCanaryStreak(effectiveEnv, {
     db: collectorDb || selectorDb,
   });
+  const productionEntryProtectedCanaryRefresh = await refreshProductionEntryProtectedCanary(effectiveEnv);
   const reportEnv = {
     ...effectiveEnv,
     ...(repairFirestoreCanaryStreakRefresh.output_file
@@ -205,6 +263,9 @@ async function runPipeline(env = process.env, {
       : {}),
     ...(productionEntryRouteCanaryStreakRefresh.output_file
       ? { DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILE: productionEntryRouteCanaryStreakRefresh.output_file }
+      : {}),
+    ...(productionEntryProtectedCanaryRefresh.output_file
+      ? { DONBEOLJA_V2_PRODUCTION_ENTRY_PROTECTED_CANARY_FILE: productionEntryProtectedCanaryRefresh.output_file }
       : {}),
   };
   const gateResult = gate.__test.evaluateGateFromEnv(reportEnv);
@@ -218,6 +279,9 @@ async function runPipeline(env = process.env, {
     productionEntryRouteCanaryStreak: productionEntryRouteCanaryStreakRefresh.report,
     productionEntryRouteCanaryStreakFile: productionEntryRouteCanaryStreakRefresh.output_file,
     productionEntryRouteCanaryStreakStatus: productionEntryRouteCanaryStreakRefresh.reason,
+    productionEntryProtectedCanary: productionEntryProtectedCanaryRefresh.report,
+    productionEntryProtectedCanaryFile: productionEntryProtectedCanaryRefresh.output_file,
+    productionEntryProtectedCanaryStatus: productionEntryProtectedCanaryRefresh.reason,
     unifiedReport,
     deployDecision: deployDecisionResult.decision,
   });
@@ -281,8 +345,10 @@ if (require.main === module) {
       resolveRepairFirestoreCanaryHistoryFile,
       refreshRepairFirestoreCanaryStreak,
       shouldRefreshProductionEntryRouteCanaryStreak,
+      shouldRefreshProductionEntryProtectedCanary,
       buildProductionEntryRouteCanaryStreakThrownReport,
       refreshProductionEntryRouteCanaryStreak,
+      refreshProductionEntryProtectedCanary,
     },
   };
 }

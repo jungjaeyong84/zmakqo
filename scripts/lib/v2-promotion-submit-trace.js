@@ -52,6 +52,11 @@ const TRACE_INDEX = Object.freeze([
     summary: "V2 production live entry sizing contract complete",
   }),
   Object.freeze({
+    id: "SUBMIT_CHK_20A",
+    runbookChecklist: Object.freeze(["27A"]),
+    summary: "V2 production protected entry canary complete",
+  }),
+  Object.freeze({
     id: "SUBMIT_CHK_15",
     runbookChecklist: Object.freeze(["23"]),
     summary: "LIVE production cutover readiness blocks legacy webhook",

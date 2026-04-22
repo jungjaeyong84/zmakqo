@@ -408,6 +408,44 @@ function hasProductionEntryRouteCanaryStreak(summary) {
   );
 }
 
+function hasProductionEntryProtectedCanary(summary) {
+  const row = normalizeObject(summary);
+  const canary = normalizeObject(row && row.production_entry_protected_canary);
+  const routeSummary = normalizeObject(canary && canary.route_result_summary);
+  const checkIds = new Set(ensureArray(canary && canary.check_ids).map(String).filter(Boolean));
+  if (!canary || !routeSummary) return false;
+  return (
+    canary.ok === true &&
+    trimOrNull(canary.reason) === "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS" &&
+    trimOrNull(canary.scope) === "production_entry_protected_canary" &&
+    trimOrNull(canary.canary_mode) === "PROTECTED_ENTRY_NO_EXCHANGE_PROOF" &&
+    canary.exchange_write_performed === false &&
+    canary.route_called === true &&
+    canary.kernel_called === true &&
+    canary.entry_transport_called === true &&
+    canary.initial_sl_transport_called === true &&
+    canary.initial_tp1_transport_called === true &&
+    Number(canary.memory_firestore_batch_commit_n) >= 2 &&
+    Number(canary.memory_firestore_write_n) >= 4 &&
+    Number(canary.fail_n) === 0 &&
+    ensureArray(canary.failed_check_ids).length === 0 &&
+    routeSummary.ok === true &&
+    trimOrNull(routeSummary.reason) === "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED" &&
+    trimOrNull(routeSummary.runtime_health_status) === "HEALTHY" &&
+    !!trimOrNull(routeSummary.position_cycle_id) &&
+    !!trimOrNull(routeSummary.entry_event_id) &&
+    !!trimOrNull(routeSummary.protection_runtime_id) &&
+    !!trimOrNull(routeSummary.sl_order_id) &&
+    !!trimOrNull(routeSummary.tp1_order_id) &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_REQUEST_SIZING_APPROVED") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_ACTIVE_PROTECTED") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_SL_ORDER_PRESENT") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT") &&
+    checkIds.has("V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE")
+  );
+}
+
 function hasExactCandidateSnapshotCounts(summary) {
   const row = normalizeObject(summary);
   const selectedPreflight = normalizeObject(row && row.selected_preflight);
@@ -579,6 +617,9 @@ function buildDeployDecision(unifiedReport, {
   if (mode === "CANARY" && !hasProductionEntryRouteCanaryStreak(boundedRuntimeSummary)) {
     warnings.push("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY");
   }
+  if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionEntryProtectedCanary(boundedRuntimeSummary)) {
+    blockers.push("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED");
+  }
   if (mode === "SHADOW") {
     blockers.push("DEPLOY_DECISION:SHADOW_MODE_NOT_DEPLOYABLE");
   }
@@ -720,6 +761,7 @@ if (require.main === module) {
       hasProductionLiveEntrySizingContract,
       hasRepairFirestoreCanaryStreak,
       hasProductionEntryRouteCanaryStreak,
+      hasProductionEntryProtectedCanary,
       buildAlertRetrySummary,
       hasAlertRetryAttention,
       hasExactCandidateSnapshotCounts,

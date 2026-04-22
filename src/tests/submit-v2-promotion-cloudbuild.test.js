@@ -188,6 +188,40 @@ function seedBoundedSubmitArtifacts(
         invalid_line_n: 0,
         blockers: [],
       },
+      production_entry_protected_canary: {
+        ok: true,
+        reason: "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS",
+        scope: "production_entry_protected_canary",
+        canary_mode: "PROTECTED_ENTRY_NO_EXCHANGE_PROOF",
+        exchange_write_performed: false,
+        route_called: true,
+        kernel_called: true,
+        entry_transport_called: true,
+        initial_sl_transport_called: true,
+        initial_tp1_transport_called: true,
+        memory_firestore_batch_commit_n: 2,
+        memory_firestore_write_n: 4,
+        fail_n: 0,
+        check_ids: [
+          "V2_PROTECTED_ENTRY_CANARY_REQUEST_SIZING_APPROVED",
+          "V2_PROTECTED_ENTRY_CANARY_ACTIVE_PROTECTED",
+          "V2_PROTECTED_ENTRY_CANARY_SL_ORDER_PRESENT",
+          "V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT",
+          "V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT",
+          "V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE",
+        ],
+        failed_check_ids: [],
+        route_result_summary: {
+          ok: true,
+          reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED",
+          position_cycle_id: "PCY__PROTECTED_CANARY__01",
+          entry_event_id: "ENTRY__PROTECTED_CANARY__01",
+          protection_runtime_id: "PRTV2__PROTECTED_CANARY__01",
+          runtime_health_status: "HEALTHY",
+          sl_order_id: "SL__PROTECTED_CANARY__01",
+          tp1_order_id: "TP1__PROTECTED_CANARY__01",
+        },
+      },
     },
     ...(autoSelect ? {
       candidate_selection_summary: {
@@ -422,6 +456,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, false);
   assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, false);
+  assert.strictEqual(request.approval_contract.production_entry_protected_canary_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.runbook_review_pass_required, true);
   assert.strictEqual(request.approval_contract.candidate_selection_ready_required, false);
@@ -438,6 +473,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.openclaw_execution_audit_ledger_write.field, "bounded_runtime_summary.openclaw_execution_audit_ledger_write");
   assert.strictEqual(request.approval_evidence_sources.repair_firestore_canary_streak, null);
   assert.strictEqual(request.approval_evidence_sources.production_entry_route_canary_streak, null);
+  assert.strictEqual(request.approval_evidence_sources.production_entry_protected_canary.field, "bounded_runtime_summary.production_entry_protected_canary");
   assert.strictEqual(request.approval_evidence_sources.runbook_review.expected_value, "PASS");
   assert.strictEqual(request.approval_evidence_sources.resolved_artifact_dir.file, "promotion-cloudbuild-context.json");
   assert.strictEqual(request.approval_evidence_sources.resolved_artifact_dir.field, "artifact_dir,resolved_artifact_dir,artifact_dir_coherence,position_cycle_id");
@@ -479,6 +515,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, false);
   assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, false);
+  assert.strictEqual(request.approval_contract.production_entry_protected_canary_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.candidate_selection_ready_required, true);
   assert.strictEqual(request.approval_contract.selected_preflight_required, true);
@@ -635,6 +672,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.promotion_mode, "LIVE");
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, true);
   assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, true);
+  assert.strictEqual(request.approval_contract.production_entry_protected_canary_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.scheduler_traffic_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, true);
@@ -648,6 +686,10 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(
     request.approval_evidence_sources.production_entry_route_canary_streak.field,
     "bounded_runtime_summary.production_entry_route_canary_streak"
+  );
+  assert.strictEqual(
+    request.approval_evidence_sources.production_entry_protected_canary.field,
+    "bounded_runtime_summary.production_entry_protected_canary"
   );
   assert.strictEqual(
     request.approval_evidence_sources.live_cutover_readiness_summary.field,

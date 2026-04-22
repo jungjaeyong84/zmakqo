@@ -119,6 +119,40 @@ function buildBoundedRuntimeSummaryFixture() {
       invalid_line_n: 0,
       blockers: [],
     },
+    production_entry_protected_canary: {
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS",
+      scope: "production_entry_protected_canary",
+      canary_mode: "PROTECTED_ENTRY_NO_EXCHANGE_PROOF",
+      exchange_write_performed: false,
+      route_called: true,
+      kernel_called: true,
+      entry_transport_called: true,
+      initial_sl_transport_called: true,
+      initial_tp1_transport_called: true,
+      memory_firestore_batch_commit_n: 2,
+      memory_firestore_write_n: 4,
+      fail_n: 0,
+      check_ids: [
+        "V2_PROTECTED_ENTRY_CANARY_REQUEST_SIZING_APPROVED",
+        "V2_PROTECTED_ENTRY_CANARY_ACTIVE_PROTECTED",
+        "V2_PROTECTED_ENTRY_CANARY_SL_ORDER_PRESENT",
+        "V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT",
+        "V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT",
+        "V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE",
+      ],
+      failed_check_ids: [],
+      route_result_summary: {
+        ok: true,
+        reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED",
+        position_cycle_id: "PCY__PROTECTED_CANARY__01",
+        entry_event_id: "ENTRY__PROTECTED_CANARY__01",
+        protection_runtime_id: "PRTV2__PROTECTED_CANARY__01",
+        runtime_health_status: "HEALTHY",
+        sl_order_id: "SL__PROTECTED_CANARY__01",
+        tp1_order_id: "TP1__PROTECTED_CANARY__01",
+      },
+    },
     alert_retry_summary: {
       outbox_n: 3,
       failed_n: 1,
@@ -206,6 +240,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.strictEqual(deployDecision.__test.hasRepairEvidenceSummary(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasOpenClawExecutionAuditLedgerWrite(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasRepairFirestoreCanaryStreak(decision.bounded_runtime_summary), true);
+  assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasEntryBoundaryAudit(decision.entry_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasFillSyncCanonicalBoundaryAudit(decision.fill_sync_canonical_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasProductionCutoverAudit(decision.production_cutover_audit), true);
@@ -419,6 +454,36 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
+})();
+
+(function canaryWithoutProductionEntryProtectedCanaryFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  delete bounded.production_entry_protected_canary;
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__NO_PROTECTED_CANARY",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__NO_PROTECTED_CANARY",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__NO_PROTECTED_CANARY",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionCutoverAudit: buildProductionCutoverAuditFixture(),
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED"));
 })();
 
 (function canaryWithoutProductionEntryRouteStreakWarnsButDoesNotBlock() {

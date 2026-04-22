@@ -163,16 +163,17 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 11. `approval_contract.production_live_entry_sizing_contract_required`
 12. `approval_contract.openclaw_execution_audit_ledger_write_required`
 13. `approval_contract.repair_firestore_canary_streak_required`
-14. `approval_contract.production_cutover_readiness_summary_required`
-15. `approval_contract.scheduler_traffic_collector_preflight_summary_required`
-16. `approval_contract.scheduler_traffic_cutover_readiness_summary_required`
-17. `approval_contract.live_cutover_readiness_summary_required`
-18. `approval_contract.runbook_review_pass_required`
-19. `approval_contract.candidate_selection_ready_required`
-20. `approval_contract.selected_preflight_required`
-21. `approval_contract.blocker_free_required`
-22. `approval_contract.recommended_next_action_required`
-23. `approval_contract.resolved_artifact_dir_required`
+14. `approval_contract.production_entry_protected_canary_required`
+15. `approval_contract.production_cutover_readiness_summary_required`
+16. `approval_contract.scheduler_traffic_collector_preflight_summary_required`
+17. `approval_contract.scheduler_traffic_cutover_readiness_summary_required`
+18. `approval_contract.live_cutover_readiness_summary_required`
+19. `approval_contract.runbook_review_pass_required`
+20. `approval_contract.candidate_selection_ready_required`
+21. `approval_contract.selected_preflight_required`
+22. `approval_contract.blocker_free_required`
+23. `approval_contract.recommended_next_action_required`
+24. `approval_contract.resolved_artifact_dir_required`
 
 또한 submit request에는 “최종 승격이 어떤 artifact/field로 증명돼야 하는가” 도 같이 남아야 한다.
 
@@ -189,16 +190,17 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 9. `approval_evidence_sources.production_live_entry_sizing_contract`
 10. `approval_evidence_sources.openclaw_execution_audit_ledger_write`
 11. `approval_evidence_sources.repair_firestore_canary_streak`
-12. `approval_evidence_sources.production_cutover_readiness_summary`
-13. `approval_evidence_sources.scheduler_traffic_collector_preflight_summary`
-14. `approval_evidence_sources.scheduler_traffic_cutover_readiness_summary`
-15. `approval_evidence_sources.live_cutover_readiness_summary`
-16. `approval_evidence_sources.runbook_review`
-17. `approval_evidence_sources.recommended_next_action`
-18. `approval_evidence_sources.blocker_summary`
-19. `approval_evidence_sources.lineage_hash_sources`
-20. `approval_evidence_sources.candidate_selection` (auto-select path만)
-21. `approval_evidence_sources.resolved_artifact_dir`
+12. `approval_evidence_sources.production_entry_protected_canary`
+13. `approval_evidence_sources.production_cutover_readiness_summary`
+14. `approval_evidence_sources.scheduler_traffic_collector_preflight_summary`
+15. `approval_evidence_sources.scheduler_traffic_cutover_readiness_summary`
+16. `approval_evidence_sources.live_cutover_readiness_summary`
+17. `approval_evidence_sources.runbook_review`
+18. `approval_evidence_sources.recommended_next_action`
+19. `approval_evidence_sources.blocker_summary`
+20. `approval_evidence_sources.lineage_hash_sources`
+21. `approval_evidence_sources.candidate_selection` (auto-select path만)
+22. `approval_evidence_sources.resolved_artifact_dir`
 
 submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도 같이 남아야 한다.
 

@@ -283,13 +283,18 @@ function buildProductionRouteCanaryHistoryDb(rows) {
     assert.ok(fs.existsSync(path.join(dir, "comparison-fixtures.json")));
     assert.ok(fs.existsSync(path.join(dir, "unified-promotion-report.json")));
     assert.ok(fs.existsSync(path.join(dir, "promotion-deploy-decision.json")));
+    assert.ok(fs.existsSync(path.join(dir, "v2_production_entry_protected_canary_latest.json")));
     assert.strictEqual(result.deployDecision.approved, true);
+    assert.strictEqual(result.productionEntryProtectedCanaryStatus, "PRODUCTION_ENTRY_PROTECTED_CANARY_REFRESH_PASS");
+    assert.strictEqual(result.productionEntryProtectedCanary.reason, "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS");
     const storedDecision = JSON.parse(fs.readFileSync(path.join(dir, "promotion-deploy-decision.json"), "utf8"));
     assert.strictEqual(storedDecision.bounded_runtime_summary.exporter_snapshot_size_bytes > 0, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.evidence_snapshot_summary.ok, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.openclaw_execution_separation_summary.ok, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.runtime_chain_audit_summary.ok, true);
     assert.strictEqual(storedDecision.bounded_runtime_summary.repair_evidence_summary.ok, true);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_protected_canary.reason, "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS");
+    assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_protected_canary.exchange_write_performed, false);
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
   }

@@ -1949,3 +1949,32 @@ V1 약점 재발 방지:
 1. V1에서는 게이트/라우터와 보호주문 activation이 분리되어, 진입 후 TP1/SL native 주문 누락이 늦게 발견됐다
 2. 이번 단계는 LIVE 전환 전 no-exchange 환경에서 “요청 -> 라우터 -> 커널 -> submitter -> protection activation -> runtime doc” 체인을 한 번에 증명한다
 3. 따라서 V2는 route만 통과하고 보호주문 체인이 깨지는 회귀를 promotion 테스트에서 먼저 잡을 수 있다
+
+## 2026-04-22 Protected Entry Canary Promotion Gate
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-pipeline.js`
+2. `scripts/generate-v2-unified-promotion-report.js`
+3. `scripts/check-v2-promotion-deploy-decision.js`
+4. `scripts/submit-v2-promotion-cloudbuild.js`
+5. `scripts/lib/v2-promotion-submit-trace.js`
+6. `src/tests/run-v2-promotion-pipeline.test.js`
+7. `src/tests/check-v2-promotion-deploy-decision.test.js`
+8. `src/tests/submit-v2-promotion-cloudbuild.test.js`
+9. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+10. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. promotion pipeline은 CANARY/LIVE 실행마다 `v2_production_entry_protected_canary_latest.json` 를 현재 artifact dir에 fresh 생성한다
+2. unified promotion report는 이를 `bounded_runtime_summary.production_entry_protected_canary` 로 승격한다
+3. deploy decision은 CANARY/LIVE에서 protected canary가 없거나 실패하면 `DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED` 로 차단한다
+4. submit request는 `approval_contract.production_entry_protected_canary_required=true` 와 `approval_evidence_sources.production_entry_protected_canary` 를 노출한다
+5. submit verification은 `SUBMIT_CHK_20A` 로 이 필드를 다시 검사하고 runbook checklist `27A` 로 역추적한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 route/gate 통과와 보호주문 실제 활성화가 분리되어, 진입 후 보호주문 누락을 watchdog 경고로 뒤늦게 발견했다
+2. 이번 단계는 promotion 실행마다 no-exchange 방식으로 submitter/protection activation/runtime write 체인을 실제로 통과시킨다
+3. 따라서 V2에서는 route만 정상이고 SL/TP1 보호주문 체인이 깨진 상태로 CANARY/LIVE 제출되는 경로를 fail-closed 한다
