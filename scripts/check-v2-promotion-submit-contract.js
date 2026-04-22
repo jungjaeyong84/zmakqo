@@ -22,6 +22,7 @@ const FILES = Object.freeze({
   cloudbuild: path.resolve(__dirname, "..", "cloudbuild.yaml"),
   openclawCronRoutes: path.resolve(__dirname, "..", "src", "routes", "openclaw.cron.routes.js"),
   openclawCronManifest: path.resolve(__dirname, "lib", "openclaw-cron-manifest.js"),
+  productionCutoverAudit: path.resolve(__dirname, "..", "src", "v2", "productionCutoverAudit.js"),
   productionRuntimeConfigAudit: path.resolve(__dirname, "..", "src", "v2", "productionRuntimeConfigAudit.js"),
   exitRuntimeCanaryRunner: path.resolve(__dirname, "run-v2-exit-runtime-canary.js"),
   exitRuntimeCanaryModule: path.resolve(__dirname, "..", "src", "v2", "exitRuntimeCanary.js"),
@@ -312,6 +313,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
   const cloudbuildText = readContractText(FILES.cloudbuild);
   const openclawCronRoutesText = readContractText(FILES.openclawCronRoutes);
   const openclawCronManifestText = readContractText(FILES.openclawCronManifest);
+  const productionCutoverAuditText = readContractText(FILES.productionCutoverAudit);
   const productionRuntimeConfigAuditText = readContractText(FILES.productionRuntimeConfigAudit);
   const exitRuntimeCanaryRunnerText = readContractText(FILES.exitRuntimeCanaryRunner);
   const exitRuntimeCanaryModuleText = readContractText(FILES.exitRuntimeCanaryModule);
@@ -1766,6 +1768,22 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         ? "lineage contract blockers now route to provenance repair, and runtime-chain blockers route to bounded runtime evidence regeneration"
         : "deploy submit wrappers must not leave lineage or runtime-chain blockers as generic context/manual review failures",
       file: FILES.cloudbuildWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_66",
+      label: "production cutover audit enforces webhook guard ordering",
+      ok: productionCutoverAuditText.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_OPENCLAW_LEGACY_AUTHORITY")
+        && productionCutoverAuditText.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_SIGNAL_WRITE")
+        && productionCutoverAuditText.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_IMMEDIATE_PROCESS")
+        && productionCutoverAuditText.includes("webhookSignalRouteSlice")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-cutover-audit.test.js")).includes("webhookCutoverGuardAfterLegacySideEffectsFailsClosed")
+        && artifactContractText.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_SIGNAL_WRITE")
+        && runbookText.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_SIGNAL_WRITE"),
+      reason: productionCutoverAuditText.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_SIGNAL_WRITE")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-cutover-audit.test.js")).includes("webhookCutoverGuardAfterLegacySideEffectsFailsClosed")
+        ? "production cutover audit now proves the legacy webhook guard executes before legacy authority, persistence, or immediate process side effects"
+        : "production cutover audit must fail closed when the legacy webhook guard is placed after legacy authority, persistence, or immediate process side effects",
+      file: FILES.productionCutoverAudit,
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);

@@ -32,6 +32,20 @@ function appearsBefore(source, earlier, later) {
   return earlierIndex >= 0 && laterIndex >= 0 && earlierIndex < laterIndex;
 }
 
+function webhookSignalRouteSlice(source) {
+  const text = String(source || "");
+  const routeIndex = text.indexOf('router.post("/webhook/signal"');
+  return routeIndex >= 0 ? text.slice(routeIndex) : text;
+}
+
+function webhookCutoverGuardAppearsBefore(source, laterMarker) {
+  return appearsBefore(
+    webhookSignalRouteSlice(source),
+    "const cutoverGuard = buildV2ProductionCutoverGuard(process.env);",
+    laterMarker
+  );
+}
+
 function auditV2ProductionCutoverContract({
   routeSource = "",
   openclawCronRouteSource = "",
@@ -72,6 +86,21 @@ function auditV2ProductionCutoverContract({
       "V2_WEBHOOK_SIGNAL_ROUTE_RECORDS_CUTOVER_OUTCOME",
       routeSource.includes("decision: \"DROP\"") && routeSource.includes("reason: cutoverGuard.reason"),
       "cutover block must be recorded through the normal webhook outcome path"
+    ),
+    buildCheck(
+      "V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_OPENCLAW_LEGACY_AUTHORITY",
+      webhookCutoverGuardAppearsBefore(routeSource, "evaluateOpenClawExecutionAuthority({"),
+      "legacy webhook cutover guard must run before OpenClaw legacy authority evaluation"
+    ),
+    buildCheck(
+      "V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_SIGNAL_WRITE",
+      webhookCutoverGuardAppearsBefore(routeSource, "upsertSignal({"),
+      "legacy webhook cutover guard must run before legacy signal persistence"
+    ),
+    buildCheck(
+      "V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_IMMEDIATE_PROCESS",
+      webhookCutoverGuardAppearsBefore(routeSource, "triggerImmediateProcess(immediatePayload)"),
+      "legacy webhook cutover guard must run before legacy immediate execution trigger"
     ),
     buildCheck(
       "V2_PRODUCTION_ENTRY_ROUTE_MODULE_EXISTS",
@@ -287,5 +316,7 @@ module.exports = {
     buildCheck,
     readTextSafe,
     appearsBefore,
+    webhookSignalRouteSlice,
+    webhookCutoverGuardAppearsBefore,
   },
 };

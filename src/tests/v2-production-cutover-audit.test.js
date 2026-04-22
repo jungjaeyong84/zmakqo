@@ -6,12 +6,30 @@ const {
   auditV2ProductionCutoverReadiness,
 } = require("../v2/productionCutoverAudit");
 
+const VALID_WEBHOOK_CUTOVER_ROUTE_SOURCE = [
+  'router.post("/webhook/signal", async () => {',
+  "const cutoverGuard = buildV2ProductionCutoverGuard(process.env);",
+  "if (cutoverGuard.allowed !== true) {",
+  "V2_CUTOVER_GUARD_BLOCK",
+  "decision: \"DROP\"",
+  "reason: cutoverGuard.reason",
+  "}",
+  "evaluateOpenClawExecutionAuthority({});",
+  "upsertSignal({});",
+  "triggerImmediateProcess(immediatePayload);",
+  "})",
+  "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
+].join("\n");
+
 (function workspaceContractPasses() {
   const result = auditWorkspaceV2ProductionCutoverContract();
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PRODUCTION_CUTOVER_CONTRACT_PASS");
   assert.strictEqual(result.fail_n, 0);
   assert.ok(result.check_n >= 20);
+  assert.ok(result.checks.some((row) => row.id === "V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_OPENCLAW_LEGACY_AUTHORITY"));
+  assert.ok(result.checks.some((row) => row.id === "V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_SIGNAL_WRITE"));
+  assert.ok(result.checks.some((row) => row.id === "V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_IMMEDIATE_PROCESS"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_ROUTE_CALLS_EXECUTION_KERNEL"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_ROUTE_PRESERVES_KERNEL_FAILURE_CAUSE"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_ROUTE_CANARY_NO_EXCHANGE_WRITE"));
@@ -35,7 +53,7 @@ const {
 
 (function openclawCronBypassFailsClosed() {
   const result = require("../v2/productionCutoverAudit").auditV2ProductionCutoverContract({
-    routeSource: "buildV2ProductionCutoverGuard V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED V2_CUTOVER_GUARD_BLOCK cutoverGuard.allowed decision: \"DROP\" reason: cutoverGuard.reason",
+    routeSource: VALID_WEBHOOK_CUTOVER_ROUTE_SOURCE,
     guardSource: "buildV2ProductionCutoverGuard V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
     productionEntryRouteSource: "runV2ProductionEntryRoute V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED runV2EntryExecutionKernel runEntryKernel V2_PRODUCTION_ENTRY_DISABLED V2_PRODUCTION_ENTRY_DRY_RUN_BLOCKED evaluateOpenClawExecutionSeparation V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED if (!kernelResult || kernelResult.ok !== true) let auditLedgerResult = null;",
     productionEntryRouteCanarySource: "runV2ProductionEntryRoute NO_EXCHANGE_ROUTE_PROOF exchange_write_performed: false",
@@ -53,7 +71,7 @@ const {
 
 (function liveEndpointMissingFailClosedContractFailsClosed() {
   const result = require("../v2/productionCutoverAudit").auditV2ProductionCutoverContract({
-    routeSource: "buildV2ProductionCutoverGuard V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED V2_CUTOVER_GUARD_BLOCK cutoverGuard.allowed decision: \"DROP\" reason: cutoverGuard.reason",
+    routeSource: VALID_WEBHOOK_CUTOVER_ROUTE_SOURCE,
     guardSource: "buildV2ProductionCutoverGuard V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
     productionEntryRouteSource: "runV2ProductionEntryRoute V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED runV2EntryExecutionKernel runEntryKernel V2_PRODUCTION_ENTRY_DISABLED V2_PRODUCTION_ENTRY_DRY_RUN_BLOCKED evaluateOpenClawExecutionSeparation V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED if (!kernelResult || kernelResult.ok !== true) let auditLedgerResult = null;",
     productionEntryRouteCanarySource: "runV2ProductionEntryRoute NO_EXCHANGE_ROUTE_PROOF exchange_write_performed: false",
@@ -66,6 +84,39 @@ const {
   });
   assert.strictEqual(result.ok, false);
   assert.ok(result.failed_check_ids.includes("V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_FAILS_CLOSED"));
+})();
+
+(function webhookCutoverGuardAfterLegacySideEffectsFailsClosed() {
+  const misplacedGuardRouteSource = [
+    'router.post("/webhook/signal", async () => {',
+    "evaluateOpenClawExecutionAuthority({});",
+    "upsertSignal({});",
+    "triggerImmediateProcess(immediatePayload);",
+    "const cutoverGuard = buildV2ProductionCutoverGuard(process.env);",
+    "if (cutoverGuard.allowed !== true) {",
+    "V2_CUTOVER_GUARD_BLOCK",
+    "decision: \"DROP\"",
+    "reason: cutoverGuard.reason",
+    "}",
+    "})",
+    "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
+  ].join("\n");
+  const result = require("../v2/productionCutoverAudit").auditV2ProductionCutoverContract({
+    routeSource: misplacedGuardRouteSource,
+    guardSource: "buildV2ProductionCutoverGuard V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
+    productionEntryRouteSource: "runV2ProductionEntryRoute V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED runV2EntryExecutionKernel runEntryKernel V2_PRODUCTION_ENTRY_DISABLED V2_PRODUCTION_ENTRY_DRY_RUN_BLOCKED evaluateOpenClawExecutionSeparation V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED if (!kernelResult || kernelResult.ok !== true) let auditLedgerResult = null;",
+    productionEntryRouteCanarySource: "runV2ProductionEntryRoute NO_EXCHANGE_ROUTE_PROOF exchange_write_performed: false",
+    productionEntryLiveEndpointSource: "DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED V2_PRODUCTION_ENTRY_LIVE_CONFIRM_REQUIRED V2_PRODUCTION_ENTRY_LIVE_CANARY_ONLY_BLOCKED V2_PRODUCTION_ENTRY_LIVE_DECISION_REQUIRED runV2ProductionEntryRoute buildLiveTransports buildV2ProductionEntryLiveTransports V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCKED runProductionEntryRoute",
+    productionEntryLiveTransportsSource: "buildEntryQuantityResolverFromSizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_REQUIRED quantityResolver({ entryIntent }) V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_CONFLICT sizingDecisionsConflict bundleDecision || bodyDecision V2_PRODUCTION_ENTRY_LIVE_CFG_DRY_RUN_BLOCKED V2_PRODUCTION_ENTRY_LIVE_CFG_NOT_ENABLED api_key_present api_secret_present summarizeLiveCfg",
+    productionEntryLiveRequestSource: "buildV2ProductionEntryLiveRequest resolveEntryIntentFromOpenClaw buildV2EntrySizingDecision confirm = LIVE_CONFIRM_PHRASE entrySizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED",
+    openclawCronRouteSource: 'router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedulerToken, async () => { const { main } = require("../../scripts/run-v2-production-entry-route-canary"); return main({ setProcessExitCode: false }); }) router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken, async () => { const { main } = require("../../scripts/run-v2-exit-runtime-canary"); return main({ setProcessExitCode: false }); }) v2_exit_runtime_canary router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, async () => runV2ProductionEntryLiveEndpoint({}))',
+    productionEntryRouteCanaryScriptSource: "runV2ProductionEntryRouteCanary",
+    entryBoundaryAuditSource: "V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN src/v2/productionEntryRoute.js V2_TP0_EXIT_CONTRACT_FORBIDDEN TP0/P0 exit contract names EXIT_TP_P0",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.failed_check_ids.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_OPENCLAW_LEGACY_AUTHORITY"));
+  assert.ok(result.failed_check_ids.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_SIGNAL_WRITE"));
+  assert.ok(result.failed_check_ids.includes("V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_IMMEDIATE_PROCESS"));
 })();
 
 (function fullCutoverReadinessPassesWhenLegacyWouldBeBlocked() {
