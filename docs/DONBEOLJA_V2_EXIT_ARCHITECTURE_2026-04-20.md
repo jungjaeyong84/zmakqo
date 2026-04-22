@@ -544,3 +544,4 @@ TP1 금지 조건:
 3. shadow alert mismatch 0건
 4. canary live에서 TP1 missing 0건
 5. canary live에서 silent alert drop 0건
+6. LIVE promotion evidence 4종(repair Firestore streak, production entry route streak, exit runtime streak, protected-entry proof)이 같은 artifact cycle과 같은 protected position cycle을 증명

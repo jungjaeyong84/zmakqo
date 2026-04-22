@@ -266,6 +266,12 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   };
 }
 
+function buildBoundedRuntimeSummaryForPositionCycle(positionCycleId) {
+  const summary = JSON.parse(JSON.stringify(buildBoundedRuntimeSummaryFixture()));
+  summary.production_entry_protected_canary.route_result_summary.position_cycle_id = positionCycleId;
+  return summary;
+}
+
 (function shadowModeIsNeverDeployApproved() {
   const decision = deployDecision.__test.buildDeployDecision({
     pass: true,
@@ -1504,7 +1510,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
       pass: true,
       mode: "LIVE",
       position_cycle_id: "PCY__LIVE__01",
-      bounded_runtime_summary: buildBoundedRuntimeSummaryFixture(),
+      bounded_runtime_summary: buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__01"),
       candidate_selection_summary: buildCandidateSelectionSummaryFixture({
         selected_position_cycle_id: "PCY__LIVE__01",
         selected_preflight: {
@@ -1616,6 +1622,65 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveEvidenceCycleMismatchFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__EVIDENCE_MATCH");
+  bounded.exit_runtime_canary_streak.artifact_dir = "/tmp/dbj-v2-other-artifacts";
+  assert.deepStrictEqual(deployDecision.__test.collectLiveEvidenceCycleConsistencyBlockers(bounded, {
+    mode: "LIVE",
+    positionCycleId: "PCY__LIVE__EVIDENCE_MATCH",
+  }), ["DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH"]);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__EVIDENCE_MATCH",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__EVIDENCE_MATCH",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__EVIDENCE_MATCH",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH"));
+})();
+
+(function liveProtectedEntryPositionCycleMismatchFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__PROTECTED_OTHER");
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__PROTECTED_EXPECTED",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__PROTECTED_EXPECTED",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__PROTECTED_EXPECTED",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH"));
 })();
 
 console.log("CHECK_V2_PROMOTION_DEPLOY_DECISION_TEST_OK");

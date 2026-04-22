@@ -607,6 +607,33 @@ function collectStaleArtifactProvenanceBlockers(summary, { mode = null } = {}) {
   return blockers;
 }
 
+function collectLiveEvidenceCycleConsistencyBlockers(summary, { mode = null, positionCycleId = null } = {}) {
+  const row = normalizeObject(summary);
+  if (!row || mode !== "LIVE") return [];
+  const blockers = [];
+  const evidenceRows = [
+    row.repair_firestore_canary_streak,
+    row.production_entry_route_canary_streak,
+    row.exit_runtime_canary_streak,
+    row.production_entry_protected_canary,
+  ].map(normalizeObject).filter(Boolean);
+  const artifactDirs = Array.from(new Set(
+    evidenceRows.map((entry) => trimOrNull(entry && entry.artifact_dir)).filter(Boolean)
+  ));
+  if (artifactDirs.length !== 1 || evidenceRows.length !== 4) {
+    blockers.push("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH");
+  }
+
+  const protectedCanary = normalizeObject(row.production_entry_protected_canary);
+  const routeSummary = normalizeObject(protectedCanary && protectedCanary.route_result_summary);
+  const protectedPositionCycleId = trimOrNull(routeSummary && routeSummary.position_cycle_id);
+  const expectedPositionCycleId = trimOrNull(positionCycleId);
+  if (!protectedPositionCycleId || !expectedPositionCycleId || protectedPositionCycleId !== expectedPositionCycleId) {
+    blockers.push("DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH");
+  }
+  return blockers;
+}
+
 function hasExactCandidateSnapshotCounts(summary) {
   const row = normalizeObject(summary);
   const selectedPreflight = normalizeObject(row && row.selected_preflight);
@@ -825,6 +852,7 @@ function buildDeployDecision(unifiedReport, {
   if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionEntryProtectedCanary(boundedRuntimeSummary)) {
     blockers.push("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED");
   }
+  blockers.push(...collectLiveEvidenceCycleConsistencyBlockers(boundedRuntimeSummary, { mode, positionCycleId }));
   if (mode === "SHADOW") {
     blockers.push("DEPLOY_DECISION:SHADOW_MODE_NOT_DEPLOYABLE");
   }
@@ -982,6 +1010,7 @@ if (require.main === module) {
       hasStaleArtifactProvenance,
       hasStaleArtifactFreshness,
       collectStaleArtifactProvenanceBlockers,
+      collectLiveEvidenceCycleConsistencyBlockers,
       buildAlertRetrySummary,
       hasAlertRetryAttention,
       hasExactCandidateSnapshotCounts,

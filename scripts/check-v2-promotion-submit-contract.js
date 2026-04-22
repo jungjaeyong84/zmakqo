@@ -1619,6 +1619,19 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "runbook verifier must not accept submit trace checks that omit or alter the field-level evidence map",
       file: FILES.runbookChecker,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_63",
+      label: "deploy decision enforces LIVE evidence cycle consistency",
+      ok: deployDecisionCheckerText.includes("collectLiveEvidenceCycleConsistencyBlockers")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH")
+        && deployDecisionCheckerText.includes("DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveEvidenceCycleMismatchFailsClosed")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("liveProtectedEntryPositionCycleMismatchFailsClosed"),
+      reason: deployDecisionCheckerText.includes("collectLiveEvidenceCycleConsistencyBlockers")
+        ? "LIVE promotion now fails closed when long-run canaries and protected-entry proof point at different artifact or position cycles"
+        : "LIVE promotion must not approve when evidence artifacts or protected-entry position lineage are from different cycles",
+      file: FILES.deployDecisionChecker,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({
