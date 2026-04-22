@@ -139,6 +139,7 @@ function seedTrailActive(store) {
       sourceFillId: "TRAIL_ACTIVATION__1",
       sourceOrderId: "STOP__ETH__TRAIL",
       nextStopPrice: 2010,
+      nativeRefreshStatus: "OK",
     },
   });
   const protection = buildProtectionRuntimeDoc({

@@ -86,6 +86,7 @@ function buildReferencePassEpisode() {
       sourceFillId: "FILL__TP1__RG1",
       sourceOrderId: "ORDER__STOP_REFRESH__RG1",
       nextStopPrice: 2010,
+      nativeRefreshStatus: "OK",
     },
   });
   const tick = evaluateTrailRefresh({
@@ -347,6 +348,7 @@ function buildReferenceManualCloseEpisode() {
       sourceFillId: "FILL__TP1__XRP__MAN1",
       sourceOrderId: "ORDER__STOP_REFRESH__XRP__MAN1",
       nextStopPrice: 0.505,
+      nativeRefreshStatus: "OK",
     },
   });
   const manual = reduceCanonicalExit({

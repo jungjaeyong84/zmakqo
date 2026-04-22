@@ -91,7 +91,7 @@ function buildBoundedRuntimeSummaryFixture({ artifactDir = "/tmp/dbj-v2-live-evi
       collection_key: "OPENCLAW_EXECUTION_AUDITS",
       doc_id: "OCEAUV2__LIVE__EVIDENCE__01",
     },
-    openclaw_supreme_control_plane_summary: buildOpenClawSupremeSummaryFixture(),
+    openclaw_supreme_control_plane_summary: buildOpenClawSupremeSummaryFixture({ artifactDir }),
     repair_firestore_canary_streak: buildRepairStreakFixture({ artifactDir }),
     production_entry_route_canary_streak: buildProductionEntryRouteStreakFixture({ artifactDir }),
     exit_runtime_canary_streak: buildExitRuntimeStreakFixture({ artifactDir }),
@@ -99,7 +99,7 @@ function buildBoundedRuntimeSummaryFixture({ artifactDir = "/tmp/dbj-v2-live-evi
   };
 }
 
-function buildOpenClawSupremeSummaryFixture() {
+function buildOpenClawSupremeSummaryFixture({ artifactDir }) {
   return {
     ok: true,
     world_state_n: 1,
@@ -128,6 +128,13 @@ function buildOpenClawSupremeSummaryFixture() {
       position_cycle_id: CYCLE_ID,
       openclaw_decision_id: "OCDV2__LIVE__EVIDENCE__01",
       collected_at: "2026-04-22T12:02:00.000Z",
+      artifact_file: path.join(artifactDir, "promotion-runtime-snapshot.json"),
+      artifact_dir: artifactDir,
+      artifact_filename: "promotion-runtime-snapshot.json",
+      artifact_current_dir_match: true,
+        generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_at: GENERATED_AT,
+      artifact_generated_age_minutes: 15,
       exchange_write_performed: false,
       blockers: [],
     },
@@ -419,6 +426,28 @@ function buildLiveDeployDecisionFixture({ artifactDir = "/tmp/dbj-v2-live-eviden
   assert.ok(result.temporal_coherence.blockers.includes("DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH"));
   assert.ok(result.submit_check_ids.includes("SUBMIT_CHK_06"));
   assert.ok(result.submit_check_ids.includes("SUBMIT_CHK_07"));
+  assert.ok(result.runbook_refs.includes("30"));
+})();
+
+(function openClawSupremeArtifactDirMismatchFailsSameCycleReadiness() {
+  const artifactDir = "/tmp/dbj-v2-live-evidence-openclaw-cycle";
+  const bounded = buildBoundedRuntimeSummaryFixture({ artifactDir });
+  bounded.openclaw_supreme_control_plane_summary.collector_execution_summary.artifact_dir = "/tmp/other-v2-artifact-cycle";
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: CYCLE_ID,
+    selector_meta: { position_cycle_id: CYCLE_ID },
+    bounded_runtime_summary: bounded,
+  }, {
+    artifactDir,
+    productionRuntimeChainAudit: buildProductionRuntimeChainAuditFixture(),
+  });
+  const result = checker.evaluateLiveEvidenceReadiness({ deployDecision: decision, artifactDir });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.temporal_coherence.ok, false);
+  assert.ok(result.temporal_coherence.blockers.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH"));
+  assert.ok(result.submit_check_ids.includes("SUBMIT_CHK_06"));
   assert.ok(result.runbook_refs.includes("30"));
 })();
 

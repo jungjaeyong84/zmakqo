@@ -41,6 +41,7 @@ const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = Object.freeze([
 const MIN_LIVE_STREAK_COVERAGE_MINUTES = 24 * 60;
 const MAX_LIVE_STREAK_ARTIFACT_SKEW_MINUTES = 30;
 const MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES = 180;
+const MAX_OPENCLAW_SUPREME_ARTIFACT_AGE_MINUTES = 180;
 const MAX_OPENCLAW_LEARNER_SHADOW_EVALUATION_AGE_MINUTES = 24 * 60;
 
 function trimOrNull(value) {
@@ -458,6 +459,11 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
     trimOrNull(collector.producer_script) === "collect-v2-promotion-runtime-snapshot" &&
     trimOrNull(collector.producer_scope) === "openclaw_supreme_control_plane" &&
     trimOrNull(collector.source) === "V2_FIRESTORE_COLLECTOR" &&
+    trimOrNull(collector.artifact_filename) === "promotion-runtime-snapshot.json" &&
+    !!trimOrNull(collector.artifact_file) &&
+    !!trimOrNull(collector.artifact_dir) &&
+    collector.artifact_current_dir_match === true &&
+    !hasStaleArtifactFreshness(collector, MAX_OPENCLAW_SUPREME_ARTIFACT_AGE_MINUTES) &&
     collector.exchange_write_performed === false &&
     !!trimOrNull(collector.collected_at) &&
     ensureArray(collector.blockers).length === 0 &&
@@ -811,11 +817,13 @@ function collectLiveStreakTemporalCoherenceBlockers(summary, { mode = null } = {
     row.repair_firestore_canary_streak,
     row.production_entry_route_canary_streak,
     row.exit_runtime_canary_streak,
+    row.openclaw_supreme_control_plane_summary &&
+      row.openclaw_supreme_control_plane_summary.collector_execution_summary,
   ].map(normalizeObject).filter(Boolean);
   const generatedMsRows = streakRows
-    .map((entry) => parseIsoMs(entry && entry.artifact_generated_at))
+    .map((entry) => parseIsoMs(entry && (entry.artifact_generated_at || entry.collected_at)))
     .filter((value) => value != null);
-  if (streakRows.length !== 3 || generatedMsRows.length !== 3) {
+  if (streakRows.length !== 4 || generatedMsRows.length !== 4) {
     return ["DEPLOY_DECISION:LIVE_STREAK_TEMPORAL_WINDOW_MISMATCH"];
   }
   const minGeneratedMs = Math.min(...generatedMsRows);
@@ -872,13 +880,15 @@ function collectLiveEvidenceCycleConsistencyBlockers(summary, { mode = null, pos
     row.production_entry_route_canary_streak,
     row.exit_runtime_canary_streak,
     row.production_entry_protected_canary,
+    row.openclaw_supreme_control_plane_summary &&
+      row.openclaw_supreme_control_plane_summary.collector_execution_summary,
   ].map(normalizeObject).filter(Boolean);
   const artifactDirs = Array.from(new Set(
     evidenceRows.map((entry) => trimOrNull(entry && entry.artifact_dir)).filter(Boolean)
   ));
   if (
     artifactDirs.length !== 1 ||
-    evidenceRows.length !== 4 ||
+    evidenceRows.length !== 5 ||
     (expectedArtifactDir && artifactDirs[0] !== expectedArtifactDir)
   ) {
     blockers.push("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH");
@@ -911,6 +921,20 @@ function collectLiveEvidenceCycleConsistencyBlockers(summary, { mode = null, pos
   const protectedPositionCycleId = trimOrNull(routeSummary && routeSummary.position_cycle_id);
   if (!protectedPositionCycleId || !expectedPositionCycleId || protectedPositionCycleId !== expectedPositionCycleId) {
     blockers.push("DEPLOY_DECISION:LIVE_PROTECTED_ENTRY_POSITION_CYCLE_MISMATCH");
+  }
+  const supreme = normalizeObject(row.openclaw_supreme_control_plane_summary);
+  const supremeCollector = normalizeObject(supreme && supreme.collector_execution_summary);
+  const supremeLineage = normalizeObject(supreme && supreme.lineage_consistency_summary);
+  const supremePositionCycleId = trimOrNull(supremeCollector && supremeCollector.position_cycle_id);
+  const supremeExpectedCycleId = trimOrNull(supremeLineage && supremeLineage.expected_position_cycle_id);
+  if (
+    !supremePositionCycleId ||
+    !supremeExpectedCycleId ||
+    !expectedPositionCycleId ||
+    supremePositionCycleId !== expectedPositionCycleId ||
+    supremeExpectedCycleId !== expectedPositionCycleId
+  ) {
+    blockers.push("DEPLOY_DECISION:LIVE_OPENCLAW_SUPREME_POSITION_CYCLE_MISMATCH");
   }
   return blockers;
 }

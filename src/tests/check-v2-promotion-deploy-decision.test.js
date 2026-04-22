@@ -127,6 +127,13 @@ function buildBoundedRuntimeSummaryFixture() {
         position_cycle_id: "PCY__CANARY__01",
         openclaw_decision_id: "OCDV2__CANARY__01",
         collected_at: "2026-04-22T00:02:00.000Z",
+        artifact_file: "/tmp/dbj-v2-artifacts/promotion-runtime-snapshot.json",
+        artifact_dir: "/tmp/dbj-v2-artifacts",
+        artifact_filename: "promotion-runtime-snapshot.json",
+        artifact_current_dir_match: true,
+        generated_at: "2026-04-22T12:00:00.000Z",
+        artifact_generated_at: "2026-04-22T12:00:00.000Z",
+        artifact_generated_age_minutes: 15,
         exchange_write_performed: false,
         blockers: [],
       },
@@ -410,6 +417,8 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   summary.exit_runtime_canary_streak.artifact_file = path.join(artifactDir, "v2_exit_runtime_canary_streak_latest.json");
   summary.production_entry_protected_canary.artifact_dir = artifactDir;
   summary.production_entry_protected_canary.artifact_file = path.join(artifactDir, "v2_production_entry_protected_canary_latest.json");
+  summary.openclaw_supreme_control_plane_summary.collector_execution_summary.artifact_dir = artifactDir;
+  summary.openclaw_supreme_control_plane_summary.collector_execution_summary.artifact_file = path.join(artifactDir, "promotion-runtime-snapshot.json");
   return summary;
 }
 

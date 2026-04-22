@@ -802,6 +802,7 @@ async function writeOpenClawShadowTrailActivation({
       }),
       sourceOrderId: normalizedOrderId,
       nextStopPrice: resolvedStopPrice,
+      nativeRefreshStatus: "OK",
     },
   });
 

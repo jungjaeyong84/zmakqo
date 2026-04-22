@@ -2708,3 +2708,37 @@ V1 약점 재발 방지:
 1. V1에서는 최종 submit gate와 운영 runbook이 다른 레이어를 보고 있어, 운영자는 사전 점검에서 통과처럼 보이는 artifact가 마지막 제출에서 막히는 상황을 겪을 수 있었다
 2. 이번 단계는 LIVE evidence readiness를 runbook verifier, CloudBuild context, submit wrapper가 모두 같은 artifact/file/position cycle로 검증하게 만들어 문서-검증-제출 간 drift를 줄인다
 3. 단, 실제 24시간 canary evidence를 새로 만드는 기능은 아니다. 실제 LIVE 전에는 production entry route, exit runtime, repair Firestore, OpenClaw supreme closed-loop 증거가 같은 artifact dir에서 fresh하게 축적되어야 한다
+
+## 2026-04-23 LIVE Evidence Same-Cycle + Trail Reducer Hard Lock
+
+추가 증거:
+
+1. `scripts/collect-v2-promotion-runtime-snapshot.js`
+2. `scripts/check-v2-promotion-deploy-decision.js`
+3. `src/v2/canonicalExitReducer.js`
+4. `src/v2/openclawShadowExitWriter.js`
+5. `src/tests/check-v2-live-evidence-readiness.test.js`
+6. `src/tests/check-v2-promotion-deploy-decision.test.js`
+7. `src/tests/v2-canonical-exit-reducer.test.js`
+8. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+9. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. OpenClaw supreme collector는 이제 `promotion-runtime-snapshot.json` 의 `artifact_file`, `artifact_dir`, `artifact_filename`, `artifact_current_dir_match`, `generated_at`, `artifact_generated_at`, `artifact_generated_age_minutes` 를 closed-loop evidence에 포함한다
+2. LIVE deploy decision은 OpenClaw collector artifact가 현재 `V2_PROMOTION_ARTIFACT_DIR` 과 같은 cycle인지, promotion `position_cycle_id` 와 같은지, artifact age가 180분 이하인지 확인한다
+3. LIVE temporal coherence는 production entry route canary, exit runtime canary, repair Firestore canary뿐 아니라 OpenClaw supreme collector 생성 시각도 30분 창 안에 있어야 PASS가 된다
+4. `TRAIL_ACTIVATION_CONFIRMED` 는 canonical reducer 레이어에서 `nativeRefreshStatus=OK` 없이는 `TRAIL_NATIVE_REFRESH_OK_REQUIRED` 로 거부된다
+5. OpenClaw shadow trail writer는 native refresh gate를 통과한 경우에만 reducer evidence에 `nativeRefreshStatus=OK` 를 전달한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 보호주문 refresh와 canonical trail truth가 다른 레이어에서 따로 판단되어, “트레일 상태라고 보이지만 실제 native stop 근거가 약한” 상태가 생길 수 있었다
+2. 이번 단계는 writer의 사전 gate뿐 아니라 reducer 본체에 native refresh 성공 증거를 강제해, canonical truth가 거래소 보호주문 성공보다 앞서가지 못하게 한다
+3. V1에서는 서로 다른 시점의 PASS artifact를 조합해 LIVE 승격 증거처럼 보일 수 있었다
+4. 이번 단계는 OpenClaw closed-loop collector까지 같은 artifact dir, 같은 position cycle, fresh artifact age, temporal window에 묶어 mixed-cycle PASS를 차단한다
+
+남은 한계:
+
+1. 이 변경은 LIVE 24시간 evidence의 계약을 강화하지만, 실제 24시간 canary를 대신 생성하지는 않는다
+2. 실제 LIVE 전에는 같은 artifact cycle에서 production entry route, exit runtime, repair Firestore, OpenClaw supreme closed-loop가 24시간 이상 stale 없이 축적된 결과를 다시 확인해야 한다

@@ -135,6 +135,7 @@ async function buildOpenClawSizingProtectedEntryExitFixture() {
       nextStopPrice: Number((activeExecutedEntry.entryContract.side === "LONG"
         ? activeExecutedEntry.entryContract.quality_score + activeExecutedEntry.protectionPlan.sl_trigger_price
         : activeExecutedEntry.protectionPlan.sl_trigger_price).toFixed(8)),
+      nativeRefreshStatus: "OK",
     },
   });
   const trailAlert = prepareExitTransitionAlert({

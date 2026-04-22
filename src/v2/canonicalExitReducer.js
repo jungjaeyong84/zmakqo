@@ -80,6 +80,7 @@ function assertEvidence(evidence, positionCycleId) {
     fillQtyAbs: toNumber(evidence.fillQtyAbs || evidence.fill_qty_abs),
     fillPrice: toNumber(evidence.fillPrice || evidence.fill_price),
     nextStopPrice: toNumber(evidence.nextStopPrice || evidence.next_stop_price),
+    nativeRefreshStatus: upper(evidence.nativeRefreshStatus || evidence.native_refresh_status),
   };
 }
 
@@ -203,6 +204,7 @@ function reduceCanonicalExit({
     }
     if (current.stage !== "TP1_DONE") throw new Error("TRAIL_ACTIVATION_STAGE_INVALID");
     if (!(ev.nextStopPrice > 0)) throw new Error("TRAIL_STOP_PRICE_REQUIRED");
+    if (ev.nativeRefreshStatus !== "OK") throw new Error("TRAIL_NATIVE_REFRESH_OK_REQUIRED");
     const transition = buildCanonicalExitTransitionDoc({
       positionCycleId: positionCycle.position_cycle_id,
       transitionEvent: "TRAIL_ACTIVATED",

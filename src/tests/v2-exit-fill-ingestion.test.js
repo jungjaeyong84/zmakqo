@@ -196,6 +196,7 @@ function buildBaseLong() {
       sourceFillId: "FILL__TP1__TRAIL_INGESTION",
       sourceOrderId: "ORDER__STOP_REFRESH__TRAIL_INGESTION",
       nextStopPrice: 2012,
+      nativeRefreshStatus: "OK",
     },
   });
   const result = reduceV2ExitFill({

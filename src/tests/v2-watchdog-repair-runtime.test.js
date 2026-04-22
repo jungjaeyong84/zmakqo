@@ -52,6 +52,7 @@ function buildTrailActiveBase() {
       sourceFillId: "FILL__TP1__WRT2",
       sourceOrderId: "ORDER__STOP__WRT2",
       nextStopPrice: 2010,
+      nativeRefreshStatus: "OK",
     },
   });
   const tick = evaluateTrailRefresh({

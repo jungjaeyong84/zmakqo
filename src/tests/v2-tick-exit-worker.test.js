@@ -37,6 +37,7 @@ function buildTrailActiveProjection() {
       sourceFillId: "FILL__TP1__1",
       sourceOrderId: "ORDER__STOP_REFRESH__1",
       nextStopPrice: 2010,
+      nativeRefreshStatus: "OK",
     },
   });
   return {

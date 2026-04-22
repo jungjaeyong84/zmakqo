@@ -536,6 +536,13 @@ function buildOpenClawSupremeControlPlaneSummary({
     trimOrNull(collector.position_cycle_id) === expectedCycleId &&
     trimOrNull(collector.openclaw_decision_id) === expectedDecisionId &&
     trimOrNull(collector.collected_at) &&
+    trimOrNull(collector.artifact_filename) === SNAPSHOT_FILENAME &&
+    trimOrNull(collector.artifact_file) &&
+    trimOrNull(collector.artifact_dir) &&
+    collector.artifact_current_dir_match === true &&
+    trimOrNull(collector.generated_at) &&
+    trimOrNull(collector.artifact_generated_at) &&
+    Number.isFinite(Number(collector.artifact_generated_age_minutes)) &&
     collector.exchange_write_performed === false &&
     (!Array.isArray(collector.blockers) || collector.blockers.length === 0)
   );
@@ -607,6 +614,15 @@ function buildOpenClawSupremeControlPlaneSummary({
           position_cycle_id: trimOrNull(collector.position_cycle_id),
           openclaw_decision_id: trimOrNull(collector.openclaw_decision_id),
           collected_at: trimOrNull(collector.collected_at),
+          artifact_file: trimOrNull(collector.artifact_file),
+          artifact_dir: trimOrNull(collector.artifact_dir),
+          artifact_filename: trimOrNull(collector.artifact_filename),
+          artifact_current_dir_match: collector.artifact_current_dir_match === true,
+          generated_at: trimOrNull(collector.generated_at),
+          artifact_generated_at: trimOrNull(collector.artifact_generated_at),
+          artifact_generated_age_minutes: Number.isFinite(Number(collector.artifact_generated_age_minutes))
+            ? Number(collector.artifact_generated_age_minutes)
+            : null,
           exchange_write_performed: collector.exchange_write_performed === true,
           blockers: Array.isArray(collector.blockers) ? collector.blockers.slice() : [],
         })
@@ -730,6 +746,7 @@ function buildCollectedRuntimeChainAudit(episode) {
 }
 
 async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
+  const artifactDir = resolveArtifactDir(env);
   const cfg = resolveCollectorConfig(env);
   validateSelectorMeta({ selectorMeta: cfg.selectorMeta, cfg });
   const positionCycle = await requireDoc({
@@ -1012,6 +1029,7 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
     repairExecutionLedgers,
   });
   const collectedAt = new Date().toISOString();
+  const snapshotFile = path.join(artifactDir, SNAPSHOT_FILENAME);
   const openclawSupremeControlPlaneSummary = buildOpenClawSupremeControlPlaneSummary({
     worldState,
     executionPermits,
@@ -1027,6 +1045,13 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
       position_cycle_id: cfg.positionCycleId,
       openclaw_decision_id: nativeDecisionId,
       collected_at: collectedAt,
+      artifact_file: snapshotFile,
+      artifact_dir: artifactDir,
+      artifact_filename: SNAPSHOT_FILENAME,
+      artifact_current_dir_match: true,
+      generated_at: collectedAt,
+      artifact_generated_at: collectedAt,
+      artifact_generated_age_minutes: 0,
       exchange_write_performed: false,
       blockers: [],
     },

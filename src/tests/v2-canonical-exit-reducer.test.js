@@ -155,6 +155,7 @@ function buildProtectedBaseLong() {
         sourceFillId: "FILL__TP1__1",
         sourceOrderId: "ORDER__STOP__1",
         nextStopPrice: 2010,
+      nativeRefreshStatus: "OK",
       },
     });
   } catch (error) {
@@ -184,12 +185,44 @@ function buildProtectedBaseLong() {
       sourceFillId: "FILL__TP1__1",
       sourceOrderId: "ORDER__STOP_REFRESH__1",
       nextStopPrice: 2012,
+      nativeRefreshStatus: "OK",
     },
   });
   assert.strictEqual(trail.transition.transition_event, "TRAIL_ACTIVATED");
   assert.strictEqual(trail.nextProjection.stage, "TRAIL_ACTIVE");
   assert.strictEqual(trail.nextProjection.chosen_stop_source, "TRAIL");
   assert.strictEqual(trail.nextProjection.native_stop_price, 2012);
+})();
+
+(function trailActivationRequiresNativeRefreshOkEvidence() {
+  const base = buildBaseLong();
+  const tp1 = reduceCanonicalExit({
+    positionCycle: base.positionCycle,
+    projection: base.projection,
+    evidence: {
+      kind: "TP1_CONFIRMED",
+      sourceFillId: "FILL__TP1__NO_NATIVE_REFRESH",
+      sourceOrderId: "ORDER__TP1__NO_NATIVE_REFRESH",
+      fillQtyAbs: 0.5,
+    },
+  });
+  let err = null;
+  try {
+    reduceCanonicalExit({
+      positionCycle: base.positionCycle,
+      projection: tp1.nextProjection,
+      evidence: {
+        kind: "TRAIL_ACTIVATION_CONFIRMED",
+        sourceFillId: "FILL__TRAIL__NO_NATIVE_REFRESH",
+        sourceOrderId: "ORDER__STOP_REFRESH__NO_NATIVE_REFRESH",
+        nextStopPrice: 2012,
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "TRAIL_NATIVE_REFRESH_OK_REQUIRED");
 })();
 
 (function stopExitMapsToSlOrTrailByCurrentStage() {
@@ -226,6 +259,7 @@ function buildProtectedBaseLong() {
       sourceFillId: "FILL__TP1__1",
       sourceOrderId: "ORDER__STOP_REFRESH__1",
       nextStopPrice: 2012,
+      nativeRefreshStatus: "OK",
     },
   });
   const trailExit = reduceCanonicalExit({
