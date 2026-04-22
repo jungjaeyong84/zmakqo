@@ -231,6 +231,18 @@ function buildSchedulerTrafficCutoverReadinessFixture() {
 }
 
 function buildSchedulerTrafficCollectorPreflightFixture(filePath = null) {
+  const requiredEnvNames = [
+    "SCHEDULER_AUTOSTART",
+    "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE",
+    "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED",
+    "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED",
+    "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE",
+    "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE",
+    "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED",
+    "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED",
+    "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE",
+    "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE",
+  ];
   return {
     ok: true,
     reason: "V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS",
@@ -246,6 +258,9 @@ function buildSchedulerTrafficCollectorPreflightFixture(filePath = null) {
     region: "asia-northeast3",
     service_names: ["donbeolja", "donbeolja-exit-worker"],
     scheduler_job_n: 4,
+    required_env_names: requiredEnvNames,
+    required_env_exact_match_n: 2,
+    required_env_mismatch_n: 0,
     ...(filePath ? { artifact_file: filePath, file: filePath } : {}),
   };
 }
@@ -799,6 +814,56 @@ function buildArtifactDirCoherenceFixture(dir, cycleId, overrides = {}) {
     const readinessFreshnessCheck = result.review.checks.find((row) => row.id === "CHK_24B");
     assert.ok(readinessFreshnessCheck);
     assert.strictEqual(readinessFreshnessCheck.status, "PASS");
+  } finally {
+    try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(async function runbookCheckFailsWhenSchedulerCollectorCanaryEnvProofIsMissing() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-runbook-live-collector-env-"));
+  try {
+    const cycleId = "PCY__RUNBOOK__LIVE_COLLECTOR_ENV";
+    const dir = path.join(root, cycleId);
+    fs.mkdirSync(dir, { recursive: true });
+    const collectorFile = path.join(dir, "v2_scheduler_traffic_collector_preflight_latest.json");
+    const badCollector = {
+      ...buildSchedulerTrafficCollectorPreflightFixture(collectorFile),
+      required_env_exact_match_n: 1,
+      required_env_mismatch_n: 1,
+    };
+    seedMinimalRunbookArtifacts(dir, cycleId, {
+      deployDecisionPatch: { mode: "LIVE" },
+      contextPatch: {
+        live_cutover_readiness_file: path.join(dir, "v2_repair_live_cutover_readiness_latest.json"),
+        live_cutover_readiness_summary: buildLiveCutoverReadinessFixture(),
+        production_cutover_readiness_file: path.join(dir, "v2_production_cutover_readiness_latest.json"),
+        production_cutover_readiness_summary: {
+          ok: true,
+          reason: "V2_PRODUCTION_CUTOVER_READINESS_PASS",
+          blocker_n: 0,
+          guard_reason: "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED",
+          legacy_webhook_blocked: true,
+        },
+        scheduler_traffic_collector_preflight_file: collectorFile,
+        scheduler_traffic_collector_preflight_summary: badCollector,
+        scheduler_traffic_cutover_readiness_file: path.join(dir, "v2_scheduler_traffic_cutover_readiness_latest.json"),
+        scheduler_traffic_cutover_readiness_summary: buildSchedulerTrafficCutoverReadinessFixture(),
+      },
+    });
+    writeJson(dir, "v2_repair_live_cutover_readiness_latest.json", buildLiveCutoverReadinessFixture());
+    writeJson(dir, "v2_production_cutover_readiness_latest.json", buildProductionCutoverReadinessFixture());
+    writeJson(dir, "v2_scheduler_traffic_collector_preflight_latest.json", badCollector);
+    writeJson(dir, "v2_scheduler_traffic_cutover_readiness_latest.json", buildSchedulerTrafficCutoverReadinessFixture());
+
+    const result = runbookCheck.runCanaryRunbookCheck({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_EXPECT_POSITION_CYCLE_ID: cycleId,
+    });
+    assert.strictEqual(result.review.ok, false);
+    const collectorCheck = result.review.checks.find((row) => row.id === "CHK_24A");
+    assert.ok(collectorCheck);
+    assert.strictEqual(collectorCheck.status, "FAIL");
+    assert.strictEqual(collectorCheck.field, "reason,project_id,region,service_names,required_env_exact_match_n,required_env_mismatch_n,required_env_names,scheduler_traffic_collector_preflight_summary");
   } finally {
     try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {}
   }

@@ -1066,6 +1066,17 @@ function extractSchedulerTrafficCollectorPreflightSummaryFromArtifacts(artifacts
         .filter(Boolean)
     ),
     scheduler_job_n: Number.isFinite(Number(summary.scheduler_job_n)) ? Number(summary.scheduler_job_n) : null,
+    required_env_names: Object.freeze(
+      (Array.isArray(summary.required_env_names) ? summary.required_env_names : [])
+        .map((value) => trimOrNull(value))
+        .filter(Boolean)
+    ),
+    required_env_exact_match_n: Number.isFinite(Number(summary.required_env_exact_match_n))
+      ? Number(summary.required_env_exact_match_n)
+      : 0,
+    required_env_mismatch_n: Number.isFinite(Number(summary.required_env_mismatch_n))
+      ? Number(summary.required_env_mismatch_n)
+      : 0,
     file: trimOrNull(cloudbuildContext && cloudbuildContext.scheduler_traffic_collector_preflight_file) || trimOrNull(summary.file),
     artifact_file: trimOrNull(summary.artifact_file),
     artifact_dir: trimOrNull(summary.artifact_dir),

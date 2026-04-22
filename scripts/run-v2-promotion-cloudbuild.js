@@ -874,6 +874,9 @@ function buildSchedulerTrafficCollectorPreflightSummary(preflight, { artifactDir
     region: trimOrNull(row.region),
     service_names: Array.isArray(row.service_names) ? row.service_names.slice() : [],
     scheduler_job_n: Number.isFinite(Number(row.scheduler_job_n)) ? Number(row.scheduler_job_n) : null,
+    required_env_names: Array.isArray(row.required_env_names) ? row.required_env_names.slice() : [],
+    required_env_exact_match_n: Number.isFinite(Number(row.required_env_exact_match_n)) ? Number(row.required_env_exact_match_n) : 0,
+    required_env_mismatch_n: Number.isFinite(Number(row.required_env_mismatch_n)) ? Number(row.required_env_mismatch_n) : 0,
     file: trimOrNull(filePath),
     ...buildArtifactProvenance({
       artifactDir,

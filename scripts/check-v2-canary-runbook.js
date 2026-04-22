@@ -577,6 +577,16 @@ function hasSchedulerTrafficCollectorPreflightPlan({ preflight = null, cloudbuil
     trimOrNull(summary.reason) === "V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS" &&
     Number(row.fail_n || 0) === 0 &&
     Number(summary.blocker_n || 0) === 0 &&
+    Number(row.required_env_exact_match_n || 0) >= 2 &&
+    Number(summary.required_env_exact_match_n || 0) >= 2 &&
+    Number(row.required_env_mismatch_n || 0) === 0 &&
+    Number(summary.required_env_mismatch_n || 0) === 0 &&
+    Array.isArray(row.required_env_names) &&
+    row.required_env_names.includes("DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED") &&
+    row.required_env_names.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE") &&
+    Array.isArray(summary.required_env_names) &&
+    summary.required_env_names.includes("DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED") &&
+    summary.required_env_names.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE") &&
     trimOrNull(row.project_id) &&
     trimOrNull(summary.project_id) === trimOrNull(row.project_id) &&
     trimOrNull(row.region) &&
@@ -1003,10 +1013,10 @@ function evaluateRunbookReview({ artifactDir, expectedPositionCycleId, artifacts
       label: "LIVE scheduler traffic collector preflight can read GCP state",
       status: hasSchedulerTrafficCollectorPreflightPlan({ preflight: schedulerTrafficCollectorPreflight, cloudbuildContext }) ? "PASS" : "FAIL",
       reason: hasSchedulerTrafficCollectorPreflightPlan({ preflight: schedulerTrafficCollectorPreflight, cloudbuildContext })
-        ? "LIVE scheduler traffic collector preflight is recorded in context and can read GCP scheduler/service state"
-        : "LIVE scheduler traffic collector preflight is missing, failed, or not traceable to context",
+        ? "LIVE scheduler traffic collector preflight is recorded in context and proves exact canary Firestore env on Cloud Run services"
+        : "LIVE scheduler traffic collector preflight is missing, failed, not traceable to context, or lacks exact canary Firestore env proof",
       file: artifacts.schedulerTrafficCollectorPreflight ? artifacts.schedulerTrafficCollectorPreflight.filePath : path.join(artifactDir, "v2_scheduler_traffic_collector_preflight_latest.json"),
-      field: "reason,project_id,region,service_names,scheduler_traffic_collector_preflight_summary",
+      field: "reason,project_id,region,service_names,required_env_exact_match_n,required_env_mismatch_n,required_env_names,scheduler_traffic_collector_preflight_summary",
     }));
   }
 

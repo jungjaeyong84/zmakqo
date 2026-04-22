@@ -631,7 +631,7 @@ cloudbuild는 아래 원칙을 따른다.
 16. bounded canary/live mode에서는 `production_cutover_audit` 이 `V2_PRODUCTION_CUTOVER_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_14`/runbook 22로 fail-closed 된다. 이 audit은 webhook route 안에서 `V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_OPENCLAW_LEGACY_AUTHORITY`, `V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_SIGNAL_WRITE`, `V2_WEBHOOK_CUTOVER_GUARD_PRECEDES_LEGACY_IMMEDIATE_PROCESS` 를 모두 증명해야 한다
 17. bounded canary/live mode에서는 `production_cutover_audit.contract.checks[]` 가 live endpoint가 sizing-backed transport를 route 전에 만들고, live transport가 approved `entrySizingDecision` 없이 막히며, body/bundle sizing drift를 거부하고, live request builder가 approved sizing을 bundle에 포함한다는 것을 증명해야 하며, 위반 시 `SUBMIT_CHK_20`/runbook 27로 fail-closed 된다
 18. LIVE mode에서는 `production_cutover_readiness_summary` 가 `V2_PRODUCTION_CUTOVER_READINESS_PASS` 와 `legacy_webhook_blocked=true` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_15`/runbook 23으로 fail-closed 된다
-19. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
+19. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS`, `required_env_exact_match_n >= 2`, `required_env_mismatch_n=0` 을 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
 20. LIVE mode에서는 `scheduler_traffic_cutover_readiness_summary` 가 `V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run service readiness를 증명해야 하며, 위반 시 `SUBMIT_CHK_16`/runbook 24로 fail-closed 된다
 21. LIVE mode에서는 `run:v2-exit-runtime-canary` 가 생산한 Firestore history를 기반으로 `bounded_runtime_summary.exit_runtime_canary_streak` 이 `V2_EXIT_RUNTIME_CANARY_STREAK_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_21`/runbook 28로 fail-closed 된다
 22. bounded canary/live submit wrapper는 `auditWorkspaceV2ProductionRuntimeConfigContract` 를 직접 실행해 CloudBuild deploy env와 promotion runtime env forwarding 계약을 다시 검증해야 하며, 위반 시 `SUBMIT_CHK_22`/runbook 29로 fail-closed 된다
@@ -654,9 +654,25 @@ collector 자체의 실행 권한은 `scripts/check-v2-scheduler-traffic-collect
 
 이 preflight 산출물은 `v2_scheduler_traffic_collector_preflight_latest.json` 이며, 실패 시 `SCHED_TRAFFIC_COLLECTOR_PREREQ_01_PROJECT_RESOLVED`, `SCHED_TRAFFIC_COLLECTOR_PREREQ_02_SCHEDULER_JOBS_LIST`, `SCHED_TRAFFIC_COLLECTOR_PREREQ_03_RUN_SERVICE_DESCRIBE_*` 중 하나로 원인을 좁힌다.
 
+Cloud Run service describe는 읽기 성공만으로 충분하지 않다.
+두 서비스 모두 아래 LIVE collector env가 exact value로 보여야 한다.
+
+1. `SCHEDULER_AUTOSTART=0`
+2. `DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE=OPENCLAW_CRON`
+3. `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED=1`
+4. `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED=1`
+5. `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE=FIRESTORE`
+6. `DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE=1`
+7. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED=1`
+8. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED=1`
+9. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE=FIRESTORE`
+10. `DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE=1`
+
+따라서 `scheduler_traffic_collector_preflight_summary.required_env_exact_match_n` 은 `2` 이상, `required_env_mismatch_n` 은 `0` 이어야 하며, mismatch는 `SCHEDULER_TRAFFIC_COLLECTOR_REQUIRED_ENV_MISSING` 또는 `SCHEDULER_TRAFFIC_COLLECTOR_REQUIRED_ENV_VALUE_MISMATCH` 로 남아야 한다.
+
 LIVE cloudbuild wrapper는 collector preflight 실패 시에도 `promotion-cloudbuild-context.json` 을 다시 써야 한다.
 
-이때 `scheduler_traffic_collector_preflight_summary.ok=false`, `failed_check_ids`, `project_id`, `region`, `service_names`, `scheduler_traffic_collector_preflight_file` 이 보존되어야 하며, `scheduler_traffic_cutover_readiness_summary` 는 아직 실행되지 않았으면 `null` 이어야 한다.
+이때 `scheduler_traffic_collector_preflight_summary.ok=false`, `failed_check_ids`, `project_id`, `region`, `service_names`, `required_env_exact_match_n`, `required_env_mismatch_n`, `scheduler_traffic_collector_preflight_file` 이 보존되어야 하며, `scheduler_traffic_cutover_readiness_summary` 는 아직 실행되지 않았으면 `null` 이어야 한다.
 
 readiness 실패와 collector 권한 실패는 같은 장애로 취급하지 않는다.
 
@@ -1206,6 +1222,17 @@ LIVE mode에서 `required_openclaw_job_ids` 는 launchd manifest의 HIGH job과 
 
 Cloud Scheduler job은 존재만으로 충분하지 않다.
 `path_match`, `schedule_match`, `time_zone_match` 가 true일 때만 enabled evidence로 인정한다.
+
+## Scheduler collector exact env contract
+
+`v2_scheduler_traffic_collector_preflight_latest.json` 과 context summary는 아래 필드를 보존해야 한다.
+
+1. `required_env_names`
+2. `required_env_exact_match_n`
+3. `required_env_mismatch_n`
+
+LIVE 승격에서는 `required_env_exact_match_n >= 2`, `required_env_mismatch_n=0` 이 아니면 collector가 Cloud Run을 읽었더라도 evidence accumulation readiness로 보지 않는다.
+이 계약은 V1의 “알림/감시가 있는 것처럼 보이지만 실제 운영 env가 꺼져 있는” 실패를 막기 위한 것이다.
 
 ## LIVE readiness artifact freshness contract
 

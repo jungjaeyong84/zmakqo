@@ -126,6 +126,14 @@ function buildLiveCutoverFormatterFixtureResult() {
           region: "asia-northeast3",
           service_names: ["donbeolja", "donbeolja-exit-worker"],
           scheduler_job_n: 0,
+          required_env_names: [
+            "SCHEDULER_AUTOSTART",
+            "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE",
+            "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED",
+            "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE",
+          ],
+          required_env_exact_match_n: 2,
+          required_env_mismatch_n: 0,
           file: "/tmp/v2/PCY__LIVE__01/v2_scheduler_traffic_collector_preflight_latest.json",
         },
         scheduler_traffic_cutover_readiness_summary: {
@@ -202,6 +210,14 @@ function buildLiveCutoverAlertPreviewFixtureResult() {
           region: "asia-northeast3",
           service_names: ["donbeolja", "donbeolja-exit-worker"],
           scheduler_job_n: 0,
+          required_env_names: [
+            "SCHEDULER_AUTOSTART",
+            "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE",
+            "DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED",
+            "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE",
+          ],
+          required_env_exact_match_n: 2,
+          required_env_mismatch_n: 0,
           file: "/tmp/v2/PCY__LIVE__01/v2_scheduler_traffic_collector_preflight_latest.json",
         },
         scheduler_traffic_cutover_readiness_summary: {
@@ -1825,6 +1841,26 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         ? "LIVE deploy decision now rejects exit runtime streak evidence when the long-run quality summary is missing or drifts from top-level counters"
         : "LIVE exit runtime streak must not pass from top-level counters alone; long-run quality summary must be present and match the top-level evidence",
       file: FILES.deployDecisionChecker,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_69",
+      label: "LIVE scheduler collector preflight requires exact Firestore canary env",
+      ok: readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("REQUIRED_LIVE_COLLECTOR_ENV")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("SCHEDULER_TRAFFIC_COLLECTOR_REQUIRED_ENV_VALUE_MISMATCH")
+        && runbookCheckerText.includes("required_env_exact_match_n")
+        && runbookCheckerText.includes("required_env_mismatch_n")
+        && runbookText.includes("required_env_exact_match_n")
+        && runbookText.includes("required_env_mismatch_n")
+        && artifactContractText.includes("required_env_exact_match_n")
+        && artifactContractText.includes("required_env_mismatch_n")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-scheduler-traffic-collector-preflight.test.js")).includes("preflightBlocksWhenCanaryFirestoreEnvIsWrong"),
+      reason: readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("SCHEDULER_TRAFFIC_COLLECTOR_REQUIRED_ENV_VALUE_MISMATCH")
+        && runbookCheckerText.includes("required_env_exact_match_n")
+        ? "scheduler collector preflight now proves Cloud Run canary Firestore env exact values before LIVE evidence is trusted"
+        : "scheduler collector preflight must not pass from readable Cloud Run service state unless LIVE canary Firestore env values are exact",
+      file: path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js"),
     }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
