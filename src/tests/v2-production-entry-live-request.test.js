@@ -1,0 +1,100 @@
+"use strict";
+
+const assert = require("assert");
+const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
+const { LIVE_CONFIRM_PHRASE } = require("../v2/productionEntryLiveEndpoint");
+const { buildV2ProductionEntryLiveRequest } = require("../v2/productionEntryLiveRequest");
+
+function buildBundle(overrides = {}) {
+  return buildOpenClawDecisionBundle({
+    signalSourceMode: "SERVER_NATIVE_ML_AI",
+    signalLineageId: "LINEAGE__ETH__PROD_ENTRY__LIVE_REQUEST",
+    symbol: "ETHUSDT",
+    side: "LONG",
+    qualityScore: 0.86,
+    budgetCheckResult: "PASS",
+    minOrderCheckResult: "PASS",
+    decisionStatus: "APPROVED",
+    decisionMode: "LIVE",
+    recommendedAction: "APPROVE_ENTRY",
+    approved: true,
+    rationaleSummary: "production live request approved",
+    policyScope: "ETH_15M",
+    htfDirection: "LONG",
+    htfConfidence: 0.82,
+    timeframe: "15M",
+    featureSchemaVersion: "ml_features_v2",
+    featureValues: {
+      trend_bias: 0.76,
+      volatility_rank: 0.35,
+    },
+    proposalVerdict: "PASS",
+    rankScore: 0.7,
+    sizeRatio: 0.4,
+    riskBand: "MEDIUM",
+    featuresHash: "feat_hash_prod_entry_live_request",
+    modelVersion: "openclaw-ml-v2",
+    decisionSummary: "production live request long approved",
+    createdAt: "2026-04-22T01:00:00.000Z",
+    ...overrides,
+  });
+}
+
+function buildSizing(overrides = {}) {
+  return {
+    referencePrice: 2500,
+    requestedNotionalQuote: 1000,
+    maxNotionalQuote: 1500,
+    minNotionalQuote: 5,
+    minQtyAbs: 0.001,
+    stepSize: 0.001,
+    ...overrides,
+  };
+}
+
+(function liveRequestEmbedsApprovedSizingIntoBundleAndBody() {
+  const result = buildV2ProductionEntryLiveRequest({
+    bundle: buildBundle(),
+    sizing: buildSizing(),
+    now: () => "2026-04-22T01:10:00.000Z",
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_REQUEST_READY");
+  assert.strictEqual(result.body.confirm, LIVE_CONFIRM_PHRASE);
+  assert.strictEqual(result.entrySizingDecision.ok, true);
+  assert.strictEqual(result.entrySizingDecision.status, "APPROVED");
+  assert.strictEqual(result.body.bundle.entrySizingDecision.entry_intent_id, result.routedDecision.entryIntent.entry_intent_id);
+  assert.strictEqual(result.body.entrySizingDecision.entry_qty_abs, result.body.bundle.entrySizingDecision.entry_qty_abs);
+  assert.strictEqual(result.body.request_contract.reason, "V2_PRODUCTION_ENTRY_LIVE_REQUEST_EMBEDS_SIZING");
+})();
+
+(function blockedSizingDoesNotCreateEndpointBody() {
+  const result = buildV2ProductionEntryLiveRequest({
+    bundle: buildBundle({ signalLineageId: "LINEAGE__ETH__PROD_ENTRY__LIVE_REQUEST_BLOCKED" }),
+    sizing: buildSizing({
+      requestedNotionalQuote: 2000,
+      maxNotionalQuote: 100,
+    }),
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED");
+  assert.strictEqual(result.body, null);
+  assert.strictEqual(result.entrySizingDecision.ok, false);
+  assert.strictEqual(result.entrySizingDecision.reason, "REQUESTED_NOTIONAL_EXCEEDS_BUDGET");
+})();
+
+(function nonExecutableBundleDoesNotCreateEndpointBody() {
+  const result = buildV2ProductionEntryLiveRequest({
+    bundle: buildBundle({
+      signalLineageId: "LINEAGE__ETH__PROD_ENTRY__LIVE_REQUEST_SHADOW",
+      decisionMode: "SHADOW",
+      decisionStatus: "SHADOW_ONLY",
+    }),
+    sizing: buildSizing(),
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_ROUTER_NOT_EXECUTABLE");
+  assert.strictEqual(result.body, null);
+})();
+
+console.log("V2_PRODUCTION_ENTRY_LIVE_REQUEST_TEST_OK");

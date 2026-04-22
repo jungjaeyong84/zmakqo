@@ -177,6 +177,32 @@ async function sizingDecisionMustMatchRoutedIntent() {
   );
 }
 
+async function bodyAndBundleSizingConflictFailsClosed() {
+  const bundle = buildBundle({ signalLineageId: "LINEAGE__ETH__PROD_ENTRY__LIVE_TRANSPORTS_CONFLICT" });
+  const embeddedSizing = buildSizingDecision(bundle);
+  await assert.rejects(
+    () => buildV2ProductionEntryLiveTransports({
+      bundle: {
+        ...bundle,
+        entrySizingDecision: embeddedSizing,
+      },
+      body: {
+        entrySizingDecision: {
+          ...embeddedSizing,
+          entry_qty_abs: embeddedSizing.entry_qty_abs + 0.001,
+        },
+      },
+      resolveLiveCfg: async () => ({
+        apiKey: "key",
+        apiSecret: "secret",
+        liveEnabled: true,
+        liveDryRun: false,
+      }),
+    }),
+    /V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_CONFLICT/
+  );
+}
+
 function validationNeverLeaksSecretsInSummary() {
   const cfg = validateLiveCfgForEntry({
     apiKey: "key",
@@ -199,6 +225,7 @@ async function main() {
   await missingSizingDecisionFailsBeforeTransportFactories();
   await dryRunLiveCfgIsRejectedForLiveEndpoint();
   await sizingDecisionMustMatchRoutedIntent();
+  await bodyAndBundleSizingConflictFailsClosed();
   validationNeverLeaksSecretsInSummary();
 }
 

@@ -799,6 +799,8 @@ caller boundary 조건:
 11. approved sizing decision이 없거나 routed `entry_intent_id/symbol/side` 와 맞지 않으면 `V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCKED` 로 route 호출 전 차단한다
 12. Binance live config가 `liveEnabled=true`, `liveDryRun=false`, key present 상태가 아니면 route 호출 전 차단한다
 13. LIVE endpoint response는 key/secret 값을 노출하지 않고 `api_key_present/api_secret_present` 만 노출한다
+14. 운영 요청 생성은 `buildV2ProductionEntryLiveRequest` 를 통해 OpenClaw bundle에 approved `entrySizingDecision` 을 먼저 내장해야 한다
+15. body-level sizing과 bundle-level sizing이 서로 다르면 `V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_CONFLICT` 로 route 호출 전 차단한다
 
 이 조건의 목적은 V1의 "운영 endpoint가 하위 실행기를 직접 호출해 성공 의미가 분산되는 문제"를 cutover gate에서 차단하는 것이다.
 
@@ -872,3 +874,17 @@ V2 production entry route canary는 exchange write를 하지 않지만, 수량 �
 5. 이 증거는 LIVE endpoint static contract인 `SUBMIT_CHK_20` 과 별개로, 실제 canary history가 sizing-aware flow였는지 확인하는 runtime evidence다
 
 이 규칙은 V1처럼 “진입은 됐지만 수량 산식/보호 주문이 어느 계층에서 결정됐는지 나중에 복원 불가”인 상태를 금지한다.
+
+## Production protected entry canary
+
+V2 production route canary는 route 도달성만 증명하면 부족하다. LIVE 전환 전에는 route, default execution kernel, entry submitter, protection activation, protection runtime write까지 같은 체인이 끊기지 않는지도 증명해야 한다.
+
+1. `run:v2-production-entry-protected-canary` 는 실제 거래소 호출을 하지 않는 no-exchange canary다
+2. canary는 `buildV2ProductionEntryLiveRequest` 로 approved `entrySizingDecision` 을 먼저 만든다
+3. canary는 `runV2ProductionEntryRoute` 의 기본 `runV2EntryExecutionKernel` 을 그대로 사용한다
+4. entry transport, SL transport, TP1 transport만 no-exchange fake로 대체한다
+5. Firestore는 memory batch adapter를 사용해 pending bootstrap 2 writes, activation 2 writes가 실제 batch boundary를 통과하는지 확인한다
+6. 성공 조건은 route success, kernel audit ok, `ACTIVE_PROTECTED`, SL order id present, TP1 order id present, batch writes present, `exchange_write_performed=false` 이다
+7. 이 canary가 실패하면 V2는 LIVE 주문 제출 이전 단계에서 중단해야 한다
+
+이 규칙은 V1의 약점이었던 “route/gate는 통과했지만 보호주문 activation 체인은 별도로 깨짐”을 막기 위한 것이다.

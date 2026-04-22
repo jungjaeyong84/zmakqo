@@ -19,16 +19,49 @@ function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function normalizeSizingComparable(row = null) {
+  const value = asObject(row);
+  if (!value) return null;
+  return Object.freeze({
+    ok: value.ok === true,
+    status: upper(value.status),
+    entry_intent_id: trimOrNull(value.entry_intent_id),
+    symbol: upper(value.symbol),
+    side: upper(value.side),
+    entry_qty_abs: Number(value.entry_qty_abs),
+    reference_price: Number(value.reference_price),
+  });
+}
+
+function sizingDecisionsConflict(left = null, right = null) {
+  const a = normalizeSizingComparable(left);
+  const b = normalizeSizingComparable(right);
+  if (!a || !b) return false;
+  return Object.keys(a).some((key) => {
+    if (Number.isNaN(a[key]) && Number.isNaN(b[key])) return false;
+    return a[key] !== b[key];
+  });
+}
+
 function extractSizingDecision({ body = null, bundle = null } = {}) {
-  const sourceRows = [asObject(body), asObject(bundle)].filter(Boolean);
-  for (const row of sourceRows) {
-    const direct = asObject(row.entrySizingDecision)
-      || asObject(row.entry_sizing_decision)
-      || asObject(row.sizingDecision)
-      || asObject(row.sizing_decision);
-    if (direct) return direct;
+  const bodyRow = asObject(body);
+  const bundleRow = asObject(bundle);
+  const bodyDecision = bodyRow
+    ? asObject(bodyRow.entrySizingDecision)
+      || asObject(bodyRow.entry_sizing_decision)
+      || asObject(bodyRow.sizingDecision)
+      || asObject(bodyRow.sizing_decision)
+    : null;
+  const bundleDecision = bundleRow
+    ? asObject(bundleRow.entrySizingDecision)
+      || asObject(bundleRow.entry_sizing_decision)
+      || asObject(bundleRow.sizingDecision)
+      || asObject(bundleRow.sizing_decision)
+    : null;
+  if (bodyDecision && bundleDecision && sizingDecisionsConflict(bodyDecision, bundleDecision)) {
+    throw new Error("V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_CONFLICT");
   }
-  return null;
+  return bundleDecision || bodyDecision || null;
 }
 
 function validateLiveCfgForEntry(liveCfg = null) {
@@ -130,5 +163,7 @@ module.exports = {
     trimOrNull,
     upper,
     asObject,
+    normalizeSizingComparable,
+    sizingDecisionsConflict,
   },
 };

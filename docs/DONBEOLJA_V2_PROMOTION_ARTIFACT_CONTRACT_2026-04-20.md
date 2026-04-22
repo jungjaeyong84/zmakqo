@@ -568,7 +568,7 @@ cloudbuild는 아래 원칙을 따른다.
 14. bounded canary/live mode에서는 `entry_boundary_audit` 이 `V2_ENTRY_BOUNDARY_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_13`/runbook 21로 fail-closed 된다
 15. bounded canary/live mode에서는 `fill_sync_canonical_boundary_audit` 이 `V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_18`/runbook 25로 fail-closed 된다
 16. bounded canary/live mode에서는 `production_cutover_audit` 이 `V2_PRODUCTION_CUTOVER_AUDIT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_14`/runbook 22로 fail-closed 된다
-17. bounded canary/live mode에서는 `production_cutover_audit.contract.checks[]` 가 live endpoint가 sizing-backed transport를 route 전에 만들고, live transport가 approved `entrySizingDecision` 없이 막힌다는 것을 증명해야 하며, 위반 시 `SUBMIT_CHK_20`/runbook 27로 fail-closed 된다
+17. bounded canary/live mode에서는 `production_cutover_audit.contract.checks[]` 가 live endpoint가 sizing-backed transport를 route 전에 만들고, live transport가 approved `entrySizingDecision` 없이 막히며, body/bundle sizing drift를 거부하고, live request builder가 approved sizing을 bundle에 포함한다는 것을 증명해야 하며, 위반 시 `SUBMIT_CHK_20`/runbook 27로 fail-closed 된다
 18. LIVE mode에서는 `production_cutover_readiness_summary` 가 `V2_PRODUCTION_CUTOVER_READINESS_PASS` 와 `legacy_webhook_blocked=true` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_15`/runbook 23으로 fail-closed 된다
 19. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
 20. LIVE mode에서는 `scheduler_traffic_cutover_readiness_summary` 가 `V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run service readiness를 증명해야 하며, 위반 시 `SUBMIT_CHK_16`/runbook 24로 fail-closed 된다

@@ -40,6 +40,7 @@ function auditV2ProductionCutoverContract({
   productionEntryRouteCanarySource = "",
   productionEntryLiveEndpointSource = "",
   productionEntryLiveTransportsSource = "",
+  productionEntryLiveRequestSource = "",
   productionEntryRouteCanaryScriptSource = "",
   entryBoundaryAuditSource = "",
 } = {}) {
@@ -165,6 +166,13 @@ function auditV2ProductionCutoverContract({
       "V2 live transports must use an approved sizing decision matched to the routed entry intent"
     ),
     buildCheck(
+      "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REJECT_SIZING_CONFLICT",
+      productionEntryLiveTransportsSource.includes("V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_CONFLICT")
+        && productionEntryLiveTransportsSource.includes("sizingDecisionsConflict")
+        && productionEntryLiveTransportsSource.includes("bundleDecision || bodyDecision"),
+      "V2 live transports must reject body/bundle sizing drift before exchange transport creation"
+    ),
+    buildCheck(
       "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCK_DRY_RUN_CFG",
       productionEntryLiveTransportsSource.includes("V2_PRODUCTION_ENTRY_LIVE_CFG_DRY_RUN_BLOCKED")
         && productionEntryLiveTransportsSource.includes("V2_PRODUCTION_ENTRY_LIVE_CFG_NOT_ENABLED"),
@@ -176,6 +184,16 @@ function auditV2ProductionCutoverContract({
         && productionEntryLiveTransportsSource.includes("api_secret_present")
         && productionEntryLiveTransportsSource.includes("summarizeLiveCfg"),
       "V2 live transport summaries must expose secret presence only, never secret values"
+    ),
+    buildCheck(
+      "V2_PRODUCTION_ENTRY_LIVE_REQUEST_BUILDER_EMBEDS_SIZING",
+      productionEntryLiveRequestSource.includes("buildV2ProductionEntryLiveRequest")
+        && productionEntryLiveRequestSource.includes("resolveEntryIntentFromOpenClaw")
+        && productionEntryLiveRequestSource.includes("buildV2EntrySizingDecision")
+        && productionEntryLiveRequestSource.includes("confirm = LIVE_CONFIRM_PHRASE")
+        && productionEntryLiveRequestSource.includes("entrySizingDecision")
+        && productionEntryLiveRequestSource.includes("V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED"),
+      "V2 live request builder must attach approved sizing evidence to the bundle before endpoint submission"
     ),
     buildCheck(
       "V2_PRODUCTION_ENTRY_ROUTE_CANARY_SCRIPT_FORBIDS_ENTRY_BYPASS",
@@ -231,6 +249,7 @@ function auditWorkspaceV2ProductionCutoverContract({ rootDir = path.resolve(__di
     productionEntryRouteCanarySource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryRouteCanary.js")),
     productionEntryLiveEndpointSource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryLiveEndpoint.js")),
     productionEntryLiveTransportsSource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryLiveTransports.js")),
+    productionEntryLiveRequestSource: readTextSafe(path.join(rootDir, "src", "v2", "productionEntryLiveRequest.js")),
     productionEntryRouteCanaryScriptSource: readTextSafe(path.join(rootDir, "scripts", "run-v2-production-entry-route-canary.js")),
     entryBoundaryAuditSource: readTextSafe(path.join(rootDir, "src", "v2", "entryBoundaryAudit.js")),
   });

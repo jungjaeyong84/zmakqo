@@ -1896,3 +1896,56 @@ V1 약점 재발 방지:
 1. V1에서는 provenance mismatch가 단순 hash mismatch나 generic blocker로만 보이면 어느 레이어가 틀어졌는지 바로 알기 어려웠다
 2. 이번 단계는 context trace와 최종 submit wrapper의 `SUBMIT_CHK_08` 의미를 실제 lineage consistency로 맞췄다
 3. 따라서 V2에서는 preflight/runtime/deploy는 맞는데 CloudBuild context만 stale인 경우, 또는 context 내부 summary만 틀어진 경우를 운영자 메시지에서 분리해 볼 수 있다
+
+## 2026-04-22 Production Live Entry Request Sizing Lock
+
+추가 증거:
+
+1. `src/v2/productionEntryLiveRequest.js`
+2. `src/v2/productionEntryLiveTransports.js`
+3. `src/v2/productionCutoverAudit.js`
+4. `scripts/check-v2-promotion-deploy-decision.js`
+5. `src/tests/v2-production-entry-live-request.test.js`
+6. `src/tests/v2-production-entry-live-transports.test.js`
+7. `src/tests/v2-production-cutover-audit.test.js`
+
+판정:
+
+1. V2 LIVE entry request는 이제 `buildV2ProductionEntryLiveRequest` 를 통해 OpenClaw bundle에 approved `entrySizingDecision` 을 먼저 내장할 수 있다
+2. sizing이 budget/min-order/step-size 계약을 통과하지 못하면 endpoint body 자체를 만들지 않고 `V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED` 로 fail-closed 한다
+3. live transport는 body-level sizing과 bundle-level sizing이 동시에 존재하면서 다르면 `V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_CONFLICT` 로 route 호출 전 차단한다
+4. production cutover audit는 `V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REJECT_SIZING_CONFLICT` 와 `V2_PRODUCTION_ENTRY_LIVE_REQUEST_BUILDER_EMBEDS_SIZING` 을 새 필수 계약으로 본다
+5. deploy decision의 `SUBMIT_CHK_20` 계열 필수 check 목록도 같은 두 항목을 요구한다
+6. `test:v2-promotion` 은 live request builder 테스트를 포함한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 entry decision, runtime qty, 보호주문 qty가 서로 다른 레이어에서 다시 계산되며 TP/보호주문 drift가 반복됐다
+2. 이번 단계는 LIVE 요청 생성 시점부터 OpenClaw bundle과 sizing evidence를 하나로 묶고, 서로 다른 sizing source가 섞이면 transport 생성 전 차단한다
+3. 따라서 “결정은 A인데 수량은 B”인 요청이 Binance transport까지 내려가는 경로를 줄였다
+
+## 2026-04-22 Production Protected Entry Canary
+
+추가 증거:
+
+1. `src/v2/productionEntryProtectedCanary.js`
+2. `scripts/run-v2-production-entry-protected-canary.js`
+3. `src/tests/v2-production-entry-protected-canary.test.js`
+4. `src/tests/run-v2-production-entry-protected-canary.test.js`
+5. `package.json`
+6. `docs/DONBEOLJA_V2_ENTRY_ARCHITECTURE_2026-04-20.md`
+7. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. protected canary는 `buildV2ProductionEntryLiveRequest` 에서 approved sizing을 먼저 만든다
+2. canary는 `runV2ProductionEntryRoute` 의 기본 kernel/submitter/protection activation을 우회하지 않는다
+3. 거래소 write transport만 no-exchange fake로 바꾸고, Firestore write boundary는 memory batch adapter로 통과시킨다
+4. 성공 artifact는 route success, kernel audit ok, `ACTIVE_PROTECTED`, SL/TP1 order id, batch commit count, no-exchange flag를 모두 보존한다
+5. `test:v2-promotion` 은 protected canary 테스트를 포함한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 게이트/라우터와 보호주문 activation이 분리되어, 진입 후 TP1/SL native 주문 누락이 늦게 발견됐다
+2. 이번 단계는 LIVE 전환 전 no-exchange 환경에서 “요청 -> 라우터 -> 커널 -> submitter -> protection activation -> runtime doc” 체인을 한 번에 증명한다
+3. 따라서 V2는 route만 통과하고 보호주문 체인이 깨지는 회귀를 promotion 테스트에서 먼저 잡을 수 있다

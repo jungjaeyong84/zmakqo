@@ -22,8 +22,10 @@ const {
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_USES_PRODUCTION_ROUTE_ONLY"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_RESOLVES_TRANSPORTS_BEFORE_ROUTE"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REQUIRE_APPROVED_SIZING"));
+  assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_REJECT_SIZING_CONFLICT"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCK_DRY_RUN_CFG"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_DO_NOT_EXPOSE_SECRETS"));
+  assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_LIVE_REQUEST_BUILDER_EMBEDS_SIZING"));
   assert.ok(result.checks.some((row) => row.id === "V2_PRODUCTION_ENTRY_ROUTE_CANARY_SCRIPT_FORBIDS_ENTRY_BYPASS"));
   assert.ok(result.checks.some((row) => row.id === "V2_ENTRY_BOUNDARY_FORBIDS_KERNEL_BYPASS"));
 })();
@@ -35,7 +37,8 @@ const {
     productionEntryRouteSource: "runV2ProductionEntryRoute V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED runV2EntryExecutionKernel runEntryKernel V2_PRODUCTION_ENTRY_DISABLED V2_PRODUCTION_ENTRY_DRY_RUN_BLOCKED evaluateOpenClawExecutionSeparation V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED if (!kernelResult || kernelResult.ok !== true) let auditLedgerResult = null;",
     productionEntryRouteCanarySource: "runV2ProductionEntryRoute NO_EXCHANGE_ROUTE_PROOF exchange_write_performed: false",
     productionEntryLiveEndpointSource: "DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED V2_PRODUCTION_ENTRY_LIVE_CONFIRM_REQUIRED V2_PRODUCTION_ENTRY_LIVE_CANARY_ONLY_BLOCKED V2_PRODUCTION_ENTRY_LIVE_DECISION_REQUIRED runV2ProductionEntryRoute buildLiveTransports buildV2ProductionEntryLiveTransports V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_BLOCKED runProductionEntryRoute",
-    productionEntryLiveTransportsSource: "buildEntryQuantityResolverFromSizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_REQUIRED quantityResolver({ entryIntent }) V2_PRODUCTION_ENTRY_LIVE_CFG_DRY_RUN_BLOCKED V2_PRODUCTION_ENTRY_LIVE_CFG_NOT_ENABLED api_key_present api_secret_present summarizeLiveCfg",
+    productionEntryLiveTransportsSource: "buildEntryQuantityResolverFromSizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_REQUIRED quantityResolver({ entryIntent }) V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_CONFLICT sizingDecisionsConflict bundleDecision || bodyDecision V2_PRODUCTION_ENTRY_LIVE_CFG_DRY_RUN_BLOCKED V2_PRODUCTION_ENTRY_LIVE_CFG_NOT_ENABLED api_key_present api_secret_present summarizeLiveCfg",
+    productionEntryLiveRequestSource: "buildV2ProductionEntryLiveRequest resolveEntryIntentFromOpenClaw buildV2EntrySizingDecision confirm = LIVE_CONFIRM_PHRASE entrySizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED",
     openclawCronRouteSource: 'router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedulerToken, async () => runV2EntryExecutionKernel({})) router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, async () => runV2ProductionEntryLiveEndpoint({}))',
     productionEntryRouteCanaryScriptSource: "runV2ProductionEntryRouteCanary",
     entryBoundaryAuditSource: "V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN src/v2/productionEntryRoute.js",
@@ -52,7 +55,8 @@ const {
     productionEntryRouteSource: "runV2ProductionEntryRoute V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED runV2EntryExecutionKernel runEntryKernel V2_PRODUCTION_ENTRY_DISABLED V2_PRODUCTION_ENTRY_DRY_RUN_BLOCKED evaluateOpenClawExecutionSeparation V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_SEPARATION_BLOCKED if (!kernelResult || kernelResult.ok !== true) let auditLedgerResult = null;",
     productionEntryRouteCanarySource: "runV2ProductionEntryRoute NO_EXCHANGE_ROUTE_PROOF exchange_write_performed: false",
     productionEntryLiveEndpointSource: "runV2ProductionEntryRoute",
-    productionEntryLiveTransportsSource: "buildEntryQuantityResolverFromSizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_REQUIRED quantityResolver({ entryIntent }) V2_PRODUCTION_ENTRY_LIVE_CFG_DRY_RUN_BLOCKED V2_PRODUCTION_ENTRY_LIVE_CFG_NOT_ENABLED api_key_present api_secret_present summarizeLiveCfg",
+    productionEntryLiveTransportsSource: "buildEntryQuantityResolverFromSizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_REQUIRED quantityResolver({ entryIntent }) V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_CONFLICT sizingDecisionsConflict bundleDecision || bodyDecision V2_PRODUCTION_ENTRY_LIVE_CFG_DRY_RUN_BLOCKED V2_PRODUCTION_ENTRY_LIVE_CFG_NOT_ENABLED api_key_present api_secret_present summarizeLiveCfg",
+    productionEntryLiveRequestSource: "buildV2ProductionEntryLiveRequest resolveEntryIntentFromOpenClaw buildV2EntrySizingDecision confirm = LIVE_CONFIRM_PHRASE entrySizingDecision V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED",
     openclawCronRouteSource: 'router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedulerToken, async () => { const { main } = require("../../scripts/run-v2-production-entry-route-canary"); return main({ setProcessExitCode: false }); }) router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, async () => runV2ProductionEntryLiveEndpoint({}))',
     productionEntryRouteCanaryScriptSource: "runV2ProductionEntryRouteCanary",
     entryBoundaryAuditSource: "V2_ENTRY_EXECUTION_KERNEL_DIRECT_CALL_FORBIDDEN src/v2/productionEntryRoute.js",
