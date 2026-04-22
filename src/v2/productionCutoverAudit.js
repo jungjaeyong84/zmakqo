@@ -223,6 +223,7 @@ function auditV2ProductionCutoverReadiness(env = process.env) {
     buildCheck("V2_RUNTIME_ENABLED", guard.context.v2_enabled === true, "DONBEOLJA_V2_ENABLED must be 1"),
     buildCheck("V2_RUNTIME_NOT_DRY_RUN", guard.context.v2_dry_run === false, "DONBEOLJA_V2_DRY_RUN must be 0"),
     buildCheck("V2_RUNTIME_NOT_CANARY_ONLY", guard.context.v2_canary_only === false, "DONBEOLJA_V2_CANARY_ONLY must be 0"),
+    buildCheck("V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED", trimOrNull(env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED) === "1", "DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED must be 1"),
     buildCheck("V2_PRODUCTION_CUTOVER_REQUIRED", guard.context.require_production_cutover === true, "DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER must be 1"),
     buildCheck("V2_LEGACY_WEBHOOK_BLOCK_ENABLED", guard.context.block_legacy_webhook_signal === true, "legacy webhook signal block must be enabled"),
     buildCheck("V2_LEGACY_WEBHOOK_NOT_ALLOWED", guard.context.allow_legacy_webhook_signal === false, "legacy webhook signal override must be off"),

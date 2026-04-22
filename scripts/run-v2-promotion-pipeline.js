@@ -13,10 +13,12 @@ const deployDecision = require("./check-v2-promotion-deploy-decision");
 const gate = require("./check-v2-promotion-gate");
 const repairFirestoreCanaryStreak = require("./check-v2-repair-queue-firestore-canary-streak");
 const productionEntryRouteCanaryStreak = require("./check-v2-production-entry-route-canary-streak");
+const exitRuntimeCanaryStreak = require("./check-v2-exit-runtime-canary-streak");
 const productionEntryProtectedCanary = require("./run-v2-production-entry-protected-canary");
 
 const REPAIR_FIRESTORE_CANARY_STREAK_FILENAME = "v2_repair_queue_firestore_canary_streak_latest.json";
 const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
+const EXIT_RUNTIME_CANARY_STREAK_FILENAME = "v2_exit_runtime_canary_streak_latest.json";
 const PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME = "v2_production_entry_protected_canary_latest.json";
 const REPAIR_FIRESTORE_CANARY_HISTORY_FILENAME = "v2_repair_queue_firestore_canary_history.jsonl";
 const PRODUCTION_ENTRY_PROTECTED_CANARY_HISTORY_FILENAME = "v2_production_entry_protected_canary_history.jsonl";
@@ -60,6 +62,10 @@ function shouldRefreshProductionEntryRouteCanaryStreak(env = process.env) {
   return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
 }
 
+function shouldRefreshExitRuntimeCanaryStreak(env = process.env) {
+  return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
+}
+
 function shouldRefreshProductionEntryProtectedCanary(env = process.env) {
   return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
 }
@@ -84,6 +90,21 @@ function buildProductionEntryRouteCanaryStreakThrownReport(env = process.env, er
     blockers: Object.freeze(["PRODUCTION_ENTRY_ROUTE_CANARY_STREAK:HISTORY_READ_FAILED"]),
     error: Object.freeze({
       message: error && error.message ? error.message : String(error || "unknown production route canary streak error"),
+    }),
+  });
+}
+
+function buildExitRuntimeCanaryStreakThrownReport(env = process.env, error = null) {
+  return Object.freeze({
+    ok: false,
+    reason: "V2_EXIT_RUNTIME_CANARY_STREAK_THROWN",
+    history_source: exitRuntimeCanaryStreak.__test.resolveHistorySource(env),
+    history_file: exitRuntimeCanaryStreak.__test.resolveHistorySource(env) === "FIRESTORE"
+      ? null
+      : exitRuntimeCanaryStreak.__test.resolveHistoryFile(env),
+    blockers: Object.freeze(["EXIT_RUNTIME_CANARY_STREAK:HISTORY_READ_FAILED"]),
+    error: Object.freeze({
+      message: error && error.message ? error.message : String(error || "unknown exit runtime canary streak error"),
     }),
   });
 }
@@ -137,6 +158,42 @@ async function refreshRepairFirestoreCanaryStreak(env = process.env) {
     reason: report && report.ok === true
       ? "REPAIR_FIRESTORE_CANARY_STREAK_REFRESH_PASS"
       : "REPAIR_FIRESTORE_CANARY_STREAK_REFRESH_BLOCKED",
+    report,
+    output_file: outputFile,
+  });
+}
+
+async function refreshExitRuntimeCanaryStreak(env = process.env, { db = null } = {}) {
+  if (!shouldRefreshExitRuntimeCanaryStreak(env)) {
+    return Object.freeze({
+      required: false,
+      skipped: true,
+      reason: "EXIT_RUNTIME_CANARY_STREAK_REFRESH_SKIPPED",
+      report: null,
+      output_file: null,
+    });
+  }
+  const artifactDir = resolveArtifactDir(env);
+  const outputFile = path.join(artifactDir, EXIT_RUNTIME_CANARY_STREAK_FILENAME);
+  const streakEnv = Object.freeze({
+    ...env,
+    V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ARTIFACT_DIR: artifactDir,
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_FILE: outputFile,
+  });
+  let report = null;
+  try {
+    report = await exitRuntimeCanaryStreak.runCheck(streakEnv, { db });
+  } catch (error) {
+    report = buildExitRuntimeCanaryStreakThrownReport(streakEnv, error);
+  }
+  writeJson(outputFile, report);
+  return Object.freeze({
+    required: true,
+    skipped: false,
+    reason: report && report.ok === true
+      ? "EXIT_RUNTIME_CANARY_STREAK_REFRESH_PASS"
+      : "EXIT_RUNTIME_CANARY_STREAK_REFRESH_BLOCKED",
     report,
     output_file: outputFile,
   });
@@ -255,6 +312,9 @@ async function runPipeline(env = process.env, {
   const productionEntryRouteCanaryStreakRefresh = await refreshProductionEntryRouteCanaryStreak(effectiveEnv, {
     db: collectorDb || selectorDb,
   });
+  const exitRuntimeCanaryStreakRefresh = await refreshExitRuntimeCanaryStreak(effectiveEnv, {
+    db: collectorDb || selectorDb,
+  });
   const productionEntryProtectedCanaryRefresh = await refreshProductionEntryProtectedCanary(effectiveEnv);
   const reportEnv = {
     ...effectiveEnv,
@@ -263,6 +323,9 @@ async function runPipeline(env = process.env, {
       : {}),
     ...(productionEntryRouteCanaryStreakRefresh.output_file
       ? { DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILE: productionEntryRouteCanaryStreakRefresh.output_file }
+      : {}),
+    ...(exitRuntimeCanaryStreakRefresh.output_file
+      ? { DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_FILE: exitRuntimeCanaryStreakRefresh.output_file }
       : {}),
     ...(productionEntryProtectedCanaryRefresh.output_file
       ? { DONBEOLJA_V2_PRODUCTION_ENTRY_PROTECTED_CANARY_FILE: productionEntryProtectedCanaryRefresh.output_file }
@@ -279,6 +342,9 @@ async function runPipeline(env = process.env, {
     productionEntryRouteCanaryStreak: productionEntryRouteCanaryStreakRefresh.report,
     productionEntryRouteCanaryStreakFile: productionEntryRouteCanaryStreakRefresh.output_file,
     productionEntryRouteCanaryStreakStatus: productionEntryRouteCanaryStreakRefresh.reason,
+    exitRuntimeCanaryStreak: exitRuntimeCanaryStreakRefresh.report,
+    exitRuntimeCanaryStreakFile: exitRuntimeCanaryStreakRefresh.output_file,
+    exitRuntimeCanaryStreakStatus: exitRuntimeCanaryStreakRefresh.reason,
     productionEntryProtectedCanary: productionEntryProtectedCanaryRefresh.report,
     productionEntryProtectedCanaryFile: productionEntryProtectedCanaryRefresh.output_file,
     productionEntryProtectedCanaryStatus: productionEntryProtectedCanaryRefresh.reason,
@@ -345,9 +411,12 @@ if (require.main === module) {
       resolveRepairFirestoreCanaryHistoryFile,
       refreshRepairFirestoreCanaryStreak,
       shouldRefreshProductionEntryRouteCanaryStreak,
+      shouldRefreshExitRuntimeCanaryStreak,
       shouldRefreshProductionEntryProtectedCanary,
       buildProductionEntryRouteCanaryStreakThrownReport,
+      buildExitRuntimeCanaryStreakThrownReport,
       refreshProductionEntryRouteCanaryStreak,
+      refreshExitRuntimeCanaryStreak,
       refreshProductionEntryProtectedCanary,
     },
   };

@@ -70,6 +70,7 @@ const {
     DONBEOLJA_V2_ENABLED: "1",
     DONBEOLJA_V2_DRY_RUN: "0",
     DONBEOLJA_V2_CANARY_ONLY: "0",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
     DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER: "1",
   });
   assert.strictEqual(result.ok, true);
@@ -86,6 +87,7 @@ const {
   assert.ok(result.failed_check_ids.includes("V2_RUNTIME_ENABLED"));
   assert.ok(result.failed_check_ids.includes("V2_RUNTIME_NOT_DRY_RUN"));
   assert.ok(result.failed_check_ids.includes("V2_RUNTIME_NOT_CANARY_ONLY"));
+  assert.ok(result.failed_check_ids.includes("V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED"));
   assert.ok(result.failed_check_ids.includes("V2_PRODUCTION_CUTOVER_REQUIRED"));
   assert.ok(result.failed_check_ids.includes("V2_LEGACY_WEBHOOK_BLOCK_ENABLED"));
   assert.ok(result.failed_check_ids.includes("V2_CUTOVER_GUARD_WOULD_BLOCK_LEGACY"));

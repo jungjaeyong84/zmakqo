@@ -10,6 +10,7 @@ const CANDIDATE_SELECTION_FILENAME = "promotion-canary-candidate-selection.json"
 const REPAIR_FIRESTORE_CANARY_STREAK_FILENAME = "v2_repair_queue_firestore_canary_streak_latest.json";
 const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
 const PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME = "v2_production_entry_protected_canary_latest.json";
+const EXIT_RUNTIME_CANARY_STREAK_FILENAME = "v2_exit_runtime_canary_streak_latest.json";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -246,6 +247,28 @@ function readProductionEntryProtectedCanaryArtifact(env = process.env, artifactD
   );
 }
 
+function resolveExitRuntimeCanaryStreakFile(env = process.env, artifactDir = null) {
+  const explicit = trimOrNull(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_FILE);
+  if (explicit) return path.resolve(explicit);
+  const dir = trimOrNull(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ARTIFACT_DIR);
+  if (dir) return path.resolve(dir, EXIT_RUNTIME_CANARY_STREAK_FILENAME);
+  const artifactScoped = trimOrNull(artifactDir)
+    ? path.resolve(artifactDir, EXIT_RUNTIME_CANARY_STREAK_FILENAME)
+    : null;
+  if (artifactScoped && fs.existsSync(artifactScoped)) return artifactScoped;
+  return path.resolve("ops", "daily", EXIT_RUNTIME_CANARY_STREAK_FILENAME);
+}
+
+function readExitRuntimeCanaryStreakArtifact(env = process.env, artifactDir = null) {
+  const filePath = resolveExitRuntimeCanaryStreakFile(env, artifactDir);
+  return withArtifactProvenance(
+    readOptionalJson(filePath),
+    filePath,
+    artifactDir,
+    EXIT_RUNTIME_CANARY_STREAK_FILENAME
+  );
+}
+
 function buildRepairFirestoreCanaryStreakSummary(streak) {
   const row = normalizeObject(streak);
   if (!row) return null;
@@ -300,6 +323,37 @@ function buildProductionEntryRouteCanaryStreakSummary(streak) {
   });
 }
 
+function buildExitRuntimeCanaryStreakSummary(streak) {
+  const row = normalizeObject(streak);
+  if (!row) return null;
+  return Object.freeze({
+    ok: row.ok === true,
+    reason: trimOrNull(row.reason),
+    artifact_file: trimOrNull(row.artifact_file),
+    artifact_dir: trimOrNull(row.artifact_dir),
+    artifact_filename: trimOrNull(row.artifact_filename),
+    artifact_current_dir_match: row.artifact_current_dir_match === true,
+    history_source: trimOrNull(row.history_source),
+    history_file: trimOrNull(row.history_file),
+    lookback_hours: normalizeNumber(row.lookback_hours),
+    min_run_count: normalizeNumber(row.min_run_count),
+    max_gap_minutes: normalizeNumber(row.max_gap_minutes),
+    firestore_read_limit: normalizeNumber(row.firestore_read_limit),
+    row_n: normalizeNumber(row.row_n),
+    healthy_run_n: normalizeNumber(row.healthy_run_n),
+    unhealthy_run_n: normalizeNumber(row.unhealthy_run_n),
+    invalid_line_n: normalizeNumber(row.invalid_line_n),
+    latest_age_minutes: normalizeNumber(row.latest_age_minutes),
+    coverage_minutes: normalizeNumber(row.coverage_minutes),
+    max_observed_gap_minutes: normalizeNumber(row.max_observed_gap_minutes),
+    tp1_missing_n: normalizeNumber(row.tp1_missing_n),
+    native_refresh_unhealthy_n: normalizeNumber(row.native_refresh_unhealthy_n),
+    unprotected_window_violation_n: normalizeNumber(row.unprotected_window_violation_n),
+    alert_silent_drop_n: normalizeNumber(row.alert_silent_drop_n),
+    blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
+  });
+}
+
 function buildProductionEntryProtectedCanarySummary(canary) {
   const row = normalizeObject(canary);
   if (!row) return null;
@@ -343,6 +397,7 @@ function buildBoundedRuntimeSummary(manifest, selectorMeta, {
   repairFirestoreCanaryStreak = null,
   productionEntryRouteCanaryStreak = null,
   productionEntryProtectedCanary = null,
+  exitRuntimeCanaryStreak = null,
 } = {}) {
   const manifestRow = normalizeObject(manifest);
   const selectorRow = normalizeObject(selectorMeta);
@@ -364,6 +419,7 @@ function buildBoundedRuntimeSummary(manifest, selectorMeta, {
     repair_firestore_canary_streak: buildRepairFirestoreCanaryStreakSummary(repairFirestoreCanaryStreak),
     production_entry_route_canary_streak: buildProductionEntryRouteCanaryStreakSummary(productionEntryRouteCanaryStreak),
     production_entry_protected_canary: buildProductionEntryProtectedCanarySummary(productionEntryProtectedCanary),
+    exit_runtime_canary_streak: buildExitRuntimeCanaryStreakSummary(exitRuntimeCanaryStreak),
   });
 }
 
@@ -402,6 +458,7 @@ function buildUnifiedArtifactPayload(result, {
   repairFirestoreCanaryStreak = null,
   productionEntryRouteCanaryStreak = null,
   productionEntryProtectedCanary = null,
+  exitRuntimeCanaryStreak = null,
 } = {}) {
   const row = result && typeof result === "object" ? result : {};
   const inputs = row.inputs && typeof row.inputs === "object" ? row.inputs : {};
@@ -422,6 +479,7 @@ function buildUnifiedArtifactPayload(result, {
       repairFirestoreCanaryStreak,
       productionEntryRouteCanaryStreak,
       productionEntryProtectedCanary,
+      exitRuntimeCanaryStreak,
     }),
     alert_retry_summary: buildAlertRetrySummary(manifest && manifest.snapshot_meta && manifest.snapshot_meta.alert_retry_summary),
     candidate_selection_summary: buildCandidateSelectionSummary(candidateSelection),
@@ -436,11 +494,13 @@ function generateUnifiedPromotionReport(env = process.env) {
   const repairFirestoreCanaryStreak = readRepairFirestoreCanaryStreakArtifact(env, artifactDir);
   const productionEntryRouteCanaryStreak = readProductionEntryRouteCanaryStreakArtifact(env, artifactDir);
   const productionEntryProtectedCanary = readProductionEntryProtectedCanaryArtifact(env, artifactDir);
+  const exitRuntimeCanaryStreak = readExitRuntimeCanaryStreakArtifact(env, artifactDir);
   return buildUnifiedArtifactPayload(result, {
     candidateSelection,
     repairFirestoreCanaryStreak,
     productionEntryRouteCanaryStreak,
     productionEntryProtectedCanary,
+    exitRuntimeCanaryStreak,
   });
 }
 
@@ -477,11 +537,13 @@ if (require.main === module) {
       REPAIR_FIRESTORE_CANARY_STREAK_FILENAME,
       PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME,
       PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME,
+      EXIT_RUNTIME_CANARY_STREAK_FILENAME,
       trimOrNull,
       resolveArtifactDir,
       resolveRepairFirestoreCanaryStreakFile,
       resolveProductionEntryRouteCanaryStreakFile,
       resolveProductionEntryProtectedCanaryFile,
+      resolveExitRuntimeCanaryStreakFile,
       normalizeObject,
       normalizeNumber,
       buildEvidenceSnapshotSummary,
@@ -495,9 +557,11 @@ if (require.main === module) {
       readRepairFirestoreCanaryStreakArtifact,
       readProductionEntryRouteCanaryStreakArtifact,
       readProductionEntryProtectedCanaryArtifact,
+      readExitRuntimeCanaryStreakArtifact,
       buildRepairFirestoreCanaryStreakSummary,
       buildProductionEntryRouteCanaryStreakSummary,
       buildProductionEntryProtectedCanarySummary,
+      buildExitRuntimeCanaryStreakSummary,
       buildBoundedRuntimeSummary,
       buildCandidateSelectionSummary,
       buildUnifiedArtifactPayload,

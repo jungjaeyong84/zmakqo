@@ -2215,3 +2215,29 @@ V1 약점 재발 방지:
 1. V1에서는 runtime entry/exit가 바뀌어도 scheduler와 Cloud Run traffic이 과거 경로를 계속 호출하는 위험이 있었다
 2. 이번 단계는 LIVE scheduler SOT, legacy tick job 비활성, Cloud Run traffic readiness, collector 권한 preflight를 promotion regression path에 편입했다
 3. 따라서 OpenClaw cron 전환과 실제 traffic evidence가 문서/runbook에만 있고 CI에서 빠지는 경로를 차단한다
+
+## 2026-04-22 LIVE Exit Runtime Canary Streak Gate
+
+추가 증거:
+
+1. `scripts/check-v2-exit-runtime-canary-streak.js`
+2. `src/v2/exitRuntimeCanaryHistory.js`
+3. `scripts/run-v2-promotion-pipeline.js`
+4. `scripts/check-v2-promotion-deploy-decision.js`
+5. `scripts/submit-v2-promotion-cloudbuild.js`
+6. `src/tests/check-v2-exit-runtime-canary-streak.test.js`
+7. `src/tests/v2-openclaw-protected-entry-exit-fixture.test.js`
+
+판정:
+
+1. LIVE deploy decision은 이제 `bounded_runtime_summary.exit_runtime_canary_streak` 가 24시간 Firestore-backed coverage를 증명하지 못하면 `DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED` 로 fail-closed 한다
+2. 해당 streak는 `coverage_minutes >= 1440`, `latest_age_minutes <= max_gap_minutes`, `max_observed_gap_minutes <= max_gap_minutes`, `history_source=FIRESTORE`, current artifact dir provenance를 모두 요구한다
+3. TP1 missing, native refresh unhealthy, unprotected window, silent alert drop 카운트가 하나라도 있으면 LIVE 승격이 막힌다
+4. promotion pipeline은 unified report 직전에 `v2_exit_runtime_canary_streak_latest.json` 를 현재 artifact dir에 다시 생성한다
+5. OpenClaw decision -> sizing -> protected entry -> TP1 -> TRAIL -> TRAIL_HIT fixture를 promotion test path에 추가했다
+
+V1 약점 재발 방지:
+
+1. V1에서는 TP/보호주문 결함이 단일 최신 스냅샷 또는 수동 확인으로 묻힐 수 있었다
+2. 이번 단계는 exit runtime 장기 증거를 submit 차단 조건으로 승격해, 한 번의 최신 pass로 LIVE를 열 수 없게 한다
+3. OpenClaw부터 exit alert까지 같은 fixture에서 검증하므로 entry/protection/reducer/alert가 따로 통과하는 착시를 줄인다

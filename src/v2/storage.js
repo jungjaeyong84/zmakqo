@@ -19,6 +19,7 @@ const DOC_ID_FIELDS = Object.freeze({
   OPENCLAW_EXECUTION_AUDITS: "openclaw_execution_audit_id",
   TRAIL_OBSERVATIONS: "trail_observation_id",
   PRODUCTION_ENTRY_ROUTE_CANARIES: "production_entry_route_canary_id",
+  EXIT_RUNTIME_CANARIES: "exit_runtime_canary_id",
 });
 
 function trimOrNull(value) {

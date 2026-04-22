@@ -175,10 +175,15 @@ function seedBoundedSubmitArtifacts(
         artifact_dir: "/tmp/dbj-v2-artifacts",
         artifact_filename: "v2_repair_queue_firestore_canary_streak_latest.json",
         artifact_current_dir_match: true,
+        lookback_hours: 24,
         healthy_run_n: 13,
         min_run_count: 12,
+        max_gap_minutes: 180,
         unhealthy_run_n: 0,
         invalid_line_n: 0,
+        latest_age_minutes: 15,
+        coverage_minutes: 1440,
+        max_observed_gap_minutes: 120,
         blockers: [],
       },
       production_entry_route_canary_streak: {
@@ -190,10 +195,41 @@ function seedBoundedSubmitArtifacts(
         artifact_current_dir_match: true,
         history_source: "FIRESTORE",
         history_file: "dbjv2__production_entry_route_canaries_v2",
+        lookback_hours: 24,
         healthy_run_n: 13,
         min_run_count: 12,
+        max_gap_minutes: 180,
         unhealthy_run_n: 0,
         invalid_line_n: 0,
+        latest_age_minutes: 15,
+        coverage_minutes: 1440,
+        max_observed_gap_minutes: 120,
+        blockers: [],
+      },
+      exit_runtime_canary_streak: {
+        ok: true,
+        reason: "V2_EXIT_RUNTIME_CANARY_STREAK_PASS",
+        artifact_file: "/tmp/dbj-v2-artifacts/v2_exit_runtime_canary_streak_latest.json",
+        artifact_dir: "/tmp/dbj-v2-artifacts",
+        artifact_filename: "v2_exit_runtime_canary_streak_latest.json",
+        artifact_current_dir_match: true,
+        history_source: "FIRESTORE",
+        history_file: "dbjv2__exit_runtime_canaries_v2",
+        lookback_hours: 24,
+        min_run_count: 12,
+        max_gap_minutes: 180,
+        firestore_read_limit: 200,
+        row_n: 13,
+        healthy_run_n: 13,
+        unhealthy_run_n: 0,
+        invalid_line_n: 0,
+        latest_age_minutes: 15,
+        coverage_minutes: 1440,
+        max_observed_gap_minutes: 120,
+        tp1_missing_n: 0,
+        native_refresh_unhealthy_n: 0,
+        unprotected_window_violation_n: 0,
+        alert_silent_drop_n: 0,
         blockers: [],
       },
       production_entry_protected_canary: {
@@ -373,6 +409,7 @@ function buildProductionCutoverReadinessSummaryFixture(filePath = null) {
     v2_enabled: true,
     v2_dry_run: false,
     v2_canary_only: false,
+    production_entry_live_endpoint_enabled: true,
     require_production_cutover: true,
     block_legacy_webhook_signal: true,
     allow_legacy_webhook_signal: false,
@@ -468,6 +505,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.openclaw_execution_audit_ledger_write_required, true);
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, false);
   assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, false);
+  assert.strictEqual(request.approval_contract.exit_runtime_canary_streak_required, false);
   assert.strictEqual(request.approval_contract.production_entry_protected_canary_required, true);
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, false);
   assert.strictEqual(request.approval_contract.runbook_review_pass_required, true);
@@ -485,6 +523,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.openclaw_execution_audit_ledger_write.field, "bounded_runtime_summary.openclaw_execution_audit_ledger_write");
   assert.strictEqual(request.approval_evidence_sources.repair_firestore_canary_streak, null);
   assert.strictEqual(request.approval_evidence_sources.production_entry_route_canary_streak, null);
+  assert.strictEqual(request.approval_evidence_sources.exit_runtime_canary_streak, null);
   assert.strictEqual(request.approval_evidence_sources.production_entry_protected_canary.field, "bounded_runtime_summary.production_entry_protected_canary");
   assert.strictEqual(request.approval_evidence_sources.runbook_review.expected_value, "PASS");
   assert.strictEqual(request.approval_evidence_sources.resolved_artifact_dir.file, "promotion-cloudbuild-context.json");
@@ -684,6 +723,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.promotion_mode, "LIVE");
   assert.strictEqual(request.approval_contract.repair_firestore_canary_streak_required, true);
   assert.strictEqual(request.approval_contract.production_entry_route_canary_streak_required, true);
+  assert.strictEqual(request.approval_contract.exit_runtime_canary_streak_required, true);
   assert.strictEqual(request.approval_contract.production_entry_protected_canary_required, true);
   assert.strictEqual(request.approval_contract.production_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.scheduler_traffic_cutover_readiness_summary_required, true);
@@ -691,6 +731,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
   assert.strictEqual(
     request.approval_evidence_sources.repair_firestore_canary_streak.field,
     "bounded_runtime_summary.repair_firestore_canary_streak"
@@ -698,6 +739,10 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(
     request.approval_evidence_sources.production_entry_route_canary_streak.field,
     "bounded_runtime_summary.production_entry_route_canary_streak"
+  );
+  assert.strictEqual(
+    request.approval_evidence_sources.exit_runtime_canary_streak.field,
+    "bounded_runtime_summary.exit_runtime_canary_streak"
   );
   assert.strictEqual(
     request.approval_evidence_sources.production_entry_protected_canary.field,

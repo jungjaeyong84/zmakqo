@@ -37,6 +37,7 @@ const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = Object.freeze([
   "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_DO_NOT_EXPOSE_SECRETS",
   "V2_PRODUCTION_ENTRY_LIVE_REQUEST_BUILDER_EMBEDS_SIZING",
 ]);
+const MIN_LIVE_STREAK_COVERAGE_MINUTES = 24 * 60;
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -392,6 +393,7 @@ function hasRepairFirestoreCanaryStreak(summary) {
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
     Number(streak.unhealthy_run_n) === 0 &&
     Number(streak.invalid_line_n) === 0 &&
+    hasFreshLongRunStreakCoverage(streak) &&
     ensureArray(streak.blockers).length === 0
   );
 }
@@ -412,6 +414,54 @@ function hasProductionEntryRouteCanaryStreak(summary) {
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
     Number(streak.unhealthy_run_n) === 0 &&
     Number(streak.invalid_line_n) === 0 &&
+    hasFreshLongRunStreakCoverage(streak) &&
+    ensureArray(streak.blockers).length === 0
+  );
+}
+
+function hasFreshLongRunStreakCoverage(streak) {
+  const row = normalizeObject(streak);
+  if (!row) return false;
+  const lookbackHours = Number(row.lookback_hours);
+  const coverageMinutes = Number(row.coverage_minutes);
+  const maxGapMinutes = Number(row.max_gap_minutes);
+  const latestAgeMinutes = Number(row.latest_age_minutes);
+  const maxObservedGapMinutes = Number(row.max_observed_gap_minutes);
+  return (
+    Number.isFinite(lookbackHours) &&
+    lookbackHours >= 24 &&
+    Number.isFinite(coverageMinutes) &&
+    coverageMinutes >= MIN_LIVE_STREAK_COVERAGE_MINUTES &&
+    Number.isFinite(maxGapMinutes) &&
+    maxGapMinutes > 0 &&
+    Number.isFinite(latestAgeMinutes) &&
+    latestAgeMinutes <= maxGapMinutes &&
+    Number.isFinite(maxObservedGapMinutes) &&
+    maxObservedGapMinutes <= maxGapMinutes
+  );
+}
+
+function hasExitRuntimeCanaryStreak(summary) {
+  const row = normalizeObject(summary);
+  const streak = normalizeObject(row && row.exit_runtime_canary_streak);
+  if (!streak) return false;
+  return (
+    streak.ok === true &&
+    trimOrNull(streak.reason) === "V2_EXIT_RUNTIME_CANARY_STREAK_PASS" &&
+    trimOrNull(streak.artifact_filename) === "v2_exit_runtime_canary_streak_latest.json" &&
+    !!trimOrNull(streak.artifact_file) &&
+    !!trimOrNull(streak.artifact_dir) &&
+    streak.artifact_current_dir_match === true &&
+    trimOrNull(streak.history_source) === "FIRESTORE" &&
+    !!trimOrNull(streak.history_file) &&
+    Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
+    Number(streak.unhealthy_run_n) === 0 &&
+    Number(streak.invalid_line_n) === 0 &&
+    Number(streak.tp1_missing_n || 0) === 0 &&
+    Number(streak.native_refresh_unhealthy_n || 0) === 0 &&
+    Number(streak.unprotected_window_violation_n || 0) === 0 &&
+    Number(streak.alert_silent_drop_n || 0) === 0 &&
+    hasFreshLongRunStreakCoverage(streak) &&
     ensureArray(streak.blockers).length === 0
   );
 }
@@ -498,6 +548,12 @@ function collectStaleArtifactProvenanceBlockers(summary, { mode = null } = {}) {
     "v2_production_entry_protected_canary_latest.json"
   )) {
     blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PRODUCTION_ENTRY_PROTECTED_CANARY");
+  }
+  if (mode === "LIVE" && hasStaleArtifactProvenance(
+    row.exit_runtime_canary_streak,
+    "v2_exit_runtime_canary_streak_latest.json"
+  )) {
+    blockers.push("DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:EXIT_RUNTIME_CANARY_STREAK");
   }
   return blockers;
 }
@@ -674,6 +730,12 @@ function buildDeployDecision(unifiedReport, {
   if (mode === "CANARY" && !hasProductionEntryRouteCanaryStreak(boundedRuntimeSummary)) {
     warnings.push("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_NOT_READY");
   }
+  if (mode === "LIVE" && !hasExitRuntimeCanaryStreak(boundedRuntimeSummary)) {
+    blockers.push("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED");
+  }
+  if (mode === "CANARY" && !hasExitRuntimeCanaryStreak(boundedRuntimeSummary)) {
+    warnings.push("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_NOT_READY");
+  }
   if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionEntryProtectedCanary(boundedRuntimeSummary)) {
     blockers.push("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED");
   }
@@ -815,10 +877,13 @@ if (require.main === module) {
       buildV2ProductionCutoverAuditSummary,
       hasProductionCutoverAudit,
       REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS,
+      MIN_LIVE_STREAK_COVERAGE_MINUTES,
       hasProductionLiveEntrySizingContract,
       hasRepairFirestoreCanaryStreak,
       hasProductionEntryRouteCanaryStreak,
       hasProductionEntryProtectedCanary,
+      hasFreshLongRunStreakCoverage,
+      hasExitRuntimeCanaryStreak,
       hasStaleArtifactProvenance,
       collectStaleArtifactProvenanceBlockers,
       buildAlertRetrySummary,

@@ -87,6 +87,11 @@ const TRACE_INDEX = Object.freeze([
     summary: "LIVE production entry route canary streak complete",
   }),
   Object.freeze({
+    id: "SUBMIT_CHK_21",
+    runbookChecklist: Object.freeze(["28"]),
+    summary: "LIVE exit runtime canary streak complete",
+  }),
+  Object.freeze({
     id: "SUBMIT_CHK_12",
     runbookChecklist: Object.freeze(["20"]),
     summary: "LIVE repair cutover readiness summary visible in final submit path",

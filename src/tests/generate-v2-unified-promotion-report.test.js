@@ -122,6 +122,28 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
         tp1_order_id: "TP1__PROTECTED_CANARY__REPORT",
       },
     }, null, 2), "utf8");
+    fs.writeFileSync(path.join(dir, "v2_exit_runtime_canary_streak_latest.json"), JSON.stringify({
+      ok: true,
+      reason: "V2_EXIT_RUNTIME_CANARY_STREAK_PASS",
+      history_source: "FIRESTORE",
+      history_file: "dbjv2__exit_runtime_canaries_v2",
+      lookback_hours: 24,
+      min_run_count: 12,
+      max_gap_minutes: 180,
+      firestore_read_limit: 200,
+      row_n: 13,
+      healthy_run_n: 13,
+      unhealthy_run_n: 0,
+      invalid_line_n: 0,
+      latest_age_minutes: 15,
+      coverage_minutes: 1440,
+      max_observed_gap_minutes: 120,
+      tp1_missing_n: 0,
+      native_refresh_unhealthy_n: 0,
+      unprotected_window_violation_n: 0,
+      alert_silent_drop_n: 0,
+      blockers: [],
+    }, null, 2), "utf8");
     fs.writeFileSync(path.join(dir, "promotion-runtime-manifest.json"), JSON.stringify({
       snapshot_size_bytes: 12345,
       snapshot_meta: {
@@ -281,6 +303,13 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_file, path.join(dir, "v2_production_entry_protected_canary_latest.json"));
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_dir, dir);
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_current_dir_match, true);
+    assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.reason, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS");
+    assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.history_source, "FIRESTORE");
+    assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.coverage_minutes, 1440);
+    assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.tp1_missing_n, 0);
+    assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.artifact_file, path.join(dir, "v2_exit_runtime_canary_streak_latest.json"));
+    assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.artifact_dir, dir);
+    assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.artifact_current_dir_match, true);
     assert.strictEqual(stored.bounded_runtime_summary.alert_retry_summary.failed_n, 1);
     assert.strictEqual(stored.alert_retry_summary.latest_failed.last_reason_family, "TRANSPORT");
     assert.strictEqual(stored.candidate_selection_summary.selection_status, "READY");

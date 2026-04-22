@@ -696,6 +696,7 @@ function buildDeployDecisionSummary(deployDecision) {
       openclaw_execution_audit_ledger_write: normalizeObject(boundedRuntimeSummary.openclaw_execution_audit_ledger_write),
       repair_firestore_canary_streak: normalizeObject(boundedRuntimeSummary.repair_firestore_canary_streak),
       production_entry_route_canary_streak: normalizeObject(boundedRuntimeSummary.production_entry_route_canary_streak),
+      exit_runtime_canary_streak: normalizeObject(boundedRuntimeSummary.exit_runtime_canary_streak),
     }) : null,
     candidate_selection_summary: candidateSelectionSummary ? Object.freeze({
       ok: candidateSelectionSummary.ok === true,
@@ -751,6 +752,9 @@ function buildProductionCutoverReadinessSummary(readiness) {
     v2_enabled: context ? context.v2_enabled === true : false,
     v2_dry_run: context ? context.v2_dry_run === true : null,
     v2_canary_only: context ? context.v2_canary_only === true : null,
+    production_entry_live_endpoint_enabled: row.checks
+      ? row.checks.some((check) => check && check.id === "V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED" && check.ok === true)
+      : false,
     require_production_cutover: context ? context.require_production_cutover === true : false,
     block_legacy_webhook_signal: context ? context.block_legacy_webhook_signal === true : false,
     allow_legacy_webhook_signal: context ? context.allow_legacy_webhook_signal === true : false,

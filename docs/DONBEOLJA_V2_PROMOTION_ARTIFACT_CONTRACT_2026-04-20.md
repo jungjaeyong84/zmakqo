@@ -107,7 +107,9 @@ optional review artifact:
 
 `bounded_runtime_summary.production_entry_protected_canary` 는 단순 pass payload가 아니라 현재 artifact cycle의 fresh 증거여야 한다. 따라서 `artifact_file`, `artifact_dir`, `artifact_filename`, `artifact_current_dir_match` 를 포함하고, CANARY/LIVE deploy decision은 `artifact_filename=v2_production_entry_protected_canary_latest.json` 및 `artifact_current_dir_match=true` 가 아니면 fail-closed 해야 한다.
 
-`bounded_runtime_summary.repair_firestore_canary_streak` 와 `bounded_runtime_summary.production_entry_route_canary_streak` 도 동일하게 현재 artifact cycle provenance를 포함해야 한다. LIVE deploy decision은 각각 `v2_repair_queue_firestore_canary_streak_latest.json`, `v2_production_entry_route_canary_streak_latest.json` 파일명이 현재 artifact dir과 1:1로 맞지 않으면 fail-closed 해야 한다.
+`bounded_runtime_summary.repair_firestore_canary_streak`, `bounded_runtime_summary.production_entry_route_canary_streak`, `bounded_runtime_summary.exit_runtime_canary_streak` 도 동일하게 현재 artifact cycle provenance를 포함해야 한다. LIVE deploy decision은 각각 `v2_repair_queue_firestore_canary_streak_latest.json`, `v2_production_entry_route_canary_streak_latest.json`, `v2_exit_runtime_canary_streak_latest.json` 파일명이 현재 artifact dir과 1:1로 맞지 않으면 fail-closed 해야 한다.
+
+`bounded_runtime_summary.exit_runtime_canary_streak` 는 단일 latest 파일이 아니라 24시간 Firestore-backed 장기 실행 증거여야 한다. LIVE mode에서는 `reason=V2_EXIT_RUNTIME_CANARY_STREAK_PASS`, `history_source=FIRESTORE`, `coverage_minutes >= 1440`, `latest_age_minutes <= max_gap_minutes`, `max_observed_gap_minutes <= max_gap_minutes`, `tp1_missing_n=0`, `native_refresh_unhealthy_n=0`, `unprotected_window_violation_n=0`, `alert_silent_drop_n=0`, `blockers=[]` 를 모두 만족해야 한다.
 
 stale artifact provenance는 일반 bounded runtime 누락과 분리되어야 한다. `DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:*` blocker가 있으면 `blocker_summary.has_stale_artifact_provenance_blocker=true`, `submit_trace.blocker_families` 에 `STALE_ARTIFACT_PROVENANCE`, `recommended_next_action_reason_code=STALE_ARTIFACT_PROVENANCE_BLOCKER`, `final_status_line` 에 `stale_artifact=BLOCKED` 가 남아야 한다.
 
@@ -174,17 +176,18 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 11. `approval_contract.production_live_entry_sizing_contract_required`
 12. `approval_contract.openclaw_execution_audit_ledger_write_required`
 13. `approval_contract.repair_firestore_canary_streak_required`
-14. `approval_contract.production_entry_protected_canary_required`
-15. `approval_contract.production_cutover_readiness_summary_required`
-16. `approval_contract.scheduler_traffic_collector_preflight_summary_required`
-17. `approval_contract.scheduler_traffic_cutover_readiness_summary_required`
-18. `approval_contract.live_cutover_readiness_summary_required`
-19. `approval_contract.runbook_review_pass_required`
-20. `approval_contract.candidate_selection_ready_required`
-21. `approval_contract.selected_preflight_required`
-22. `approval_contract.blocker_free_required`
-23. `approval_contract.recommended_next_action_required`
-24. `approval_contract.resolved_artifact_dir_required`
+14. `approval_contract.exit_runtime_canary_streak_required`
+15. `approval_contract.production_entry_protected_canary_required`
+16. `approval_contract.production_cutover_readiness_summary_required`
+17. `approval_contract.scheduler_traffic_collector_preflight_summary_required`
+18. `approval_contract.scheduler_traffic_cutover_readiness_summary_required`
+19. `approval_contract.live_cutover_readiness_summary_required`
+20. `approval_contract.runbook_review_pass_required`
+21. `approval_contract.candidate_selection_ready_required`
+22. `approval_contract.selected_preflight_required`
+23. `approval_contract.blocker_free_required`
+24. `approval_contract.recommended_next_action_required`
+25. `approval_contract.resolved_artifact_dir_required`
 
 또한 submit request에는 “최종 승격이 어떤 artifact/field로 증명돼야 하는가” 도 같이 남아야 한다.
 
@@ -201,17 +204,18 @@ warning 계열도 submit wrapper까지 기다리지 않고 같은 context에서 
 9. `approval_evidence_sources.production_live_entry_sizing_contract`
 10. `approval_evidence_sources.openclaw_execution_audit_ledger_write`
 11. `approval_evidence_sources.repair_firestore_canary_streak`
-12. `approval_evidence_sources.production_entry_protected_canary`
-13. `approval_evidence_sources.production_cutover_readiness_summary`
-14. `approval_evidence_sources.scheduler_traffic_collector_preflight_summary`
-15. `approval_evidence_sources.scheduler_traffic_cutover_readiness_summary`
-16. `approval_evidence_sources.live_cutover_readiness_summary`
-17. `approval_evidence_sources.runbook_review`
-18. `approval_evidence_sources.recommended_next_action`
-19. `approval_evidence_sources.blocker_summary`
-20. `approval_evidence_sources.lineage_hash_sources`
-21. `approval_evidence_sources.candidate_selection` (auto-select path만)
-22. `approval_evidence_sources.resolved_artifact_dir`
+12. `approval_evidence_sources.exit_runtime_canary_streak`
+13. `approval_evidence_sources.production_entry_protected_canary`
+14. `approval_evidence_sources.production_cutover_readiness_summary`
+15. `approval_evidence_sources.scheduler_traffic_collector_preflight_summary`
+16. `approval_evidence_sources.scheduler_traffic_cutover_readiness_summary`
+17. `approval_evidence_sources.live_cutover_readiness_summary`
+18. `approval_evidence_sources.runbook_review`
+19. `approval_evidence_sources.recommended_next_action`
+20. `approval_evidence_sources.blocker_summary`
+21. `approval_evidence_sources.lineage_hash_sources`
+22. `approval_evidence_sources.candidate_selection` (auto-select path만)
+23. `approval_evidence_sources.resolved_artifact_dir`
 
 submit request에는 실제 artifact를 읽고 계산한 최종 검증 결과도 같이 남아야 한다.
 
@@ -599,7 +603,8 @@ cloudbuild는 아래 원칙을 따른다.
 18. LIVE mode에서는 `production_cutover_readiness_summary` 가 `V2_PRODUCTION_CUTOVER_READINESS_PASS` 와 `legacy_webhook_blocked=true` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_15`/runbook 23으로 fail-closed 된다
 19. LIVE mode에서는 `scheduler_traffic_collector_preflight_summary` 가 `V2_SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_17`/runbook 24A로 fail-closed 된다
 20. LIVE mode에서는 `scheduler_traffic_cutover_readiness_summary` 가 `V2_SCHEDULER_TRAFFIC_CUTOVER_READINESS_PASS`, `scheduler_sot=OPENCLAW_CRON`, `missing_openclaw_job_ids=[]`, `active_legacy_scheduler_job_n=0`, Cloud Run service readiness를 증명해야 하며, 위반 시 `SUBMIT_CHK_16`/runbook 24로 fail-closed 된다
-21. LIVE wrapper가 live cutover, production cutover, scheduler traffic 단계 중 어디서 실패하더라도 `promotion-cloudbuild-context.json` 은 직전까지 생성된 readiness summary와 실패 summary를 보존해야 한다
+21. LIVE mode에서는 `bounded_runtime_summary.exit_runtime_canary_streak` 이 `V2_EXIT_RUNTIME_CANARY_STREAK_PASS` 를 증명해야 하며, 위반 시 `SUBMIT_CHK_21`/runbook 28로 fail-closed 된다
+22. LIVE wrapper가 live cutover, production cutover, scheduler traffic 단계 중 어디서 실패하더라도 `promotion-cloudbuild-context.json` 은 직전까지 생성된 readiness summary와 실패 summary를 보존해야 한다
 22. wrapper가 runbook review 단계에서 실패하더라도 `promotion-cloudbuild-context.json` 은 `runbook_review_summary.ok=false`, `failed_check_ids`, `top_failed_checks[]`, `runbook_review_file` 을 보존해야 한다
 23. runbook review가 필수 artifact 누락/JSON 파싱 오류 등으로 review 생성 전에 throw 되더라도 context에는 synthetic `CHK_RUNBOOK_REVIEW_THROWN` 이 남아야 한다
 24. submit wrapper의 operator summary와 operator alert preview는 `runbook_review`, `runbook_review_failures`, `runbook_review_failed_checks`, `runbook_review_file` 을 같은 line set으로 노출해야 한다
@@ -706,12 +711,13 @@ deploy decision artifact는 최종 승인/차단 판정 외에도 아래를 그�
 4. `bounded_runtime_summary.alert_retry_summary`
 5. `bounded_runtime_summary.openclaw_execution_audit_ledger_write`
 6. `bounded_runtime_summary.repair_firestore_canary_streak`
-7. `entry_boundary_audit`
-8. `fill_sync_canonical_boundary_audit`
-9. `production_cutover_audit`
-10. `production_cutover_audit.contract.checks[]` 중 live entry sizing contract check
-11. `alert_retry_summary`
-12. `alert_retry_attention_required`
+7. `bounded_runtime_summary.exit_runtime_canary_streak`
+8. `entry_boundary_audit`
+9. `fill_sync_canonical_boundary_audit`
+10. `production_cutover_audit`
+11. `production_cutover_audit.contract.checks[]` 중 live entry sizing contract check
+12. `alert_retry_summary`
+13. `alert_retry_attention_required`
 
 `candidate_selection_summary` 가 존재하는 경우 deploy decision은 `selection_contract` 도 그대로 보존해야 한다.
 즉, auto-select가 만든 후보 선택 근거를 마지막 승인 artifact에서 다시 복원할 수 있어야 한다.

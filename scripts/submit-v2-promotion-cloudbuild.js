@@ -104,7 +104,7 @@ function buildVerificationSummary(checks) {
     row.toUpperCase().includes("STALE_ARTIFACT_PROVENANCE") ||
     row.toUpperCase().includes("STALE ARTIFACT PROVENANCE")
   ));
-  const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19", "SUBMIT_CHK_20A"].includes(id));
+  const hasBoundedRuntimeBlocker = ids.some((id) => ["SUBMIT_CHK_03", "SUBMIT_CHK_04", "SUBMIT_CHK_04B", "SUBMIT_CHK_10", "SUBMIT_CHK_11", "SUBMIT_CHK_12", "SUBMIT_CHK_19", "SUBMIT_CHK_20A", "SUBMIT_CHK_21"].includes(id));
   const hasEntryBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_13");
   const hasFillSyncCanonicalBoundaryBlocker = ids.some((id) => id === "SUBMIT_CHK_18");
   const hasProductionCutoverBlocker = ids.some((id) => ["SUBMIT_CHK_14", "SUBMIT_CHK_15"].includes(id));
@@ -295,6 +295,7 @@ function buildSubstitutions(plan) {
     _V2_PROMOTION_REPLAY_FIXTURE_PROFILE: trimOrNull(row.effectiveEnv && row.effectiveEnv.V2_PROMOTION_REPLAY_FIXTURE_PROFILE) || "REFERENCE_PASS",
     _V2_PROMOTION_COMPARISON_FIXTURE_PROFILE: trimOrNull(row.effectiveEnv && row.effectiveEnv.V2_PROMOTION_COMPARISON_FIXTURE_PROFILE) || "REFERENCE_CLEAN",
     _DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: requiresOpenClawExecutionAuditLedgerWrite ? "1" : "0",
+    _DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED) || (row.promotionMode === "LIVE" ? "1" : "0"),
     _DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON) || "",
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED) || (enablesProductionEntryRouteCanaryFirestore ? "1" : "0"),
@@ -358,6 +359,7 @@ function buildApprovalContract(plan) {
       openclaw_execution_audit_ledger_write_required: false,
       repair_firestore_canary_streak_required: false,
       production_entry_route_canary_streak_required: false,
+      exit_runtime_canary_streak_required: false,
       production_entry_protected_canary_required: false,
       live_cutover_readiness_summary_required: false,
       runbook_review_pass_required: false,
@@ -387,6 +389,7 @@ function buildApprovalContract(plan) {
     openclaw_execution_audit_ledger_write_required: true,
     repair_firestore_canary_streak_required: row.promotionMode === "LIVE",
     production_entry_route_canary_streak_required: row.promotionMode === "LIVE",
+    exit_runtime_canary_streak_required: row.promotionMode === "LIVE",
     production_entry_protected_canary_required: true,
     live_cutover_readiness_summary_required: row.promotionMode === "LIVE",
     runbook_review_pass_required: true,
@@ -421,6 +424,7 @@ function buildApprovalEvidenceSources(plan) {
       scheduler_traffic_collector_preflight_summary: null,
       scheduler_traffic_cutover_readiness_summary: null,
       production_entry_route_canary_streak: null,
+      exit_runtime_canary_streak: null,
       production_entry_protected_canary: null,
       lineage_hash_sources: [],
       candidate_selection: null,
@@ -511,6 +515,13 @@ function buildApprovalEvidenceSources(plan) {
           note: "LIVE requires V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS with no blockers and no exchange write",
         })
       : null,
+    exit_runtime_canary_streak: row.promotionMode === "LIVE"
+      ? buildEvidenceRef({
+          file: "promotion-deploy-decision.json",
+          field: "bounded_runtime_summary.exit_runtime_canary_streak",
+          note: "LIVE requires 24h Firestore-backed V2 exit runtime canary streak with TP1 missing, native refresh unhealthy, unprotected window, and silent alert drop counts all zero",
+        })
+      : null,
     production_entry_protected_canary: buildEvidenceRef({
       file: "promotion-deploy-decision.json",
       field: "bounded_runtime_summary.production_entry_protected_canary",
@@ -598,6 +609,7 @@ function hasRequiredApprovalContract(contract, { promotionMode = null } = {}) {
     row.openclaw_execution_audit_ledger_write_required === true &&
     mustBeLiveTrue(row, "repair_firestore_canary_streak_required", liveRequired) &&
     mustBeLiveTrue(row, "production_entry_route_canary_streak_required", liveRequired) &&
+    mustBeLiveTrue(row, "exit_runtime_canary_streak_required", liveRequired) &&
     row.production_entry_protected_canary_required === true &&
     mustBeLiveTrue(row, "live_cutover_readiness_summary_required", liveRequired) &&
     row.runbook_review_pass_required === true &&
@@ -860,6 +872,7 @@ function extractProductionCutoverReadinessSummaryFromArtifacts(artifacts = {}) {
     v2_enabled: summary.v2_enabled === true,
     v2_dry_run: summary.v2_dry_run === true,
     v2_canary_only: summary.v2_canary_only === true,
+    production_entry_live_endpoint_enabled: summary.production_entry_live_endpoint_enabled === true,
     require_production_cutover: summary.require_production_cutover === true,
     block_legacy_webhook_signal: summary.block_legacy_webhook_signal === true,
     allow_legacy_webhook_signal: summary.allow_legacy_webhook_signal === true,
@@ -983,6 +996,7 @@ function hasProductionCutoverReadinessSummary(summary) {
     row.v2_enabled === true &&
     row.v2_dry_run === false &&
     row.v2_canary_only === false &&
+    row.production_entry_live_endpoint_enabled === true &&
     row.require_production_cutover === true &&
     row.block_legacy_webhook_signal === true &&
     row.allow_legacy_webhook_signal === false &&
@@ -1479,6 +1493,28 @@ function buildApprovalVerification(request) {
       artifactContract: [
         "approval_contract.production_entry_route_canary_streak_required",
         "approval_evidence_sources.production_entry_route_canary_streak",
+      ],
+    }));
+  }
+
+  if (row.approval_contract && row.approval_contract.exit_runtime_canary_streak_required === true) {
+    const hasStaleExitRuntimeStreak = staleArtifactBlockers.some((value) => String(value).includes("EXIT_RUNTIME_CANARY_STREAK"));
+    checks.push(withDocRefs(buildVerificationCheck({
+      id: "SUBMIT_CHK_21",
+      label: "LIVE exit runtime canary streak complete",
+      ok: deployDecisionCheck.__test.hasExitRuntimeCanaryStreak(deployDecision && deployDecision.bounded_runtime_summary),
+      reason: deployDecisionCheck.__test.hasExitRuntimeCanaryStreak(deployDecision && deployDecision.bounded_runtime_summary)
+        ? "LIVE exit runtime canary streak evidence complete"
+        : hasStaleExitRuntimeStreak
+          ? "LIVE exit runtime canary streak evidence has stale artifact provenance"
+        : "LIVE exit runtime canary streak evidence is missing or blocked",
+      file: artifacts.deployDecision && artifacts.deployDecision.filePath,
+      field: "bounded_runtime_summary.exit_runtime_canary_streak",
+    }), {
+      runbookChecklist: submitTrace.getRunbookChecklistForSubmitCheck("SUBMIT_CHK_21"),
+      artifactContract: [
+        "approval_contract.exit_runtime_canary_streak_required",
+        "approval_evidence_sources.exit_runtime_canary_streak",
       ],
     }));
   }

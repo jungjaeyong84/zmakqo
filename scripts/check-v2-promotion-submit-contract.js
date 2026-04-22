@@ -1144,6 +1144,9 @@ function evaluateSubmitContract() {
         && packageJsonText.includes("v2-scheduler-traffic-collector-preflight.test.js")
         && packageJsonText.includes("v2-scheduler-traffic-cutover-audit.test.js")
         && packageJsonText.includes("v2-scheduler-traffic-state-collector.test.js")
+        && packageJsonText.includes("check-v2-exit-runtime-canary-streak.test.js")
+        && packageJsonText.includes("v2-openclaw-protected-entry-exit-fixture.test.js")
+        && packageJsonText.includes("check:v2-exit-runtime-canary-streak")
         && packageJsonText.includes("npm run test:v2-scheduler-traffic-cutover")
         && packageJsonText.includes("check:v2-promotion-submit-contract")
         && packageJsonText.includes("check:v2-production-cutover")
@@ -1155,13 +1158,16 @@ function evaluateSubmitContract() {
         && packageJsonText.includes("v2-scheduler-traffic-collector-preflight.test.js")
         && packageJsonText.includes("v2-scheduler-traffic-cutover-audit.test.js")
         && packageJsonText.includes("v2-scheduler-traffic-state-collector.test.js")
+        && packageJsonText.includes("check-v2-exit-runtime-canary-streak.test.js")
+        && packageJsonText.includes("v2-openclaw-protected-entry-exit-fixture.test.js")
+        && packageJsonText.includes("check:v2-exit-runtime-canary-streak")
         && packageJsonText.includes("npm run test:v2-scheduler-traffic-cutover")
         && packageJsonText.includes("check:v2-promotion-submit-contract")
         && packageJsonText.includes("check:v2-production-cutover")
         && cloudbuildText.includes("npm run test:v2-promotion")
         && cloudbuildText.includes("npm run check:v2-production-cutover")
-        ? "package and CloudBuild execute V2 promotion, production cutover, and scheduler traffic regression paths"
-        : "package.json and cloudbuild.yaml must require test:v2-promotion plus production cutover and scheduler traffic audits",
+        ? "package and CloudBuild execute V2 promotion, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E regression paths"
+        : "package.json and cloudbuild.yaml must require test:v2-promotion plus production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E audits",
       file: FILES.packageJson,
     }),
     buildCheck({
@@ -1170,7 +1176,8 @@ function evaluateSubmitContract() {
       ok: submitWrapperText.includes("mustBeLiveTrue")
         && submitWrapperText.includes("upper(promotionMode) === \"LIVE\"")
         && submitWrapperText.includes("scheduler_traffic_collector_preflight_summary_required")
-        && submitWrapperText.includes("production_entry_route_canary_streak_required"),
+        && submitWrapperText.includes("production_entry_route_canary_streak_required")
+        && submitWrapperText.includes("exit_runtime_canary_streak_required"),
       reason: submitWrapperText.includes("mustBeLiveTrue")
         && submitWrapperText.includes("upper(promotionMode) === \"LIVE\"")
         ? "submit wrapper enforces true-valued LIVE required approval flags"
@@ -1249,6 +1256,28 @@ function evaluateSubmitContract() {
         && operatorSummaryText.includes("lineage_consistency=")
         ? "submit wrapper and operator preview surface the real lineage consistency verdict"
         : "submit SUBMIT_CHK_08 must not hide lineage consistency details from operator trace",
+      file: FILES.submitWrapper,
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_47",
+      label: "LIVE exit runtime canary streak is submit and runbook gated",
+      ok: runbookText.includes("| `SUBMIT_CHK_21` | `28` | LIVE exit runtime canary streak complete |")
+        && artifactContractText.includes("approval_contract.exit_runtime_canary_streak_required")
+        && artifactContractText.includes("approval_evidence_sources.exit_runtime_canary_streak")
+        && artifactContractText.includes("bounded_runtime_summary.exit_runtime_canary_streak")
+        && submitWrapperText.includes("SUBMIT_CHK_21")
+        && submitWrapperText.includes("hasExitRuntimeCanaryStreak")
+        && submitWrapperText.includes("exit_runtime_canary_streak_required")
+        && submitTraceText.includes("SUBMIT_CHK_21")
+        && submitTraceText.includes("runbookChecklist: Object.freeze([\"28\"])")
+        && cloudbuildWrapperText.includes("exit_runtime_canary_streak")
+        && readText(path.resolve(__dirname, "run-v2-promotion-pipeline.js")).includes("refreshExitRuntimeCanaryStreak")
+        && readText(path.resolve(__dirname, "check-v2-promotion-deploy-decision.js")).includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"),
+      reason: runbookText.includes("| `SUBMIT_CHK_21` | `28` | LIVE exit runtime canary streak complete |")
+        && artifactContractText.includes("approval_contract.exit_runtime_canary_streak_required")
+        && submitWrapperText.includes("SUBMIT_CHK_21")
+        ? "exit runtime streak is trace-linked through runbook, artifact contract, deploy decision, submit wrapper, and pipeline refresh"
+        : "exit runtime streak must be trace-linked through runbook, artifact contract, deploy decision, submit wrapper, and pipeline refresh",
       file: FILES.submitWrapper,
     }),
   ];

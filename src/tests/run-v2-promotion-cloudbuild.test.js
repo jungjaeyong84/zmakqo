@@ -1243,6 +1243,7 @@ function seedRunbookArtifacts(dir, cycleId) {
         DONBEOLJA_V2_ENABLED: "1",
         DONBEOLJA_V2_DRY_RUN: "0",
         DONBEOLJA_V2_CANARY_ONLY: "0",
+        DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
         DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER: "1",
         DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: JSON.stringify(buildSchedulerTrafficStateFixture()),
       },

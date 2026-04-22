@@ -106,10 +106,15 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_dir: "/tmp/dbj-v2-artifacts",
       artifact_filename: "v2_repair_queue_firestore_canary_streak_latest.json",
       artifact_current_dir_match: true,
+      lookback_hours: 24,
       healthy_run_n: 13,
       min_run_count: 12,
+      max_gap_minutes: 180,
       unhealthy_run_n: 0,
       invalid_line_n: 0,
+      latest_age_minutes: 15,
+      coverage_minutes: 1440,
+      max_observed_gap_minutes: 120,
       blockers: [],
     },
     production_entry_route_canary_streak: {
@@ -121,10 +126,41 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_current_dir_match: true,
       history_source: "FIRESTORE",
       history_file: "dbjv2__production_entry_route_canaries_v2",
+      lookback_hours: 24,
       healthy_run_n: 13,
       min_run_count: 12,
+      max_gap_minutes: 180,
       unhealthy_run_n: 0,
       invalid_line_n: 0,
+      latest_age_minutes: 15,
+      coverage_minutes: 1440,
+      max_observed_gap_minutes: 120,
+      blockers: [],
+    },
+    exit_runtime_canary_streak: {
+      ok: true,
+      reason: "V2_EXIT_RUNTIME_CANARY_STREAK_PASS",
+      artifact_file: "/tmp/dbj-v2-artifacts/v2_exit_runtime_canary_streak_latest.json",
+      artifact_dir: "/tmp/dbj-v2-artifacts",
+      artifact_filename: "v2_exit_runtime_canary_streak_latest.json",
+      artifact_current_dir_match: true,
+      history_source: "FIRESTORE",
+      history_file: "dbjv2__exit_runtime_canaries_v2",
+      lookback_hours: 24,
+      min_run_count: 12,
+      max_gap_minutes: 180,
+      firestore_read_limit: 200,
+      row_n: 13,
+      healthy_run_n: 13,
+      unhealthy_run_n: 0,
+      invalid_line_n: 0,
+      latest_age_minutes: 15,
+      coverage_minutes: 1440,
+      max_observed_gap_minutes: 120,
+      tp1_missing_n: 0,
+      native_refresh_unhealthy_n: 0,
+      unprotected_window_violation_n: 0,
+      alert_silent_drop_n: 0,
       blockers: [],
     },
     production_entry_protected_canary: {
@@ -252,6 +288,8 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.strictEqual(deployDecision.__test.hasRepairEvidenceSummary(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasOpenClawExecutionAuditLedgerWrite(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasRepairFirestoreCanaryStreak(decision.bounded_runtime_summary), true);
+  assert.strictEqual(deployDecision.__test.hasFreshLongRunStreakCoverage(decision.bounded_runtime_summary.repair_firestore_canary_streak), true);
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasEntryBoundaryAudit(decision.entry_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasFillSyncCanonicalBoundaryAudit(decision.fill_sync_canonical_boundary_audit), true);
@@ -712,6 +750,83 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithoutExitRuntimeStreakFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.exit_runtime_canary_streak = {
+    ok: false,
+    reason: "V2_EXIT_RUNTIME_CANARY_STREAK_BLOCKED",
+    history_source: "FIRESTORE",
+    history_file: "dbjv2__exit_runtime_canaries_v2",
+    lookback_hours: 24,
+    healthy_run_n: 11,
+    min_run_count: 12,
+    max_gap_minutes: 180,
+    unhealthy_run_n: 0,
+    invalid_line_n: 0,
+    latest_age_minutes: 15,
+    coverage_minutes: 1440,
+    max_observed_gap_minutes: 120,
+    tp1_missing_n: 0,
+    native_refresh_unhealthy_n: 0,
+    unprotected_window_violation_n: 0,
+    alert_silent_drop_n: 0,
+    blockers: ["EXIT_RUNTIME_CANARY_STREAK:MIN_RUN_COUNT"],
+  };
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__NO_EXIT_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__NO_EXIT_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__NO_EXIT_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithShortRepairStreakCoverageFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.repair_firestore_canary_streak.coverage_minutes = 720;
+  assert.strictEqual(deployDecision.__test.hasRepairFirestoreCanaryStreak(bounded), false);
+  assert.strictEqual(deployDecision.__test.hasFreshLongRunStreakCoverage(bounded.repair_firestore_canary_streak), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__SHORT_REPAIR_STREAK",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__SHORT_REPAIR_STREAK",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__SHORT_REPAIR_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:REPAIR_FIRESTORE_CANARY_STREAK_REQUIRED"));
 })();
 
 (function canaryWithoutOpenClawExecutionSeparationFailsClosed() {

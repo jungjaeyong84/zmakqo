@@ -92,6 +92,24 @@ function buildHealthyProductionRouteCanaryPayload(generatedAt) {
   };
 }
 
+function buildHealthyExitRuntimeCanaryPayload(generatedAt) {
+  return {
+    ok: true,
+    reason: "V2_EXIT_RUNTIME_CANARY_PASS",
+    scope: "exit_runtime_canary",
+    canary_mode: "LIVE_EXIT_RUNTIME_OBSERVATION",
+    exchange_write_performed: false,
+    generated_at: generatedAt,
+    active_position_n: 2,
+    tp1_missing_n: 0,
+    native_refresh_unhealthy_n: 0,
+    unprotected_window_violation_n: 0,
+    alert_silent_drop_n: 0,
+    fail_n: 0,
+    failed_check_ids: [],
+  };
+}
+
 function buildHealthyRepairFirestoreCanaryPayload(generatedAt) {
   return {
     ok: true,
@@ -132,6 +150,36 @@ function buildProductionRouteCanaryHistoryDb(rows) {
                     docs: rows
                       .map((payload) => ({
                         production_entry_route_canary_id: `PERCHV2__${payload.generated_at}`,
+                        generated_at_ms: Date.parse(payload.generated_at),
+                        artifact_snapshot: payload,
+                      }))
+                      .filter((doc) => op === ">=" && Number(doc[field]) >= Number(value))
+                      .slice(0, limit)
+                      .map((doc) => ({ data: () => ({ ...doc }) })),
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+function buildExitRuntimeCanaryHistoryDb(rows) {
+  return {
+    collection() {
+      return {
+        where(field, op, value) {
+          return {
+            limit(limit) {
+              return {
+                async get() {
+                  return {
+                    docs: rows
+                      .map((payload) => ({
+                        exit_runtime_canary_id: `ERTCHV2__${payload.generated_at}`,
                         generated_at_ms: Date.parse(payload.generated_at),
                         artifact_snapshot: payload,
                       }))
@@ -523,6 +571,122 @@ function buildProductionRouteCanaryHistoryDb(rows) {
     assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.artifact_dir, dir);
     assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.artifact_filename, "v2_production_entry_route_canary_streak_latest.json");
     assert.strictEqual(storedDecision.bounded_runtime_summary.production_entry_route_canary_streak.artifact_current_dir_match, true);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+    try { fs.rmSync(externalStreakFile, { force: true }); } catch (_) {}
+  }
+})();
+
+(async function canaryPipelineRefreshesExitRuntimeCanaryStreakBeforeDeployDecision() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-pipeline-exit-runtime-streak-"));
+  const externalStreakFile = path.join(os.tmpdir(), `dbj-v2-external-exit-runtime-streak-${Date.now()}.json`);
+  const nowMs = Date.now();
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push(buildHealthyExitRuntimeCanaryPayload(new Date(nowMs - hour * 60 * 60000).toISOString()));
+  }
+  try {
+    const result = await pipeline.runPipeline({
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_REPLAY_FIXTURE_PROFILE: "REFERENCE_NATIVE_PASS",
+      V2_PROMOTION_COMPARISON_FIXTURE_PROFILE: "REFERENCE_CLEAN",
+      V2_PROMOTION_RUNTIME_SNAPSHOT_JSON: JSON.stringify({
+        snapshotMeta: {
+          source: "TEST_RUNTIME_SNAPSHOT",
+          query_budget: {
+            limits: {
+              transitionsLimit: 50,
+              outboxesLimit: 50,
+            },
+            counts: {
+              transitions: 3,
+              outboxes: 1,
+            },
+          },
+          selector_meta: {
+            position_cycle_id: "PCY__EXIT_RUNTIME_STREAK__TEST",
+            query_budget: {
+              query_limit: 25,
+              recent_window_hours: 168,
+              recent_cutoff_at: "2026-04-13T00:00:00.000Z",
+            },
+            alignment_checks: {
+              symbol_match: true,
+              side_match: true,
+              timeframe_match: true,
+              policy_scope_match: true,
+            },
+          },
+          openclaw_execution_separation_audits: [
+            {
+              ok: true,
+              audit_id: "OCEXSEPAUDV2__PIPELINE_EXIT_RUNTIME_STREAK",
+              fail_n: 0,
+              failed_check_ids: [],
+            },
+          ],
+          runtime_chain_audits: [
+            {
+              ok: true,
+              check_n: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.length,
+              fail_n: 0,
+              check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+              passed_check_ids: REQUIRED_RUNTIME_CHAIN_CHECK_IDS.slice(),
+              failed_check_ids: [],
+            },
+          ],
+          openclaw_execution_audit_ledger_write: {
+            ok: true,
+            skipped: false,
+            reason: "OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITTEN",
+            collection_key: "OPENCLAW_EXECUTION_AUDITS",
+            doc_id: "OCEXSEPAUDV2__PIPELINE_EXIT_RUNTIME_STREAK",
+          },
+          repair_evidence_summary: {
+            ok: true,
+            repair_request_n: 0,
+            repair_execution_ledger_n: 0,
+            completion_ledger_n: 0,
+            completion_evidence_n: 0,
+            completed_success_n: 0,
+            completed_failed_n: 0,
+            missing_completion_evidence_n: 0,
+            runbook_refs: [],
+            order_evidence_n: 0,
+            latest_completion: null,
+          },
+        },
+        episodes: require("../v2/replayFixtureFactory").buildReferenceReplayFixtureSet("REFERENCE_NATIVE_PASS").episodes,
+        shadowLivePairs: require("../v2/comparisonFixtureFactory").buildReferenceComparisonFixtures("REFERENCE_CLEAN").shadowLivePairs,
+        sourceModePairs: require("../v2/comparisonFixtureFactory").buildReferenceComparisonFixtures("REFERENCE_CLEAN").sourceModePairs,
+      }),
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: "1",
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: "FIRESTORE",
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_FILE: externalStreakFile,
+    }, {
+      collectorDb: buildExitRuntimeCanaryHistoryDb(rows),
+    });
+    const streakFile = path.join(dir, "v2_exit_runtime_canary_streak_latest.json");
+    assert.ok(fs.existsSync(streakFile));
+    assert.strictEqual(fs.existsSync(externalStreakFile), false);
+    assert.strictEqual(result.exitRuntimeCanaryStreakStatus, "EXIT_RUNTIME_CANARY_STREAK_REFRESH_PASS");
+    assert.strictEqual(result.exitRuntimeCanaryStreak.history_source, "FIRESTORE");
+    assert.strictEqual(result.exitRuntimeCanaryStreak.reason, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS");
+    const storedReport = JSON.parse(fs.readFileSync(path.join(dir, "unified-promotion-report.json"), "utf8"));
+    assert.strictEqual(
+      storedReport.bounded_runtime_summary.exit_runtime_canary_streak.reason,
+      "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"
+    );
+    const storedDecision = JSON.parse(fs.readFileSync(path.join(dir, "promotion-deploy-decision.json"), "utf8"));
+    assert.strictEqual(
+      storedDecision.bounded_runtime_summary.exit_runtime_canary_streak.reason,
+      "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"
+    );
+    assert.strictEqual(storedDecision.bounded_runtime_summary.exit_runtime_canary_streak.artifact_file, streakFile);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.exit_runtime_canary_streak.artifact_dir, dir);
+    assert.strictEqual(storedDecision.bounded_runtime_summary.exit_runtime_canary_streak.artifact_filename, "v2_exit_runtime_canary_streak_latest.json");
+    assert.strictEqual(storedDecision.bounded_runtime_summary.exit_runtime_canary_streak.artifact_current_dir_match, true);
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
     try { fs.rmSync(externalStreakFile, { force: true }); } catch (_) {}
