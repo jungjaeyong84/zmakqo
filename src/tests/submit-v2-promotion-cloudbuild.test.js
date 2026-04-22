@@ -2203,4 +2203,48 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   }
 })();
 
+(function submitRequestFailsClosedWhenOperatorAlertDeliveryFails() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-alert-fail-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__ALERT_FAIL");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__ALERT_FAIL");
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__ALERT_FAIL",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "0",
+      V2_PROMOTION_OPERATOR_ALERT_SEND_ENABLED: "1",
+      SIGNAL_LIFECYCLE_ALERT_CHANNEL: "unknown:operator-alert-fail",
+      TRADE_ALERT_CHANNEL: "",
+      EXIT_INTEGRITY_ALERT_CHANNEL: "",
+      TELEGRAM_CHAT_ID: "",
+      SKIP_ALERT: "0",
+      AUTOMATION_TELEGRAM_POLICY: "ALL",
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_ALERT_FAILED");
+    const payload = JSON.parse(fs.readFileSync(result.output_file, "utf8"));
+    assert.strictEqual(payload.approval_verification.ok, true);
+    assert.strictEqual(payload.operator_alert_delivery.required, true);
+    assert.strictEqual(payload.operator_alert_delivery.send_enabled, true);
+    assert.strictEqual(payload.operator_alert_delivery.ok, false);
+    assert.strictEqual(payload.operator_alert_delivery.reason, "V2_PROMOTION_OPERATOR_ALERT_SEND_FAILED");
+    assert.strictEqual(payload.operator_alert_delivery.transport_result.ok, false);
+    assert.strictEqual(payload.operator_alert_delivery.transport_result.results[0].type, "unknown");
+    assert.strictEqual(payload.operator_alert_delivery.transport_result.results[0].error, "UNKNOWN_CHANNEL");
+    assert.strictEqual(payload.operator_delivery_summary.status, "DELIVERY_FAILED");
+    assert.strictEqual(payload.operator_delivery_summary.send_enabled, true);
+    assert.strictEqual(payload.operator_delivery_summary.transport_state, "FAILED");
+    assert.ok(payload.operator_delivery_summary.lines.includes("delivery_status=DELIVERY_FAILED"));
+    assert.ok(payload.operator_delivery_summary.lines.includes("delivery_send_enabled=YES"));
+    assert.ok(payload.operator_delivery_summary.lines.includes("delivery_transport_state=FAILED"));
+    assert.ok(payload.operator_delivery_summary.lines.includes("delivery_reason=V2_PROMOTION_OPERATOR_ALERT_SEND_FAILED"));
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 console.log("SUBMIT_V2_PROMOTION_CLOUDBUILD_TEST_OK");
