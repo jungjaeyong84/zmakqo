@@ -1139,13 +1139,19 @@ function evaluateSubmitContract() {
       id: "SUBMIT_CONTRACT_CHK_40",
       label: "package and CloudBuild require V2 promotion test path",
       ok: packageJsonText.includes('"test:v2-promotion"')
+        && packageJsonText.includes("v2-production-cutover-audit.test.js")
         && packageJsonText.includes("check:v2-promotion-submit-contract")
-        && cloudbuildText.includes("npm run test:v2-promotion"),
-      reason: packageJsonText.includes('"test:v2-promotion"')
-        && packageJsonText.includes("check:v2-promotion-submit-contract")
+        && packageJsonText.includes("check:v2-production-cutover")
         && cloudbuildText.includes("npm run test:v2-promotion")
-        ? "package and CloudBuild execute the V2 promotion regression path"
-        : "package.json and cloudbuild.yaml must require test:v2-promotion",
+        && cloudbuildText.includes("npm run check:v2-production-cutover"),
+      reason: packageJsonText.includes('"test:v2-promotion"')
+        && packageJsonText.includes("v2-production-cutover-audit.test.js")
+        && packageJsonText.includes("check:v2-promotion-submit-contract")
+        && packageJsonText.includes("check:v2-production-cutover")
+        && cloudbuildText.includes("npm run test:v2-promotion")
+        && cloudbuildText.includes("npm run check:v2-production-cutover")
+        ? "package and CloudBuild execute V2 promotion and production cutover regression paths"
+        : "package.json and cloudbuild.yaml must require test:v2-promotion plus production cutover audit",
       file: FILES.packageJson,
     }),
     buildCheck({

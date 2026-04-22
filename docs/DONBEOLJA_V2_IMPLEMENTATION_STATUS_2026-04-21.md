@@ -2171,3 +2171,25 @@ V1 약점 재발 방지:
 1. V1에서는 최종 submit artifact와 operator 메시지가 서로 다른 blocker 언어를 써서 원인 판독이 늦었다
 2. 이번 단계는 stale artifact provenance를 `approval_verification` 최소 계약에 넣어, 문서-코드-운영 메시지가 같은 필드를 보도록 강제한다
 3. 따라서 stale latest 증거를 runtime 결함으로 오진하거나 fresh promotion 재실행 대신 본체 수정을 반복하는 경로를 차단한다
+
+## 2026-04-22 Production Cutover Audit Promotion CI Binding
+
+추가 증거:
+
+1. `package.json`
+2. `cloudbuild.yaml`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `src/tests/v2-production-cutover-audit.test.js`
+5. `scripts/check-v2-production-cutover.js`
+
+판정:
+
+1. `test:v2-promotion` 은 production cutover guard/legacy webhook/live endpoint boundary audit 테스트를 직접 실행한다
+2. CloudBuild 필수 검증 체인은 `check:v2-production-cutover` 를 실행한다
+3. submit contract checker는 위 두 연결이 빠지면 `SUBMIT_CONTRACT_CHK_40` 으로 fail-closed 한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 운영 문서상 필요한 gate가 실제 CI 체인에서 빠져도 늦게 발견될 수 있었다
+2. 이번 단계는 production cutover static contract와 readiness entrypoint를 promotion CI 필수 경로로 끌어올렸다
+3. 따라서 legacy webhook 차단, OpenClaw cron live endpoint, sizing-backed live transport 경계가 깨진 상태로 V2 promotion이 통과하는 경로를 줄인다
