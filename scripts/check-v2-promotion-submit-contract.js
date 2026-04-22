@@ -1526,15 +1526,17 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("artifact_generated_age_minutes")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitClassifiesStaleProductionCutoverReadinessFreshnessAsStaleArtifact")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("submitTraceSummaryExpandsRunbookAggregateFailures")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-promotion-submit-operator-alert.test.js")).includes("previewExposesExpandedRunbookAggregateChecklist")
         && artifactContractText.includes("LIVE readiness artifact")
         && runbookText.includes("LIVE readiness artifact")
         && runbookText.includes("CHK_24B"),
       reason: submitWrapperText.includes("hasFreshCurrentReadinessArtifact")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("liveSubmitClassifiesStaleProductionCutoverReadinessFreshnessAsStaleArtifact")
         && readText(path.resolve(__dirname, "..", "src", "tests", "submit-v2-promotion-cloudbuild.test.js")).includes("submitTraceSummaryExpandsRunbookAggregateFailures")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-promotion-submit-operator-alert.test.js")).includes("previewExposesExpandedRunbookAggregateChecklist")
         && runbookCheckerText.includes("hasFreshLiveReadinessArtifacts")
-        ? "LIVE cutover readiness summaries now require current-dir provenance, bounded generated freshness, and expanded runbook failure trace"
-        : "LIVE readiness summaries must not pass submit or runbook review from copied or stale PASS artifacts, and runbook aggregate failures must expand to checklist IDs",
+        ? "LIVE cutover readiness summaries now require current-dir provenance, bounded generated freshness, and expanded runbook failure trace through operator alert"
+        : "LIVE readiness summaries must not pass submit or runbook review from copied or stale PASS artifacts, and runbook aggregate failures must expand to checklist IDs through operator alert",
       file: FILES.submitWrapper,
     }),
     buildCheck({

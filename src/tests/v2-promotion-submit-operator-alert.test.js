@@ -269,4 +269,53 @@ const operatorSummary = require("../../scripts/lib/v2-promotion-operator-summary
   assert.ok(preview.sections[1].lines.includes("runbook_review_failed_checks=CHK_RUNBOOK_REVIEW_THROWN"));
 })();
 
+(function previewExposesExpandedRunbookAggregateChecklist() {
+  const submitTrace = {
+    ok: false,
+    failed_submit_check_ids: ["SUBMIT_CHK_05"],
+    failed_submit_check_details: [{
+      id: "SUBMIT_CHK_05",
+      summary: "runbook review aggregate passed",
+      runbook_checklist: ["13E", "24B"],
+      reason: "runbook review must be PASS",
+      file: "/tmp/v2/PCY__RUNBOOK__TRACE/promotion-runbook-review.json",
+      field: "overall_status",
+    }],
+    failed_runbook_checklist: ["13E", "24B"],
+    blocker_families: ["RUNBOOK"],
+    primary_blocker_family: "RUNBOOK",
+    runbook_review_summary: {
+      ok: false,
+      fail_n: 2,
+      failed_check_ids: ["CHK_13E", "CHK_24B"],
+      file: "/tmp/v2/PCY__RUNBOOK__TRACE/promotion-runbook-review.json",
+    },
+    recommended_next_action: "RERUN_CANARY_RUNBOOK_AND_RECHECK_ARTIFACT_COHERENCE",
+    recommended_next_action_reason_code: "RUNBOOK_BLOCKER",
+  };
+  const summary = operatorSummary.buildOperatorSummary({
+    ok: false,
+    output_file: "/tmp/v2/PCY__RUNBOOK__TRACE/promotion-cloudbuild-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__RUNBOOK__TRACE",
+      submit_trace_summary: submitTrace,
+    },
+  });
+  const preview = alertPreview.buildOperatorAlertPreview({
+    ok: false,
+    output_file: "/tmp/v2/PCY__RUNBOOK__TRACE/promotion-cloudbuild-submit-request.json",
+    request: {
+      artifact_dir: "/tmp/v2/PCY__RUNBOOK__TRACE",
+      operator_summary: summary,
+      submit_trace_summary: submitTrace,
+    },
+  });
+  assert.strictEqual(summary.headline, "SUBMIT_BLOCKED | RUNBOOK | SUBMIT_CHK_05 | RUNBOOK:13E,24B");
+  assert.ok(summary.lines.includes("runbook_checklist=13E,24B"));
+  assert.ok(summary.lines.includes("runbook_review_failed_checks=CHK_13E,CHK_24B"));
+  assert.ok(preview.sections[0].lines.includes("SUBMIT_BLOCKED | RUNBOOK | SUBMIT_CHK_05 | RUNBOOK:13E,24B"));
+  assert.ok(preview.sections[1].lines.includes("runbook_checklist=13E,24B"));
+  assert.ok(preview.sections[1].lines.includes("failed_submit_check_details=SUBMIT_CHK_05[runbook review aggregate passed;RUNBOOK:13E,24B;reason:runbook review must be PASS;file:/tmp/v2/PCY__RUNBOOK__TRACE/promotion-runbook-review.json;field:overall_status]"));
+})();
+
 console.log("V2_PROMOTION_SUBMIT_OPERATOR_ALERT_TEST_OK");
