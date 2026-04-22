@@ -1287,6 +1287,7 @@ LIVE submit은 `artifact_current_dir_match=true`, 기대 filename 일치, `gener
 
 `v2_live_evidence_readiness_latest.json` 은 LIVE 승격 직전에 운영자가 보는 단일 증거 요약이다.
 이 파일은 `scripts/check-v2-live-evidence-readiness.js` 가 현재 artifact dir의 `promotion-deploy-decision.json` 을 읽어 생성한다.
+LIVE cloudbuild wrapper는 이 파일을 자동 생성하고 같은 내용을 `promotion-cloudbuild-context.json.live_evidence_readiness_summary` 와 `live_evidence_readiness_file` 에 보존해야 한다.
 
 필수 축:
 

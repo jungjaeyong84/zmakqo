@@ -6,6 +6,7 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const runbookCheck = require("./check-v2-canary-runbook");
 const liveCutoverReadiness = require("./check-v2-repair-live-cutover-readiness");
+const liveEvidenceReadiness = require("./check-v2-live-evidence-readiness");
 const submitContractCheck = require("./check-v2-promotion-submit-contract");
 const submitTrace = require("./lib/v2-promotion-submit-trace");
 const { auditV2ProductionCutoverReadiness } = require("../src/v2/productionCutoverAudit");
@@ -16,6 +17,7 @@ const { collectV2SchedulerTrafficState } = require("../src/v2/schedulerTrafficSt
 const OUTPUT_FILENAME = "promotion-cloudbuild-context.json";
 const DEPLOY_DECISION_FILENAME = "promotion-deploy-decision.json";
 const CANARY_FLOW_FILENAME = "promotion-canary-flow.json";
+const LIVE_EVIDENCE_READINESS_FILENAME = liveEvidenceReadiness.__test.OUTPUT_FILENAME;
 const LIVE_CUTOVER_READINESS_FILENAME = "v2_repair_live_cutover_readiness_latest.json";
 const PRODUCTION_CUTOVER_READINESS_FILENAME = "v2_production_cutover_readiness_latest.json";
 const SCHEDULER_TRAFFIC_COLLECTOR_PREFLIGHT_FILENAME = "v2_scheduler_traffic_collector_preflight_latest.json";
@@ -916,6 +918,42 @@ function buildSchedulerTrafficCollectorPreflightSummary(preflight, { artifactDir
   });
 }
 
+function buildLiveEvidenceReadinessSummary(readiness, { artifactDir = null, filePath = null } = {}) {
+  const row = normalizeObject(readiness);
+  if (!row) return null;
+  return Object.freeze({
+    ok: row.ok === true,
+    reason: trimOrNull(row.reason),
+    mode: trimOrNull(row.mode),
+    position_cycle_id: trimOrNull(row.position_cycle_id),
+    deploy_decision_approved: row.deploy_decision_approved === true,
+    evidence_ready: row.evidence_ready === true,
+    deploy_ready: row.deploy_ready === true,
+    blocker_n: Number.isFinite(Number(row.blocker_n)) ? Number(row.blocker_n) : 0,
+    blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
+    deploy_decision_blockers: Array.isArray(row.deploy_decision_blockers) ? row.deploy_decision_blockers.slice() : [],
+    failed_axis_n: Number.isFinite(Number(row.failed_axis_n)) ? Number(row.failed_axis_n) : 0,
+    failed_axis_ids: Array.isArray(row.failed_axis_ids) ? row.failed_axis_ids.slice() : [],
+    submit_check_ids: Array.isArray(row.submit_check_ids) ? row.submit_check_ids.slice() : [],
+    runbook_refs: Array.isArray(row.runbook_refs) ? row.runbook_refs.slice() : [],
+    temporal_coherence: normalizeObject(row.temporal_coherence) ? Object.freeze({
+      ok: row.temporal_coherence.ok === true,
+      blockers: Array.isArray(row.temporal_coherence.blockers) ? row.temporal_coherence.blockers.slice() : [],
+    }) : null,
+    axis_n: Array.isArray(row.axes) ? row.axes.length : 0,
+    failed_axes: Array.isArray(row.axes)
+      ? row.axes.filter((axis) => axis && axis.ok !== true).map((axis) => trimOrNull(axis.id)).filter(Boolean)
+      : [],
+    file: trimOrNull(filePath) || trimOrNull(row.output_file) || trimOrNull(row.artifact_file),
+    ...buildArtifactProvenance({
+      artifactDir,
+      filePath: trimOrNull(filePath) || trimOrNull(row.output_file) || trimOrNull(row.artifact_file),
+      expectedFilename: LIVE_EVIDENCE_READINESS_FILENAME,
+      generatedAt: trimOrNull(row.generated_at) || trimOrNull(row.artifact_generated_at),
+    }),
+  });
+}
+
 function buildRunbookReviewSummary(review, filePath = null) {
   const row = normalizeObject(review);
   if (!row) return null;
@@ -953,6 +991,8 @@ function writeContextArtifact(plan, {
   schedulerTrafficCollectorPreflightFile = null,
   schedulerTrafficCutoverReadiness = null,
   schedulerTrafficCutoverReadinessFile = null,
+  liveEvidenceReadiness = null,
+  liveEvidenceReadinessFile = null,
   runbookReview = null,
   runbookReviewFile = null,
 } = {}) {
@@ -978,6 +1018,10 @@ function writeContextArtifact(plan, {
   const schedulerTrafficCutoverReadinessSummary = buildSchedulerTrafficCutoverReadinessSummary(schedulerTrafficCutoverReadiness, {
     artifactDir: plan.artifactDir,
     filePath: schedulerTrafficCutoverReadinessFile,
+  });
+  const liveEvidenceReadinessSummary = buildLiveEvidenceReadinessSummary(liveEvidenceReadiness, {
+    artifactDir: plan.artifactDir,
+    filePath: liveEvidenceReadinessFile,
   });
   const runbookReviewSummary = buildRunbookReviewSummary(runbookReview, runbookReviewFile);
   const requestedDir = trimOrNull(requestedArtifactDir) || plan.artifactDir;
@@ -1018,6 +1062,8 @@ function writeContextArtifact(plan, {
     scheduler_traffic_collector_preflight_summary: schedulerTrafficCollectorPreflightSummary,
     scheduler_traffic_cutover_readiness_file: trimOrNull(schedulerTrafficCutoverReadinessFile),
     scheduler_traffic_cutover_readiness_summary: schedulerTrafficCutoverReadinessSummary,
+    live_evidence_readiness_file: trimOrNull(liveEvidenceReadinessFile),
+    live_evidence_readiness_summary: liveEvidenceReadinessSummary,
     runbook_review_file: trimOrNull(runbookReviewFile),
     runbook_review_summary: runbookReviewSummary,
     deploy_decision_summary: deployDecisionSummary,
@@ -1051,6 +1097,10 @@ function writeSchedulerTrafficFailureContext(plan, {
 
 function isLiveCutoverReadinessError(error) {
   return trimOrNull(error && error.message) === "V2_PROMOTION_CLOUDBUILD_LIVE_CUTOVER_READINESS_BLOCKED";
+}
+
+function isLiveEvidenceReadinessError(error) {
+  return trimOrNull(error && error.message) === "V2_PROMOTION_CLOUDBUILD_LIVE_EVIDENCE_READINESS_BLOCKED";
 }
 
 function isProductionCutoverReadinessError(error) {
@@ -1094,9 +1144,11 @@ function writePromotionReadinessFailureContext(plan, {
   resolvedArtifactDir = null,
   liveCutover = null,
   productionCutover = null,
+  liveEvidence = null,
   liveCutoverError = null,
   productionCutoverError = null,
   schedulerTrafficError = null,
+  liveEvidenceError = null,
 } = {}) {
   const liveError = liveCutoverError && typeof liveCutoverError === "object"
     ? liveCutoverError
@@ -1106,6 +1158,9 @@ function writePromotionReadinessFailureContext(plan, {
     : {};
   const error = schedulerTrafficError && typeof schedulerTrafficError === "object"
     ? schedulerTrafficError
+    : {};
+  const evidenceError = liveEvidenceError && typeof liveEvidenceError === "object"
+    ? liveEvidenceError
     : {};
   return writeContextArtifact(plan, {
     deployDecision,
@@ -1119,6 +1174,8 @@ function writePromotionReadinessFailureContext(plan, {
     schedulerTrafficCollectorPreflightFile: error.scheduler_traffic_collector_preflight_file || error.collector_preflight_file || null,
     schedulerTrafficCutoverReadiness: error.scheduler_traffic_cutover_readiness || null,
     schedulerTrafficCutoverReadinessFile: error.scheduler_traffic_cutover_readiness_file || null,
+    liveEvidenceReadiness: evidenceError.live_evidence_readiness || (liveEvidence && liveEvidence.report) || null,
+    liveEvidenceReadinessFile: evidenceError.live_evidence_readiness_file || (liveEvidence && liveEvidence.output_file) || null,
   });
 }
 
@@ -1129,6 +1186,7 @@ function writeRunbookReviewContext(plan, {
   liveCutover = null,
   productionCutover = null,
   schedulerTrafficCutover = null,
+  liveEvidence = null,
   runbookReview = null,
   runbookReviewFile = null,
 } = {}) {
@@ -1144,6 +1202,8 @@ function writeRunbookReviewContext(plan, {
     schedulerTrafficCollectorPreflightFile: schedulerTrafficCutover && schedulerTrafficCutover.collector_preflight_file,
     schedulerTrafficCutoverReadiness: schedulerTrafficCutover && schedulerTrafficCutover.report,
     schedulerTrafficCutoverReadinessFile: schedulerTrafficCutover && schedulerTrafficCutover.output_file,
+    liveEvidenceReadiness: liveEvidence && liveEvidence.report,
+    liveEvidenceReadinessFile: liveEvidence && liveEvidence.output_file,
     runbookReview,
     runbookReviewFile,
   });
@@ -1316,6 +1376,60 @@ function generateLiveCutoverReadiness(plan, deployApproval) {
     reason: "LIVE_CUTOVER_READINESS_PASS",
     report: reportWithProvenance,
     output_file: writtenFile,
+  });
+}
+
+function shouldGenerateLiveEvidenceReadiness(plan, deployApproval) {
+  const row = plan && typeof plan === "object" ? plan : {};
+  const approval = deployApproval && typeof deployApproval === "object" ? deployApproval : {};
+  return !!(
+    ["CANARY_FLOW", "PIPELINE"].includes(row.mode) &&
+    row.promotionMode === "LIVE" &&
+    approval.required === true &&
+    approval.approved === true
+  );
+}
+
+function generateLiveEvidenceReadiness(plan, deployApproval) {
+  if (!shouldGenerateLiveEvidenceReadiness(plan, deployApproval)) {
+    return Object.freeze({
+      required: false,
+      skipped: true,
+      reason: "LIVE_EVIDENCE_READINESS_SKIPPED",
+      report: null,
+      output_file: null,
+    });
+  }
+  const outputFile = path.join(plan.artifactDir, LIVE_EVIDENCE_READINESS_FILENAME);
+  const generatedAt = new Date().toISOString();
+  const result = liveEvidenceReadiness.evaluateLiveEvidenceReadiness({
+    deployDecision: deployApproval && deployApproval.decision,
+    artifactDir: plan.artifactDir,
+  });
+  const reportWithProvenance = Object.freeze({
+    ...result,
+    output_file: outputFile,
+    ...buildArtifactProvenance({
+      artifactDir: plan.artifactDir,
+      filePath: outputFile,
+      expectedFilename: LIVE_EVIDENCE_READINESS_FILENAME,
+      generatedAt,
+    }),
+  });
+  writeJson(outputFile, reportWithProvenance);
+  if (reportWithProvenance.ok !== true) {
+    const error = new Error("V2_PROMOTION_CLOUDBUILD_LIVE_EVIDENCE_READINESS_BLOCKED");
+    error.details = reportWithProvenance;
+    error.live_evidence_readiness = reportWithProvenance;
+    error.live_evidence_readiness_file = outputFile;
+    throw error;
+  }
+  return Object.freeze({
+    required: true,
+    skipped: false,
+    reason: "LIVE_EVIDENCE_READINESS_PASS",
+    report: reportWithProvenance,
+    output_file: outputFile,
   });
 }
 
@@ -1518,6 +1632,20 @@ function runCloudBuildPromotion(env = process.env) {
     error.details = deployApproval;
     throw error;
   }
+  let liveEvidence = null;
+  try {
+    liveEvidence = generateLiveEvidenceReadiness(completedPlan, deployApproval);
+  } catch (error) {
+    if (isLiveEvidenceReadinessError(error)) {
+      writePromotionReadinessFailureContext(completedPlan, {
+        deployDecision: deployApproval.decision || deployDecision || null,
+        requestedArtifactDir: plan.artifactDir,
+        resolvedArtifactDir: completedArtifactDir,
+        liveEvidenceError: error,
+      });
+    }
+    throw error;
+  }
   let liveCutover = null;
   try {
     liveCutover = generateLiveCutoverReadiness(completedPlan, deployApproval);
@@ -1527,6 +1655,7 @@ function runCloudBuildPromotion(env = process.env) {
         deployDecision: deployApproval.decision || deployDecision || null,
         requestedArtifactDir: plan.artifactDir,
         resolvedArtifactDir: completedArtifactDir,
+        liveEvidence,
         liveCutoverError: error,
       });
     }
@@ -1541,6 +1670,7 @@ function runCloudBuildPromotion(env = process.env) {
         deployDecision: deployApproval.decision || deployDecision || null,
         requestedArtifactDir: plan.artifactDir,
         resolvedArtifactDir: completedArtifactDir,
+        liveEvidence,
         liveCutover,
         productionCutoverError: error,
       });
@@ -1556,6 +1686,7 @@ function runCloudBuildPromotion(env = process.env) {
         deployDecision: deployApproval.decision || deployDecision || null,
         requestedArtifactDir: plan.artifactDir,
         resolvedArtifactDir: completedArtifactDir,
+        liveEvidence,
         liveCutover,
         productionCutover,
         schedulerTrafficError: error,
@@ -1576,6 +1707,8 @@ function runCloudBuildPromotion(env = process.env) {
       schedulerTrafficCollectorPreflightFile: schedulerTrafficCutover.collector_preflight_file,
       schedulerTrafficCutoverReadiness: schedulerTrafficCutover.report,
       schedulerTrafficCutoverReadinessFile: schedulerTrafficCutover.output_file,
+      liveEvidenceReadiness: liveEvidence.report,
+      liveEvidenceReadinessFile: liveEvidence.output_file,
     });
   } else if (productionCutover.required === true) {
     contextFile = writeContextArtifact(completedPlan, {
@@ -1588,6 +1721,8 @@ function runCloudBuildPromotion(env = process.env) {
       schedulerTrafficCollectorPreflightFile: schedulerTrafficCutover.collector_preflight_file,
       schedulerTrafficCutoverReadiness: schedulerTrafficCutover.report,
       schedulerTrafficCutoverReadinessFile: schedulerTrafficCutover.output_file,
+      liveEvidenceReadiness: liveEvidence.report,
+      liveEvidenceReadinessFile: liveEvidence.output_file,
     });
   } else if (schedulerTrafficCutover.required === true) {
     contextFile = writeContextArtifact(completedPlan, {
@@ -1598,6 +1733,16 @@ function runCloudBuildPromotion(env = process.env) {
       schedulerTrafficCollectorPreflightFile: schedulerTrafficCutover.collector_preflight_file,
       schedulerTrafficCutoverReadiness: schedulerTrafficCutover.report,
       schedulerTrafficCutoverReadinessFile: schedulerTrafficCutover.output_file,
+      liveEvidenceReadiness: liveEvidence.report,
+      liveEvidenceReadinessFile: liveEvidence.output_file,
+    });
+  } else if (liveEvidence.required === true) {
+    contextFile = writeContextArtifact(completedPlan, {
+      deployDecision: deployApproval.decision || deployDecision || null,
+      requestedArtifactDir: plan.artifactDir,
+      resolvedArtifactDir: completedArtifactDir,
+      liveEvidenceReadiness: liveEvidence.report,
+      liveEvidenceReadinessFile: liveEvidence.output_file,
     });
   }
   let runbookReview = null;
@@ -1612,6 +1757,7 @@ function runCloudBuildPromotion(env = process.env) {
         liveCutover,
         productionCutover,
         schedulerTrafficCutover,
+        liveEvidence,
         runbookReview: error.runbook_review || error.details || null,
         runbookReviewFile: error.runbook_review_file || null,
       });
@@ -1625,6 +1771,7 @@ function runCloudBuildPromotion(env = process.env) {
     liveCutover,
     productionCutover,
     schedulerTrafficCutover,
+    liveEvidence,
     runbookReview: runbookReview.review,
     runbookReviewFile: runbookReview.output_file,
   });
@@ -1645,6 +1792,9 @@ function runCloudBuildPromotion(env = process.env) {
     live_cutover_readiness: liveCutover.report,
     live_cutover_readiness_file: liveCutover.output_file,
     live_cutover_readiness_status: liveCutover.reason,
+    live_evidence_readiness: liveEvidence.report,
+    live_evidence_readiness_file: liveEvidence.output_file,
+    live_evidence_readiness_status: liveEvidence.reason,
     production_cutover_readiness: productionCutover.report,
     production_cutover_readiness_file: productionCutover.output_file,
     production_cutover_readiness_status: productionCutover.reason,
@@ -1675,6 +1825,7 @@ if (require.main === module) {
       OUTPUT_FILENAME,
       DEPLOY_DECISION_FILENAME,
       CANARY_FLOW_FILENAME,
+      LIVE_EVIDENCE_READINESS_FILENAME,
       LIVE_CUTOVER_READINESS_FILENAME,
       PRODUCTION_CUTOVER_READINESS_FILENAME,
       SCHEDULER_TRAFFIC_CUTOVER_READINESS_FILENAME,
@@ -1705,6 +1856,7 @@ if (require.main === module) {
       buildCloudBuildPlan,
       buildDeployDecisionSummary,
       buildLiveCutoverReadinessSummary,
+      buildLiveEvidenceReadinessSummary,
       buildProductionCutoverReadinessSummary,
       buildSchedulerTrafficCutoverReadinessSummary,
       buildSchedulerTrafficCollectorPreflightSummary,
@@ -1712,6 +1864,7 @@ if (require.main === module) {
       writeContextArtifact,
       isSchedulerTrafficReadinessError,
       isLiveCutoverReadinessError,
+      isLiveEvidenceReadinessError,
       isProductionCutoverReadinessError,
       isRunbookReviewError,
       buildThrownRunbookReview,
@@ -1726,6 +1879,8 @@ if (require.main === module) {
       runCanaryRunbookReview,
       shouldGenerateLiveCutoverReadiness,
       generateLiveCutoverReadiness,
+      shouldGenerateLiveEvidenceReadiness,
+      generateLiveEvidenceReadiness,
       shouldGenerateProductionCutoverReadiness,
       generateProductionCutoverReadiness,
       shouldGenerateSchedulerTrafficCutoverReadiness,

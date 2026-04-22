@@ -2634,3 +2634,27 @@ V1 약점 재발 방지:
 
 1. 이 checker는 실제 24시간 evidence를 새로 수집하지 않는다
 2. 실제 LIVE 승격 전에는 production entry route canary, exit runtime canary, repair Firestore canary, OpenClaw supreme closed-loop evidence가 같은 artifact dir/cycle에서 축적되어야 한다
+
+## 2026-04-22 LIVE Evidence Readiness CloudBuild Context
+
+추가 증거:
+
+1. `scripts/run-v2-promotion-cloudbuild.js`
+2. `src/tests/run-v2-promotion-cloudbuild.test.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+5. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. LIVE cloudbuild wrapper는 deploy decision 승인 직후 `v2_live_evidence_readiness_latest.json` 을 생성한다
+2. 생성 결과는 `promotion-cloudbuild-context.json.live_evidence_readiness_summary` 와 `live_evidence_readiness_file` 에 보존된다
+3. 실패 시에도 failure context가 `failed_axis_ids`, `submit_check_ids`, `runbook_refs` 를 남겨 어떤 증거 축이 깨졌는지 운영자가 바로 볼 수 있다
+4. runbook review context와 최종 `runCloudBuildPromotion` 반환값도 같은 summary/file/status를 보존한다
+5. submit contract는 `SUBMIT_CONTRACT_CHK_77` 로 checker, cloudbuild wrapper, tests, runbook, artifact contract가 같은 계약을 공유하는지 검사한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 검증 스크립트가 있어도 실제 CloudBuild context에는 요약이 남지 않아, 실패 원인이 로그나 개별 JSON에 흩어졌다
+2. 이번 단계는 LIVE evidence readiness를 promotion context의 1급 summary로 올려 “승인은 막혔는데 무엇을 고쳐야 하는지 모르는” 운영 공백을 줄인다
+3. summary는 승인 권한을 갖지 않고 deploy decision을 판독만 하므로, 진단용 artifact가 승인 우회로 변질되는 위험은 만들지 않는다

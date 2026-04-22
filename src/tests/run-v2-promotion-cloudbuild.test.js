@@ -1110,6 +1110,152 @@ function seedRunbookArtifacts(dir, cycleId) {
   assert.ok(statusLine.includes("DEPLOY_DECISION:LIVE_EVIDENCE_ARTIFACT_CYCLE_MISMATCH"));
 })();
 
+(function liveEvidenceReadinessGenerationSkipsNonLivePromotion() {
+  const result = cloudbuild.__test.generateLiveEvidenceReadiness({
+    mode: "CANARY_FLOW",
+    promotionMode: "CANARY",
+    artifactDir: "/tmp/dbj-v2-skip-live-evidence",
+  }, {
+    required: true,
+    approved: true,
+    decision: {
+      approved: true,
+      mode: "CANARY",
+    },
+  });
+  assert.strictEqual(result.required, false);
+  assert.strictEqual(result.skipped, true);
+  assert.strictEqual(result.reason, "LIVE_EVIDENCE_READINESS_SKIPPED");
+})();
+
+(function contextArtifactPersistsLiveEvidenceReadinessSummary() {
+  const cycleId = "PCY__LIVE_EVIDENCE_CONTEXT";
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `dbj-v2-cloudbuild-${cycleId}-`));
+  try {
+    const outputFile = path.join(dir, cloudbuild.__test.LIVE_EVIDENCE_READINESS_FILENAME);
+    const plan = {
+      mode: "CANARY_FLOW",
+      script: "run:v2-promotion-canary-flow",
+      artifactDir: dir,
+      positionCycleId: cycleId,
+      promotionMode: "LIVE",
+    };
+    const readiness = {
+      ok: true,
+      reason: "V2_LIVE_EVIDENCE_READY",
+      mode: "LIVE",
+      position_cycle_id: cycleId,
+      deploy_decision_approved: true,
+      evidence_ready: true,
+      deploy_ready: true,
+      blocker_n: 0,
+      blockers: [],
+      deploy_decision_blockers: [],
+      failed_axis_n: 0,
+      failed_axis_ids: [],
+      submit_check_ids: [],
+      runbook_refs: [],
+      axes: [
+        { id: "production_runtime_chain", ok: true },
+        { id: "repair_firestore_canary_streak", ok: true },
+        { id: "production_entry_route_canary_streak", ok: true },
+        { id: "exit_runtime_canary_streak", ok: true },
+        { id: "production_entry_protected_canary", ok: true },
+        { id: "openclaw_supreme_closed_loop", ok: true },
+      ],
+      temporal_coherence: {
+        ok: true,
+        blockers: [],
+      },
+      generated_at: "2026-04-22T12:00:00.000Z",
+    };
+    const contextFile = cloudbuild.__test.writeContextArtifact(plan, {
+      deployDecision: {
+        mode: "LIVE",
+        approved: true,
+        decision: "APPROVE_DEPLOY",
+        position_cycle_id: cycleId,
+        blockers: [],
+        warnings: [],
+      },
+      liveEvidenceReadiness: readiness,
+      liveEvidenceReadinessFile: outputFile,
+    });
+    const context = JSON.parse(fs.readFileSync(contextFile, "utf8"));
+    assert.strictEqual(context.live_evidence_readiness_file, outputFile);
+    assert.strictEqual(context.live_evidence_readiness_summary.ok, true);
+    assert.strictEqual(context.live_evidence_readiness_summary.reason, "V2_LIVE_EVIDENCE_READY");
+    assert.strictEqual(context.live_evidence_readiness_summary.deploy_ready, true);
+    assert.strictEqual(context.live_evidence_readiness_summary.axis_n, 6);
+    assert.deepStrictEqual(context.live_evidence_readiness_summary.failed_axis_ids, []);
+    assert.strictEqual(context.live_evidence_readiness_summary.temporal_coherence.ok, true);
+    assert.strictEqual(context.live_evidence_readiness_summary.artifact_file, outputFile);
+    assert.strictEqual(context.live_evidence_readiness_summary.artifact_filename, "v2_live_evidence_readiness_latest.json");
+    assert.strictEqual(context.live_evidence_readiness_summary.artifact_current_dir_match, true);
+    assert.strictEqual(typeof context.live_evidence_readiness_summary.generated_at, "string");
+    assert.strictEqual(typeof context.live_evidence_readiness_summary.artifact_generated_at, "string");
+    assert.strictEqual(Number.isFinite(context.live_evidence_readiness_summary.artifact_generated_age_minutes), true);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
+(function liveEvidenceReadinessFailureContextPreservesCause() {
+  const cycleId = "PCY__LIVE_EVIDENCE_FAIL_CONTEXT";
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `dbj-v2-cloudbuild-${cycleId}-`));
+  try {
+    const outputFile = path.join(dir, cloudbuild.__test.LIVE_EVIDENCE_READINESS_FILENAME);
+    const plan = {
+      mode: "CANARY_FLOW",
+      script: "run:v2-promotion-canary-flow",
+      artifactDir: dir,
+      positionCycleId: cycleId,
+      promotionMode: "LIVE",
+    };
+    const error = new Error("V2_PROMOTION_CLOUDBUILD_LIVE_EVIDENCE_READINESS_BLOCKED");
+    error.live_evidence_readiness_file = outputFile;
+    error.live_evidence_readiness = {
+      ok: false,
+      reason: "V2_LIVE_EVIDENCE_NOT_READY",
+      mode: "LIVE",
+      position_cycle_id: cycleId,
+      deploy_decision_approved: true,
+      evidence_ready: false,
+      deploy_ready: false,
+      blocker_n: 1,
+      blockers: ["LIVE_EVIDENCE:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"],
+      deploy_decision_blockers: [],
+      failed_axis_n: 1,
+      failed_axis_ids: ["exit_runtime_canary_streak"],
+      submit_check_ids: ["SUBMIT_CHK_21"],
+      runbook_refs: ["28"],
+      axes: [{ id: "exit_runtime_canary_streak", ok: false }],
+      temporal_coherence: { ok: true, blockers: [] },
+      generated_at: "2026-04-22T12:00:00.000Z",
+    };
+    const contextFile = cloudbuild.__test.writePromotionReadinessFailureContext(plan, {
+      deployDecision: {
+        mode: "LIVE",
+        approved: true,
+        decision: "APPROVE_DEPLOY",
+        position_cycle_id: cycleId,
+        blockers: [],
+        warnings: [],
+      },
+      liveEvidenceError: error,
+    });
+    const context = JSON.parse(fs.readFileSync(contextFile, "utf8"));
+    assert.strictEqual(cloudbuild.__test.isLiveEvidenceReadinessError(error), true);
+    assert.strictEqual(context.live_evidence_readiness_file, outputFile);
+    assert.strictEqual(context.live_evidence_readiness_summary.ok, false);
+    assert.deepStrictEqual(context.live_evidence_readiness_summary.failed_axis_ids, ["exit_runtime_canary_streak"]);
+    assert.deepStrictEqual(context.live_evidence_readiness_summary.submit_check_ids, ["SUBMIT_CHK_21"]);
+    assert.deepStrictEqual(context.live_evidence_readiness_summary.runbook_refs, ["28"]);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (function statusLineShowsAlertAttentionWithoutChangingApproval() {
   const statusLine = cloudbuild.__test.buildStatusLine({
     approved: true,
