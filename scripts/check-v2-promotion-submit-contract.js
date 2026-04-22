@@ -1252,6 +1252,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
       label: "package and CloudBuild require V2 promotion test path",
       ok: packageJsonText.includes('"test:v2-promotion"')
         && packageJsonText.includes("v2-production-cutover-audit.test.js")
+        && packageJsonText.includes("v2-fill-sync-canonical-boundary-audit.test.js")
         && packageJsonText.includes('"test:v2-scheduler-traffic-cutover"')
         && packageJsonText.includes('"test:v2-repair-queue-runtime"')
         && packageJsonText.includes("npm run test:v2-repair-queue-runtime")
@@ -1273,6 +1274,7 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && cloudbuildText.includes("npm run check:v2-production-cutover"),
       reason: packageJsonText.includes('"test:v2-promotion"')
         && packageJsonText.includes("v2-production-cutover-audit.test.js")
+        && packageJsonText.includes("v2-fill-sync-canonical-boundary-audit.test.js")
         && packageJsonText.includes("npm run test:v2-repair-queue-runtime")
         && packageJsonText.includes("run-v2-repair-queue-service.test.js")
         && artifactContractText.includes("test:v2-repair-queue-runtime")
@@ -1289,8 +1291,8 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && packageJsonText.includes("check:v2-production-cutover")
         && cloudbuildText.includes("npm run test:v2-promotion")
         && cloudbuildText.includes("npm run check:v2-production-cutover")
-        ? "package and CloudBuild execute V2 promotion, repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E regression paths"
-        : "package.json and cloudbuild.yaml must require test:v2-promotion plus repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E audits",
+        ? "package and CloudBuild execute V2 promotion, fill sync boundary, repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E regression paths"
+        : "package.json and cloudbuild.yaml must require test:v2-promotion plus fill sync boundary, repair queue runtime, production cutover, scheduler traffic, exit runtime streak, and OpenClaw E2E audits",
       file: FILES.packageJson,
     }),
     buildCheck({

@@ -58,6 +58,15 @@ function reducedFillWriterReturnsOperatorEvidence(source) {
     && block.includes("deliverPreparedExitTransitionAlert");
 }
 
+function legacyCanonicalBackfillIsExplicitOnly(source) {
+  const block = sliceFunctionBlock(source, "resolveLegacyCanonicalWriteDecision");
+  return block.includes("v2BatchWritten && !isLegacyCanonicalBackfillEnabled(env)")
+    && block.includes("V2_BATCH_CANONICAL_ALREADY_WRITTEN")
+    && block.includes("LEGACY_CANONICAL_BACKFILL_ENABLED")
+    && block.includes("LEGACY_CANONICAL_WRITE_ALLOWED")
+    && String(source || "").includes("DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED");
+}
+
 function auditV2FillSyncCanonicalBoundary({
   fillSyncSource = "",
   shadowExitWriterSource = "",
@@ -126,6 +135,11 @@ function auditV2FillSyncCanonicalBoundary({
       "legacy canonical transition/stage-hint writes must skip by default after a V2 canonical batch write"
     ),
     buildCheck(
+      "V2_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_EXPLICIT_ONLY",
+      legacyCanonicalBackfillIsExplicitOnly(fill),
+      "legacy canonical writes after V2 batch ownership must be explicit backfill-only, not an implicit fallback"
+    ),
+    buildCheck(
       "V2_SHADOW_EXIT_WRITER_USES_BATCH_STORAGE",
       writer.includes("putV2DocsBatch")
         && writer.includes("commitCanonicalExitArtifacts")
@@ -172,5 +186,6 @@ module.exports = {
     functionCallsBatchValidator,
     hasAllRequiredBatchArtifacts,
     reducedFillWriterReturnsOperatorEvidence,
+    legacyCanonicalBackfillIsExplicitOnly,
   },
 };

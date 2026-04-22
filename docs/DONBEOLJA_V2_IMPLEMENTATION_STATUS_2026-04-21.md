@@ -676,6 +676,7 @@ V1 약점 재발 방지:
 5. deploy decision artifact는 이제 `fill_sync_canonical_boundary_audit` 를 top-level 증거로 보존한다
 6. CANARY/LIVE deploy decision은 이 audit가 통과하지 않으면 `DEPLOY_DECISION:V2_FILL_SYNC_CANONICAL_BOUNDARY_AUDIT_REQUIRED` 로 fail-closed 된다
 7. Cloud Build validation step은 promotion cloudbuild wrapper 전에 `npm run check:v2-fill-sync-canonical-boundary` 를 실행한다
+8. `test:v2-promotion` 은 `v2-fill-sync-canonical-boundary-audit.test.js` 를 직접 실행해 promotion test path 밖에서 이 경계가 빠지는 회귀를 막는다
 
 V1 약점 재발 방지:
 
@@ -759,6 +760,7 @@ V1 약점 재발 방지:
 4. 의도적 backfill은 `DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED=1` 일 때만 `LEGACY_CANONICAL_BACKFILL_ENABLED` 로 허용된다
 5. legacy canonical write가 skip 되면 `promotePositionStageHintsFromExternalExit` 도 같이 skip 되어 V1 stage hint가 V2 canonical projection과 다시 경쟁하지 않는다
 6. fill sync canonical boundary audit는 이제 legacy canonical이 V2 batch 이후 기본 skip 되는지 검사한다
+7. fill sync canonical boundary audit는 이제 V2 batch 이후 legacy canonical write가 명시적 backfill env 없이는 열리지 않는지도 `V2_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_EXPLICIT_ONLY` 로 검사한다
 
 V1 약점 재발 방지:
 
@@ -766,6 +768,7 @@ V1 약점 재발 방지:
 2. 이번 단계에서는 V2 batch canonical write가 성공한 fill에 대해 legacy canonical/stage-hint write를 기본적으로 중단한다
 3. 따라서 운영 중 같은 체결이 V2 projection과 V1 stage hint를 동시에 전진시키며 서로 다른 상태를 만드는 위험을 줄였다
 4. 완전 제거가 아니라 backfill env로만 열어둔 이유는 과거 데이터 복구와 V2 off fallback을 보존하기 위함이다
+5. backfill env 조건이 정적 감사와 promotion test path에 같이 묶였기 때문에, 임시 fallback이 다시 본선 write로 승격되는 V1식 회귀를 더 빨리 차단한다
 
 ## 2026-04-21 Canonical Outbox Evidence Lock
 
@@ -2423,3 +2426,55 @@ V1 약점 재발 방지:
 1. V1에서는 readiness PASS artifact가 오래됐는지, 현재 cycle에서 만든 증거인지 운영자가 한 번에 판별하기 어려웠다
 2. 이번 단계는 LIVE 전환 직전 readiness 4종도 long-run streak/protected entry canary와 같은 신선도 계약으로 묶었다
 3. 따라서 오래된 LIVE readiness PASS 파일을 현재 artifact dir에 복사해 scheduler/legacy webhook cutover를 통과시키는 경로를 차단한다
+
+## 2026-04-22 Long-Run Collector Execution Summary Contract
+
+추가 증거:
+
+1. `scripts/check-v2-production-entry-route-canary-streak.js`
+2. `scripts/check-v2-exit-runtime-canary-streak.js`
+3. `scripts/check-v2-promotion-deploy-decision.js`
+4. `scripts/check-v2-promotion-submit-contract.js`
+5. `src/tests/check-v2-production-entry-route-canary-streak.test.js`
+6. `src/tests/check-v2-exit-runtime-canary-streak.test.js`
+7. `src/tests/check-v2-promotion-deploy-decision.test.js`
+8. `src/tests/check-v2-promotion-submit-contract.test.js`
+9. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+10. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. production entry route 24시간 streak와 exit runtime 24시간 streak는 이제 단순 counter가 아니라 `collector_execution_summary` 를 요구한다
+2. `collector_execution_summary` 는 `scheduler_job_id`, `producer_script`, `producer_scope`, `canary_mode`, `history_source=FIRESTORE`, `firestore_source_required=true`, `exchange_write_performed=false` 를 포함해야 한다
+3. 각 summary는 rows/healthy/coverage/freshness/blocker count를 streak 판정과 같은 값으로 보존해야 한다
+4. deploy decision은 LIVE 모드에서 collector execution summary가 없거나 scheduler/producer/firestore/no-exchange 조건이 맞지 않으면 long-run streak를 승인하지 않는다
+5. submit contract checker는 이 연결을 `SUBMIT_CONTRACT_CHK_70` 으로 검사한다
+6. `test:v2-promotion` 은 production entry route streak와 exit runtime streak 테스트를 실행하므로, collector summary 계약이 promotion test path에 포함된다
+
+V1 약점 재발 방지:
+
+1. V1에서는 PASS artifact가 있어도 실제 scheduler가 어떤 producer를 실행했는지, Firestore history에서 읽은 결과인지, exchange write가 없었는지 한 화면에서 증명하기 어려웠다
+2. 이번 단계는 24시간 streak를 producer identity와 storage source에 묶어, 수동으로 만든 최신 JSON이나 잘못된 script output이 LIVE 승격 증거처럼 보이는 경로를 차단한다
+3. 따라서 promotion gate가 강하지만 본체 producer가 조용히 끊기는 상태를 더 빨리 탐지한다
+
+## 2026-04-22 Fill Sync Boundary Promotion Test Lock
+
+추가 증거:
+
+1. `package.json`
+2. `src/v2/fillSyncCanonicalBoundaryAudit.js`
+3. `src/tests/v2-fill-sync-canonical-boundary-audit.test.js`
+4. `scripts/check-v2-promotion-submit-contract.js`
+
+판정:
+
+1. `test:v2-promotion` 은 이제 `v2-fill-sync-canonical-boundary-audit.test.js` 를 직접 실행한다
+2. fill sync boundary audit는 `V2_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_EXPLICIT_ONLY` 를 추가로 검사한다
+3. 이 체크는 V2 batch canonical write 이후 legacy canonical write가 `DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED=1` 없이 암묵적으로 재개되는 것을 막는다
+4. submit contract checker의 `SUBMIT_CONTRACT_CHK_40` 은 promotion test path 안에 fill sync boundary test가 포함되는지 확인한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 검증 스크립트가 있어도 최종 promotion test path에서 빠져 회귀가 늦게 드러나는 문제가 있었다
+2. 이번 단계는 fill sync 단일 writer 경계를 promotion test path와 submit contract 양쪽에 고정했다
+3. 따라서 legacy canonical backfill 예외가 다시 일반 fallback처럼 쓰이는 회귀는 단위 테스트, static audit, submit contract에서 동시에 드러난다

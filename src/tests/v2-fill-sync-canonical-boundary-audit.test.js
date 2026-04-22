@@ -64,6 +64,20 @@ function readRepoFile(relPath) {
   assert.ok(audit.failed_check_ids.includes("V2_FILL_SYNC_CANONICAL_TRANSITION_RECORD_CALL_WRAPPED"));
 })();
 
+(function implicitLegacyBackfillAfterV2BatchFailsClosed() {
+  const source = readRepoFile("src/services/binanceFuturesFillsSync.js")
+    .replace(
+      "if (v2BatchWritten && !isLegacyCanonicalBackfillEnabled(env))",
+      "if (v2BatchWritten && false)"
+    );
+  const audit = auditV2FillSyncCanonicalBoundary({
+    fillSyncSource: source,
+    shadowExitWriterSource: readRepoFile("src/v2/openclawShadowExitWriter.js"),
+  });
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_EXPLICIT_ONLY"));
+})();
+
 (function functionBlockSlicerFindsValidatorInsideGate() {
   const block = __test.sliceFunctionBlock(readRepoFile("src/services/binanceFuturesFillsSync.js"), "resolveLegacyCanonicalTp1WriteGate");
   assert.ok(block.includes("validateV2ShadowCanonicalBatchWrite"));
