@@ -1385,6 +1385,24 @@ function evaluateSubmitContract() {
         : "streak pass must not be accepted from a copied current-dir file without generated freshness evidence",
       file: FILES.deployDecisionChecker,
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_52",
+      label: "protected entry canary requires generated freshness provenance",
+      ok: unifiedPromotionReportGeneratorText.includes("production_entry_protected_canary")
+        && unifiedPromotionReportGeneratorText.includes("artifact_generated_age_minutes")
+        && deployDecisionCheckerText.includes("MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES")
+        && deployDecisionCheckerText.includes("hasFreshProtectedCanaryArtifact")
+        && deployDecisionCheckerText.includes("artifact_generated_age_minutes")
+        && artifactContractText.includes("production_entry_protected_canary")
+        && artifactContractText.includes("artifact_generated_age_minutes")
+        && runbookText.includes("SUBMIT_CHK_20A")
+        && runbookText.includes("artifact_generated_age_minutes"),
+      reason: deployDecisionCheckerText.includes("hasFreshProtectedCanaryArtifact")
+        && runbookText.includes("artifact_generated_age_minutes")
+        ? "protected entry canary pass now requires current-dir provenance and bounded generated freshness"
+        : "protected entry canary must not pass CANARY/LIVE from a copied stale PASS artifact",
+      file: FILES.deployDecisionChecker,
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

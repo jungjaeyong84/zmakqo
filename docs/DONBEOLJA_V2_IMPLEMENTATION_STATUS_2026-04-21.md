@@ -2347,3 +2347,27 @@ V1 약점 재발 방지:
 1. V1에서는 latest 파일이 현재 artifact dir에 있으면 오래된 증거인지 구분하기 어려웠다
 2. 이번 단계는 오래된 PASS streak JSON을 현재 artifact dir에 복사해 LIVE 승격 증거처럼 보이게 하는 경로를 차단한다
 3. LIVE 승격은 이제 history coverage, current-dir provenance, artifact 생성 freshness 세 조건을 동시에 만족해야 한다
+
+## 2026-04-22 Protected Entry Canary Artifact Freshness Contract
+
+추가 증거:
+
+1. `scripts/generate-v2-unified-promotion-report.js`
+2. `scripts/check-v2-promotion-deploy-decision.js`
+3. `scripts/check-v2-promotion-submit-contract.js`
+4. `src/tests/check-v2-promotion-deploy-decision.test.js`
+5. `src/tests/generate-v2-unified-promotion-report.test.js`
+6. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+7. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+
+판정:
+
+1. protected entry canary summary는 이제 `generated_at`, `artifact_generated_at`, `artifact_generated_age_minutes` 를 보존한다
+2. CANARY/LIVE deploy decision은 `artifact_generated_age_minutes <= 180` 을 만족하지 않으면 `DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED` 로 fail-closed 한다
+3. submit contract checker는 `SUBMIT_CONTRACT_CHK_52` 로 protected canary freshness가 unified report, deploy decision, artifact contract, runbook에 모두 연결되어 있는지 검증한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 보호주문 증거가 PASS여도 오래된 latest JSON인지 구분하지 못하면 실제 진입 보호 체인이 깨진 상태를 놓칠 수 있었다
+2. 이번 단계는 보호주문 canary도 long-run streak와 같은 수준의 current-dir provenance + generated freshness 계약으로 승격했다
+3. 따라서 오래된 no-exchange protected canary PASS 파일을 현재 artifact dir에 복사하는 방식으로 CANARY/LIVE 승격을 통과할 수 없다

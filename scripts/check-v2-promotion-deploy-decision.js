@@ -38,6 +38,7 @@ const REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS = Object.freeze([
   "V2_PRODUCTION_ENTRY_LIVE_REQUEST_BUILDER_EMBEDS_SIZING",
 ]);
 const MIN_LIVE_STREAK_COVERAGE_MINUTES = 24 * 60;
+const MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES = 180;
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -486,6 +487,7 @@ function hasProductionEntryProtectedCanary(summary) {
     !!trimOrNull(canary.artifact_file) &&
     !!trimOrNull(canary.artifact_dir) &&
     canary.artifact_current_dir_match === true &&
+    hasFreshProtectedCanaryArtifact(canary) &&
     canary.exchange_write_performed === false &&
     canary.route_called === true &&
     canary.kernel_called === true &&
@@ -510,6 +512,18 @@ function hasProductionEntryProtectedCanary(summary) {
     checkIds.has("V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT") &&
     checkIds.has("V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT") &&
     checkIds.has("V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE")
+  );
+}
+
+function hasFreshProtectedCanaryArtifact(canary) {
+  const row = normalizeObject(canary);
+  if (!row) return false;
+  const artifactGeneratedAgeMinutes = Number(row.artifact_generated_age_minutes);
+  return (
+    !!trimOrNull(row.generated_at) &&
+    !!trimOrNull(row.artifact_generated_at) &&
+    Number.isFinite(artifactGeneratedAgeMinutes) &&
+    artifactGeneratedAgeMinutes <= MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES
   );
 }
 
@@ -883,10 +897,12 @@ if (require.main === module) {
       hasProductionCutoverAudit,
       REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS,
       MIN_LIVE_STREAK_COVERAGE_MINUTES,
+      MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES,
       hasProductionLiveEntrySizingContract,
       hasRepairFirestoreCanaryStreak,
       hasProductionEntryRouteCanaryStreak,
       hasProductionEntryProtectedCanary,
+      hasFreshProtectedCanaryArtifact,
       hasFreshLongRunStreakCoverage,
       hasExitRuntimeCanaryStreak,
       hasStaleArtifactProvenance,

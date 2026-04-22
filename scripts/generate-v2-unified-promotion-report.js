@@ -389,6 +389,8 @@ function buildProductionEntryProtectedCanarySummary(canary) {
     artifact_current_dir_match: row.artifact_current_dir_match === true,
     exchange_write_performed: row.exchange_write_performed === true,
     generated_at: trimOrNull(row.generated_at),
+    artifact_generated_at: trimOrNull(row.artifact_generated_at),
+    artifact_generated_age_minutes: normalizeNumber(row.artifact_generated_age_minutes),
     route_called: row.route_called === true,
     kernel_called: row.kernel_called === true,
     entry_transport_called: row.entry_transport_called === true,

@@ -95,6 +95,7 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
       reason: "V2_PRODUCTION_ENTRY_PROTECTED_CANARY_PASS",
       scope: "production_entry_protected_canary",
       canary_mode: "PROTECTED_ENTRY_NO_EXCHANGE_PROOF",
+      generated_at: new Date().toISOString(),
       exchange_write_performed: false,
       route_called: true,
       kernel_called: true,
@@ -310,6 +311,9 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_file, path.join(dir, "v2_production_entry_protected_canary_latest.json"));
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_dir, dir);
     assert.strictEqual(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_current_dir_match, true);
+    assert.ok(stored.bounded_runtime_summary.production_entry_protected_canary.generated_at);
+    assert.ok(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_generated_at);
+    assert.ok(Number.isFinite(stored.bounded_runtime_summary.production_entry_protected_canary.artifact_generated_age_minutes));
     assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.reason, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS");
     assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.history_source, "FIRESTORE");
     assert.strictEqual(stored.bounded_runtime_summary.exit_runtime_canary_streak.coverage_minutes, 1440);

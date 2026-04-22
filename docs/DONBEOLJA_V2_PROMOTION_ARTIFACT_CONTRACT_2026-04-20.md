@@ -105,7 +105,7 @@ optional review artifact:
 
 보호주문 canary 차단은 예외적으로 context 단계에서도 `SUBMIT_CHK_20A` 를 relevant/failed submit check에 포함해야 한다. 즉 `DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED` 가 있으면 submit wrapper까지 기다리지 않고 `promotion-cloudbuild-context.json.submit_trace.failed_runbook_checklist` 에 `27A` 가 보여야 한다.
 
-`bounded_runtime_summary.production_entry_protected_canary` 는 단순 pass payload가 아니라 현재 artifact cycle의 fresh 증거여야 한다. 따라서 `artifact_file`, `artifact_dir`, `artifact_filename`, `artifact_current_dir_match` 를 포함하고, CANARY/LIVE deploy decision은 `artifact_filename=v2_production_entry_protected_canary_latest.json` 및 `artifact_current_dir_match=true` 가 아니면 fail-closed 해야 한다.
+`bounded_runtime_summary.production_entry_protected_canary` 는 단순 pass payload가 아니라 현재 artifact cycle의 fresh 증거여야 한다. 따라서 `artifact_file`, `artifact_dir`, `artifact_filename`, `artifact_current_dir_match`, `generated_at`, `artifact_generated_at`, `artifact_generated_age_minutes` 를 포함하고, CANARY/LIVE deploy decision은 `artifact_filename=v2_production_entry_protected_canary_latest.json`, `artifact_current_dir_match=true`, `artifact_generated_age_minutes <= 180` 이 아니면 fail-closed 해야 한다.
 
 `bounded_runtime_summary.repair_firestore_canary_streak`, `bounded_runtime_summary.production_entry_route_canary_streak`, `bounded_runtime_summary.exit_runtime_canary_streak` 도 동일하게 현재 artifact cycle provenance를 포함해야 한다. LIVE deploy decision은 각각 `v2_repair_queue_firestore_canary_streak_latest.json`, `v2_production_entry_route_canary_streak_latest.json`, `v2_exit_runtime_canary_streak_latest.json` 파일명이 현재 artifact dir과 1:1로 맞지 않으면 fail-closed 해야 한다.
 

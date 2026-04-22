@@ -181,6 +181,9 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_dir: "/tmp/dbj-v2-artifacts",
       artifact_filename: "v2_production_entry_protected_canary_latest.json",
       artifact_current_dir_match: true,
+      generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_age_minutes: 15,
       exchange_write_performed: false,
       route_called: true,
       kernel_called: true,
@@ -300,6 +303,7 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
   assert.strictEqual(deployDecision.__test.hasFreshLongRunStreakCoverage(decision.bounded_runtime_summary.repair_firestore_canary_streak), true);
   assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(decision.bounded_runtime_summary), true);
+  assert.strictEqual(deployDecision.__test.hasFreshProtectedCanaryArtifact(decision.bounded_runtime_summary.production_entry_protected_canary), true);
   assert.strictEqual(deployDecision.__test.hasEntryBoundaryAudit(decision.entry_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasFillSyncCanonicalBoundaryAudit(decision.fill_sync_canonical_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasProductionCutoverAudit(decision.production_cutover_audit), true);
@@ -602,6 +606,43 @@ function buildCandidateSelectionSummaryFixture(overrides = {}) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__CANARY__STALE_PROTECTED_CANARY",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionCutoverAudit: buildProductionCutoverAuditFixture(),
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED"));
+})();
+
+(function canaryWithStaleProductionEntryProtectedCanaryGeneratedAtFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.production_entry_protected_canary = {
+    ...bounded.production_entry_protected_canary,
+    generated_at: "2026-04-22T08:00:00.000Z",
+    artifact_generated_at: "2026-04-22T08:00:00.000Z",
+    artifact_generated_age_minutes: deployDecision.__test.MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES + 1,
+  };
+  assert.strictEqual(deployDecision.__test.hasFreshProtectedCanaryArtifact(bounded.production_entry_protected_canary), false);
+  assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "CANARY",
+    position_cycle_id: "PCY__CANARY__STALE_PROTECTED_CANARY_GENERATED_AT",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__CANARY__STALE_PROTECTED_CANARY_GENERATED_AT",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__CANARY__STALE_PROTECTED_CANARY_GENERATED_AT",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,
