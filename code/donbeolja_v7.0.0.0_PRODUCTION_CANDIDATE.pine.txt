@@ -94,7 +94,7 @@ atr_ratio = f_safe_div(atr, close)
 
 rsi_val = ta.rsi(close, 14)
 [macd_line, macd_signal, macd_hist] = ta.macd(close, 12, 26, 9)
-adx_val = ta.adx(14)
+[_di_plus, _di_minus, adx_val] = ta.dmi(14, 14)
 vol_sma = ta.sma(volume, 20)
 vol_stdev = ta.stdev(volume, 20)
 volume_zscore = vol_stdev > 0 ? (volume - vol_sma) / vol_stdev : 0.0
@@ -110,7 +110,9 @@ upper_wick_ratio = (high - math.max(open, close)) / bar_range
 lower_wick_ratio = (math.min(open, close) - low) / bar_range
 trend_alignment_local = f_clamp01(math.abs(ema_fast - ema_slow) / math.max(ema_slow, syminfo.mintick) * 120.0)
 compression_score = f_clamp01(1.0 - f_safe_div(range_span, math.max(atr * 12.0, syminfo.mintick)))
-volatility_zscore = ta.stdev(atr_ratio, 20) > 0 ? (atr_ratio - ta.sma(atr_ratio, 20)) / ta.stdev(atr_ratio, 20) : 0.0
+atr_ratio_sma = ta.sma(atr_ratio, 20)
+atr_ratio_stdev = ta.stdev(atr_ratio, 20)
+volatility_zscore = atr_ratio_stdev > 0 ? (atr_ratio - atr_ratio_sma) / atr_ratio_stdev : 0.0
 
 session_vwap = ta.vwap(hlc3)
 spread_proxy_bps = ((bar_range / math.max(close, syminfo.mintick)) * 10000.0) * spread_proxy_weight
