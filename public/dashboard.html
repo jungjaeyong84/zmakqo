@@ -65,8 +65,23 @@ function blockersHtml(items){ const xs=Array.isArray(items)?items:[]; return xs.
 function set(id,v){ const el=document.getElementById(id); if(el) el.innerHTML=v; }
 function setBar(id,v){ const el=document.getElementById(id); if(el) el.style.width=pct(v)+'%'; }
 async function refresh(){
-  const r = await fetch('/api/v2/mission-control', { credentials:'include' });
-  const data = await r.json();
+  let data;
+  try {
+    const r = await fetch('/api/v2/mission-control', { credentials:'include' });
+    const ct = String(r.headers.get('content-type') || '');
+    if (!r.ok || !ct.includes('application/json')) {
+      throw new Error(r.status === 302 || r.redirected ? 'AUTH_REQUIRED' : `MISSION_CONTROL_HTTP_${r.status}`);
+    }
+    data = await r.json();
+  } catch (err) {
+    const reason = err && err.message === 'AUTH_REQUIRED' ? '로그인 후 V2 증거를 확인할 수 있습니다.' : 'V2 mission-control API 로드 실패';
+    set('verdict', 'AUTH_REQUIRED');
+    set('verdict-pills', pill(reason, 'warn'));
+    set('all-blockers', pill('V2_SITE:MISSION_CONTROL_AUTH_REQUIRED', 'warn'));
+    document.getElementById('raw').textContent = JSON.stringify({ ok:false, reason:String(err && err.message || err) }, null, 2);
+    set('updated', '인증된 대시보드 세션이 필요합니다.');
+    return;
+  }
   document.getElementById('raw').textContent = JSON.stringify(data,null,2);
   const verdict = data.verdict || 'UNKNOWN';
   set('verdict', verdict);
