@@ -505,6 +505,7 @@ function buildOpenClawSupremeControlPlaneSummary({
   collectorExecutionSummary = null,
   nowMs = Date.now(),
   maxLearnerEvaluationAgeMinutes = 1440,
+  maxLearnerModelErrorRate = 0.5,
 } = {}) {
   const permits = Array.isArray(executionPermits) ? executionPermits : [];
   const bundles = Array.isArray(decisionBundles) ? decisionBundles : [];
@@ -598,6 +599,16 @@ function buildOpenClawSupremeControlPlaneSummary({
   const liveAppliedCount = learnerRows.filter((row) => row && row.shadow_only === false).length;
   const shadowOnlyCount = learnerRows.filter((row) => row && row.shadow_only === true).length;
   const staleEvaluationCount = learnerRows.filter((row) => !isLearnerFresh(row)).length;
+  const modelWinCount = adjudications.filter((row) => upper(row && row.adjudication_label) === "MODEL_WIN").length;
+  const expectedBlockedLossCount = adjudications.filter((row) => upper(row && row.adjudication_label) === "EXPECTED_BLOCKED_LOSS").length;
+  const modelErrorCount = adjudications.filter((row) => upper(row && row.adjudication_label) === "MODEL_ERROR").length;
+  const modelOkCount = modelWinCount + expectedBlockedLossCount;
+  const decisiveOutcomeCount = modelOkCount + modelErrorCount;
+  const modelErrorRate = decisiveOutcomeCount > 0
+    ? Math.round((modelErrorCount / decisiveOutcomeCount) * 10000) / 10000
+    : null;
+  const learnerModelDriftBlocked = Number.isFinite(modelErrorRate)
+    && modelErrorRate > Number(maxLearnerModelErrorRate);
   const lineageBlockers = [];
   if (expectedDecisionId && permitLineageMatches.length < permits.length) lineageBlockers.push("OPENCLAW_PERMIT_DECISION_OR_WORLD_STATE_LINEAGE_MISMATCH");
   if (expectedDecisionId && bundleLineageMatches.length < bundles.length) lineageBlockers.push("OPENCLAW_DECISION_BUNDLE_LINEAGE_MISMATCH");
@@ -612,8 +623,14 @@ function buildOpenClawSupremeControlPlaneSummary({
   if (!learnerRows.length) blockers.push("OPENCLAW_LEARNER_SHADOW_EVALUATION_REQUIRED");
   if (liveAppliedCount > 0) blockers.push("OPENCLAW_LEARNER_LIVE_APPLICATION_FORBIDDEN");
   if (staleEvaluationCount > 0) blockers.push("OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE");
+  if (learnerModelDriftBlocked) blockers.push("OPENCLAW_LEARNER_MODEL_ERROR_DRIFT_BLOCKED");
   if (!collectorOk) blockers.push("OPENCLAW_SUPREME_COLLECTOR_PROVENANCE_REQUIRED");
   blockers.push(...lineageBlockers);
+  const learnerShadowOk = learnerRows.length > 0
+    && shadowOnlyCount === learnerRows.length
+    && liveAppliedCount === 0
+    && staleEvaluationCount === 0
+    && learnerModelDriftBlocked !== true;
   return Object.freeze({
     ok: blockers.length === 0,
     world_state_n: worldState ? 1 : 0,
@@ -626,19 +643,27 @@ function buildOpenClawSupremeControlPlaneSummary({
     outcome_adjudication_n: adjudications.length,
     outcome_unadjudicated_n: adjudications.length > 0 ? 0 : 1,
     learner_shadow_summary: Object.freeze({
-      ok: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0 && staleEvaluationCount === 0,
+      ok: learnerShadowOk,
       evaluation_n: learnerRows.length,
       shadow_only_n: shadowOnlyCount,
       live_applied_n: liveAppliedCount,
       stale_evaluation_n: staleEvaluationCount,
+      model_win_n: modelWinCount,
+      expected_blocked_loss_n: expectedBlockedLossCount,
+      model_ok_n: modelOkCount,
+      model_error_n: modelErrorCount,
+      decisive_outcome_n: decisiveOutcomeCount,
+      model_error_rate: modelErrorRate,
+      max_model_error_rate: Number(maxLearnerModelErrorRate),
       max_evaluation_age_minutes: maxLearnerEvaluationAgeMinutes,
       max_observed_evaluation_age_minutes: maxObservedEvaluationAgeMinutes,
       latest_evaluated_at: latestEvaluatedAt,
-      blockers: learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0 && staleEvaluationCount === 0
+      blockers: learnerShadowOk
         ? []
         : [
             ...(learnerRows.length > 0 && shadowOnlyCount === learnerRows.length && liveAppliedCount === 0 ? [] : ["OPENCLAW_LEARNER_SHADOW_ONLY_REQUIRED"]),
             ...(staleEvaluationCount === 0 ? [] : ["OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE"]),
+            ...(learnerModelDriftBlocked ? ["OPENCLAW_LEARNER_MODEL_ERROR_DRIFT_BLOCKED"] : []),
           ],
     }),
     collector_execution_summary: collector

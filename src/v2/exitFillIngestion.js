@@ -135,6 +135,19 @@ function reduceV2ExitFill({
     protectionRuntime,
     requireProtectionRuntimeGate: evidence.kind === "TP1_CONFIRMED",
   });
+  if (reduced.partial === true) {
+    return Object.freeze({
+      ok: true,
+      partial: true,
+      duplicate: false,
+      written: false,
+      reason: reduced.reason || "V2_EXIT_FILL_PARTIAL_REDUCED",
+      evidence,
+      transition: null,
+      nextProjection: reduced.nextProjection,
+      alert: null,
+    });
+  }
   if (reduced.duplicate === true || !reduced.transition) {
     return Object.freeze({
       ok: true,

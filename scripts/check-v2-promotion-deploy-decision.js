@@ -442,6 +442,9 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
   const collector = normalizeObject(supreme.collector_execution_summary);
   const maxLearnerAgeMinutes = Number(learner && learner.max_evaluation_age_minutes);
   const maxObservedLearnerAgeMinutes = Number(learner && learner.max_observed_evaluation_age_minutes);
+  const decisiveOutcomeCount = Number(learner && learner.decisive_outcome_n);
+  const modelErrorRate = Number(learner && learner.model_error_rate);
+  const maxModelErrorRate = Number(learner && learner.max_model_error_rate);
   const expectedPermitIds = normalizeStringArray(lineage && lineage.expected_openclaw_execution_permit_ids);
   const expectedOutcomeIds = normalizeStringArray(lineage && lineage.expected_openclaw_outcome_adjudication_ids);
   const expectedDecisionBundleIds = normalizeStringArray(lineage && lineage.expected_openclaw_decision_bundle_ids);
@@ -464,6 +467,11 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
     Number(learner.shadow_only_n) === Number(learner.evaluation_n) &&
     Number(learner.live_applied_n || 0) === 0 &&
     Number(learner.stale_evaluation_n || 0) === 0 &&
+    Number.isFinite(decisiveOutcomeCount) &&
+    decisiveOutcomeCount > 0 &&
+    Number.isFinite(modelErrorRate) &&
+    Number.isFinite(maxModelErrorRate) &&
+    modelErrorRate <= maxModelErrorRate &&
     Number.isFinite(maxLearnerAgeMinutes) &&
     maxLearnerAgeMinutes > 0 &&
     maxLearnerAgeMinutes <= MAX_OPENCLAW_LEARNER_SHADOW_EVALUATION_AGE_MINUTES &&
@@ -805,6 +813,9 @@ function hasFirestoreCostGuard(summary) {
   if (!guard || !thresholds) return false;
   const estimatedReads = Number(guard.estimated_total_reads);
   const collectorQueryLimitTotal = Number(guard.collector_query_limit_total);
+  const billingMetricRequired = guard.billing_metric_required === true || thresholds.require_billing_metric === true;
+  const billingReadOpsTotal = Number(guard.billing_read_ops_total);
+  const billingMetricRows = ensureArray(guard.billing_metric_rows);
   return (
     guard.ok === true &&
     trimOrNull(guard.reason) === "V2_FIRESTORE_COST_GUARD_PASS" &&
@@ -817,6 +828,11 @@ function hasFirestoreCostGuard(summary) {
     estimatedReads <= Number(thresholds.max_total_estimated_reads) &&
     Number.isFinite(collectorQueryLimitTotal) &&
     collectorQueryLimitTotal <= Number(thresholds.max_collector_query_limit_total) &&
+    (!billingMetricRequired || (
+      billingMetricRows.length > 0 &&
+      Number.isFinite(billingReadOpsTotal) &&
+      billingReadOpsTotal <= Number(thresholds.max_billing_read_ops)
+    )) &&
     Number(guard.blocker_n || 0) === 0 &&
     ensureArray(guard.blockers).length === 0
   );

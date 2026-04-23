@@ -205,6 +205,33 @@ async function missingExecutionPermitBlocksBeforeKernel() {
   assert.deepStrictEqual(calls, []);
 }
 
+async function expiredExecutionPermitBlocksRetryBeforeKernel() {
+  const calls = [];
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle, {
+    issuedAt: "2026-04-21T06:00:00.000Z",
+    ttlMinutes: 5,
+  });
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    runEntryKernel: async () => {
+      calls.push("kernel");
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push("persist");
+      return { ok: true };
+    },
+    now: () => "2026-04-21T06:06:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_PERMIT_BLOCKED");
+  assert.ok(result.executionPermitValidation.failed_check_ids.includes("PERMIT_NOT_EXPIRED"));
+  assert.deepStrictEqual(calls, []);
+}
+
 async function kernelBlockDoesNotBecomeRouteSuccess() {
   const calls = [];
   const bundle = buildBundle();
@@ -282,6 +309,7 @@ async function main() {
   await canaryRouteExecutesOnlyThroughKernelAndPersistsAudit();
   await liveDecisionIsBlockedWhenRuntimeIsCanaryOnly();
   await missingExecutionPermitBlocksBeforeKernel();
+  await expiredExecutionPermitBlocksRetryBeforeKernel();
   await kernelBlockDoesNotBecomeRouteSuccess();
   await tamperedKernelExecutionLineageBlocksRouteSuccess();
   await auditLedgerFailureDoesNotLookSuccessful();

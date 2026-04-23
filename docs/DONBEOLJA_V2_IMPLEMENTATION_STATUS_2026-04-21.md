@@ -2936,3 +2936,37 @@ V1 약점 재발 방지:
 5. `submit-v2-promotion-cloudbuild` 의 LIVE approval contract에도 `performance_gate_required`, `firestore_cost_guard_required` 를 추가했다. submit wrapper가 deploy decision의 해당 fields를 approval evidence source로 추적한다.
 6. `productionCutoverGuard` 의 legacy webhook 기본 차단값을 `DONBEOLJA_V2_ENABLED=true` 로 강화했다. 이제 canary-only 상태에서도 명시 env가 누락되면 legacy `/webhook/signal` 은 기본 차단된다.
 7. 현재 `sample_n=0` 이므로 이 변경은 LIVE 승격을 더 강하게 막는 방향이다. 초소액 discovery live canary를 열더라도 별도 capped discovery contract 없이는 `LIVE_READY` 로 승격하지 않는다.
+
+## 2026-04-23 감사 잔여 지적 보강 완료
+
+### 완료한 구조 보강
+
+1. TP1 partial fill ordering을 V2 reducer에서 직접 처리한다. `TP1_CONFIRMED` fill이 목표 수량보다 작으면 `TP1_PARTIAL_FILL_ACCUMULATED` 로 projection의 `tp1_filled_qty_abs` 만 누적하고 canonical `TP1_REACHED` transition/alert는 발생시키지 않는다. 목표 수량 초과는 `TP1_FILL_QTY_OVER_TARGET` 로 fail-closed 한다.
+2. `exitFillIngestion` 은 reducer의 partial 결과를 duplicate로 오분류하지 않고 `partial:true`, `transition:null`, `alert:null` 로 반환한다. split fill의 두 번째 체결이 목표 수량을 채울 때만 TP1 canonical transition과 alert가 생성된다.
+3. production entry route는 permit TTL이 만료된 재시도 상황에서 kernel 호출 전 `PERMIT_NOT_EXPIRED` 로 차단되는 테스트를 `test:v2-core-invariants` 에 포함했다.
+4. Firestore cost guard는 기존 artifact estimate 외에 Cloud Monitoring/Billing read metric JSON 입력을 지원한다. `V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC=1` 일 때 metric row가 없으면 `FIRESTORE_COST_GUARD:BILLING_METRIC_REQUIRED`, read ops 초과 시 `FIRESTORE_COST_GUARD:BILLING_READ_OPS_EXCEEDED` 로 차단한다.
+5. repair delegated executor는 `PROTECTION_WRITER_LEASE` 검증 후 같은 executor 인스턴스 안에서 동일 `position_cycle_id:command_type` 동시 write를 `PROTECTION_WRITER_LEASE_CONCURRENT_WRITE` 로 fail-closed 한다. command type drift는 `PROTECTION_WRITER_LEASE_COMMAND_TYPE_MISMATCH` 테스트로 고정했다.
+6. OpenClaw learner shadow summary는 realized outcome의 `MODEL_ERROR` drift를 promotion evidence에 노출한다. `model_error_rate > max_model_error_rate` 는 `OPENCLAW_LEARNER_MODEL_ERROR_DRIFT_BLOCKED` 로 OpenClaw supreme closed-loop를 차단한다.
+7. unified promotion report는 learner model outcome stats와 Firestore billing metric stats를 같이 노출한다.
+
+### 검증 결과
+
+- `node src/tests/v2-canonical-exit-reducer.test.js` PASS
+- `node src/tests/v2-exit-fill-ingestion.test.js` PASS
+- `node src/tests/v2-production-entry-route.test.js` PASS
+- `node src/tests/v2-firestore-cost-guard.test.js` PASS
+- `node src/tests/v2-repair-delegated-executor.test.js` PASS
+- `node src/tests/v2-openclaw-supreme-control-plane.test.js` PASS
+- `node src/tests/check-v2-promotion-deploy-decision.test.js` PASS
+- `node src/tests/check-v2-live-evidence-readiness.test.js` PASS
+- `npm run test:v2-core-invariants` PASS
+- `npm run test:v2-profit-cost-guards` PASS
+- `node scripts/check-v2-production-runtime-chain.js` PASS (`check_n=15`)
+- `npm run test:v2-promotion` PASS (`check_n=89`)
+
+### 아직 운영 증거가 필요한 항목
+
+1. 24시간 Firestore-backed entry/exit/repair canary streak는 시간이 지나야 충족된다. 코드상 gate는 유지하며, coverage 미달이면 계속 BLOCK한다.
+2. performance gate는 realized outcome sample이 0이면 LIVE를 계속 BLOCK한다. 이는 코드 결함이 아니라 수익성 증거 대기 상태다.
+3. 실제 Cloud Monitoring/Billing read metric은 운영 환경에서 artifact로 주입해야 한다. metric required mode를 켜면 누락/초과가 hard blocker가 된다.
+4. 실제 legacy scheduler job 비활성화 여부는 GCP Scheduler runtime state로 확인해야 한다. scheduler cutover checker는 active legacy tick이 있으면 계속 BLOCK한다.

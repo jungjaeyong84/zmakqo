@@ -212,6 +212,30 @@ function buildFullProtectionDelegatedRepair() {
   assert.strictEqual(result.writerLease.command_type, "PLACE_OR_REPLACE_FULL_PROTECTION");
 })();
 
+(function validationRejectsWriterLeaseCommandTypeDrift() {
+  const delegatedRepair = buildTp1DelegatedRepair();
+  let err = null;
+  try {
+    validateDelegatedRepair({
+      ...delegatedRepair,
+      envelope: {
+        ...delegatedRepair.envelope,
+        writer_delegation: {
+          ...delegatedRepair.envelope.writer_delegation,
+          writer_lease: {
+            ...delegatedRepair.envelope.writer_delegation.writer_lease,
+            command_type: "REFRESH_NATIVE_STOP",
+          },
+        },
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "PROTECTION_WRITER_LEASE_COMMAND_TYPE_MISMATCH");
+})();
+
 (function tp1RepairRejectsMissingTargetPriceInsteadOfUsingQuantityAsPrice() {
   let err = null;
   try {
@@ -243,6 +267,7 @@ function buildFullProtectionDelegatedRepair() {
 (async function refreshNativeStopUsesInjectedTransportAndFinalizesRuntime() {
   const delegatedRepair = buildRefreshDelegatedRepair();
   const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: new Set(),
     recordedAt: "2026-04-21T05:00:02.000Z",
     transports: {
       refreshNativeStop: async ({ command }) => {
@@ -266,6 +291,7 @@ function buildFullProtectionDelegatedRepair() {
 (async function missingRefreshTransportReturnsFailedWriteResult() {
   const delegatedRepair = buildRefreshDelegatedRepair();
   const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: new Set(),
     transports: {},
   });
   const result = await executor({ delegatedRepair });
@@ -277,6 +303,7 @@ function buildFullProtectionDelegatedRepair() {
 (async function refreshTransportThrowIsPersistableFailureReason() {
   const delegatedRepair = buildRefreshDelegatedRepair();
   const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: new Set(),
     transports: {
       refreshNativeStop: async () => {
         throw new Error("BINANCE_TRANSPORT_CONTEXT_REQUIRED");
@@ -291,6 +318,7 @@ function buildFullProtectionDelegatedRepair() {
 (async function tp1RepairUsesExplicitProtectionWriterTransportAndFinalizesRuntime() {
   const delegatedRepair = buildTp1DelegatedRepair();
   const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: new Set(),
     recordedAt: "2026-04-21T05:20:02.000Z",
     transports: {
       placeOrReplaceTp1: async ({ command }) => {
@@ -316,6 +344,7 @@ function buildFullProtectionDelegatedRepair() {
 (async function missingTp1TransportReturnsFailedWriteResult() {
   const delegatedRepair = buildTp1DelegatedRepair();
   const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: new Set(),
     transports: {},
   });
   const result = await executor({ delegatedRepair });
@@ -327,6 +356,7 @@ function buildFullProtectionDelegatedRepair() {
 (async function fullProtectionRepairUsesExplicitWriterTransportAndFinalizesRuntime() {
   const delegatedRepair = buildFullProtectionDelegatedRepair();
   const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: new Set(),
     recordedAt: "2026-04-21T05:30:02.000Z",
     transports: {
       placeOrReplaceFullProtection: async ({ command }) => {
@@ -363,12 +393,43 @@ function buildFullProtectionDelegatedRepair() {
 (async function missingFullProtectionTransportReturnsFailedWriteResult() {
   const delegatedRepair = buildFullProtectionDelegatedRepair();
   const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: new Set(),
     transports: {},
   });
   const result = await executor({ delegatedRepair });
   assert.strictEqual(result.writeDecision.ok, false);
   assert.strictEqual(result.writeDecision.runtime_write_reason, "REPAIR_TRANSPORT_MISSING");
   assert.deepStrictEqual(result.writeDecision.placement_issue_codes, ["UNPROTECTED_ACTIVE_POSITION"]);
+})();
+
+(async function concurrentSameLeaseRepairIsFailClosed() {
+  const delegatedRepair = buildTp1DelegatedRepair();
+  const registry = new Set();
+  const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: registry,
+    recordedAt: "2026-04-21T05:40:02.000Z",
+    transports: {
+      placeOrReplaceTp1: async ({ command }) => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return {
+          status: "PLACED",
+          order_id: `TP1__${command.placement_attempt_id}`,
+          trigger_price: command.trigger_price,
+          ack_at: "2026-04-21T05:40:01.000Z",
+        };
+      },
+    },
+  });
+  const results = await Promise.all([
+    executor({ delegatedRepair }),
+    executor({ delegatedRepair }),
+  ]);
+  const reasons = results.map((row) => row.writeDecision.runtime_write_reason).sort();
+  assert.deepStrictEqual(reasons, [
+    "PROTECTION_WRITER_LEASE_CONCURRENT_WRITE",
+    "TP1_REPAIRED",
+  ]);
+  assert.strictEqual(registry.size, 0);
 })();
 
 console.log("V2_REPAIR_DELEGATED_EXECUTOR_TEST_OK");

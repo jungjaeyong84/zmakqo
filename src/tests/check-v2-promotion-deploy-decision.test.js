@@ -116,6 +116,13 @@ function buildBoundedRuntimeSummaryFixture() {
         shadow_only_n: 1,
         live_applied_n: 0,
         stale_evaluation_n: 0,
+        model_win_n: 1,
+        expected_blocked_loss_n: 0,
+        model_ok_n: 1,
+        model_error_n: 0,
+        decisive_outcome_n: 1,
+        model_error_rate: 0,
+        max_model_error_rate: 0.5,
         max_evaluation_age_minutes: 1440,
         max_observed_evaluation_age_minutes: 1,
         latest_evaluated_at: "2026-04-22T00:01:00.000Z",
@@ -2429,6 +2436,42 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__OPENCLAW_STALE_LEARNER",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED"));
+})();
+
+(function liveOpenClawSupremeModelErrorDriftFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__OPENCLAW_MODEL_DRIFT");
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.ok = false;
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.model_win_n = 0;
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.model_error_n = 1;
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.decisive_outcome_n = 1;
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.model_error_rate = 1;
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.max_model_error_rate = 0.5;
+  bounded.openclaw_supreme_control_plane_summary.learner_shadow_summary.blockers = [
+    "OPENCLAW_LEARNER_MODEL_ERROR_DRIFT_BLOCKED",
+  ];
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__OPENCLAW_MODEL_DRIFT",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__OPENCLAW_MODEL_DRIFT",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__OPENCLAW_MODEL_DRIFT",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,

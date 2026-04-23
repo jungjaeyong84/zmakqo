@@ -66,6 +66,70 @@ function buildProtectedBaseLong() {
   assert.strictEqual(reduced.nextProjection.runner_remaining_qty_abs, 0.5);
 })();
 
+(function tp1PartialFillsAccumulateUntilTargetWithoutTransition() {
+  const base = buildBaseLong();
+  const first = reduceCanonicalExit({
+    positionCycle: base.positionCycle,
+    projection: base.projection,
+    evidence: {
+      kind: "TP1_CONFIRMED",
+      positionCycleId: base.positionCycle.position_cycle_id,
+      sourceFillId: "FILL__TP1__PARTIAL_A",
+      sourceOrderId: "ORDER__TP1__PARTIAL",
+      fillQtyAbs: 0.2,
+      fillPrice: 2033.6,
+    },
+  });
+  assert.strictEqual(first.partial, true);
+  assert.strictEqual(first.reason, "TP1_PARTIAL_FILL_ACCUMULATED");
+  assert.strictEqual(first.transition, null);
+  assert.strictEqual(first.nextProjection.stage, "PRE_TP1");
+  assert.strictEqual(first.nextProjection.tp1_done, false);
+  assert.strictEqual(first.nextProjection.tp1_filled_qty_abs, 0.2);
+  assert.strictEqual(first.nextProjection.runner_remaining_qty_abs, 0.8);
+
+  const second = reduceCanonicalExit({
+    positionCycle: base.positionCycle,
+    projection: first.nextProjection,
+    evidence: {
+      kind: "TP1_CONFIRMED",
+      positionCycleId: base.positionCycle.position_cycle_id,
+      sourceFillId: "FILL__TP1__PARTIAL_B",
+      sourceOrderId: "ORDER__TP1__PARTIAL",
+      fillQtyAbs: 0.3,
+      fillPrice: 2033.6,
+    },
+  });
+  assert.strictEqual(second.partial, undefined);
+  assert.strictEqual(second.transition.transition_event, "TP1_REACHED");
+  assert.strictEqual(second.nextProjection.stage, "TP1_DONE");
+  assert.strictEqual(second.nextProjection.tp1_filled_qty_abs, 0.5);
+  assert.strictEqual(second.nextProjection.runner_remaining_qty_abs, 0.5);
+})();
+
+(function tp1OverfillIsRejectedInsteadOfSilentlyPromoted() {
+  const base = buildBaseLong();
+  let err = null;
+  try {
+    reduceCanonicalExit({
+      positionCycle: base.positionCycle,
+      projection: base.projection,
+      evidence: {
+        kind: "TP1_CONFIRMED",
+        positionCycleId: base.positionCycle.position_cycle_id,
+        sourceFillId: "FILL__TP1__OVERFILL",
+        sourceOrderId: "ORDER__TP1__OVERFILL",
+        fillQtyAbs: 0.6,
+        fillPrice: 2033.6,
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "TP1_FILL_QTY_OVER_TARGET");
+})();
+
 (function tp1ProtectionGateAcceptsOnlyFullyProtectedActiveCycle() {
   const base = buildProtectedBaseLong();
   assert.strictEqual(assertTp1ProtectionGate({

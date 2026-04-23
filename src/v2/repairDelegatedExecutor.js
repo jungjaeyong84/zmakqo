@@ -7,6 +7,8 @@ const {
   finalizeFullProtectionRepairPlacement,
 } = require("./protectionWriter");
 
+const activeProtectionWriterLeaseSlots = new Set();
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -114,6 +116,31 @@ function validateDelegatedRepair(delegatedRepair) {
       ? envelope.repair_command
       : null,
   });
+}
+
+function buildProtectionWriterLeaseConcurrencyKey(validated) {
+  const row = validated && typeof validated === "object" ? validated : {};
+  const lease = row.writerLease && typeof row.writerLease === "object" ? row.writerLease : null;
+  const cycleId = trimOrNull(lease && lease.position_cycle_id);
+  const commandType = upper(lease && lease.command_type);
+  if (!cycleId || !commandType) throw new Error("PROTECTION_WRITER_LEASE_CONCURRENCY_KEY_INVALID");
+  return `${cycleId}:${commandType}`;
+}
+
+function acquireProtectionWriterLeaseSlot({ registry, key }) {
+  if (!registry) return () => {};
+  if (typeof registry.acquire === "function" && typeof registry.release === "function") {
+    if (registry.acquire(key) !== true) {
+      throw new Error("PROTECTION_WRITER_LEASE_CONCURRENT_WRITE");
+    }
+    return () => registry.release(key);
+  }
+  if (typeof registry.has !== "function" || typeof registry.add !== "function" || typeof registry.delete !== "function") {
+    throw new Error("PROTECTION_WRITER_LEASE_REGISTRY_INVALID");
+  }
+  if (registry.has(key)) throw new Error("PROTECTION_WRITER_LEASE_CONCURRENT_WRITE");
+  registry.add(key);
+  return () => registry.delete(key);
 }
 
 async function executeRefreshNativeStopRepair({
@@ -289,14 +316,60 @@ function buildDelegatedRepairExecutor({
   env = process.env,
   db = null,
   recordedAt = null,
+  writerLeaseRegistry = activeProtectionWriterLeaseSlots,
 } = {}) {
   return async function executeDelegatedRepair({ delegatedRepair } = {}) {
     const validated = validateDelegatedRepair(delegatedRepair);
     const commandType = upper(validated.delegation.command && validated.delegation.command.command_type)
       || upper(validated.repairCommand && validated.repairCommand.command_type)
       || upper(validated.delegation.action_required);
-    if (commandType === "REFRESH_NATIVE_STOP") {
-      return executeRefreshNativeStopRepair({
+    let releaseSlot = null;
+    try {
+      releaseSlot = acquireProtectionWriterLeaseSlot({
+        registry: writerLeaseRegistry,
+        key: buildProtectionWriterLeaseConcurrencyKey(validated),
+      });
+    } catch (error) {
+      return buildFailedProtectionWriteResult({
+        delegatedRepair,
+        reason: error && error.message ? error.message : "PROTECTION_WRITER_LEASE_CONCURRENT_WRITE",
+      });
+    }
+    try {
+      if (commandType === "REFRESH_NATIVE_STOP") {
+        return await executeRefreshNativeStopRepair({
+          delegatedRepair,
+          envelope: validated.envelope,
+          delegation: validated.delegation,
+          transports,
+          env,
+          db,
+          recordedAt,
+        });
+      }
+      if (commandType === "PLACE_OR_REPLACE_TP1") {
+        return await executePlaceOrReplaceTp1Repair({
+          delegatedRepair,
+          envelope: validated.envelope,
+          delegation: validated.delegation,
+          transports,
+          env,
+          db,
+          recordedAt,
+        });
+      }
+      if (commandType === "PLACE_OR_REPLACE_FULL_PROTECTION") {
+        return await executePlaceOrReplaceFullProtectionRepair({
+          delegatedRepair,
+          envelope: validated.envelope,
+          delegation: validated.delegation,
+          transports,
+          env,
+          db,
+          recordedAt,
+        });
+      }
+      return await executeGenericProtectionRepair({
         delegatedRepair,
         envelope: validated.envelope,
         delegation: validated.delegation,
@@ -305,38 +378,9 @@ function buildDelegatedRepairExecutor({
         db,
         recordedAt,
       });
+    } finally {
+      if (typeof releaseSlot === "function") releaseSlot();
     }
-    if (commandType === "PLACE_OR_REPLACE_TP1") {
-      return executePlaceOrReplaceTp1Repair({
-        delegatedRepair,
-        envelope: validated.envelope,
-        delegation: validated.delegation,
-        transports,
-        env,
-        db,
-        recordedAt,
-      });
-    }
-    if (commandType === "PLACE_OR_REPLACE_FULL_PROTECTION") {
-      return executePlaceOrReplaceFullProtectionRepair({
-        delegatedRepair,
-        envelope: validated.envelope,
-        delegation: validated.delegation,
-        transports,
-        env,
-        db,
-        recordedAt,
-      });
-    }
-    return executeGenericProtectionRepair({
-      delegatedRepair,
-      envelope: validated.envelope,
-      delegation: validated.delegation,
-      transports,
-      env,
-      db,
-      recordedAt,
-    });
   };
 }
 
@@ -348,6 +392,8 @@ module.exports = {
     trimOrNull,
     upper,
     stableCode,
+    buildProtectionWriterLeaseConcurrencyKey,
+    acquireProtectionWriterLeaseSlot,
     executeRefreshNativeStopRepair,
     executePlaceOrReplaceTp1Repair,
     executePlaceOrReplaceFullProtectionRepair,

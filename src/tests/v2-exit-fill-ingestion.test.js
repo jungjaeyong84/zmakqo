@@ -90,6 +90,86 @@ function buildBaseLong() {
   assert.strictEqual(result.alert.outbox.canonical_transition_id, result.transition.canonical_transition_id);
 })();
 
+(function splitTp1FillsAccumulateBeforeAlertingCanonicalTp1() {
+  const base = buildBaseLong();
+  const first = reduceV2ExitFill({
+    positionCycle: base.positionCycle,
+    projection: base.projection,
+    protectionRuntime: base.protectionRuntime,
+    exitFill: {
+      exit_kind: "TP1",
+      source_fill_id: "FILL__TP1__SPLIT_A",
+      source_order_id: "ORDER__TP1__SPLIT",
+      fill_qty_abs: 0.2,
+      fill_price: 2033.6,
+      observed_at: "2026-04-21T06:00:00.000Z",
+    },
+  });
+  assert.strictEqual(first.ok, true);
+  assert.strictEqual(first.partial, true);
+  assert.strictEqual(first.duplicate, false);
+  assert.strictEqual(first.reason, "TP1_PARTIAL_FILL_ACCUMULATED");
+  assert.strictEqual(first.transition, null);
+  assert.strictEqual(first.alert, null);
+  assert.strictEqual(first.nextProjection.stage, "PRE_TP1");
+  assert.strictEqual(first.nextProjection.tp1_filled_qty_abs, 0.2);
+
+  const second = reduceV2ExitFill({
+    positionCycle: base.positionCycle,
+    projection: first.nextProjection,
+    protectionRuntime: base.protectionRuntime,
+    exitFill: {
+      exit_kind: "TP1",
+      source_fill_id: "FILL__TP1__SPLIT_B",
+      source_order_id: "ORDER__TP1__SPLIT",
+      fill_qty_abs: 0.3,
+      fill_price: 2033.6,
+      observed_at: "2026-04-21T06:00:02.000Z",
+    },
+  });
+  assert.strictEqual(second.ok, true);
+  assert.strictEqual(second.partial, undefined);
+  assert.strictEqual(second.transition.transition_event, "TP1_REACHED");
+  assert.strictEqual(second.nextProjection.stage, "TP1_DONE");
+  assert.strictEqual(second.nextProjection.tp1_filled_qty_abs, 0.5);
+  assert.strictEqual(second.alert.ok, true);
+})();
+
+(function tp1SplitOverfillIsRejected() {
+  const base = buildBaseLong();
+  const first = reduceV2ExitFill({
+    positionCycle: base.positionCycle,
+    projection: base.projection,
+    protectionRuntime: base.protectionRuntime,
+    exitFill: {
+      exit_kind: "TP1",
+      source_fill_id: "FILL__TP1__OVER_A",
+      source_order_id: "ORDER__TP1__OVER",
+      fill_qty_abs: 0.2,
+      fill_price: 2033.6,
+    },
+  });
+  let err = null;
+  try {
+    reduceV2ExitFill({
+      positionCycle: base.positionCycle,
+      projection: first.nextProjection,
+      protectionRuntime: base.protectionRuntime,
+      exitFill: {
+        exit_kind: "TP1",
+        source_fill_id: "FILL__TP1__OVER_B",
+        source_order_id: "ORDER__TP1__OVER",
+        fill_qty_abs: 0.4,
+        fill_price: 2033.6,
+      },
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "TP1_FILL_QTY_OVER_TARGET");
+})();
+
 (function tp1FillRequiresHealthyNativeProtectionRuntime() {
   const base = buildBaseLong();
   let err = null;

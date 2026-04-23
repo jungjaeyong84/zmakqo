@@ -108,12 +108,21 @@ function evaluateOpenClawLearnerShadowPromotionReadiness(summary) {
   const shadowOnlyN = Number(row && row.shadow_only_n);
   const liveAppliedN = Number(row && row.live_applied_n);
   const staleN = Number(row && row.stale_evaluation_n);
+  const decisiveOutcomeN = Number(row && row.decisive_outcome_n);
+  const modelErrorRate = Number(row && row.model_error_rate);
+  const maxModelErrorRate = Number(row && row.max_model_error_rate);
   const blockers = [];
   if (!row) blockers.push("LEARNER_SHADOW_SUMMARY_REQUIRED");
   if (!(Number.isFinite(evalN) && evalN > 0)) blockers.push("LEARNER_SHADOW_EVALUATION_REQUIRED");
   if (!(Number.isFinite(shadowOnlyN) && shadowOnlyN === evalN)) blockers.push("LEARNER_SHADOW_ONLY_COVERAGE_REQUIRED");
   if (!(Number.isFinite(liveAppliedN) && liveAppliedN === 0)) blockers.push("LEARNER_LIVE_APPLICATION_FORBIDDEN");
   if (!(Number.isFinite(staleN) && staleN === 0)) blockers.push("LEARNER_STALE_EVALUATION_BLOCKED");
+  if (Number.isFinite(decisiveOutcomeN) || Number.isFinite(modelErrorRate) || Number.isFinite(maxModelErrorRate)) {
+    if (!(Number.isFinite(decisiveOutcomeN) && decisiveOutcomeN > 0)) blockers.push("LEARNER_DECISIVE_OUTCOME_REQUIRED");
+    if (!(Number.isFinite(modelErrorRate) && Number.isFinite(maxModelErrorRate) && modelErrorRate <= maxModelErrorRate)) {
+      blockers.push("LEARNER_MODEL_ERROR_DRIFT_BLOCKED");
+    }
+  }
   return Object.freeze({
     ok: blockers.length === 0,
     reason: blockers.length === 0 ? "OPENCLAW_LEARNER_SHADOW_READY" : "OPENCLAW_LEARNER_SHADOW_BLOCKED",

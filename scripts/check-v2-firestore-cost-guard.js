@@ -18,6 +18,12 @@ function readJsonIfExists(filePath) {
   return JSON.parse(fs.readFileSync(path.resolve(file), "utf8"));
 }
 
+function readJsonEnv(value) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  return JSON.parse(text);
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -43,10 +49,14 @@ function loadInputs(env = process.env) {
     trimOrNull(env.V2_FIRESTORE_COST_GUARD_ENTRY_STREAK_FILE) || path.resolve("ops", "daily", "v2_production_entry_route_canary_streak_latest.json"),
     trimOrNull(env.V2_FIRESTORE_COST_GUARD_EXIT_STREAK_FILE) || path.resolve("ops", "daily", "v2_exit_runtime_canary_streak_latest.json"),
   ];
+  const billingMetricFile = trimOrNull(env.V2_FIRESTORE_COST_GUARD_BILLING_METRIC_FILE);
+  const billingMetric = readJsonEnv(env.V2_FIRESTORE_COST_GUARD_BILLING_METRIC_JSON)
+    || readJsonIfExists(billingMetricFile);
   return Object.freeze({
     unifiedReport: readJsonIfExists(unifiedFile),
     artifacts: artifactFiles.map(readJsonIfExists).filter(Boolean),
-    input_files: Object.freeze([unifiedFile, ...artifactFiles]),
+    billingMetric,
+    input_files: Object.freeze([unifiedFile, ...artifactFiles, billingMetricFile].filter(Boolean)),
   });
 }
 
@@ -57,6 +67,7 @@ function main(env = process.env) {
     ...evaluateFirestoreCostGuard({
       unifiedReport: inputs.unifiedReport,
       artifacts: inputs.artifacts,
+      billingMetric: inputs.billingMetric,
       thresholds: resolveFirestoreCostThresholds(env),
     }),
     generated_at: new Date().toISOString(),
@@ -70,6 +81,8 @@ function main(env = process.env) {
     reason: payload.reason,
     estimated_total_reads: payload.estimated_total_reads,
     collector_query_limit_total: payload.collector_query_limit_total,
+    billing_metric_required: payload.billing_metric_required,
+    billing_read_ops_total: payload.billing_read_ops_total,
     blockers: payload.blockers,
     output_file: outputFile,
   });
@@ -89,5 +102,5 @@ if (require.main === module) {
     process.exit(1);
   }
 } else {
-  module.exports = { main, loadInputs, __test: { resolveArtifactDir, resolveOutputFile, readJsonIfExists } };
+  module.exports = { main, loadInputs, __test: { resolveArtifactDir, resolveOutputFile, readJsonIfExists, readJsonEnv } };
 }

@@ -161,10 +161,29 @@ function reduceCanonicalExit({
     const fillQtyAbs = ev.fillQtyAbs;
     if (!(fillQtyAbs > 0)) throw new Error("TP1_FILL_QTY_REQUIRED");
     const nextFilledQtyAbs = Number((current.tp1FilledQtyAbs + fillQtyAbs).toFixed(8));
-    if (Math.abs(nextFilledQtyAbs - current.tp1TargetQtyAbs) > EPSILON) {
-      throw new Error("TP1_FILL_QTY_MUST_CLOSE_TARGET");
+    if (nextFilledQtyAbs > current.tp1TargetQtyAbs + EPSILON) {
+      throw new Error("TP1_FILL_QTY_OVER_TARGET");
     }
     const nextRunnerRemainingQtyAbs = Number((current.entryQtyAbs - nextFilledQtyAbs).toFixed(8));
+    if (nextFilledQtyAbs < current.tp1TargetQtyAbs - EPSILON) {
+      const nextProjection = buildProjectionFromPatch(projection, {
+        ...projection,
+        stage: "PRE_TP1",
+        tp1_done: false,
+        trail_active: false,
+        tp1_filled_qty_abs: nextFilledQtyAbs,
+        runner_remaining_qty_abs: nextRunnerRemainingQtyAbs,
+        health_status: "HEALTHY",
+      });
+      return Object.freeze({
+        ok: true,
+        duplicate: false,
+        partial: true,
+        reason: "TP1_PARTIAL_FILL_ACCUMULATED",
+        transition: null,
+        nextProjection,
+      });
+    }
     const ledgerPatch = {
       tp1_filled_qty_abs: nextFilledQtyAbs,
       runner_remaining_qty_abs: nextRunnerRemainingQtyAbs,
