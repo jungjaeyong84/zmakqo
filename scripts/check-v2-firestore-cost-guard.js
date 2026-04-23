@@ -6,6 +6,7 @@ const path = require("path");
 const { evaluateFirestoreCostGuard, resolveFirestoreCostThresholds } = require("../src/v2/firestoreCostGuard");
 
 const OUTPUT_FILENAME = "v2_firestore_cost_guard_latest.json";
+const BILLING_METRIC_FILENAME = "v2_firestore_billing_metric_latest.json";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -49,7 +50,8 @@ function loadInputs(env = process.env) {
     trimOrNull(env.V2_FIRESTORE_COST_GUARD_ENTRY_STREAK_FILE) || path.resolve("ops", "daily", "v2_production_entry_route_canary_streak_latest.json"),
     trimOrNull(env.V2_FIRESTORE_COST_GUARD_EXIT_STREAK_FILE) || path.resolve("ops", "daily", "v2_exit_runtime_canary_streak_latest.json"),
   ];
-  const billingMetricFile = trimOrNull(env.V2_FIRESTORE_COST_GUARD_BILLING_METRIC_FILE);
+  const billingMetricFile = trimOrNull(env.V2_FIRESTORE_COST_GUARD_BILLING_METRIC_FILE)
+    || path.resolve("ops", "daily", BILLING_METRIC_FILENAME);
   const billingMetric = readJsonEnv(env.V2_FIRESTORE_COST_GUARD_BILLING_METRIC_JSON)
     || readJsonIfExists(billingMetricFile);
   return Object.freeze({
