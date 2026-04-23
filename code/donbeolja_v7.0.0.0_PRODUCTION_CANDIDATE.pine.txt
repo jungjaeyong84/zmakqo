@@ -20,10 +20,11 @@ htf_tf = input.timeframe("240", "HTF regime timeframe", group = grp_regime)
 trend_min_adx = input.float(20.0, "Trend ADX min", minval = 1.0, maxval = 60.0, step = 0.5, group = grp_regime)
 trend_min_alignment = input.float(0.55, "HTF alignment min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
 range_compression_min = input.float(0.72, "Range compression min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
-setup_quality_min = input.float(0.60, "Setup quality min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
+setup_quality_min = input.float(0.50, "Setup quality min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
 trigger_body_min = input.float(0.45, "Trigger body ratio min", minval = 0.05, maxval = 1.0, step = 0.01, group = grp_regime)
 min_rsi_long = input.float(52.0, "LONG RSI min", minval = 40.0, maxval = 70.0, step = 0.5, group = grp_regime)
 max_rsi_short = input.float(48.5, "SHORT RSI max", minval = 30.0, maxval = 60.0, step = 0.5, group = grp_regime)
+volume_trigger_z_min = input.float(0.35, "Trigger volume z min", minval = -1.0, maxval = 5.0, step = 0.05, group = grp_regime)
 
 market_quality_min = input.float(0.50, "Market quality min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_quality)
 max_spread_bps = input.float(14.0, "Spread proxy max (bps)", minval = 0.1, maxval = 30.0, step = 0.1, group = grp_quality)
@@ -39,6 +40,7 @@ min_expected_net_r = input.float(0.25, "Expected net R after cost min", minval =
 fee_bps = input.float(4.0, "Fee estimate (bps)", minval = 0.0, maxval = 50.0, step = 0.1, group = grp_risk)
 early_score_min = input.float(45.0, "EARLY score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
 core_score_min = input.float(60.0, "CORE score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
+watch_score_min = input.float(35.0, "WATCH score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
 same_dir_cooldown_bars = input.int(8, "Same direction cooldown bars", minval = 0, maxval = 50, group = grp_risk)
 
 provider_id = input.string("BINANCEFUT", "Webhook provider", options = ["BINANCEFUT", "UPBIT"], group = grp_webhook)
@@ -158,42 +160,58 @@ recent_high = ta.highest(high, 10)[1]
 recent_low = ta.lowest(low, 10)[1]
 recent_high_3 = ta.highest(high, 3)
 recent_low_3 = ta.lowest(low, 3)
+recent_high_5 = ta.highest(high, 5)
+recent_low_5 = ta.lowest(low, 5)
 low_touch_fast_3 = ta.lowest(low, 3) <= ema_fast + atr * 0.18
 high_touch_fast_3 = ta.highest(high, 3) >= ema_fast - atr * 0.18
 close_to_fast_long = math.abs(close - ema_fast) <= atr * 0.55 or math.abs(low - ema_fast) <= atr * 0.45
 close_to_fast_short = math.abs(close - ema_fast) <= atr * 0.55 or math.abs(high - ema_fast) <= atr * 0.45
+mid_reclaim_long = ta.lowest(low, 5) <= ema_mid + atr * 0.10 and close >= ema_fast
+mid_reclaim_short = ta.highest(high, 5) >= ema_mid - atr * 0.10 and close <= ema_fast
+breakout_window_long = ta.highest(high, 4) >= recent_high - atr * 0.10
+breakout_window_short = ta.lowest(low, 4) <= recent_low + atr * 0.10
+momentum_continue_long = htf_regime != "SHORT" and ema_fast >= ema_mid and ema_mid >= ema_slow * 0.992 and close >= ema_fast and close >= close[1] and recent_low_5 <= ema_fast + atr * 0.35 and macd_hist >= macd_hist[1] - 0.02 and price_position >= 0.42
+momentum_continue_short = htf_regime != "LONG" and ema_fast <= ema_mid and ema_mid <= ema_slow * 1.008 and close <= ema_fast and close <= close[1] and recent_high_5 >= ema_fast - atr * 0.35 and macd_hist <= macd_hist[1] + 0.02 and price_position <= 0.58
 
 reclaim_strength_long = f_clamp01(0.45 * (low <= ema_fast ? 1.0 : 0.0) + 0.30 * close_pos_in_bar + 0.25 * (close > ema_fast ? 1.0 : 0.0))
 reclaim_strength_short = f_clamp01(0.45 * (high >= ema_fast ? 1.0 : 0.0) + 0.30 * (1.0 - close_pos_in_bar) + 0.25 * (close < ema_fast ? 1.0 : 0.0))
 
-pullback_reclaim_long = htf_regime != "SHORT" and structural_regime != "RANGE" and close > ema_fast and ema_fast >= ema_mid * 0.995 and (low <= ema_fast or low_touch_fast_3 or close_to_fast_long) and price_position >= 0.24 and price_position <= 0.82 and reclaim_strength_long >= 0.52
-pullback_reclaim_short = htf_regime != "LONG" and structural_regime != "RANGE" and close < ema_fast and ema_fast <= ema_mid * 1.005 and (high >= ema_fast or high_touch_fast_3 or close_to_fast_short) and price_position <= 0.76 and price_position >= 0.18 and reclaim_strength_short >= 0.52
+pullback_reclaim_long = htf_regime != "SHORT" and close > ema_fast and ema_fast >= ema_mid * 0.995 and (low <= ema_fast or low_touch_fast_3 or close_to_fast_long or mid_reclaim_long) and price_position >= 0.18 and price_position <= 0.86 and reclaim_strength_long >= 0.48
+pullback_reclaim_short = htf_regime != "LONG" and close < ema_fast and ema_fast <= ema_mid * 1.005 and (high >= ema_fast or high_touch_fast_3 or close_to_fast_short or mid_reclaim_short) and price_position <= 0.82 and price_position >= 0.14 and reclaim_strength_short >= 0.48
 
-breakout_retest_long = htf_regime != "SHORT" and recent_high_3 > recent_high and close >= recent_high - atr * 0.12 and body_ratio >= trigger_body_min * 0.80 and close > ema_fast
-breakout_retest_short = htf_regime != "LONG" and recent_low_3 < recent_low and close <= recent_low + atr * 0.12 and body_ratio >= trigger_body_min * 0.80 and close < ema_fast
+breakout_retest_long = htf_regime != "SHORT" and breakout_window_long and close >= recent_high - atr * 0.15 and body_ratio >= trigger_body_min * 0.65 and close > ema_fast
+breakout_retest_short = htf_regime != "LONG" and breakout_window_short and close <= recent_low + atr * 0.15 and body_ratio >= trigger_body_min * 0.65 and close < ema_fast
 
-setup_type_long = pullback_reclaim_long ? "PULLBACK_RECLAIM" : breakout_retest_long ? "BREAKOUT_RETEST" : "NONE"
-setup_type_short = pullback_reclaim_short ? "PULLBACK_RECLAIM" : breakout_retest_short ? "BREAKOUT_RETEST" : "NONE"
+setup_type_long = pullback_reclaim_long ? "PULLBACK_RECLAIM" : breakout_retest_long ? "BREAKOUT_RETEST" : momentum_continue_long ? "MOMENTUM_CONTINUATION" : "NONE"
+setup_type_short = pullback_reclaim_short ? "PULLBACK_RECLAIM" : breakout_retest_short ? "BREAKOUT_RETEST" : momentum_continue_short ? "MOMENTUM_CONTINUATION" : "NONE"
 
-setup_quality_long = pullback_reclaim_long ? f_clamp01(0.55 * reclaim_strength_long + 0.45 * trend_alignment_local) : breakout_retest_long ? f_clamp01(0.50 * body_ratio + 0.30 * f_clamp01((volume_zscore + 1.0) / 3.0) + 0.20 * trend_alignment_local) : 0.0
-setup_quality_short = pullback_reclaim_short ? f_clamp01(0.55 * reclaim_strength_short + 0.45 * trend_alignment_local) : breakout_retest_short ? f_clamp01(0.50 * body_ratio + 0.30 * f_clamp01((volume_zscore + 1.0) / 3.0) + 0.20 * trend_alignment_local) : 0.0
+setup_quality_long = pullback_reclaim_long ? f_clamp01(0.50 * reclaim_strength_long + 0.30 * trend_alignment_local + 0.20 * f_clamp01((volume_zscore + 1.0) / 3.0)) : breakout_retest_long ? f_clamp01(0.45 * body_ratio + 0.25 * f_clamp01((volume_zscore + 1.0) / 3.0) + 0.30 * trend_alignment_local) : momentum_continue_long ? f_clamp01(0.35 * trend_alignment_local + 0.25 * market_quality_score + 0.20 * body_ratio + 0.20 * close_pos_in_bar) : 0.0
+setup_quality_short = pullback_reclaim_short ? f_clamp01(0.50 * reclaim_strength_short + 0.30 * trend_alignment_local + 0.20 * f_clamp01((volume_zscore + 1.0) / 3.0)) : breakout_retest_short ? f_clamp01(0.45 * body_ratio + 0.25 * f_clamp01((volume_zscore + 1.0) / 3.0) + 0.30 * trend_alignment_local) : momentum_continue_short ? f_clamp01(0.35 * trend_alignment_local + 0.25 * market_quality_score + 0.20 * body_ratio + 0.20 * (1.0 - close_pos_in_bar)) : 0.0
 
 //────────────────────────────────────
 // Trigger engine
 //────────────────────────────────────
-trigger_level_long = setup_type_long == "PULLBACK_RECLAIM" ? ema_fast : recent_high
-trigger_level_short = setup_type_short == "PULLBACK_RECLAIM" ? ema_fast : recent_low
+trigger_level_long = setup_type_long == "PULLBACK_RECLAIM" ? ema_fast : setup_type_long == "BREAKOUT_RETEST" ? recent_high : recent_high_3
+trigger_level_short = setup_type_short == "PULLBACK_RECLAIM" ? ema_fast : setup_type_short == "BREAKOUT_RETEST" ? recent_low : recent_low_3
 
-trigger_confirmed_long = setup_type_long != "NONE" and close > trigger_level_long and body_ratio >= trigger_body_min and close_pos_in_bar >= 0.55
-trigger_confirmed_short = setup_type_short != "NONE" and close < trigger_level_short and body_ratio >= trigger_body_min and close_pos_in_bar <= 0.45
+trigger_confirmed_long = setup_type_long != "NONE" and (
+    (close > trigger_level_long and body_ratio >= trigger_body_min * 0.75 and close_pos_in_bar >= 0.52) or
+    (close > ema_fast and reclaim_strength_long >= 0.58 and close_pos_in_bar >= 0.50 and macd_hist >= macd_hist[1]) or
+    (setup_type_long == "MOMENTUM_CONTINUATION" and close >= recent_high_3 - atr * 0.05 and body_ratio >= 0.32 and close_pos_in_bar >= 0.56 and macd_hist >= 0)
+)
+trigger_confirmed_short = setup_type_short != "NONE" and (
+    (close < trigger_level_short and body_ratio >= trigger_body_min * 0.75 and close_pos_in_bar <= 0.48) or
+    (close < ema_fast and reclaim_strength_short >= 0.58 and close_pos_in_bar <= 0.50 and macd_hist <= macd_hist[1]) or
+    (setup_type_short == "MOMENTUM_CONTINUATION" and close <= recent_low_3 + atr * 0.05 and body_ratio >= 0.32 and close_pos_in_bar <= 0.44 and macd_hist <= 0)
+)
 
-volume_trigger_ok = volume_zscore >= 1.0
+volume_trigger_ok = volume_zscore >= volume_trigger_z_min or body_ratio >= 0.58
 
 trigger_strength_long = f_clamp01(0.60 * f_clamp01((volume_zscore - 1.0) / 2.0) + 0.40 * f_clamp01((rsi_val - 55.0) / 15.0))
 trigger_strength_short = f_clamp01(0.60 * f_clamp01((volume_zscore - 1.0) / 2.0) + 0.40 * f_clamp01((45.0 - rsi_val) / 15.0))
 
-trigger_type_long = setup_type_long == "PULLBACK_RECLAIM" ? "RECLAIM" : setup_type_long == "BREAKOUT_RETEST" ? "BREAKOUT" : "NONE"
-trigger_type_short = setup_type_short == "PULLBACK_RECLAIM" ? "RECLAIM" : setup_type_short == "BREAKOUT_RETEST" ? "BREAKDOWN" : "NONE"
+trigger_type_long = setup_type_long == "PULLBACK_RECLAIM" ? "RECLAIM" : setup_type_long == "BREAKOUT_RETEST" ? "BREAKOUT" : setup_type_long == "MOMENTUM_CONTINUATION" ? "CONTINUATION" : "NONE"
+trigger_type_short = setup_type_short == "PULLBACK_RECLAIM" ? "RECLAIM" : setup_type_short == "BREAKOUT_RETEST" ? "BREAKDOWN" : setup_type_short == "MOMENTUM_CONTINUATION" ? "CONTINUATION" : "NONE"
 
 //────────────────────────────────────
 // Edge / expected value engine
@@ -239,11 +257,11 @@ edge_cohort_short = expected_net_r_short <= 0 ? "NEGATIVE_EDGE" : edge_score_sho
 // Gate evaluation
 //────────────────────────────────────
 no_trade_pass = market_quality_score >= market_quality_min and spread_proxy_bps <= max_spread_bps and mark_index_gap_proxy_bps <= max_mark_gap_bps and manual_funding_penalty_bps <= max_funding_penalty_bps
-effective_htf_alignment_min = structural_regime == "TRANSITION" ? trend_min_alignment * 0.75 : structural_regime == "RANGE" ? trend_min_alignment * 0.70 : trend_min_alignment
+effective_htf_alignment_min = structural_regime == "TRANSITION" ? trend_min_alignment * 0.70 : structural_regime == "RANGE" ? trend_min_alignment * 0.65 : trend_min_alignment
 local_long_bias = ema_fast >= ema_mid and macd_hist >= -0.02
 local_short_bias = ema_fast <= ema_mid and macd_hist <= 0.02
-htf_gate_long = (htf_regime == "LONG" or (htf_regime == "NEUTRAL" and local_long_bias)) and trend_alignment_local >= effective_htf_alignment_min
-htf_gate_short = (htf_regime == "SHORT" or (htf_regime == "NEUTRAL" and local_short_bias)) and trend_alignment_local >= effective_htf_alignment_min
+htf_gate_long = (htf_regime == "LONG" or (htf_regime == "NEUTRAL" and local_long_bias) or (setup_type_long != "NONE" and local_long_bias)) and trend_alignment_local >= effective_htf_alignment_min
+htf_gate_short = (htf_regime == "SHORT" or (htf_regime == "NEUTRAL" and local_short_bias) or (setup_type_short != "NONE" and local_short_bias)) and trend_alignment_local >= effective_htf_alignment_min
 setup_gate_long = setup_type_long != "NONE" and setup_quality_long >= setup_quality_min
 setup_gate_short = setup_type_short != "NONE" and setup_quality_short >= setup_quality_min
 rsi_long_ok = rsi_val >= min_rsi_long or macd_hist > 0
@@ -263,6 +281,13 @@ long_core_raw = long_gate_pass and signal_score_long >= core_score_min
 short_core_raw = short_gate_pass and signal_score_short >= core_score_min
 long_early_raw = long_gate_pass and signal_score_long >= early_score_min and not long_core_raw
 short_early_raw = short_gate_pass and signal_score_short >= early_score_min and not short_core_raw
+candidate_score_min = math.max(watch_score_min * 0.80, 28.0)
+long_candidate_raw = htf_gate_long and setup_gate_long and expected_edge_gate_long and signal_score_long >= candidate_score_min and not trigger_gate_long and not long_early_raw and not long_core_raw
+short_candidate_raw = htf_gate_short and setup_gate_short and expected_edge_gate_short and signal_score_short >= candidate_score_min and not trigger_gate_short and not short_early_raw and not short_core_raw
+long_watch_raw = no_trade_pass and long_candidate_raw
+short_watch_raw = no_trade_pass and short_candidate_raw
+long_probe_raw = not no_trade_pass and long_candidate_raw
+short_probe_raw = not no_trade_pass and short_candidate_raw
 
 f_gate_reason(string side, bool noTradePass, bool htfPass, bool setupPass, bool triggerPass, bool edgePass, string setupType, string triggerType, float score, bool coreRaw, bool earlyRaw) =>
     string reason = ""
@@ -303,8 +328,8 @@ if short_core_pulse or short_early_pulse
     last_short_signal_bar := bar_index
     last_short_trigger := trigger_type_short
 
-long_live_grade = long_core_pulse or long_core_raw ? "CORE" : long_early_pulse or long_early_raw ? "EARLY" : "NONE"
-short_live_grade = short_core_pulse or short_core_raw ? "CORE" : short_early_pulse or short_early_raw ? "EARLY" : "NONE"
+long_live_grade = long_core_pulse or long_core_raw ? "CORE" : long_early_pulse or long_early_raw ? "EARLY" : long_watch_raw ? "WATCH" : long_probe_raw ? "PROBE" : "NONE"
+short_live_grade = short_core_pulse or short_core_raw ? "CORE" : short_early_pulse or short_early_raw ? "EARLY" : short_watch_raw ? "WATCH" : short_probe_raw ? "PROBE" : "NONE"
 
 //────────────────────────────────────
 // Payload builders
@@ -389,6 +414,10 @@ plotshape(show_signal_shapes and long_core_pulse, title = "V7 Long Core", style 
 plotshape(show_signal_shapes and long_early_pulse, title = "V7 Long Early", style = shape.circle, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 0), text = "LE", textcolor = color.white)
 plotshape(show_signal_shapes and short_core_pulse, title = "V7 Short Core", style = shape.triangledown, location = location.abovebar, size = size.tiny, color = color.red, text = "SC", textcolor = color.white)
 plotshape(show_signal_shapes and short_early_pulse, title = "V7 Short Early", style = shape.circle, location = location.abovebar, size = size.tiny, color = color.new(color.red, 0), text = "SE", textcolor = color.white)
+plotshape(show_signal_shapes and long_watch_raw, title = "V7 Long Watch", style = shape.square, location = location.belowbar, size = size.tiny, color = color.new(color.aqua, 0), text = "LW", textcolor = color.black)
+plotshape(show_signal_shapes and short_watch_raw, title = "V7 Short Watch", style = shape.square, location = location.abovebar, size = size.tiny, color = color.new(color.orange, 0), text = "SW", textcolor = color.black)
+plotshape(show_signal_shapes and long_probe_raw, title = "V7 Long Probe", style = shape.diamond, location = location.belowbar, size = size.tiny, color = color.new(color.blue, 0), text = "LP", textcolor = color.white)
+plotshape(show_signal_shapes and short_probe_raw, title = "V7 Short Probe", style = shape.diamond, location = location.abovebar, size = size.tiny, color = color.new(color.purple, 0), text = "SP", textcolor = color.white)
 
 plot(show_quality_lines ? signal_score_long : na, title = "Long Signal Score", color = color.new(color.lime, 0), linewidth = 2)
 plot(show_quality_lines ? -signal_score_short : na, title = "Short Signal Score (-)", color = color.new(color.red, 0), linewidth = 2)
@@ -401,6 +430,14 @@ if show_gate_labels and (long_core_pulse or long_early_pulse)
     label.new(bar_index, low, "LONG " + long_live_grade + "\n" + setup_type_long + " / " + edge_cohort_long + "\nscore " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.lime, 5), textcolor = color.black, size = size.small)
 if show_gate_labels and (short_core_pulse or short_early_pulse)
     label.new(bar_index, high, "SHORT " + short_live_grade + "\n" + setup_type_short + " / " + edge_cohort_short + "\nscore " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.red, 5), textcolor = color.white, size = size.small)
+if show_gate_labels and long_watch_raw and not long_watch_raw[1]
+    label.new(bar_index, low, "LONG WATCH\n" + setup_type_long + " / " + edge_cohort_long + "\nscore " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.aqua, 5), textcolor = color.black, size = size.small)
+if show_gate_labels and short_watch_raw and not short_watch_raw[1]
+    label.new(bar_index, high, "SHORT WATCH\n" + setup_type_short + " / " + edge_cohort_short + "\nscore " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.orange, 5), textcolor = color.black, size = size.small)
+if show_gate_labels and long_probe_raw and not long_probe_raw[1]
+    label.new(bar_index, low, "LONG PROBE\n" + block_reason_long + "\nscore " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.blue, 10), textcolor = color.white, size = size.small)
+if show_gate_labels and short_probe_raw and not short_probe_raw[1]
+    label.new(bar_index, high, "SHORT PROBE\n" + block_reason_short + "\nscore " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.purple, 10), textcolor = color.white, size = size.small)
 
 //────────────────────────────────────
 // Diagnostics table
@@ -437,7 +474,7 @@ if barstate.islast
         table.cell(diag, 0, 13, "HTF gates", text_color = color.new(color.gray, 5))
         table.cell(diag, 1, 13, "L " + f_gate_text(htf_gate_long) + " / S " + f_gate_text(htf_gate_short), text_color = htf_gate_long or htf_gate_short ? color.white : color.orange)
         table.cell(diag, 0, 14, "Block", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 14, show_block_reason ? (long_live_grade == "NONE" and block_reason_long != "PASS" ? block_reason_long : short_live_grade == "NONE" and block_reason_short != "PASS" ? block_reason_short : "PASS") : "-", text_color = color.orange)
+        table.cell(diag, 1, 14, show_block_reason ? (long_live_grade == "NONE" and block_reason_long != "PASS" ? block_reason_long : short_live_grade == "NONE" and block_reason_short != "PASS" ? block_reason_short : long_probe_raw ? block_reason_long : short_probe_raw ? block_reason_short : "PASS") : "-", text_color = color.orange)
         table.cell(diag, 0, 15, "Edge prob", text_color = color.new(color.gray, 5))
         table.cell(diag, 1, 15, "TP1 " + str.tostring(tp1_reach_probability_long, "#.##") + " / Stop " + str.tostring(stop_hit_probability_long, "#.##"), text_color = color.white)
     else

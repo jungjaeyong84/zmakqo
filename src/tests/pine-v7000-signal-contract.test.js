@@ -28,6 +28,10 @@ function assertAlertSurface(text) {
   assert.ok(text.includes('f_json_pair_b("no_trade_gate", no_trade_pass)'), "payload should carry no_trade_gate");
   assert.ok(text.includes('signal_score_long = 15.0 * market_quality_score + 25.0 * trend_alignment_local + 20.0 * setup_quality_long + 20.0 * trigger_strength_long + 20.0 * edge_score_long'), "long score formula should exist");
   assert.ok(text.includes('table.cell(diag, 1, 2, regime_cohort, text_color = color.white)'), "diagnostic panel should expose regime cohort");
+  assert.ok(text.includes('momentum_continue_long'), "momentum continuation setup should exist");
+  assert.ok(text.includes('setup_type_long == "MOMENTUM_CONTINUATION" ? "CONTINUATION" : "NONE"'), "momentum continuation trigger type should exist");
+  assert.ok(text.includes('plotshape(show_signal_shapes and long_probe_raw, title = "V7 Long Probe"'), "long probe marker should exist");
+  assert.ok(text.includes('plotshape(show_signal_shapes and short_probe_raw, title = "V7 Short Probe"'), "short probe marker should exist");
 }
 
 (function testV7PineContractSurface() {
