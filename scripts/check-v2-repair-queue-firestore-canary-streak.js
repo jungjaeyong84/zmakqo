@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const OUTPUT_FILENAME = "v2-repair-queue-firestore-canary-streak.json";
+const OUTPUT_FILENAME = "v2_repair_queue_firestore_canary_streak_latest.json";
 const HISTORY_FILENAME = "v2_repair_queue_firestore_canary_history.jsonl";
 
 function trimOrNull(value) {
@@ -29,7 +29,7 @@ function writeJson(filePath, payload) {
 function resolveArtifactDir(env = process.env) {
   return trimOrNull(env.DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_ARTIFACT_DIR)
     || trimOrNull(env.DONBEOLJA_V2_REPAIR_CANARY_ARTIFACT_DIR)
-    || path.join(process.cwd(), "artifacts", "v2-repair-canary");
+    || path.join(process.cwd(), "ops", "daily");
 }
 
 function resolveHistoryFile(env = process.env) {

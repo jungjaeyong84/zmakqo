@@ -112,6 +112,48 @@ function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(path.resolve(filePath), "utf8"));
 }
 
+function buildDeployDecisionArtifactFailure({ artifactDir = null, filePath = null, error = null } = {}) {
+  const missing = error && error.code === "ENOENT";
+  const blocker = missing
+    ? "LIVE_EVIDENCE:DEPLOY_DECISION_ARTIFACT_MISSING"
+    : "LIVE_EVIDENCE:DEPLOY_DECISION_ARTIFACT_INVALID";
+  const submitCheckIds = Object.freeze(["SUBMIT_CHK_06", "SUBMIT_CHK_07"]);
+  const runbookRefs = Object.freeze(["13E", "30"]);
+  return Object.freeze({
+    ok: false,
+    reason: "V2_LIVE_EVIDENCE_NOT_READY",
+    mode: null,
+    artifact_dir: trimOrNull(artifactDir),
+    position_cycle_id: null,
+    deploy_decision_approved: false,
+    evidence_ready: false,
+    deploy_ready: false,
+    blocker_n: 1,
+    blockers: Object.freeze([blocker]),
+    deploy_decision_blockers: Object.freeze([]),
+    failed_axis_n: 0,
+    failed_axis_ids: Object.freeze([]),
+    submit_check_ids: submitCheckIds,
+    runbook_refs: runbookRefs,
+    axes: Object.freeze([]),
+    temporal_coherence: Object.freeze({
+      id: "live_evidence_temporal_coherence",
+      label: "LIVE evidence cycle and temporal coherence",
+      ok: false,
+      blockers: Object.freeze([blocker]),
+      submit_check_ids: submitCheckIds,
+      runbook_refs: runbookRefs,
+    }),
+    deploy_decision_artifact: Object.freeze({
+      ok: false,
+      status: missing ? "MISSING" : "INVALID",
+      file: trimOrNull(filePath),
+      error_code: trimOrNull(error && error.code),
+      error_message: trimOrNull(error && error.message),
+    }),
+  });
+}
+
 function resolveDeployDecision(env = process.env) {
   const inlineJson = trimOrNull(env.V2_PROMOTION_DEPLOY_DECISION_JSON);
   if (inlineJson) return JSON.parse(inlineJson);
@@ -214,8 +256,15 @@ function writeJson(filePath, payload) {
 
 function main(env = process.env) {
   const artifactDir = resolveArtifactDir(env);
-  const decision = resolveDeployDecision(env);
-  const result = evaluateLiveEvidenceReadiness({ deployDecision: decision, artifactDir });
+  let result;
+  try {
+    const decision = resolveDeployDecision(env);
+    result = evaluateLiveEvidenceReadiness({ deployDecision: decision, artifactDir });
+  } catch (error) {
+    const explicitFile = trimOrNull(env.V2_PROMOTION_DEPLOY_DECISION_FILE);
+    const deployDecisionFile = explicitFile || path.join(artifactDir, DEPLOY_DECISION_FILENAME);
+    result = buildDeployDecisionArtifactFailure({ artifactDir, filePath: deployDecisionFile, error });
+  }
   const outputFile = path.join(artifactDir, OUTPUT_FILENAME);
   writeJson(outputFile, result);
   const payload = Object.freeze({ ...result, output_file: outputFile });
@@ -234,6 +283,7 @@ module.exports = {
     OUTPUT_FILENAME,
     trimOrNull,
     resolveArtifactDir,
+    buildDeployDecisionArtifactFailure,
     buildAxisResult,
     buildTemporalCoherenceResult,
   },

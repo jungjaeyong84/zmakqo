@@ -547,6 +547,24 @@ function buildLiveDeployDecisionFixture({ artifactDir = "/tmp/dbj-v2-live-eviden
   assert.strictEqual(result.deploy_ready, false);
 })();
 
+(function missingDeployDecisionArtifactReturnsStructuredBlocker() {
+  const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-live-evidence-missing-decision-"));
+  const previousExitCode = process.exitCode;
+  try {
+    const payload = checker.main({ V2_PROMOTION_ARTIFACT_DIR: artifactDir });
+    const outputFile = path.join(artifactDir, checker.__test.OUTPUT_FILENAME);
+    assert.strictEqual(payload.ok, false);
+    assert.strictEqual(payload.reason, "V2_LIVE_EVIDENCE_NOT_READY");
+    assert.ok(payload.blockers.includes("LIVE_EVIDENCE:DEPLOY_DECISION_ARTIFACT_MISSING"));
+    assert.strictEqual(payload.deploy_decision_artifact.status, "MISSING");
+    assert.strictEqual(payload.output_file, outputFile);
+    assert.strictEqual(JSON.parse(fs.readFileSync(outputFile, "utf8")).deploy_decision_artifact.status, "MISSING");
+  } finally {
+    process.exitCode = previousExitCode;
+    try { fs.rmSync(artifactDir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (function canWriteReadinessArtifact() {
   const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-live-evidence-"));
   const decision = buildLiveDeployDecisionFixture({ artifactDir });

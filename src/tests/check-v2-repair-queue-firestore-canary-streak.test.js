@@ -169,8 +169,9 @@ function buildHistory(rows) {
 })();
 
 (function helperDefaultsStayStable() {
-  assert.ok(checker.__test.resolveHistoryFile({}).endsWith("v2_repair_queue_firestore_canary_history.jsonl"));
-  assert.ok(checker.__test.resolveOutputFile({}).endsWith("v2-repair-queue-firestore-canary-streak.json"));
+  assert.ok(checker.__test.resolveArtifactDir({}).endsWith(path.join("ops", "daily")));
+  assert.ok(checker.__test.resolveHistoryFile({}).endsWith(path.join("ops", "daily", "v2_repair_queue_firestore_canary_history.jsonl")));
+  assert.ok(checker.__test.resolveOutputFile({}).endsWith(path.join("ops", "daily", "v2_repair_queue_firestore_canary_streak_latest.json")));
   assert.strictEqual(checker.__test.resolveStreakConfig({}).lookbackHours, 24);
 })();
 

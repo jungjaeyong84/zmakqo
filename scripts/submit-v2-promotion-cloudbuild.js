@@ -416,6 +416,7 @@ function buildSubstitutions(plan) {
     _DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: requiresOpenClawExecutionAuditLedgerWrite ? "1" : "0",
     ...buildV2RuntimeCutoverSubstitutions(row),
     _DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: row.promotionMode === "LIVE" ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED) || "0"),
+    _DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "1",
     _V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC: row.promotionMode === "LIVE" ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC) || "0"),
     _DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED) || "0",
     _DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS) || "",
