@@ -15,6 +15,10 @@ function toNumberOrNull(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
 function validateEntryIntent(entryIntent) {
   const intent = entryIntent && typeof entryIntent === "object" ? entryIntent : null;
   if (!intent) throw new Error("ENTRY_INTENT_REQUIRED");
@@ -54,6 +58,29 @@ function ceilToStep(value, step) {
   return Number(ceiled.toFixed(Math.max(0, Math.min(12, precision))));
 }
 
+function resolveMaxSizeRatio({
+  maxSizeRatio = null,
+  max_size_ratio = null,
+  sizingCap = null,
+  sizing_cap = null,
+  executionPermit = null,
+  execution_permit = null,
+} = {}) {
+  const cap = asObject(sizingCap) || asObject(sizing_cap) || asObject(asObject(executionPermit) && executionPermit.sizing_cap) || asObject(asObject(execution_permit) && execution_permit.sizing_cap);
+  const candidates = [
+    maxSizeRatio,
+    max_size_ratio,
+    cap && cap.max_size_ratio,
+    cap && cap.size_ratio_max,
+    cap && cap.ml_max_size_ratio,
+  ];
+  for (const candidate of candidates) {
+    const n = toNumberOrNull(candidate);
+    if (n !== null) return n;
+  }
+  return null;
+}
+
 function buildBlockedDecision({
   entryIntent,
   reason,
@@ -63,6 +90,8 @@ function buildBlockedDecision({
   minNotionalQuote = null,
   minQtyAbs = null,
   stepSize = null,
+  maxSizeRatio = null,
+  sizingCapNotionalQuote = null,
   detail = null,
 } = {}) {
   const intent = validateEntryIntent(entryIntent);
@@ -81,6 +110,8 @@ function buildBlockedDecision({
     min_notional_quote: toNumberOrNull(minNotionalQuote),
     min_qty_abs: toNumberOrNull(minQtyAbs),
     step_size: toNumberOrNull(stepSize),
+    max_size_ratio: toNumberOrNull(maxSizeRatio),
+    sizing_cap_notional_quote: toNumberOrNull(sizingCapNotionalQuote),
     detail: detail && typeof detail === "object" ? Object.freeze({ ...detail }) : Object.freeze({}),
   });
 }
@@ -93,6 +124,12 @@ function buildV2EntrySizingDecision({
   minNotionalQuote = 0,
   minQtyAbs = 0,
   stepSize = null,
+  maxSizeRatio = null,
+  max_size_ratio = null,
+  sizingCap = null,
+  sizing_cap = null,
+  executionPermit = null,
+  execution_permit = null,
   allowMinOrderBump = false,
   createdAt = null,
 } = {}) {
@@ -103,24 +140,49 @@ function buildV2EntrySizingDecision({
   const minNotional = Math.max(0, toNumberOrNull(minNotionalQuote) || 0);
   const minQty = Math.max(0, toNumberOrNull(minQtyAbs) || 0);
   const step = toNumberOrNull(stepSize);
+  const resolvedMaxSizeRatio = resolveMaxSizeRatio({
+    maxSizeRatio,
+    max_size_ratio,
+    sizingCap,
+    sizing_cap,
+    executionPermit,
+    execution_permit,
+  });
 
   if (!(price > 0)) {
-    return buildBlockedDecision({ entryIntent, reason: "REFERENCE_PRICE_REQUIRED", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize });
+    return buildBlockedDecision({ entryIntent, reason: "REFERENCE_PRICE_REQUIRED", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize, maxSizeRatio: resolvedMaxSizeRatio });
   }
   if (!(requested > 0)) {
-    return buildBlockedDecision({ entryIntent, reason: "REQUESTED_NOTIONAL_REQUIRED", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize });
+    return buildBlockedDecision({ entryIntent, reason: "REQUESTED_NOTIONAL_REQUIRED", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize, maxSizeRatio: resolvedMaxSizeRatio });
   }
   if (!(maxNotional > 0)) {
-    return buildBlockedDecision({ entryIntent, reason: "MAX_NOTIONAL_REQUIRED", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize });
+    return buildBlockedDecision({ entryIntent, reason: "MAX_NOTIONAL_REQUIRED", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize, maxSizeRatio: resolvedMaxSizeRatio });
+  }
+  if (resolvedMaxSizeRatio !== null && !(resolvedMaxSizeRatio > 0 && resolvedMaxSizeRatio <= 1)) {
+    return buildBlockedDecision({
+      entryIntent,
+      reason: "ML_MAX_SIZE_RATIO_INVALID",
+      referencePrice,
+      requestedNotionalQuote,
+      maxNotionalQuote,
+      minNotionalQuote,
+      minQtyAbs,
+      stepSize,
+      maxSizeRatio: resolvedMaxSizeRatio,
+    });
   }
   if (requested > maxNotional) {
-    return buildBlockedDecision({ entryIntent, reason: "REQUESTED_NOTIONAL_EXCEEDS_BUDGET", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize });
+    return buildBlockedDecision({ entryIntent, reason: "REQUESTED_NOTIONAL_EXCEEDS_BUDGET", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize, maxSizeRatio: resolvedMaxSizeRatio });
   }
 
-  let targetNotional = requested;
+  const sizingCapNotional = resolvedMaxSizeRatio !== null ? maxNotional * resolvedMaxSizeRatio : maxNotional;
+  let targetNotional = Math.min(requested, sizingCapNotional);
   let sizingReason = "REQUESTED_NOTIONAL_ACCEPTED";
+  if (targetNotional < requested) {
+    sizingReason = "ML_SIZE_RATIO_CAPPED";
+  }
   if (targetNotional < minNotional) {
-    if (allowMinOrderBump === true && minNotional <= maxNotional) {
+    if (allowMinOrderBump === true && minNotional <= maxNotional && minNotional <= sizingCapNotional) {
       targetNotional = minNotional;
       sizingReason = "MIN_NOTIONAL_BUMPED";
     } else {
@@ -133,6 +195,8 @@ function buildV2EntrySizingDecision({
         minNotionalQuote,
         minQtyAbs,
         stepSize,
+        maxSizeRatio: resolvedMaxSizeRatio,
+        sizingCapNotionalQuote: sizingCapNotional,
         detail: { required_notional_quote: minNotional },
       });
     }
@@ -140,12 +204,12 @@ function buildV2EntrySizingDecision({
 
   let qty = ceilToStep(targetNotional / price, step);
   if (!(qty > 0)) {
-    return buildBlockedDecision({ entryIntent, reason: "ENTRY_QTY_ABS_REQUIRED", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize });
+    return buildBlockedDecision({ entryIntent, reason: "ENTRY_QTY_ABS_REQUIRED", referencePrice, requestedNotionalQuote, maxNotionalQuote, minNotionalQuote, minQtyAbs, stepSize, maxSizeRatio: resolvedMaxSizeRatio, sizingCapNotionalQuote: sizingCapNotional });
   }
 
   if (qty < minQty) {
     const minQtyNotional = minQty * price;
-    if (allowMinOrderBump === true && minQtyNotional <= maxNotional) {
+    if (allowMinOrderBump === true && minQtyNotional <= maxNotional && minQtyNotional <= sizingCapNotional) {
       qty = ceilToStep(minQty, step);
       targetNotional = qty * price;
       sizingReason = "MIN_QTY_BUMPED";
@@ -159,6 +223,8 @@ function buildV2EntrySizingDecision({
         minNotionalQuote,
         minQtyAbs,
         stepSize,
+        maxSizeRatio: resolvedMaxSizeRatio,
+        sizingCapNotionalQuote: sizingCapNotional,
         detail: { required_notional_quote: minQtyNotional },
       });
     }
@@ -175,6 +241,23 @@ function buildV2EntrySizingDecision({
       minNotionalQuote,
       minQtyAbs,
       stepSize,
+      maxSizeRatio: resolvedMaxSizeRatio,
+      sizingCapNotionalQuote: sizingCapNotional,
+      detail: { final_notional_quote: finalNotional },
+    });
+  }
+  if (finalNotional > sizingCapNotional + 1e-9) {
+    return buildBlockedDecision({
+      entryIntent,
+      reason: "STEP_SIZE_EXCEEDS_ML_SIZE_CAP",
+      referencePrice,
+      requestedNotionalQuote,
+      maxNotionalQuote,
+      minNotionalQuote,
+      minQtyAbs,
+      stepSize,
+      maxSizeRatio: resolvedMaxSizeRatio,
+      sizingCapNotionalQuote: sizingCapNotional,
       detail: { final_notional_quote: finalNotional },
     });
   }
@@ -188,6 +271,8 @@ function buildV2EntrySizingDecision({
       minNotionalQuote,
       minQtyAbs,
       stepSize,
+      maxSizeRatio: resolvedMaxSizeRatio,
+      sizingCapNotionalQuote: sizingCapNotional,
       detail: { final_notional_quote: finalNotional },
     });
   }
@@ -204,6 +289,8 @@ function buildV2EntrySizingDecision({
     reference_price: price,
     requested_notional_quote: requested,
     max_notional_quote: maxNotional,
+    max_size_ratio: resolvedMaxSizeRatio,
+    sizing_cap_notional_quote: sizingCapNotional,
     min_notional_quote: minNotional,
     min_qty_abs: minQty,
     step_size: step,
@@ -239,9 +326,11 @@ module.exports = {
     trimOrNull,
     upper,
     toNumberOrNull,
+    asObject,
     validateEntryIntent,
     decimalPlacesFromStep,
     ceilToStep,
+    resolveMaxSizeRatio,
     buildBlockedDecision,
   },
 };

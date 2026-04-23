@@ -2329,6 +2329,36 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "V2 audits must not pass when required tokens exist only inside strings or comments",
       file: path.resolve(__dirname, "..", "src", "v2", "sourceStructureAudit.js"),
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_82",
+      label: "OpenClaw ML proposal verdict gates production entry",
+      ok: readText(path.resolve(__dirname, "..", "src", "v2", "signalAuthorityRouter.js")).includes("resolveMlAiProposalGate")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "signalAuthorityRouter.js")).includes("ML_AI_PROPOSAL_NOT_APPROVED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-signal-authority-router.test.js")).includes("blockedMlAiProposalPreventsServerNativeEntryEvenWhenStrategyFilterPasses")
+        && readText(FILES.productionRuntimeChainAudit).includes("V2_PRODUCTION_CHAIN_ML_AI_PROPOSAL_AND_SIZE_CAP_ENFORCED")
+        && artifactContractText.includes("ML proposal verdict gates production entry")
+        && runbookText.includes("ML proposal verdict gates production entry"),
+      reason: readText(path.resolve(__dirname, "..", "src", "v2", "signalAuthorityRouter.js")).includes("ML_AI_PROPOSAL_NOT_APPROVED")
+        ? "server-native OpenClaw entries now require a PASS ML proposal verdict before entry intent creation"
+        : "V2 production entry must block server-native signals when ML proposal verdict is not PASS",
+      file: path.resolve(__dirname, "..", "src", "v2", "signalAuthorityRouter.js"),
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_83",
+      label: "OpenClaw ML size ratio caps production entry sizing",
+      ok: readText(path.resolve(__dirname, "..", "src", "v2", "entrySizingDecision.js")).includes("resolveMaxSizeRatio")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "entrySizingDecision.js")).includes("ML_SIZE_RATIO_CAPPED")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "entrySizingDecision.js")).includes("ML_MAX_SIZE_RATIO_INVALID")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "productionEntryLiveRequest.js")).includes("extractMlMaxSizeRatioFromBundle")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-entry-sizing-decision.test.js")).includes("mlMaxSizeRatioCapsApprovedNotionalBeforeQuantityResolution")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-production-entry-live-request.test.js")).includes("sizing_cap_notional_quote")
+        && artifactContractText.includes("ML size ratio caps production entry sizing")
+        && runbookText.includes("ML size ratio caps production entry sizing"),
+      reason: readText(path.resolve(__dirname, "..", "src", "v2", "entrySizingDecision.js")).includes("ML_SIZE_RATIO_CAPPED")
+        ? "OpenClaw ML size_ratio now constrains approved production entry notional before order quantity resolution"
+        : "V2 production sizing must read OpenClaw ML max_size_ratio and cap entry notional",
+      file: path.resolve(__dirname, "..", "src", "v2", "entrySizingDecision.js"),
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

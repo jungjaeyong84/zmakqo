@@ -173,6 +173,8 @@ npm run check:v2-canary-runbook
 4. production OpenClaw permit TTL은 `DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES` 로 5~30분 사이에서만 조정한다. 기본 15분이며, expired permit은 재사용하지 않는다
 5. promotion latest artifact는 매 실행 overwrite 한다. freshness는 no-op skip이 아니라 `artifact_generated_at`, same artifact cycle, 30분 temporal skew 검증으로 증명한다
 6. `SUBMIT_CONTRACT_CHK_81` 은 source-structure audit이 문자열/주석 spoof를 거부하는지 확인한다. runtime-chain/fill-boundary audit은 단순 token grep이 아니라 function block, call expression, required condition 구조를 검사해야 한다
+7. `SUBMIT_CONTRACT_CHK_82` 는 ML proposal verdict gates production entry 계약을 확인한다. `strategy_filter.verdict=PASS` 여도 `ml_ai_signal_proposal.proposal_verdict` 가 `PASS` 가 아니면 `ML_AI_PROPOSAL_NOT_APPROVED` 로 entry intent가 생성되지 않아야 한다
+8. `SUBMIT_CONTRACT_CHK_83` 은 ML size ratio caps production entry sizing 계약을 확인한다. OpenClaw ML proposal의 `size_ratio` 는 permit `max_size_ratio` 와 sizing cap으로 이어져야 하며, requested notional이 cap을 넘으면 `ML_SIZE_RATIO_CAPPED`, invalid ratio면 `ML_MAX_SIZE_RATIO_INVALID` 로 fail-closed 되어야 한다
 
 실무 원칙:
 

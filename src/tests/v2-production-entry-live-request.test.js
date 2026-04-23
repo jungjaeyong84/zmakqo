@@ -63,8 +63,13 @@ function buildSizing(overrides = {}) {
   assert.strictEqual(result.body.confirm, LIVE_CONFIRM_PHRASE);
   assert.strictEqual(result.entrySizingDecision.ok, true);
   assert.strictEqual(result.entrySizingDecision.status, "APPROVED");
+  assert.strictEqual(result.entrySizingDecision.reason, "ML_SIZE_RATIO_CAPPED");
+  assert.strictEqual(result.entrySizingDecision.max_size_ratio, 0.4);
+  assert.strictEqual(result.entrySizingDecision.notional_quote, 600);
   assert.strictEqual(result.body.bundle.entrySizingDecision.entry_intent_id, result.routedDecision.entryIntent.entry_intent_id);
   assert.strictEqual(result.body.entrySizingDecision.entry_qty_abs, result.body.bundle.entrySizingDecision.entry_qty_abs);
+  assert.strictEqual(result.executionPermit.sizing_cap.max_size_ratio, 0.4);
+  assert.strictEqual(result.executionPermit.sizing_cap.sizing_cap_notional_quote, 600);
   assert.strictEqual(result.body.request_contract.reason, "V2_PRODUCTION_ENTRY_LIVE_REQUEST_EMBEDS_SIZING");
 })();
 

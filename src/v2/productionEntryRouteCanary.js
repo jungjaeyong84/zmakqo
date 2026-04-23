@@ -25,6 +25,15 @@ function parseBoundedPermitTtlMinutes(env = process.env) {
   return Math.min(30, Math.max(5, value));
 }
 
+function extractMlMaxSizeRatioFromBundle(bundle = null) {
+  const row = asObject(bundle);
+  const decision = asObject(row && row.openclawDecision);
+  const summary = asObject(decision && decision.canonical_evidence_summary);
+  const proposal = asObject(summary && summary.ml_ai_signal_proposal);
+  const value = Number(proposal && proposal.size_ratio);
+  return Number.isFinite(value) ? value : null;
+}
+
 function collectFailedChecks(routeResult) {
   const result = asObject(routeResult);
   const kernelAudit = asObject(result && result.kernelResult && result.kernelResult.kernelAudit);
@@ -71,6 +80,7 @@ function buildNoExchangeKernelResult({ bundle, nowIso = new Date().toISOString()
     minNotionalQuote: 5,
     minQtyAbs: 0.001,
     stepSize: 0.001,
+    maxSizeRatio: extractMlMaxSizeRatioFromBundle(bundle),
     allowMinOrderBump: false,
     createdAt: nowIso,
   });
@@ -216,6 +226,7 @@ async function runV2ProductionEntryRouteCanary({
     sizingCap: {
       notional_quote_max: 2500,
       entry_qty_abs_max: 1,
+      max_size_ratio: extractMlMaxSizeRatioFromBundle(bundle),
     },
     riskBudget: {
       canary_no_exchange_write: true,

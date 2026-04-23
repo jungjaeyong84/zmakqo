@@ -104,6 +104,39 @@ function liveCfg() {
   assert.strictEqual(decision.reason, "MIN_QTY_EXCEEDS_BUDGET");
 })();
 
+(function mlMaxSizeRatioCapsApprovedNotionalBeforeQuantityResolution() {
+  const decision = buildV2EntrySizingDecision({
+    entryIntent: entryIntent(),
+    referencePrice: 2500,
+    requestedNotionalQuote: 1000,
+    maxNotionalQuote: 2000,
+    minNotionalQuote: 5,
+    minQtyAbs: 0.001,
+    stepSize: 0.001,
+    maxSizeRatio: 0.3,
+  });
+  assert.strictEqual(decision.ok, true);
+  assert.strictEqual(decision.reason, "ML_SIZE_RATIO_CAPPED");
+  assert.strictEqual(decision.max_size_ratio, 0.3);
+  assert.strictEqual(decision.sizing_cap_notional_quote, 600);
+  assert.strictEqual(decision.entry_qty_abs, 0.24);
+  assert.strictEqual(decision.notional_quote, 600);
+})();
+
+(function invalidMlMaxSizeRatioFailsClosed() {
+  const decision = buildV2EntrySizingDecision({
+    entryIntent: entryIntent(),
+    referencePrice: 2500,
+    requestedNotionalQuote: 100,
+    maxNotionalQuote: 200,
+    minNotionalQuote: 5,
+    stepSize: 0.001,
+    maxSizeRatio: 1.2,
+  });
+  assert.strictEqual(decision.ok, false);
+  assert.strictEqual(decision.reason, "ML_MAX_SIZE_RATIO_INVALID");
+})();
+
 (function blockedSizingCannotCreateResolver() {
   const decision = buildV2EntrySizingDecision({
     entryIntent: entryIntent(),

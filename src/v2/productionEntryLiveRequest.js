@@ -22,6 +22,15 @@ function parseBoundedPermitTtlMinutes(env = process.env) {
   return Math.min(30, Math.max(5, value));
 }
 
+function extractMlMaxSizeRatioFromBundle(bundle = null) {
+  const row = asObject(bundle);
+  const decision = asObject(row && row.openclawDecision);
+  const summary = asObject(decision && decision.canonical_evidence_summary);
+  const proposal = asObject(summary && summary.ml_ai_signal_proposal);
+  const value = Number(proposal && proposal.size_ratio);
+  return Number.isFinite(value) ? value : null;
+}
+
 function buildBlock(reason, extra = {}) {
   return Object.freeze({
     ok: false,
@@ -59,6 +68,7 @@ function buildV2ProductionEntryLiveRequest({
     minNotionalQuote: sizing.minNotionalQuote ?? sizing.min_notional_quote,
     minQtyAbs: sizing.minQtyAbs ?? sizing.min_qty_abs,
     stepSize: sizing.stepSize ?? sizing.step_size,
+    maxSizeRatio: sizing.maxSizeRatio ?? sizing.max_size_ratio ?? extractMlMaxSizeRatioFromBundle(sourceBundle),
     allowMinOrderBump: sizing.allowMinOrderBump === true || sizing.allow_min_order_bump === true,
     createdAt: trimOrNull(sizing.createdAt || sizing.created_at) || trimOrNull(now()) || new Date().toISOString(),
   });
@@ -100,7 +110,9 @@ function buildV2ProductionEntryLiveRequest({
     sizingCap: {
       entry_qty_abs_max: sizingDecision.entry_qty_abs,
       notional_quote_max: sizingDecision.notional_quote,
-      size_ratio_max: sizingDecision.size_ratio || null,
+      max_size_ratio: sizingDecision.max_size_ratio || null,
+      size_ratio_max: sizingDecision.max_size_ratio || null,
+      sizing_cap_notional_quote: sizingDecision.sizing_cap_notional_quote || null,
     },
     riskBudget: {
       max_notional_quote: sizingDecision.max_notional_quote,
@@ -150,5 +162,6 @@ module.exports = {
     trimOrNull,
     asObject,
     parseBoundedPermitTtlMinutes,
+    extractMlMaxSizeRatioFromBundle,
   },
 };

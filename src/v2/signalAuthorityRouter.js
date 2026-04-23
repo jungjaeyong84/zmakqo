@@ -61,6 +61,48 @@ function extractStrategyFilterFromDecision(openclawDecision) {
   };
 }
 
+function extractMlAiProposalFromDecision(openclawDecision) {
+  const decision = openclawDecision && typeof openclawDecision === "object" ? openclawDecision : null;
+  const summary = decision && decision.canonical_evidence_summary && typeof decision.canonical_evidence_summary === "object"
+    ? decision.canonical_evidence_summary
+    : null;
+  const proposal = summary && summary.ml_ai_signal_proposal && typeof summary.ml_ai_signal_proposal === "object"
+    ? summary.ml_ai_signal_proposal
+    : null;
+  return proposal;
+}
+
+function resolveMlAiProposalGate({ signalIntent, openclawDecision } = {}) {
+  const intent = signalIntent && typeof signalIntent === "object" ? signalIntent : null;
+  const decision = openclawDecision && typeof openclawDecision === "object" ? openclawDecision : null;
+  const sourceMode = upper(intent && intent.signal_source_mode);
+  const proposal = extractMlAiProposalFromDecision(decision);
+  const proposalPresent = proposal && proposal.present === true;
+  if (sourceMode !== "SERVER_NATIVE_ML_AI" && !proposalPresent) {
+    return Object.freeze({
+      ok: true,
+      reason: null,
+      detail: null,
+      proposal_verdict: null,
+    });
+  }
+  const verdict = upper(proposal && proposal.proposal_verdict);
+  if (verdict !== "PASS") {
+    return Object.freeze({
+      ok: false,
+      reason: "ML_AI_PROPOSAL_NOT_APPROVED",
+      detail: verdict || "MISSING_ML_AI_PROPOSAL_VERDICT",
+      proposal_verdict: verdict,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    reason: null,
+    detail: null,
+    proposal_verdict: verdict,
+  });
+}
+
 function resolveEntryIntentFromOpenClaw({
   signalIntent,
   openclawDecision,
@@ -123,6 +165,20 @@ function resolveEntryIntentFromOpenClaw({
     });
   }
 
+  const mlAiProposalGate = resolveMlAiProposalGate({
+    signalIntent: intent,
+    openclawDecision: decision,
+  });
+  if (!mlAiProposalGate.ok) {
+    return Object.freeze({
+      ok: false,
+      reason: mlAiProposalGate.reason,
+      detail: mlAiProposalGate.detail,
+      ml_ai_proposal_gate: mlAiProposalGate,
+      entryIntent: null,
+    });
+  }
+
   const signalIntentId = trimOrNull(intent.signal_intent_id);
   const entryIntentId = `EINTV2__${hash10(signalIntentId)}`;
   return Object.freeze({
@@ -138,11 +194,14 @@ function resolveEntryIntentFromOpenClaw({
       decision_mode: decisionMode,
       policy_scope: trimOrNull(decision.policy_scope),
       openclaw_decision_id: trimOrNull(decision.openclaw_decision_id),
+      ml_ai_proposal_verdict: mlAiProposalGate.proposal_verdict,
     }),
   });
 }
 
 module.exports = {
   resolveStrategyFilter,
+  extractMlAiProposalFromDecision,
+  resolveMlAiProposalGate,
   resolveEntryIntentFromOpenClaw,
 };

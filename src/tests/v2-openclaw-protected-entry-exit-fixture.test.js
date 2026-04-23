@@ -190,9 +190,10 @@ async function buildOpenClawSizingProtectedEntryExitFixture() {
 
 buildOpenClawSizingProtectedEntryExitFixture()
   .then((fixture) => {
-    assert.strictEqual(fixture.request.entrySizingDecision.entry_qty_abs, 0.8);
-    assert.strictEqual(fixture.tp1Reduction.transition.ledger_patch.tp1_filled_qty_abs, 0.4);
-    assert.strictEqual(fixture.finalExitReduction.transition.ledger_patch.final_exit_qty_abs, 0.4);
+    assert.strictEqual(fixture.request.entrySizingDecision.reason, "ML_SIZE_RATIO_CAPPED");
+    assert.strictEqual(fixture.request.entrySizingDecision.entry_qty_abs, 0.5);
+    assert.strictEqual(fixture.tp1Reduction.transition.ledger_patch.tp1_filled_qty_abs, 0.25);
+    assert.strictEqual(fixture.finalExitReduction.transition.ledger_patch.final_exit_qty_abs, 0.25);
     console.log("V2_OPENCLAW_PROTECTED_ENTRY_EXIT_FIXTURE_TEST_OK");
   })
   .catch((error) => {

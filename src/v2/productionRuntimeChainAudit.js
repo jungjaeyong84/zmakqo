@@ -144,6 +144,10 @@ function token(...parts) {
 function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
   const packageJson = readRepoFile("package.json", sourceOverrides);
   const productionEntryRoute = readRepoFile("src/v2/productionEntryRoute.js", sourceOverrides);
+  const signalAuthorityRouter = readRepoFile("src/v2/signalAuthorityRouter.js", sourceOverrides);
+  const entrySizingDecision = readRepoFile("src/v2/entrySizingDecision.js", sourceOverrides);
+  const productionEntryLiveRequest = readRepoFile("src/v2/productionEntryLiveRequest.js", sourceOverrides);
+  const openclawControlPlane = readRepoFile("src/v2/openclawControlPlane.js", sourceOverrides);
   const entryExecutionKernel = readRepoFile("src/v2/entryExecutionKernel.js", sourceOverrides);
   const fillSync = readRepoFile("src/services/binanceFuturesFillsSync.js", sourceOverrides);
   const shadowExitWriter = readRepoFile("src/v2/openclawShadowExitWriter.js", sourceOverrides);
@@ -268,6 +272,27 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
       hasEvery(entryExecutionKernel, entryKernelTokens),
       "entry kernel must only pass after submitted fill, ACTIVE_PROTECTED cycle, healthy runtime, and native SL/TP1 evidence",
       buildTokenEvidence(entryExecutionKernel, entryKernelTokens)
+    ),
+    buildCheck(
+      "V2_PRODUCTION_CHAIN_ML_AI_PROPOSAL_AND_SIZE_CAP_ENFORCED",
+      signalAuthorityRouter.includes("resolveMlAiProposalGate")
+        && signalAuthorityRouter.includes("ML_AI_PROPOSAL_NOT_APPROVED")
+        && signalAuthorityRouter.includes("proposal_verdict")
+        && entrySizingDecision.includes("resolveMaxSizeRatio")
+        && entrySizingDecision.includes("ML_SIZE_RATIO_CAPPED")
+        && entrySizingDecision.includes("ML_MAX_SIZE_RATIO_INVALID")
+        && entrySizingDecision.includes("STEP_SIZE_EXCEEDS_ML_SIZE_CAP")
+        && productionEntryLiveRequest.includes("extractMlMaxSizeRatioFromBundle")
+        && productionEntryLiveRequest.includes("maxSizeRatio")
+        && openclawControlPlane.includes("openclawDecisionBundleHash")
+        && openclawControlPlane.includes("openclaw_decision_bundle_hash"),
+      "OpenClaw ML proposal verdict must gate entry and ML size ratio must cap entry sizing before live request/permit creation",
+      {
+        proposal_gate: signalAuthorityRouter.includes("resolveMlAiProposalGate") && signalAuthorityRouter.includes("ML_AI_PROPOSAL_NOT_APPROVED"),
+        size_ratio_cap: entrySizingDecision.includes("resolveMaxSizeRatio") && entrySizingDecision.includes("ML_SIZE_RATIO_CAPPED"),
+        live_request_uses_bundle_ratio: productionEntryLiveRequest.includes("extractMlMaxSizeRatioFromBundle") && productionEntryLiveRequest.includes("maxSizeRatio"),
+        decision_bundle_hash: openclawControlPlane.includes("openclawDecisionBundleHash") && openclawControlPlane.includes("openclaw_decision_bundle_hash"),
+      }
     ),
     buildCheck(
       "V2_PRODUCTION_CHAIN_FILL_SYNC_BOUNDARY_PASS",

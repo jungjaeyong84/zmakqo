@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("crypto");
 const {
   buildSignalIntentDoc,
   buildFeatureSnapshotDoc,
@@ -12,6 +13,19 @@ const { evaluateHtfDirectionAlignment } = require("./singleStrategyFilter");
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
+}
+
+function stableJson(value) {
+  if (value === null || value === undefined) return "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256Hex(value) {
+  return crypto.createHash("sha256").update(String(value || "")).digest("hex");
 }
 
 function buildCanonicalEvidenceSummary({
@@ -223,8 +237,7 @@ function buildOpenClawDecisionBundle({
     mlAiEvidenceDecisionId: mlAiEvidence ? mlAiEvidence.decision_id : null,
     createdAt,
   });
-
-  return Object.freeze({
+  const bundleHashPayload = Object.freeze({
     signalIntent,
     featureSnapshot,
     mlAiSignalProposal,
@@ -233,9 +246,27 @@ function buildOpenClawDecisionBundle({
     strategyFilterResult: resolvedStrategyFilterResult,
     canonicalEvidenceSummary,
   });
+  const openclawDecisionBundleHash = sha256Hex(stableJson(bundleHashPayload));
+  const enrichedOpenClawDecision = Object.freeze({
+    ...openclawDecision,
+    openclaw_decision_bundle_hash: openclawDecisionBundleHash,
+  });
+
+  return Object.freeze({
+    signalIntent,
+    featureSnapshot,
+    mlAiSignalProposal,
+    openclawDecision: enrichedOpenClawDecision,
+    mlAiEvidence,
+    strategyFilterResult: resolvedStrategyFilterResult,
+    canonicalEvidenceSummary,
+    openclawDecisionBundleHash,
+  });
 }
 
 module.exports = {
+  stableJson,
+  sha256Hex,
   buildCanonicalEvidenceSummary,
   buildOpenClawDecisionBundle,
 };

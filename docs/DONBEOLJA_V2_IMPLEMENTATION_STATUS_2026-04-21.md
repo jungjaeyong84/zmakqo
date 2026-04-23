@@ -2845,3 +2845,39 @@ V1 약점 재발 방지:
 1. V1에서는 audit가 "문자열이 존재한다"는 증거를 실제 실행 구조와 혼동할 수 있었다
 2. 이번 단계는 핵심 V2 promotion 감사축을 "함수 내부에서 실제 호출/조건/abort 구조가 존재한다"는 증거로 승격했다
 3. 이로써 함수명 문자열을 남긴 채 본문을 약화하는 우회는 promotion gate에서 fail-closed 된다
+
+## 2026-04-23 OpenClaw ML Proposal Gate / Size Cap Enforcement
+
+추가 증거:
+
+1. `src/v2/signalAuthorityRouter.js`
+2. `src/v2/entrySizingDecision.js`
+3. `src/v2/productionEntryLiveRequest.js`
+4. `src/v2/productionEntryRouteCanary.js`
+5. `src/v2/openclawControlPlane.js`
+6. `src/v2/productionRuntimeChainAudit.js`
+7. `src/tests/v2-signal-authority-router.test.js`
+8. `src/tests/v2-entry-sizing-decision.test.js`
+9. `src/tests/v2-production-entry-live-request.test.js`
+10. `src/tests/v2-production-entry-route-canary.test.js`
+11. `src/tests/v2-openclaw-supreme-control-plane.test.js`
+12. `scripts/check-v2-promotion-submit-contract.js`
+13. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+14. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. ML proposal verdict gates production entry. server-native OpenClaw entry는 strategy filter만 통과해서는 entry intent가 생성되지 않는다. `ml_ai_signal_proposal.proposal_verdict` 가 `PASS` 가 아니면 `ML_AI_PROPOSAL_NOT_APPROVED` 로 차단된다
+2. ML size ratio caps production entry sizing. OpenClaw ML proposal의 `size_ratio` 는 permit의 `max_size_ratio` 를 거쳐 production entry sizing cap으로 적용된다
+3. `buildV2EntrySizingDecision` 은 requested notional과 account budget만 보지 않고, `maxNotional * max_size_ratio` 를 상한으로 삼아 초과분을 `ML_SIZE_RATIO_CAPPED` 로 축소한다
+4. `max_size_ratio` 가 0 이하 또는 1 초과이면 `ML_MAX_SIZE_RATIO_INVALID` 로 fail-closed 된다
+5. live request builder와 production entry route canary는 OpenClaw bundle에서 ML size cap을 추출해 같은 sizing contract를 사용한다
+6. OpenClaw decision bundle은 stable hash를 갖고, decision doc에는 `openclaw_decision_bundle_hash` 가 포함된다
+7. production runtime chain audit는 `V2_PRODUCTION_CHAIN_ML_AI_PROPOSAL_AND_SIZE_CAP_ENFORCED` 로 proposal gate, size cap, live request extraction, bundle hash를 같이 검사한다
+8. submit contract는 `SUBMIT_CONTRACT_CHK_82` 와 `SUBMIT_CONTRACT_CHK_83` 으로 코드, 테스트, runtime chain, artifact contract, runbook 문구가 같은 계약을 보도록 강제한다
+
+V1 약점 재발 방지:
+
+1. V1식 rule-only 승인 착시는 줄었다. V2에서는 ML 제안이 bundle에 보이는 것만으로 충분하지 않고, proposal verdict가 실제 entry intent gate에 연결된다
+2. ML sizing이 문서/permit 장식 필드로 남는 공백도 닫았다. 이제 size ratio는 실제 주문 수량 산정 전 notional cap으로 작동한다
+3. OpenClaw 폐루프는 decision bundle hash까지 보존하므로, 사후 감사에서 어떤 ML evidence/proposal/filter 조합이 entry decision으로 이어졌는지 더 명확하게 추적할 수 있다

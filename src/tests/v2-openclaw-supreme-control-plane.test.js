@@ -97,6 +97,16 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
   );
 })();
 
+(function decisionBundleCarriesStableHashIntoDecisionDoc() {
+  const left = buildBundle();
+  const right = buildBundle();
+  assert.ok(left.openclawDecisionBundleHash);
+  assert.strictEqual(left.openclawDecisionBundleHash, right.openclawDecisionBundleHash);
+  assert.strictEqual(left.openclawDecision.openclaw_decision_bundle_hash, left.openclawDecisionBundleHash);
+  const changed = buildBundle({ rankScore: 0.78 });
+  assert.notStrictEqual(changed.openclawDecisionBundleHash, left.openclawDecisionBundleHash);
+})();
+
 (function executionPermitBindsDecisionWorldStateAndTtl() {
   const bundle = buildBundle();
   const worldState = buildOpenClawWorldState({

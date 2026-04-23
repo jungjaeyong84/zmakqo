@@ -181,4 +181,40 @@ const { resolveEntryIntentFromOpenClaw } = require("../v2/signalAuthorityRouter"
   assert.strictEqual(routed.detail, "HTF_DIRECTION_MISMATCH");
 })();
 
+(function blockedMlAiProposalPreventsServerNativeEntryEvenWhenStrategyFilterPasses() {
+  const bundle = buildOpenClawDecisionBundle({
+    signalSourceMode: "SERVER_NATIVE_ML_AI",
+    signalLineageId: "LINEAGE__ETH__ML_BLOCK__1",
+    symbol: "ETHUSDT",
+    side: "LONG",
+    qualityScore: 0.79,
+    budgetCheckResult: "PASS",
+    minOrderCheckResult: "PASS",
+    decisionStatus: "APPROVED",
+    decisionMode: "LIVE",
+    recommendedAction: "APPROVE_ENTRY",
+    approved: true,
+    rationaleSummary: "strategy passes but ML blocks entry",
+    policyScope: "ETH_15M",
+    htfDirection: "LONG",
+    htfConfidence: 0.83,
+    timeframe: "15M",
+    featureSchemaVersion: "ml_features_v1",
+    featureValues: {
+      trend_bias: 0.64,
+      volatility_rank: 0.59,
+    },
+    proposalVerdict: "BLOCK",
+    rankScore: 0.41,
+    sizeRatio: 0.2,
+    featuresHash: "feat_hash_eth_ml_block_1",
+    modelVersion: "openclaw-ml-v2",
+    decisionSummary: "ML rejected this setup",
+  });
+  const routed = resolveEntryIntentFromOpenClaw(bundle);
+  assert.strictEqual(routed.ok, false);
+  assert.strictEqual(routed.reason, "ML_AI_PROPOSAL_NOT_APPROVED");
+  assert.strictEqual(routed.detail, "BLOCK");
+})();
+
 console.log("V2_SIGNAL_AUTHORITY_ROUTER_TEST_OK");

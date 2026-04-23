@@ -40,7 +40,8 @@ async function canaryRunsProductionRouteWithoutExchangeWrite() {
   assert.strictEqual(artifact.route_result_summary.audit_ledger_reason, "PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED");
   assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.ok, true);
   assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.status, "APPROVED");
-  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.entry_qty_abs, 0.8);
+  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.reason, "ML_SIZE_RATIO_CAPPED");
+  assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.entry_qty_abs, 0.5);
   assert.ok(artifact.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_APPROVED"));
   assert.ok(artifact.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_QTY_MATCHES_FILL"));
   assert.deepStrictEqual(artifact.failed_check_ids, []);

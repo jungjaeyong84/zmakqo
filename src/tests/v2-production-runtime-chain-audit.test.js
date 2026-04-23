@@ -39,6 +39,24 @@ function auditWithOverride(relPath, replacer) {
   assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_ENTRY_KERNEL_REQUIRES_PROTECTION"));
 })();
 
+(function missingMlAiProposalGateFailsClosed() {
+  const audit = auditWithOverride("src/v2/signalAuthorityRouter.js", (source) => source.replace(
+    /ML_AI_PROPOSAL_NOT_APPROVED/g,
+    "ML_AI_PROPOSAL_GATE_REMOVED"
+  ));
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_ML_AI_PROPOSAL_AND_SIZE_CAP_ENFORCED"));
+})();
+
+(function missingMlSizeRatioCapFailsClosed() {
+  const audit = auditWithOverride("src/v2/entrySizingDecision.js", (source) => source.replace(
+    /ML_SIZE_RATIO_CAPPED/g,
+    "ML_SIZE_RATIO_CAP_REMOVED"
+  ));
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_ML_AI_PROPOSAL_AND_SIZE_CAP_ENFORCED"));
+})();
+
 (function missingReducedFillReducerFailsClosed() {
   const audit = auditWithOverride("src/v2/openclawShadowExitWriter.js", (source) => source.replace(/reduceV2ExitFill/g, "exitFillReducerRemoved"));
   assert.strictEqual(audit.ok, false);

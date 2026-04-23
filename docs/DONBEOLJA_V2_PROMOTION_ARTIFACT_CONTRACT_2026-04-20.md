@@ -671,6 +671,8 @@ cloudbuild는 아래 원칙을 따른다.
 31. production `OpenClawExecutionPermit` TTL은 `DONBEOLJA_V2_OPENCLAW_EXECUTION_PERMIT_TTL_MINUTES` 로 조정 가능하지만 5~30분 범위로 clamp 된다. 기본값은 15분이며, Cloud Run cold start/일시 지연을 흡수하되 장시간 재사용은 막는다.
 32. promotion latest artifact는 no-op skip 없이 매 실행 overwrite 한다. stale/freshness 판정은 `artifact_generated_at`, `artifact_generated_age_minutes`, same artifact cycle, temporal skew로 수행하므로, 동일 입력이어도 최신 실행 증거를 갱신하지 않는 skip은 LIVE 승격 freshness 증명을 약화시키는 경로로 본다.
 33. production runtime/fill boundary audit은 source-structure audit을 사용해야 한다. `src/v2/sourceStructureAudit.js` 는 comments/strings를 mask한 뒤 function block과 call expression을 검사하고, `v2-production-runtime-chain-audit.test.js` 및 `v2-fill-sync-canonical-boundary-audit.test.js` 는 필수 토큰이 문자열 안에만 존재하는 spoof fixture를 fail-closed로 검증해야 한다.
+34. ML proposal verdict gates production entry. server-native OpenClaw entry는 `strategy_filter.verdict=PASS` 만으로 실행 의도가 생성되면 안 된다. `ml_ai_signal_proposal.proposal_verdict` 가 `PASS` 가 아니면 `ML_AI_PROPOSAL_NOT_APPROVED` 로 차단되어야 하며, 이 계약은 `SUBMIT_CONTRACT_CHK_82` 와 production runtime chain audit의 `V2_PRODUCTION_CHAIN_ML_AI_PROPOSAL_AND_SIZE_CAP_ENFORCED` 로 검증한다.
+35. ML size ratio caps production entry sizing. OpenClaw ML proposal의 `size_ratio` 는 permit의 `max_size_ratio` 에 기록되는 장식 필드가 아니라 production entry sizing의 notional cap으로 적용되어야 한다. `buildV2EntrySizingDecision` 은 `max_size_ratio` 를 읽어 `maxNotional * max_size_ratio` 를 초과하는 요청을 `ML_SIZE_RATIO_CAPPED` 로 축소해야 하며, invalid ratio는 `ML_MAX_SIZE_RATIO_INVALID` 로 fail-closed 된다. 이 계약은 `SUBMIT_CONTRACT_CHK_83` 로 검증한다.
 
 `SUBMIT_CHK_17` 실패는 `SCHEDULER_COLLECTOR_BLOCKER` 이며, 권장 행동은 `FIX_V2_SCHEDULER_COLLECTOR_IAM_AND_RERUN_LIVE_CLOUDBUILD_WRAPPER` 이다.
 
