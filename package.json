@@ -80,6 +80,7 @@
     "check:v2-repair-queue-firestore-canary-streak": "node scripts/check-v2-repair-queue-firestore-canary-streak.js",
     "check:v2-repair-live-cutover-readiness": "node scripts/check-v2-repair-live-cutover-readiness.js",
     "setup:v2-repair-firestore-canary-launchd": "node scripts/setup-v2-repair-firestore-canary-launchd.js",
+    "setup:v2-discovery-canary-launchd": "node scripts/setup-v2-discovery-canary-launchd.js",
     "check:v2-entry-boundary": "node scripts/check-v2-entry-boundary.js",
     "check:v2-fill-sync-canonical-boundary": "node scripts/check-v2-fill-sync-canonical-boundary.js",
     "check:v2-production-cutover": "node scripts/check-v2-production-cutover.js",
@@ -94,6 +95,7 @@
     "test:v2-production-entry-protected-canary": "node src/tests/v2-production-entry-protected-canary.test.js && node src/tests/run-v2-production-entry-protected-canary.test.js",
     "test:v2-openclaw-scheduler-binding": "node src/tests/openclaw-cron-routes.test.js && node src/tests/openclaw-cron-manifest.test.js",
     "check:v2-production-entry-route-canary-streak": "node scripts/check-v2-production-entry-route-canary-streak.js",
+    "run:v2-discovery-canary-preflight-deploy": "node scripts/run-v2-discovery-canary-preflight-deploy.js",
     "run:v2-exit-runtime-canary": "node scripts/run-v2-exit-runtime-canary.js",
     "test:v2-exit-runtime-canary": "node src/tests/v2-exit-runtime-canary.test.js && node src/tests/run-v2-exit-runtime-canary.test.js",
     "test:v2-exit-runtime-canary-history": "node src/tests/v2-exit-runtime-canary-history.test.js",
@@ -115,7 +117,7 @@
     "check:v2-market-data-quality": "node scripts/check-v2-market-data-quality.js",
     "check:v2-openclaw-policy-promotion-gate": "node scripts/check-v2-openclaw-policy-promotion-gate.js",
     "run:v2-runbook-diagnostics": "node scripts/run-v2-runbook-diagnostics.js",
-    "test:v2-risk-ops": "node src/tests/v2-risk-governor.test.js && node src/tests/v2-market-data-quality-gate.test.js && node src/tests/v2-openclaw-policy-promotion-gate.test.js && node src/tests/v2-operator-safe-mode.test.js && node src/tests/v2-runbook-diagnostic-runner.test.js"
+    "test:v2-risk-ops": "node src/tests/v2-risk-governor.test.js && node src/tests/v2-market-data-quality-gate.test.js && node src/tests/v2-openclaw-policy-promotion-gate.test.js && node src/tests/v2-operator-safe-mode.test.js && node src/tests/v2-runbook-diagnostic-runner.test.js && node src/tests/run-v2-discovery-canary-preflight-deploy.test.js && node src/tests/setup-v2-discovery-canary-launchd.test.js"
   },
   "author": "Jaeyong Jung",
   "license": "ISC",
