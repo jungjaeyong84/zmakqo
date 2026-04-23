@@ -101,6 +101,19 @@ function buildPermitForBundle(bundle, overrides = {}) {
   return { worldState, executionPermit };
 }
 
+function noReplayGuard(calls = null) {
+  return async () => {
+    if (calls) calls.push({ type: "replay_guard" });
+    return {
+      ok: true,
+      replay: false,
+      reason: "OPENCLAW_DECISION_BUNDLE_EXECUTION_NOT_FOUND",
+      openclaw_decision_bundle_hash: "test-bundle-hash",
+      existing_execution_audit: null,
+    };
+  };
+}
+
 async function disabledRuntimeBlocksBeforeKernel() {
   const calls = [];
   const result = await runV2ProductionEntryRoute({
@@ -147,6 +160,7 @@ async function canaryRouteExecutesOnlyThroughKernelAndPersistsAudit() {
     env: buildEnv(),
     bundle,
     ...permit,
+    findExistingBundleExecution: noReplayGuard(calls),
     runEntryKernel: async ({ entryIntent }) => {
       calls.push({ type: "kernel", entryIntent });
       return buildKernelResultFromBundle(bundle);
@@ -159,12 +173,14 @@ async function canaryRouteExecutesOnlyThroughKernelAndPersistsAudit() {
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED");
-  assert.deepStrictEqual(calls.map((row) => row.type), ["kernel", "persist"]);
+  assert.deepStrictEqual(calls.map((row) => row.type), ["replay_guard", "kernel", "persist"]);
   assert.strictEqual(result.executionPermitValidation.ok, true);
-  assert.strictEqual(calls[0].entryIntent.decision_mode, "CANARY");
-  assert.strictEqual(calls[1].source, "PRODUCTION_ENTRY_ROUTE");
+  assert.strictEqual(result.decisionBundleReplayGuard.replay, false);
+  assert.strictEqual(calls[1].entryIntent.decision_mode, "CANARY");
+  assert.strictEqual(calls[2].source, "PRODUCTION_ENTRY_ROUTE");
   assert.strictEqual(result.openclawExecutionAudit.ok, true);
   assert.strictEqual(result.openclawExecutionAudit.execution_kernel_status, "EXECUTED_ENTRY_PRESENT");
+  assert.ok(result.openclawExecutionAudit.openclaw_decision_bundle_hash);
 }
 
 async function liveDecisionIsBlockedWhenRuntimeIsCanaryOnly() {
@@ -222,6 +238,7 @@ async function expiredExecutionPermitBlocksRetryBeforeKernel() {
     env: buildEnv(),
     bundle,
     ...permit,
+    findExistingBundleExecution: noReplayGuard(),
     runEntryKernel: async () => {
       calls.push("kernel");
       return buildKernelResultFromBundle(bundle);
@@ -238,6 +255,43 @@ async function expiredExecutionPermitBlocksRetryBeforeKernel() {
   assert.deepStrictEqual(calls, []);
 }
 
+async function repeatedDecisionBundleBlocksBeforeKernel() {
+  const calls = [];
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: async () => {
+      calls.push("replay_guard");
+      return {
+        ok: true,
+        replay: true,
+        reason: "OPENCLAW_DECISION_BUNDLE_EXECUTION_ALREADY_EXISTS",
+        openclaw_decision_bundle_hash: bundle.openclawDecisionBundleHash,
+        existing_execution_audit: {
+          openclaw_execution_audit_id: "OCEXSEPAUDV2__existing",
+          openclaw_decision_bundle_hash: bundle.openclawDecisionBundleHash,
+        },
+      };
+    },
+    runEntryKernel: async () => {
+      calls.push("kernel");
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push("persist");
+      return { ok: true };
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_BLOCKED");
+  assert.strictEqual(result.decisionBundleReplayGuard.replay, true);
+  assert.deepStrictEqual(calls, ["replay_guard"]);
+}
+
 async function kernelBlockDoesNotBecomeRouteSuccess() {
   const calls = [];
   const bundle = buildBundle();
@@ -246,6 +300,7 @@ async function kernelBlockDoesNotBecomeRouteSuccess() {
     env: buildEnv(),
     bundle,
     ...permit,
+    findExistingBundleExecution: noReplayGuard(),
     runEntryKernel: async () => {
       calls.push("kernel");
       return {
@@ -281,6 +336,7 @@ async function tamperedKernelExecutionLineageBlocksRouteSuccess() {
     env: buildEnv(),
     bundle,
     ...permit,
+    findExistingBundleExecution: noReplayGuard(),
     runEntryKernel: async () => buildKernelResultFromBundle(otherBundle),
     persistExecutionAudit: async () => ({ ok: true, skipped: true }),
     now: () => "2026-04-21T06:00:00.000Z",
@@ -298,6 +354,7 @@ async function auditLedgerFailureDoesNotLookSuccessful() {
     env: buildEnv(),
     bundle,
     ...permit,
+    findExistingBundleExecution: noReplayGuard(),
     runEntryKernel: async () => buildKernelResultFromBundle(bundle),
     persistExecutionAudit: async () => {
       throw new Error("firestore write denied");
@@ -316,6 +373,7 @@ async function main() {
   await liveDecisionIsBlockedWhenRuntimeIsCanaryOnly();
   await missingExecutionPermitBlocksBeforeKernel();
   await expiredExecutionPermitBlocksRetryBeforeKernel();
+  await repeatedDecisionBundleBlocksBeforeKernel();
   await kernelBlockDoesNotBecomeRouteSuccess();
   await tamperedKernelExecutionLineageBlocksRouteSuccess();
   await auditLedgerFailureDoesNotLookSuccessful();

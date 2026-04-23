@@ -41,7 +41,7 @@ function ensureArray(value) {
 function resolveRiskGovernorPolicy(env = process.env) {
   return Object.freeze({
     enabled: parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_ENABLED, true),
-    required: parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, false),
+    required: parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, true),
     max_account_leverage: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE, 2),
     max_total_notional_quote: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, 250),
     max_symbol_notional_quote: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, 100),
