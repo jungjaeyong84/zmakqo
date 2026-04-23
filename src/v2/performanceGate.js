@@ -39,6 +39,53 @@ function readMetric(metrics, path) {
   return cur;
 }
 
+const V2_PERFORMANCE_GATE_STAGES = Object.freeze(["DISCOVERY", "CANARY", "LIVE"]);
+
+const V2_PERFORMANCE_GATE_STAGE_DEFAULTS = Object.freeze({
+  DISCOVERY: Object.freeze({
+    min_sample_n: 20,
+    min_win_rate_pct: 45,
+    min_profit_factor: 1.05,
+    min_expectancy_r: 0,
+    min_net_pnl_pct: 0,
+    max_drawdown_pct: -5,
+    max_cost_ratio_pct: 0.35,
+    max_error_count_24h: 0,
+  }),
+  CANARY: Object.freeze({
+    min_sample_n: 50,
+    min_win_rate_pct: 48,
+    min_profit_factor: 1.1,
+    min_expectancy_r: 0,
+    min_net_pnl_pct: 0,
+    max_drawdown_pct: -6,
+    max_cost_ratio_pct: 0.3,
+    max_error_count_24h: 0,
+  }),
+  LIVE: Object.freeze({
+    min_sample_n: 100,
+    min_win_rate_pct: 50,
+    min_profit_factor: 1.15,
+    min_expectancy_r: 0,
+    min_net_pnl_pct: 0,
+    max_drawdown_pct: -5,
+    max_cost_ratio_pct: 0.24,
+    max_error_count_24h: 0,
+  }),
+});
+
+function resolvePerformanceGateStage(stage = null, env = process.env) {
+  const raw = upper(stage || env.V2_PERFORMANCE_GATE_STAGE || env.V2_PERFORMANCE_GATE_MODE);
+  return V2_PERFORMANCE_GATE_STAGES.includes(raw) ? raw : "LIVE";
+}
+
+function readStageThreshold(env, stage, key) {
+  const prefixed = env[`V2_PERFORMANCE_GATE_${stage}_${key.toUpperCase()}`];
+  const fallback = stage === "LIVE" ? env[`V2_PERFORMANCE_GATE_${key.toUpperCase()}`] : null;
+  const value = prefixed != null && String(prefixed).trim() !== "" ? prefixed : fallback;
+  return value == null || String(value).trim() === "" ? null : Number(value);
+}
+
 function normalizePerformanceMetrics(input = {}) {
   const row = input && typeof input === "object" ? input : {};
   const perf = row.performance && typeof row.performance === "object" ? row.performance : {};
@@ -79,16 +126,19 @@ function normalizePerformanceMetrics(input = {}) {
   });
 }
 
-function resolvePerformanceGateThresholds(env = process.env) {
+function resolvePerformanceGateThresholds(env = process.env, stage = null) {
+  const resolvedStage = resolvePerformanceGateStage(stage, env);
+  const defaults = V2_PERFORMANCE_GATE_STAGE_DEFAULTS[resolvedStage];
   return Object.freeze({
-    min_sample_n: Math.max(1, Number(env.V2_PERFORMANCE_GATE_MIN_SAMPLE_N || 100)),
-    min_win_rate_pct: Number(env.V2_PERFORMANCE_GATE_MIN_WIN_RATE_PCT || 50),
-    min_profit_factor: Number(env.V2_PERFORMANCE_GATE_MIN_PROFIT_FACTOR || 1.1),
-    min_expectancy_r: Number(env.V2_PERFORMANCE_GATE_MIN_EXPECTANCY_R || 0),
-    min_net_pnl_pct: Number(env.V2_PERFORMANCE_GATE_MIN_NET_PNL_PCT || 0),
-    max_drawdown_pct: Number(env.V2_PERFORMANCE_GATE_MAX_DRAWDOWN_PCT || -2),
-    max_cost_ratio_pct: Number(env.V2_PERFORMANCE_GATE_MAX_COST_RATIO_PCT || 0.24),
-    max_error_count_24h: Number(env.V2_PERFORMANCE_GATE_MAX_ERROR_COUNT_24H || 0),
+    stage: resolvedStage,
+    min_sample_n: Math.max(1, readStageThreshold(env, resolvedStage, "min_sample_n") ?? defaults.min_sample_n),
+    min_win_rate_pct: readStageThreshold(env, resolvedStage, "min_win_rate_pct") ?? defaults.min_win_rate_pct,
+    min_profit_factor: readStageThreshold(env, resolvedStage, "min_profit_factor") ?? defaults.min_profit_factor,
+    min_expectancy_r: readStageThreshold(env, resolvedStage, "min_expectancy_r") ?? defaults.min_expectancy_r,
+    min_net_pnl_pct: readStageThreshold(env, resolvedStage, "min_net_pnl_pct") ?? defaults.min_net_pnl_pct,
+    max_drawdown_pct: readStageThreshold(env, resolvedStage, "max_drawdown_pct") ?? defaults.max_drawdown_pct,
+    max_cost_ratio_pct: readStageThreshold(env, resolvedStage, "max_cost_ratio_pct") ?? defaults.max_cost_ratio_pct,
+    max_error_count_24h: readStageThreshold(env, resolvedStage, "max_error_count_24h") ?? defaults.max_error_count_24h,
   });
 }
 
@@ -96,9 +146,10 @@ function hasFinite(value) {
   return Number.isFinite(Number(value));
 }
 
-function evaluateV2PerformanceGate({ metrics = {}, thresholds = resolvePerformanceGateThresholds(), mode = "LIVE" } = {}) {
+function evaluateV2PerformanceGate({ metrics = {}, thresholds = resolvePerformanceGateThresholds(), mode = "LIVE", stage = null } = {}) {
   const normalized = normalizePerformanceMetrics(metrics);
   const resolvedMode = upper(mode || normalized.mode) || "LIVE";
+  const resolvedStage = resolvePerformanceGateStage(stage || thresholds.stage);
   const blockers = [];
   const warnings = [];
 
@@ -135,6 +186,7 @@ function evaluateV2PerformanceGate({ metrics = {}, thresholds = resolvePerforman
     ok: blockers.length === 0,
     reason: blockers.length === 0 ? "V2_PERFORMANCE_GATE_PASS" : "V2_PERFORMANCE_GATE_BLOCKED",
     mode: resolvedMode,
+    stage: resolvedStage,
     blockers: Object.freeze(blockers),
     warnings: Object.freeze(warnings),
     metrics: normalized,
@@ -142,10 +194,35 @@ function evaluateV2PerformanceGate({ metrics = {}, thresholds = resolvePerforman
   });
 }
 
+function evaluateV2PerformanceStageMatrix({ metrics = {}, env = process.env, mode = "LIVE" } = {}) {
+  const normalized = normalizePerformanceMetrics(metrics);
+  const stages = {};
+  let highestPassedStage = null;
+  for (const stage of V2_PERFORMANCE_GATE_STAGES) {
+    const thresholds = resolvePerformanceGateThresholds(env, stage);
+    const result = evaluateV2PerformanceGate({
+      metrics: normalized,
+      thresholds,
+      mode,
+      stage,
+    });
+    stages[stage.toLowerCase()] = result;
+    if (result.ok === true) highestPassedStage = stage;
+  }
+  return Object.freeze({
+    highest_passed_stage: highestPassedStage,
+    discovery: stages.discovery,
+    canary: stages.canary,
+    live: stages.live,
+  });
+}
+
 module.exports = {
   normalizePerformanceMetrics,
   resolvePerformanceGateThresholds,
   evaluateV2PerformanceGate,
+  resolvePerformanceGateStage,
+  evaluateV2PerformanceStageMatrix,
   __test: {
     trimOrNull,
     upper,
@@ -153,5 +230,8 @@ module.exports = {
     firstNumber,
     normalizeRateToPct,
     readMetric,
+    V2_PERFORMANCE_GATE_STAGES,
+    V2_PERFORMANCE_GATE_STAGE_DEFAULTS,
+    readStageThreshold,
   },
 };

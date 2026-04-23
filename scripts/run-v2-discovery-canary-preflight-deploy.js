@@ -7,6 +7,7 @@ const { execFileSync } = require("child_process");
 const entryStreak = require("./check-v2-production-entry-route-canary-streak");
 const exitStreak = require("./check-v2-exit-runtime-canary-streak");
 const repairStreak = require("./check-v2-repair-queue-firestore-canary-streak");
+const { evaluateV2PerformanceStageMatrix } = require("../src/v2/performanceGate");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -56,6 +57,34 @@ function readJsonIfExists(filePath) {
   } catch (_) {
     return null;
   }
+}
+
+function resolvePerformanceMetricsFile(env = process.env) {
+  return trimOrNull(env.V2_PERFORMANCE_GATE_INPUT_FILE)
+    || path.resolve(process.cwd(), "ops", "daily", "v2_openclaw_daily_performance_report_latest.json");
+}
+
+function collectPerformanceStageMatrix(env = process.env) {
+  const inputFile = resolvePerformanceMetricsFile(env);
+  const row = readJsonIfExists(inputFile);
+  if (!row) {
+    return Object.freeze({
+      ok: false,
+      reason: "V2_DISCOVERY_CANARY_PERFORMANCE_METRICS_MISSING",
+      input_file: inputFile,
+      stage_matrix: null,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    reason: "V2_DISCOVERY_CANARY_PERFORMANCE_STAGE_MATRIX_READY",
+    input_file: inputFile,
+    stage_matrix: evaluateV2PerformanceStageMatrix({
+      metrics: row,
+      env,
+      mode: trimOrNull(env.V2_PERFORMANCE_GATE_MODE) || row.mode || "LIVE",
+    }),
+  });
 }
 
 function buildDiscoverySubstitutions(env = process.env) {
@@ -114,6 +143,7 @@ async function collectPreflight(env = process.env) {
     exitStreak.runCheck(streakEnv),
   ]);
   const repair = repairStreak.runCheck(streakEnv);
+  const performance = collectPerformanceStageMatrix(env);
   const blockers = [];
   for (const report of [entry, exit, repair]) {
     if (Array.isArray(report && report.blockers) && report.blockers.length > 0) {
@@ -127,6 +157,7 @@ async function collectPreflight(env = process.env) {
     entry,
     exit,
     repair,
+    performance,
     blockers: Object.freeze(blockers),
   });
 }
@@ -167,6 +198,7 @@ async function main(env = process.env, options = {}) {
         reason: preflight.repair.reason,
         blockers: preflight.repair.blockers || [],
       }),
+      performance: preflight.performance,
     });
     writeJson(stateFile, payload);
     console.error(JSON.stringify(payload));
@@ -191,6 +223,7 @@ async function main(env = process.env, options = {}) {
       reason: "V2_DISCOVERY_CANARY_DEPLOY_ALREADY_TRIGGERED",
       command_preview: commandPreview,
       substitutions,
+      performance: preflight.performance,
       state_file: stateFile,
     });
     writeJson(stateFile, payload);
@@ -204,6 +237,7 @@ async function main(env = process.env, options = {}) {
       reason: "V2_DISCOVERY_CANARY_PREFLIGHT_PASS_DEPLOY_SKIPPED",
       command_preview: commandPreview,
       substitutions,
+      performance: preflight.performance,
       state_file: stateFile,
     });
     writeJson(stateFile, payload);
@@ -217,6 +251,7 @@ async function main(env = process.env, options = {}) {
     reason: "V2_DISCOVERY_CANARY_DEPLOY_TRIGGERED",
     command_preview: commandPreview,
     substitutions,
+    performance: preflight.performance,
     state_file: stateFile,
   });
   writeJson(stateFile, payload);
