@@ -674,10 +674,12 @@ function buildSchedulerTrafficCutoverReadinessSummaryFixture(filePath = null) {
       "openclaw_daily_cycle",
       "openclaw_hourly_cycle",
       "v2_repair_queue_service",
+      "openclaw_server_primary_tick",
     ],
     missing_openclaw_job_ids: [],
     active_legacy_scheduler_job_n: 0,
     openclaw_cloud_scheduler_jobs: [
+      { job_id: "openclaw_server_primary_tick", enabled: true, path_match: true, schedule_match: true, time_zone_match: true },
       { job_id: "v2_production_entry_route_canary", enabled: true, path_match: true, schedule_match: true, time_zone_match: true },
       { job_id: "v2_exit_runtime_canary", enabled: true, path_match: true, schedule_match: true, time_zone_match: true },
     ],

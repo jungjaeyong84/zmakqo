@@ -27,7 +27,7 @@ function buildRunService(name, { autostart = "0", cutoverMode = "OPENCLAW_CRON",
   };
 }
 
-function buildCloudSchedulerJobs({ legacyScheduler = false, missingExitRuntimeCanary = false } = {}) {
+function buildCloudSchedulerJobs({ legacyScheduler = false, missingServerPrimaryTick = false } = {}) {
   const rows = [
     {
       name: "projects/p/locations/asia-northeast3/jobs/openclaw-calibration",
@@ -50,7 +50,14 @@ function buildCloudSchedulerJobs({ legacyScheduler = false, missingExitRuntimeCa
       timeZone: "Asia/Seoul",
       httpTarget: { uri: "https://donbeolja.run.app/api/openclaw/cron/v2-exit-runtime-canary" },
     },
-  ].filter((job) => !(missingExitRuntimeCanary && job.name.endsWith("/v2-exit-runtime-canary")));
+    {
+      name: "projects/p/locations/asia-northeast3/jobs/openclaw-server-primary-tick",
+      state: "ENABLED",
+      schedule: "1,16,31,46 * * * *",
+      timeZone: "Asia/Seoul",
+      httpTarget: { uri: "https://donbeolja.run.app/api/openclaw/cron/openclaw-server-primary-tick" },
+    },
+  ].filter((job) => !(missingServerPrimaryTick && job.name.endsWith("/openclaw-server-primary-tick")));
   if (legacyScheduler) {
     rows.push({
       name: "projects/p/locations/asia-northeast3/jobs/donbeolja-tick",
@@ -61,14 +68,14 @@ function buildCloudSchedulerJobs({ legacyScheduler = false, missingExitRuntimeCa
   return rows;
 }
 
-function fakeExecFactory({ legacyScheduler = false, badTraffic = false, expectPath = false, missingExitRuntimeCanary = false } = {}) {
+function fakeExecFactory({ legacyScheduler = false, badTraffic = false, expectPath = false, missingServerPrimaryTick = false } = {}) {
   return (cmd, args, options = {}) => {
     assert.strictEqual(cmd, "gcloud");
     if (expectPath) assert.strictEqual(options.env.PATH, "/bin:/usr/bin");
     const joined = args.join(" ");
     if (joined === "config get-value project") return "donbeolja-dev\n";
     if (joined.includes("scheduler jobs list")) {
-      return JSON.stringify(buildCloudSchedulerJobs({ legacyScheduler, missingExitRuntimeCanary }));
+      return JSON.stringify(buildCloudSchedulerJobs({ legacyScheduler, missingServerPrimaryTick }));
     }
     if (joined.includes("run services describe donbeolja-exit-worker")) {
       return JSON.stringify(buildRunService("donbeolja-exit-worker"));
@@ -91,6 +98,7 @@ function fakeExecFactory({ legacyScheduler = false, badTraffic = false, expectPa
   assert.strictEqual(state.cloud_run_services.length, 2);
   assert.ok(state.openclaw_cron_jobs.some((job) => job.job_id === "v2_repair_queue_service" && job.enabled === true));
   assert.ok(state.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_exit_runtime_canary" && job.enabled === true));
+  assert.ok(state.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "openclaw_server_primary_tick" && job.enabled === true));
   assert.deepStrictEqual(state.legacy_scheduler_jobs, []);
 })();
 
@@ -133,13 +141,13 @@ function fakeExecFactory({ legacyScheduler = false, badTraffic = false, expectPa
   assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_CHK_07"));
 })();
 
-(function readinessScriptFailsWhenRequiredCloudSchedulerCanaryIsMissing() {
+(function readinessScriptFailsWhenRequiredCloudSchedulerTickIsMissing() {
   const report = checkScript.runCheck({ GOOGLE_CLOUD_PROJECT: "donbeolja-dev" }, {
-    execFileSync: fakeExecFactory({ missingExitRuntimeCanary: true }),
+    execFileSync: fakeExecFactory({ missingServerPrimaryTick: true }),
   });
   assert.strictEqual(report.ok, false);
   assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_CHK_03"));
-  assert.ok(report.missing_openclaw_job_ids.includes("v2_exit_runtime_canary"));
+  assert.ok(report.missing_openclaw_job_ids.includes("openclaw_server_primary_tick"));
 })();
 
 console.log("V2_SCHEDULER_TRAFFIC_STATE_COLLECTOR_TEST_OK");

@@ -69,6 +69,7 @@ const {
     "openclaw_agent_retrospect",
     "v2_production_entry_route_canary",
     "v2_exit_runtime_canary",
+    "openclaw_server_primary_tick",
   ]) {
     assert.ok(cloudJobIds.has(required),
       `required Cloud Scheduler job missing: ${required}`);
@@ -86,6 +87,12 @@ const {
   assert.strictEqual(v2ExitRuntimeCanary.criticality, "HIGH");
   assert.strictEqual(v2ExitRuntimeCanary.canary_mode, "LIVE_EXIT_RUNTIME_OBSERVATION");
   assert.strictEqual(v2ExitRuntimeCanary.scheduler_schedule, "35 * * * *");
+  const serverPrimaryTick = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "openclaw_server_primary_tick");
+  assert.ok(serverPrimaryTick, "server primary tick missing");
+  assert.strictEqual(serverPrimaryTick.http_path, "/api/openclaw/cron/openclaw-server-primary-tick");
+  assert.strictEqual(serverPrimaryTick.criticality, "HIGH");
+  assert.strictEqual(serverPrimaryTick.runtime_mode, "SERVER_PRIMARY_PAPER");
+  assert.strictEqual(serverPrimaryTick.scheduler_schedule, "1,16,31,46 * * * *");
   // weekly_summary intentionally not on Cloud Scheduler yet — dashboard
   // content is too sparse pre-Day 14 to warrant a weekly digest.
   assert.ok(!cloudJobIds.has("openclaw_agent_weekly_summary"),

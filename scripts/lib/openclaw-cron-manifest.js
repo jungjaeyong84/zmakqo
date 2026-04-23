@@ -152,6 +152,17 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     criticality: "HIGH",
     canary_mode: "LIVE_EXIT_RUNTIME_OBSERVATION",
   },
+  {
+    job_id: "openclaw_server_primary_tick",
+    scheduler_name: "openclaw-server-primary-tick",
+    scheduler_region: "asia-northeast3",
+    scheduler_schedule: "1,16,31,46 * * * *",
+    scheduler_time_zone: "Asia/Seoul",
+    http_path: "/api/openclaw/cron/openclaw-server-primary-tick",
+    owner: "openclaw",
+    criticality: "HIGH",
+    runtime_mode: "SERVER_PRIMARY_PAPER",
+  },
   // weekly_summary intentionally not recreated until the evidence
   // ledger accumulates enough data to make the digest worth reading.
 ]);
