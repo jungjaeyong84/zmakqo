@@ -2917,3 +2917,12 @@ V1 약점 재발 방지:
 2. 이번 단계부터는 decision bundle 자체가 hash-addressed ledger로 남으므로, 감사자가 signal intent / feature / ML proposal / strategy filter / decision을 같은 payload로 다시 검증할 수 있다
 3. V1에서는 CloudBuild substitution은 안전해도 실제 Cloud Run service env가 다른 값이면 운영에서 legacy webhook이나 audit 누락이 재발할 수 있었다
 4. 이번 단계는 실제 Cloud Run describe 결과에서 audit ledger write on / legacy webhook allow off를 확인하지 못하면 LIVE evidence를 통과시키지 않는다
+
+## 2026-04-23 추가: 수익성/성과/Firestore 비용 게이트
+
+1. `src/v2/performanceGate.js` 와 `scripts/check-v2-performance-gate.js` 를 추가했다. LIVE 전 수익성 증거는 최소 표본, 승률, profit factor, expectancy, net PnL, drawdown, cost ratio, runtime error count를 동시에 통과해야 한다. 표본이 없거나 expectancy가 양수가 아니면 `V2_PERFORMANCE_GATE_BLOCKED` 로 fail-closed 한다.
+2. 기본 LIVE 성능 기준은 `sample_n >= 100`, `win_rate_pct >= 50`, `profit_factor >= 1.1`, `expectancy > 0`, `net_pnl_pct > 0`, `mdd_pct >= -2`, `cost_ratio_pct <= 0.24`, `error_count_24h <= 0` 이다. 임계값은 `V2_PERFORMANCE_GATE_*` env로만 조정한다.
+3. `src/v2/openclawDailyPerformanceReport.js` 와 `scripts/generate-v2-openclaw-daily-performance-report.js` 를 추가했다. OpenClaw outcome adjudication ledger를 bounded read로 집계해 decision -> outcome -> pnl 성과를 daily artifact `ops/daily/v2_openclaw_daily_performance_report_latest.json` 에 남긴다.
+4. `src/v2/firestoreCostGuard.js` 와 `scripts/check-v2-firestore-cost-guard.js` 를 추가했다. promotion unified report와 canary streak artifact의 query/read budget을 합산해 Firestore read 회귀를 `V2_FIRESTORE_COST_GUARD_PASS/BLOCKED` 로 판정한다.
+5. `test:v2-promotion` 은 이제 `test:v2-profit-cost-guards` 를 포함한다. 즉 수익성 gate, daily performance report, Firestore cost guard의 behavior test가 promotion path에서 빠지면 CI가 깨진다.
+6. 2026-04-23 10시대 현재 dev Firestore V2 outcome 표본은 `sample_n=0` 이므로 performance gate는 정상적으로 `SAMPLE_INSUFFICIENT`, `PROFIT_FACTOR_BELOW_FLOOR`, `EXPECTANCY_NOT_POSITIVE`, `NET_PNL_NOT_POSITIVE` 로 차단한다. 이는 시스템 결함이 아니라 아직 실거래 성과 증거가 없다는 의미다.
