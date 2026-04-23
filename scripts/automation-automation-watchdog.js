@@ -64,6 +64,10 @@ function resolveLatestArtifactPath(...names) {
 const ARTIFACT_SPECS = Object.freeze([
   { name: "analytics_local_cache_refresh", filePath: path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json"), maxAgeHours: 4, severity: "WARN" },
   { name: "openclaw_hourly_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_hourly_cycle_latest.json"), maxAgeHours: 2, severity: "FAIL" },
+  { name: "v2_repair_queue_canary", filePath: path.join(OPS_DAILY_DIR, "v2_repair_queue_canary_latest.json"), maxAgeHours: 0.25, severity: "FAIL" },
+  { name: "v2_repair_queue_operational_canary", filePath: path.join(OPS_DAILY_DIR, "v2_repair_queue_operational_canary_latest.json"), maxAgeHours: 0.25, severity: "FAIL" },
+  { name: "v2_repair_queue_canary_preflight", filePath: path.join(OPS_DAILY_DIR, "v2_repair_queue_canary_preflight_latest.json"), maxAgeHours: 0.25, severity: "FAIL" },
+  { name: "v2_repair_queue_service", filePath: path.join(OPS_DAILY_DIR, "v2_repair_queue_service_latest.json"), maxAgeHours: 0.25, severity: "FAIL" },
   { name: "openclaw_daily_cycle", filePath: path.join(OPS_DAILY_DIR, "openclaw_daily_cycle_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   { name: "objective_retrospective", filePath: path.join(OPS_DAILY_DIR, "objective_retrospective_latest.json"), maxAgeHours: 30, severity: "FAIL" },
   // Objective supervisor/stage autopilot now run inside daily cycle; freshness should follow daily cadence.
@@ -80,6 +84,7 @@ const ARTIFACT_SPECS = Object.freeze([
 const AUTOMATION_SEVERITY_BY_LABEL = Object.freeze({
   "com.jeongjaeyong.donbeolja.objectiveretrospective": "FAIL",
   "com.jeongjaeyong.donbeolja.objectivesupervisor": "FAIL",
+  "com.jeongjaeyong.donbeolja.v2repairqueue": "FAIL",
   "com.jeongjaeyong.donbeolja.rollbackmonitor": "FAIL",
   "com.jeongjaeyong.donbeolja.stageautopilot": "FAIL",
   "com.jeongjaeyong.donbeolja.signaldataintegrity": "FAIL",
@@ -323,6 +328,12 @@ function shouldRestartLocalServer() {
   return parseBoolean(process.env.AUTOMATION_WATCHDOG_RESTART_LOCAL_SERVER, true);
 }
 
+function shouldMonitorLegacySchedulerTick({ schedulerMode = null, env = process.env } = {}) {
+  const explicit = String(env && env.AUTOMATION_WATCHDOG_LEGACY_SCHEDULER_TICK_SLA_ENABLED || "").trim();
+  if (explicit) return parseBoolean(explicit, false);
+  return String(schedulerMode || "").trim().toUpperCase() !== OPENCLAW_SCHEDULER_SOT;
+}
+
 function localServerLaunchdLabel() {
   return String(process.env.AUTOMATION_WATCHDOG_SERVER_LABEL || "com.jeongjaeyong.donbeolja.server").trim();
 }
@@ -525,6 +536,30 @@ function assessSchedulerTickSla(statusRes) {
     running,
     issueCode,
     issueSeverity,
+  };
+}
+
+function buildSkippedSchedulerTickSla({ baseUrl = null, reason = "OPENCLAW_CRON_SOT" } = {}) {
+  return {
+    name: "scheduler_tick_sla",
+    severity: "PASS",
+    configuredSeverity: "FAIL",
+    checkedAtMs: Date.now(),
+    baseUrl: baseUrl || null,
+    issueCode: null,
+    issueSeverity: null,
+    reachable: null,
+    statusCode: null,
+    signalTf: null,
+    pollMs: null,
+    lastTickMs: null,
+    lastTickIso: null,
+    ageMs: null,
+    slaMs: null,
+    schedulerManagedExternally: true,
+    running: null,
+    skipped: true,
+    skipReason: `LEGACY_SCHEDULER_TICK_SLA_SKIPPED_${String(reason || "OPENCLAW_CRON_SOT").toUpperCase()}`,
   };
 }
 
@@ -856,12 +891,17 @@ async function main() {
   const schedulerBaseUrl = resolveSchedulerBaseUrl();
   const schedulerTimeoutMs = resolveSchedulerTimeoutMs();
   const schedulerToken = String(process.env.SCHEDULER_TOKEN || "").trim();
-  const schedulerStatusPre = await fetchSchedulerStatus({
-    baseUrl: schedulerBaseUrl,
-    token: schedulerToken || null,
-    timeoutMs: schedulerTimeoutMs,
-  });
-  const schedulerTickSla = assessSchedulerTickSla(schedulerStatusPre);
+  const monitorLegacySchedulerTick = shouldMonitorLegacySchedulerTick({ schedulerMode, env: process.env });
+  const schedulerStatusPre = monitorLegacySchedulerTick
+    ? await fetchSchedulerStatus({
+      baseUrl: schedulerBaseUrl,
+      token: schedulerToken || null,
+      timeoutMs: schedulerTimeoutMs,
+    })
+    : { ok: true, statusCode: null, baseUrl: schedulerBaseUrl, skipped: true, data: null };
+  const schedulerTickSla = monitorLegacySchedulerTick
+    ? assessSchedulerTickSla(schedulerStatusPre)
+    : buildSkippedSchedulerTickSla({ baseUrl: schedulerBaseUrl, reason: schedulerMode });
   const preSnapshot = buildSnapshot(artifactRows, schedulerRows, [schedulerTickSla]);
   const openClawAuthFailureRows = schedulerRows.filter((row) => isOpenClawAuthFailureRow(row));
   const openClawAuthIssueSignature = openClawAuthFailureRows
@@ -943,7 +983,7 @@ async function main() {
     reason: null,
     actions: [],
   };
-  if (recoveryAllowed && shouldAttemptSchedulerRecovery(previous, schedulerIssueSignature)) {
+  if (monitorLegacySchedulerTick && recoveryAllowed && shouldAttemptSchedulerRecovery(previous, schedulerIssueSignature)) {
     if (schedulerTickSla && schedulerTickSla.issueCode) {
       schedulerTickRecovery = await attemptSchedulerRecovery({
         baseUrl: schedulerBaseUrl,
@@ -977,6 +1017,8 @@ async function main() {
       base_url: schedulerBaseUrl,
       timeout_ms: schedulerTimeoutMs,
       token_present: !!schedulerToken,
+      legacy_tick_sla_monitor_enabled: monitorLegacySchedulerTick,
+      legacy_tick_sla_monitor_reason: monitorLegacySchedulerTick ? "ENABLED" : "SKIPPED_OPENCLAW_CRON_SOT",
       status_code: schedulerStatusPre && schedulerStatusPre.statusCode || null,
       ok: !!(schedulerStatusPre && schedulerStatusPre.ok),
     },
@@ -1122,6 +1164,8 @@ if (require.main === module) {
       buildSnapshot,
       computeSchedulerSlaMs,
       assessSchedulerTickSla,
+      buildSkippedSchedulerTickSla,
+      shouldMonitorLegacySchedulerTick,
       shouldAttemptSchedulerRecovery,
       isOpenClawAuthFailureRow,
       shouldAttemptOpenClawAuthRecovery,

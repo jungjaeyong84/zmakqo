@@ -23,12 +23,15 @@
 
 const crypto = require("crypto");
 
-// Phase C: live LLM backend. Defaults to the Claude CLI subprocess adapter
-// (no plaintext API keys) and optionally falls back to the Anthropic HTTP
-// client when `OPENCLAW_NARRATIVE_PROVIDER_MODE=API` is set. Both clients
-// are lazy-required so the test suite stays offline.
+// Phase C: live LLM backend. Defaults to the Codex CLI subprocess adapter
+// (user's already-authenticated `codex` binary; no plaintext API keys) with
+// Claude CLI as automatic fallback when the Codex quota is exhausted. The
+// Anthropic HTTP client is still reachable via `OPENCLAW_NARRATIVE_PROVIDER_MODE=API`
+// and the legacy Codex-via-OpenAI-HTTP path via `OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_FIRST`.
+// All clients are lazy-required so the test suite stays offline.
 let cachedApiClient = null;
 let cachedCliClient = null;
+let cachedCodexCliClient = null;
 let cachedOpenAiClient = null;
 function resolveApiClient() {
   if (cachedApiClient !== null) return cachedApiClient;
@@ -50,6 +53,16 @@ function resolveCliClient() {
   }
   return cachedCliClient;
 }
+function resolveCodexCliClient() {
+  if (cachedCodexCliClient !== null) return cachedCodexCliClient;
+  try {
+    // eslint-disable-next-line global-require
+    cachedCodexCliClient = require("./codexCliClient").callCodexCli || null;
+  } catch (_) {
+    cachedCodexCliClient = null;
+  }
+  return cachedCodexCliClient;
+}
 function resolveOpenAiClient() {
   if (cachedOpenAiClient !== null) return cachedOpenAiClient;
   try {
@@ -66,17 +79,22 @@ function liveCallEnabled() {
 }
 
 function providerMode() {
-  const mode = String(process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "CLI").trim().toUpperCase();
-  if (mode === "AUTO") return "CODEX_FIRST";
+  // Default: CODEX CLI → CLAUDE CLI fallback. The user explicitly wanted
+  // openclaw to burn Codex quota first and only lean on Claude when Codex
+  // is exhausted. To revert to Claude-only, set OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI.
+  const mode = String(process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "CODEX_CLI_FIRST").trim().toUpperCase();
+  if (mode === "AUTO") return "CODEX_CLI_FIRST";
+  if (mode === "CODEX_CLI" || mode === "CODEX_CLI_FIRST" || mode === "CODEX_CLAUDE") return "CODEX_CLI_FIRST";
   if (mode === "OPENAI" || mode === "CODEX" || mode === "CODEX_FIRST") return "CODEX_FIRST";
   if (mode === "API" || mode === "HTTP") return "API";
-  return "CLI";
+  if (mode === "CLI" || mode === "CLAUDE_CLI" || mode === "CLAUDE") return "CLI";
+  return "CODEX_CLI_FIRST";
 }
 
 function narrativeModel() {
   const explicit = String(process.env.OPENCLAW_NARRATIVE_MODEL || "").trim();
   if (explicit) return explicit;
-  return providerMode() === "CLI" ? "sonnet" : "claude-opus-4-7";
+  return providerMode() === "API" ? "claude-opus-4-7" : "sonnet";
 }
 
 function narrativeCodexModel() {
@@ -238,14 +256,22 @@ function tryParseJsonFromText(text) {
 
 function resolveProviderSequence(mode = providerMode()) {
   switch (String(mode || "").trim().toUpperCase()) {
+    case "CODEX_CLI_FIRST":
+      // Default: try Codex CLI first, fall through to Claude CLI when Codex
+      // is exhausted / auth-blocked / missing. Both providers talk to their
+      // respective already-authenticated local CLIs — no plaintext API keys.
+      return ["CODEX_CLI", "CLI"];
     case "CODEX_FIRST":
+      // Legacy: OpenAI HTTP (Codex model) → Claude CLI. Only used when
+      // OPENCLAW_NARRATIVE_PROVIDER_MODE is explicitly set to CODEX_FIRST /
+      // OPENAI / CODEX; no longer the default.
       return ["OPENAI_CODEX", "CLI"];
     case "API":
       return ["API"];
     case "CLI":
       return ["CLI"];
     default:
-      return ["CLI"];
+      return ["CODEX_CLI", "CLI"];
   }
 }
 
@@ -254,6 +280,44 @@ async function runLiveLlm(body, { timeoutMs } = {}) {
   const system = "You are the OpenClaw risk-first narrative reasoner. Always return strict JSON only.";
   const providers = resolveProviderSequence(providerMode());
   const failures = [];
+
+  async function runCodexCliProvider() {
+    const callCodex = resolveCodexCliClient();
+    if (!callCodex) {
+      return { ok: false, reason: "CODEX_CLI_CLIENT_UNAVAILABLE", provider: "CODEX_CLI" };
+    }
+    try {
+      const completed = await callCodex({
+        prompt: body,
+        model: narrativeCodexModel(),
+        systemPrompt: system,
+        timeoutMs: effectiveTimeout,
+      });
+      if (!completed || completed.ok === false) {
+        // Surface the fallback-trigger reason verbatim (e.g.
+        // CODEX_CLI_USAGE_EXHAUSTED / CODEX_CLI_AUTH_BLOCKED) so downstream
+        // audit logs and tests can key on it.
+        return {
+          ok: false,
+          reason: (completed && completed.reason) || "CODEX_CLI_FAIL",
+          provider: "CODEX_CLI",
+          detail: completed || null,
+        };
+      }
+      return {
+        ok: true,
+        provider: "CODEX_CLI",
+        parsed: completed.parsed,
+        latency_ms: completed.duration_ms || null,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        reason: err && err.message ? err.message : String(err),
+        provider: "CODEX_CLI",
+      };
+    }
+  }
 
   async function runCliProvider() {
     const callCli = resolveCliClient();
@@ -359,7 +423,8 @@ async function runLiveLlm(body, { timeoutMs } = {}) {
 
   for (const provider of providers) {
     let result = null;
-    if (provider === "OPENAI_CODEX") result = await runOpenAiCodexProvider();
+    if (provider === "CODEX_CLI") result = await runCodexCliProvider();
+    else if (provider === "OPENAI_CODEX") result = await runOpenAiCodexProvider();
     else if (provider === "CLI") result = await runCliProvider();
     else if (provider === "API") result = await runApiProvider();
     if (result && result.ok === true) {

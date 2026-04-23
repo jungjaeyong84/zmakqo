@@ -681,7 +681,7 @@ router.get("/dashboard/home", async (req, res) => {
   const { isMockEnabled, getMockHomePayload } = require("../utils/mockData");
   if (isMockEnabled()) {
     const mockPayload = getMockHomePayload();
-    return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", mockPayload);
+    return res.render("home", mockPayload);
   }
 
   try {
@@ -718,7 +718,7 @@ router.get("/dashboard/home", async (req, res) => {
       const systemRuntimeGuards = await loadSystemRuntimeGuardView({ exchange }).catch(() => null);
       const cachedPayload = { ...cached, mission_control: buildMissionControlViewModel(), system_runtime_guards: systemRuntimeGuards };
       setHomeCache(cacheKey, cachedPayload);
-      return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", cachedPayload);
+      return res.render("home", cachedPayload);
     }
 
     const [sigSnap, dropSnap, fillSnap, intentSnap] = await Promise.all([
@@ -1637,7 +1637,7 @@ router.get("/dashboard/home", async (req, res) => {
       system_runtime_guards: systemRuntimeGuards,
     };
     setHomeCache(cacheKey, payload);
-    return res.render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", payload);
+    return res.render("home", payload);
   } catch (e) {
     const errorRef = buildRouteErrorRef("HOME");
     logRouteError("HOME_ROUTE_ERROR", errorRef, e, {
@@ -1650,7 +1650,7 @@ router.get("/dashboard/home", async (req, res) => {
       defaultStatus: 500,
     });
     try {
-      return res.status(200).render(String(req.query.legacy || "").trim() === "1" ? "home.legacy.ejs" : "home", {
+      return res.status(200).render("home", {
         service: String(process.env.K_SERVICE || "donbeolja"),
         exchange: req.query.exchange || '',
         as_of_kst: null,

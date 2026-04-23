@@ -109,11 +109,46 @@
   .side-item-name { font-weight: 500; font-size: 13px; }
   .side-item-meta { font-size: 11px; color: var(--md-on-surface-variant); }
   .side-item-value { font-weight: 500; font-size: 13px; text-align: right; }
+  .v2-mission-panel { border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-lg); background: linear-gradient(135deg, color-mix(in srgb, var(--md-primary) 9%, var(--md-surface)), var(--md-surface)); padding: 18px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); gap: 16px; align-items: stretch; }
+  .v2-mission-title { font-size: 24px; font-weight: 800; letter-spacing: -0.04em; }
+  .v2-mission-sub { margin-top: 6px; color: var(--md-on-surface-variant); font-size: 13px; line-height: 1.55; }
+  .v2-axis-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+  .v2-axis { padding: 10px; border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); background: var(--md-surface); }
+  .v2-axis-k { font-size: 10px; color: var(--md-on-surface-variant); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+  .v2-axis-v { margin-top: 4px; font-size: 13px; font-weight: 700; }
+  .v2-blockers { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .v2-blocker { display:inline-flex; padding:3px 8px; border-radius:999px; border:1px solid var(--md-outline-variant); font-size:11px; background:var(--md-surface); color:var(--md-on-surface-variant); }
+  .v2-blocker.warn { color: var(--md-warning, #e65100); border-color: color-mix(in srgb, var(--md-warning, #e65100) 40%, var(--md-outline-variant)); }
+  .v2-verdict { font-size: 28px; font-weight: 900; letter-spacing: -0.04em; }
+  .v2-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  @media (max-width: 1024px) { .v2-mission-panel { grid-template-columns: 1fr; } .v2-axis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 1024px) { .home-main { grid-template-columns: 1fr; } }
   @media (max-width: 768px) { .home-hero-value { font-size: 30px; } .pnl-grid { grid-template-columns: 1fr 1fr; } .home-sub { flex-direction: column; gap: 4px; align-items: center; } .pos-card { grid-template-columns: 48px 40px 1fr auto; } }
 </style>
 
 <div class="home-page">
+
+  <div class="v2-mission-panel">
+    <div>
+      <div class="body-sm text-primary" style="font-weight:800;text-transform:uppercase;letter-spacing:.08em;">V2 Mission Control</div>
+      <div class="v2-mission-title" id="v2-mission-verdict">V2 상태 확인 중</div>
+      <div class="v2-mission-sub">LIVE 가능 여부는 OpenClaw, 24h canary, performance gate, Firestore cost guard 증거가 모두 맞을 때만 열립니다. V1 scheduler/tick 수동 버튼은 사용하지 않습니다.</div>
+      <div class="v2-actions">
+        <a class="btn btn-filled sm" href="/dashboard.html">V2 Mission Control</a>
+        <a class="btn btn-outlined sm" href="/dashboard/audit">V2 감사</a>
+        <a class="btn btn-outlined sm" href="/dashboard/protection/view">SL/TP/Trail</a>
+      </div>
+    </div>
+    <div>
+      <div class="v2-axis-grid">
+        <div class="v2-axis"><div class="v2-axis-k">Entry 24h</div><div class="v2-axis-v" id="v2-entry">-</div></div>
+        <div class="v2-axis"><div class="v2-axis-k">Exit 24h</div><div class="v2-axis-v" id="v2-exit">-</div></div>
+        <div class="v2-axis"><div class="v2-axis-k">Performance</div><div class="v2-axis-v" id="v2-perf">-</div></div>
+        <div class="v2-axis"><div class="v2-axis-k">Cost</div><div class="v2-axis-v" id="v2-cost">-</div></div>
+      </div>
+      <div class="v2-blockers" id="v2-blockers"><span class="v2-blocker">loading</span></div>
+    </div>
+  </div>
 
   <!-- 히어로: 오늘 손익 -->
   <div class="home-hero">
@@ -307,6 +342,36 @@
   </div>
 
 </div>
+
+<script>
+(async function(){
+  function set(id, text){ var el=document.getElementById(id); if(el) el.textContent=text; }
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+    });
+  }
+  function block(items){
+    var el=document.getElementById('v2-blockers'); if(!el) return;
+    var xs=Array.isArray(items)?items.slice(0,5):[];
+    el.innerHTML = xs.length ? xs.map(function(x){ return '<span class="v2-blocker warn">'+esc(x)+'</span>'; }).join('') : '<span class="v2-blocker">blocker 없음</span>';
+  }
+  function min(v){ var n=Number(v); return Number.isFinite(n) ? Math.round(n) + '/1440m' : '-'; }
+  try {
+    var res = await fetch('/api/v2/mission-control', { credentials:'include' });
+    var j = await res.json();
+    set('v2-mission-verdict', j.verdict || 'V2 상태 불명');
+    set('v2-entry', min(j.entry_canary && j.entry_canary.coverage_minutes));
+    set('v2-exit', min(j.exit_canary && j.exit_canary.coverage_minutes));
+    set('v2-perf', j.performance_gate && j.performance_gate.ok ? 'PASS' : 'BLOCKED');
+    set('v2-cost', j.firestore_cost_guard && j.firestore_cost_guard.ok ? 'PASS' : 'BLOCKED');
+    block(j.blockers);
+  } catch (e) {
+    set('v2-mission-verdict', 'V2 상태 로드 실패');
+    block(['V2_SITE:MISSION_CONTROL_LOAD_FAILED']);
+  }
+})();
+</script>
 
 <%- include('partials/app_end_unified') %>
 

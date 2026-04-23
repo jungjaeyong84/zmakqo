@@ -67,6 +67,102 @@ async function run() {
     true,
     "trailing fills may be classified as full exit only when the close ratio proves it"
   );
+  assert.strictEqual(
+    fillsSyncTest.resolveFillSyncAlertFullExit({
+      event: "EXIT_SL_1.65P",
+      orderMeta: { closePosition: false },
+      closeRatio: 0.5,
+    }),
+    false,
+    "SL labels alone must not prove full exit"
+  );
+  assert.strictEqual(
+    fillsSyncTest.resolveFillSyncAlertFullExit({
+      event: "EXIT_SL_1.65P",
+      orderMeta: { closePosition: true },
+      closeRatio: 0.5,
+    }),
+    true,
+    "native closePosition stop evidence may prove full exit"
+  );
+  for (const event of ["EXIT_TIME_STOP_18B", "EXIT_EXTERNAL_SYNC", "EXIT_OPPOSITE_SIGNAL", "EXIT_LIQUIDATION_RISK"]) {
+    assert.strictEqual(
+      fillsSyncTest.resolveFillSyncAlertFullExit({
+        event,
+        orderMeta: { closePosition: false },
+        closeRatio: 0.5,
+      }),
+      false,
+      `${event} labels alone must not prove full exit`
+    );
+  }
+  assert.strictEqual(
+    fillsSyncTest.resolveFillSyncAlertFullExit({
+      event: "EXIT_OPPOSITE_SIGNAL",
+      orderMeta: { closePosition: false },
+      closeRatio: 1,
+    }),
+    true,
+    "non-TP1 exits may prove full exit through close ratio"
+  );
+  const stickyFullExitBatches = new Map();
+  fillsSyncTest.queueFillSyncAlertBatch(stickyFullExitBatches, {
+    symbol: "ADAUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 77001, clientOrderId: "sticky_false", closePosition: false },
+    tradeMs: 1_777_776_001_000,
+    payload: {
+      symbol: "ADAUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      intent: "EXIT",
+      side: "SELL",
+      closeRatio: 0.4,
+      fullExit: true,
+    },
+  });
+  fillsSyncTest.queueFillSyncAlertBatch(stickyFullExitBatches, {
+    symbol: "ADAUSDT",
+    event: "EXIT_OPPOSITE_SIGNAL",
+    intent: "EXIT",
+    side: "SELL",
+    orderMeta: { orderId: 77001, clientOrderId: "sticky_false", closePosition: false },
+    tradeMs: 1_777_776_001_200,
+    payload: {
+      symbol: "ADAUSDT",
+      event: "EXIT_OPPOSITE_SIGNAL",
+      intent: "EXIT",
+      side: "SELL",
+      closeRatio: 0.2,
+      fullExit: false,
+    },
+  });
+  const stickyFullExitMerged = Array.from(stickyFullExitBatches.values())[0];
+  assert.ok(approxEqual(stickyFullExitMerged.payload.closeRatio, 0.6), "sticky fullExit fixture must merge partial ratios");
+  assert.strictEqual(stickyFullExitMerged.payload.fullExit, false, "batch merge must recompute fullExit instead of keeping sticky true");
+  assert.strictEqual(
+    fillsSyncTest.shouldMarkSameDirectionTrailProfitCooldownFromExternalFill({
+      event: "EXIT_TRAIL",
+      fullExit: false,
+      realizedPnl: 2.1,
+      execTimeIso: "2026-04-22T01:00:00.000Z",
+      positionSideBefore: "LONG",
+    }),
+    false,
+    "partial profitable trailing exits must not arm same-direction cooldown"
+  );
+  assert.strictEqual(
+    fillsSyncTest.shouldMarkSameDirectionTrailProfitCooldownFromExternalFill({
+      event: "EXIT_TRAIL",
+      fullExit: true,
+      realizedPnl: 2.1,
+      execTimeIso: "2026-04-22T01:00:00.000Z",
+      positionSideBefore: "LONG",
+    }),
+    true,
+    "terminal profitable trailing exits should arm same-direction cooldown"
+  );
 
   const batches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(batches, {

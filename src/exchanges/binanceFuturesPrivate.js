@@ -394,7 +394,7 @@ function getSignedTimestamp() {
   return Date.now() + serverTimeOffsetMs;
 }
 
-async function binanceRequest({ method, path, params, apiKey, apiSecret, retry = true, baseUrl }) {
+async function binanceRequest({ method, path, params, apiKey, apiSecret, retry = true, baseUrl, signal = null }) {
   const { key, secret } = requireKeys({ apiKey, apiSecret });
   const root = baseUrl || getFuturesBaseUrl();
   const retryCfg = resolveRetryConfig();
@@ -418,16 +418,21 @@ async function binanceRequest({ method, path, params, apiKey, apiSecret, retry =
           "X-MBX-APIKEY": key,
           Accept: "application/json",
         },
+        signal: signal || undefined,
       });
       text = await res.text();
     } catch (fetchErr) {
-      const canRetryNetwork = allowRetry && retrySafe && attempt < maxRetries;
+      const abortLike = (signal && signal.aborted)
+        || String(fetchErr && fetchErr.name || "") === "AbortError"
+        || String(fetchErr && fetchErr.message || "") === "This operation was aborted";
+      const canRetryNetwork = !abortLike && allowRetry && retrySafe && attempt < maxRetries;
       if (canRetryNetwork) {
         const waitMs = computeBackoffMs({ attempt, config: retryCfg });
         await sleep(waitMs);
         continue;
       }
-      const err = new Error(`BINANCEFUT_NETWORK_FAIL: ${readErrorText(fetchErr)}`);
+      const err = new Error(`${abortLike ? "BINANCEFUT_REQUEST_ABORTED" : "BINANCEFUT_NETWORK_FAIL"}: ${readErrorText(fetchErr)}`);
+      if (abortLike) err.code = "BINANCEFUT_REQUEST_ABORTED";
       err.method = method;
       err.path = path;
       err.cause = fetchErr;
@@ -1045,6 +1050,7 @@ async function placeFuturesConditionalAlgoOrder({
   priceProtect = true,
   recvWindow = 5000,
   clientAlgoId,
+  signal = null,
 } = {}) {
   const sym = String(symbol || "").trim().toUpperCase();
   const s = String(side || "").toUpperCase();
@@ -1083,6 +1089,7 @@ async function placeFuturesConditionalAlgoOrder({
       },
       apiKey,
       apiSecret,
+      signal,
     });
   } catch (e) {
     if (closePosition && isExistingClosePositionOrderConflict(e)) {
@@ -1104,7 +1111,7 @@ async function placeFuturesConditionalAlgoOrder({
   }
 }
 
-async function cancelFuturesAlgoOpenOrders({ apiKey, apiSecret, symbol, recvWindow = 5000 } = {}) {
+async function cancelFuturesAlgoOpenOrders({ apiKey, apiSecret, symbol, recvWindow = 5000, signal = null } = {}) {
   const sym = String(symbol || "").trim().toUpperCase();
   if (!sym) throw new Error("BINANCEFUT_SYMBOL_REQUIRED");
   const ts = getSignedTimestamp();
@@ -1119,6 +1126,7 @@ async function cancelFuturesAlgoOpenOrders({ apiKey, apiSecret, symbol, recvWind
       },
       apiKey,
       apiSecret,
+      signal,
     });
   } catch (e) {
     const msg = String(e && e.message ? e.message : "");
@@ -1145,6 +1153,7 @@ async function placeFuturesStopMarketOrder({
   recvWindow = 5000,
   clientOrderId,
   idempotencyKey,
+  signal = null,
 } = {}) {
   const sym = String(symbol || "").trim().toUpperCase();
   const s = String(side || "").toUpperCase();
@@ -1172,6 +1181,7 @@ async function placeFuturesStopMarketOrder({
         clientOrderId: resolvedClientOrderId,
         idempotencyKey,
       },
+      signal,
     });
   }
   const ts = getSignedTimestamp();
@@ -1193,6 +1203,7 @@ async function placeFuturesStopMarketOrder({
       },
       apiKey,
       apiSecret,
+      signal,
     });
   } catch (e) {
     if (closePosition && isExistingClosePositionOrderConflict(e)) {
@@ -1216,6 +1227,7 @@ async function placeFuturesStopMarketOrder({
         priceProtect,
         recvWindow,
         clientAlgoId: resolvedClientOrderId,
+        signal,
       });
       return normalizeAlgoOrderResponse(algoOrder);
     }
@@ -1244,6 +1256,7 @@ async function placeFuturesTakeProfitMarketOrder({
   recvWindow = 5000,
   clientOrderId,
   idempotencyKey,
+  signal = null,
 } = {}) {
   const sym = String(symbol || "").trim().toUpperCase();
   const s = String(side || "").toUpperCase();
@@ -1275,6 +1288,7 @@ async function placeFuturesTakeProfitMarketOrder({
         clientOrderId: resolvedClientOrderId,
         idempotencyKey,
       },
+      signal,
     });
   }
   const ts = getSignedTimestamp();
@@ -1298,6 +1312,7 @@ async function placeFuturesTakeProfitMarketOrder({
       },
       apiKey,
       apiSecret,
+      signal,
     });
   } catch (e) {
     if (closePosition && isExistingClosePositionOrderConflict(e)) {
@@ -1323,6 +1338,7 @@ async function placeFuturesTakeProfitMarketOrder({
         priceProtect,
         recvWindow,
         clientAlgoId: resolvedClientOrderId,
+        signal,
       });
       return normalizeAlgoOrderResponse(algoOrder);
     }
@@ -1337,12 +1353,13 @@ async function placeFuturesTakeProfitMarketOrder({
   }
 }
 
-async function cancelFuturesOpenOrders({ apiKey, apiSecret, symbol, recvWindow = 5000 } = {}) {
+async function cancelFuturesOpenOrders({ apiKey, apiSecret, symbol, recvWindow = 5000, signal = null } = {}) {
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
       provider: "binancefut",
       action: "cancelFuturesOpenOrders",
       payload: { apiKey, apiSecret, symbol, recvWindow },
+      signal,
     });
   }
   const sym = String(symbol || "").trim().toUpperCase();
@@ -1360,6 +1377,7 @@ async function cancelFuturesOpenOrders({ apiKey, apiSecret, symbol, recvWindow =
       },
       apiKey,
       apiSecret,
+      signal,
     });
   } catch (e) {
     const msg = e && e.message ? String(e.message) : "";
@@ -1370,7 +1388,7 @@ async function cancelFuturesOpenOrders({ apiKey, apiSecret, symbol, recvWindow =
       throw e;
     }
   }
-  const algoResult = await cancelFuturesAlgoOpenOrders({ apiKey, apiSecret, symbol: sym, recvWindow });
+  const algoResult = await cancelFuturesAlgoOpenOrders({ apiKey, apiSecret, symbol: sym, recvWindow, signal });
   return { ok: true, regular: regularResult, algo: algoResult };
 }
 

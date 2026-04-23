@@ -108,6 +108,7 @@ const {
   placeFuturesEntryMakerFirst,
   isMakerFirstEnabled: isEntryMakerFirstEnabled,
 } = require("../services/binanceMakerFirstEntry");
+const { writeOpenClawShadowEntryBootstrap } = require("../v2/openclawShadowPositionWriter");
 
 const POS_SIZE_EPSILON = (() => {
   const raw = Number(process.env.POS_SIZE_EPSILON);
@@ -6332,6 +6333,77 @@ function applyAddAndProtectionMetaOnFill({
   return nextMeta;
 }
 
+async function maybeWriteV2ShadowEntryBootstrap({
+  exchange,
+  symbol,
+  tf,
+  intent,
+  opening,
+  newState,
+  nextPosSide,
+  fillPrice,
+  newQtyBase,
+  execQtyBase,
+  intentRow,
+  fillWrite,
+  linkedTradeId,
+  liveOrderId,
+  entryEventIdForFill,
+  execBarCloseMs,
+  projectedMetaForWrite,
+} = {}) {
+  if (String(intent || "").toUpperCase() !== "ENTRY") {
+    return { ok: true, written: false, skipped: true, reason: "V2_SHADOW_BOOTSTRAP_NON_ENTRY" };
+  }
+  if (opening !== true || String(newState || "").toUpperCase() !== "ACTIVE") {
+    return { ok: true, written: false, skipped: true, reason: "V2_SHADOW_BOOTSTRAP_NOT_OPENING" };
+  }
+  try {
+    const it = intentRow && typeof intentRow === "object" ? intentRow : {};
+    const features = it.features_json && typeof it.features_json === "object" ? it.features_json : {};
+    const signalId = it.signal_id || features.signal_id || null;
+    const signalDocId = it.signal_doc_id || features.signal_doc_id || null;
+    const positionSide = normalizePositionSide(nextPosSide || it.side || features._position_side || null);
+    const entryQtyAbs = Number.isFinite(Number(newQtyBase)) && Number(newQtyBase) > 0
+      ? Number(newQtyBase)
+      : (Number.isFinite(Number(execQtyBase)) && Number(execQtyBase) > 0 ? Number(execQtyBase) : null);
+    return await writeOpenClawShadowEntryBootstrap({
+      input: {
+        exchange,
+        symbol,
+        side: positionSide,
+        signalTf: tf,
+        signalId,
+        signalDocId,
+        sourceOrigin: features.source_origin || features.canonical_engine_candidate_source || null,
+        barCloseMs: Number.isFinite(Number(it.signal_bar_close_time_utc_ms))
+          ? Number(it.signal_bar_close_time_utc_ms)
+          : Number(execBarCloseMs),
+        nowMs: Date.now(),
+        features,
+      },
+      fillContext: {
+        symbol,
+        positionSide,
+        entryPrice: fillPrice,
+        entryQtyAbs,
+        entryEventId: entryEventIdForFill,
+        entryOrderId: liveOrderId || it.live_order_id || it.intent_id || linkedTradeId,
+        entryFillGroupId: (fillWrite && fillWrite.fill_id) || linkedTradeId || it.intent_id || entryEventIdForFill,
+        entryIntentId: it.intent_id || null,
+        protectionMeta: projectedMetaForWrite || {},
+      },
+    });
+  } catch (error) {
+    console.warn("[V2_SHADOW_ENTRY_BOOTSTRAP_FAIL]", {
+      exchange: upper(exchange),
+      symbol: upper(symbol),
+      reason: error && error.message ? error.message : String(error),
+    });
+    return { ok: false, written: false, skipped: false, reason: error && error.message ? error.message : String(error) };
+  }
+}
+
 function evaluateCommittedRescueAddGate({
   applied,
   pendingAddCount,
@@ -9631,7 +9703,13 @@ async function refreshBinanceNativeProtectionWithRetry({
   exitRulesOverride,
   posMeta,
   writerSource = null,
+  signal = null,
+  abortSignal = null,
 } = {}) {
+  const protectionSignal = signal || abortSignal || null;
+  if (protectionSignal && protectionSignal.aborted) {
+    return { ok: false, skipped: true, reason: "NATIVE_REFRESH_ABORTED", attempts: 0, max_attempts: 0 };
+  }
   if (!isAuthorizedBinanceNativeStopWriter(writerSource)) {
     return {
       ok: false,
@@ -9662,6 +9740,15 @@ async function refreshBinanceNativeProtectionWithRetry({
       heartbeatBinanceNativeRefreshLease({ exchange, symbol, holderId: lease.holderId }).catch(() => {});
     }, heartbeatEveryMs);
     for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+      if (protectionSignal && protectionSignal.aborted) {
+        return {
+          ok: false,
+          skipped: true,
+          reason: "NATIVE_REFRESH_ABORTED",
+          attempts: Math.max(0, attempt - 1),
+          max_attempts: totalAttempts,
+        };
+      }
       const heartbeat = await heartbeatBinanceNativeRefreshLease({ exchange, symbol, holderId: lease.holderId });
       if (!heartbeat.ok) {
         return {
@@ -9682,6 +9769,7 @@ async function refreshBinanceNativeProtectionWithRetry({
         fallbackLeverage,
         exitRulesOverride,
         posMeta,
+        signal: protectionSignal,
       });
       const enriched = {
         ...(result && typeof result === "object" ? result : {}),
@@ -10272,6 +10360,7 @@ async function refreshBinanceNativeProtection({
   fallbackLeverage,
   exitRulesOverride,
   posMeta,
+  signal = null,
 } = {}) {
   // 2026-04-18 P1-2 (audit re-verified): native protection refresh is
   // cancel-first — we cancel existing open orders BEFORE placing the new
@@ -10303,6 +10392,7 @@ async function refreshBinanceNativeProtection({
   let stopAckMs = null;
   let tpAckMs = null;
   const ex = String(exchange || "").toUpperCase();
+  if (signal && signal.aborted) return { ok: false, skipped: true, reason: "NATIVE_REFRESH_ABORTED" };
   if (!ex.includes("BINANCE")) return { ok: false, skipped: true, reason: "NOT_BINANCE" };
   if (!BINANCE_NATIVE_PROTECTION_ENABLED) return { ok: false, skipped: true, reason: "NATIVE_PROTECTION_DISABLED" };
   if (!liveCfg || !liveCfg.apiKey || !liveCfg.apiSecret) return { ok: false, skipped: true, reason: "BINANCEFUT_KEYS_MISSING" };
@@ -10320,6 +10410,7 @@ async function refreshBinanceNativeProtection({
         apiKey: liveCfg.apiKey,
         apiSecret: liveCfg.apiSecret,
         symbol,
+        signal,
       });
       return { ok: true, state: "FLAT", canceled: true };
     } catch (e) {
@@ -10403,6 +10494,7 @@ async function refreshBinanceNativeProtection({
       apiKey: liveCfg.apiKey,
       apiSecret: liveCfg.apiSecret,
       symbol,
+      signal,
     });
     cancelSucceeded = true;
   } catch (e) {
@@ -10443,6 +10535,7 @@ async function refreshBinanceNativeProtection({
         workingType: BINANCE_NATIVE_WORKING_TYPE,
         priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
         idempotencyKey: stopIdempotencyKey,
+        signal,
       });
       // Stop order acknowledged — the SL half of native protection is now
       // live again. This closes the SL-only unprotected window. TP gap (if
@@ -10547,6 +10640,7 @@ async function refreshBinanceNativeProtection({
             workingType: BINANCE_NATIVE_WORKING_TYPE,
             priceProtect: BINANCE_NATIVE_PRICE_PROTECT,
             idempotencyKey: tpIdempotencyKey,
+            signal,
           });
           // 2026-04-20 senior-audit P2: TP1 native order acked. When both
           // legs are required (stageState.tp1Eligible === true), the
@@ -13266,6 +13360,25 @@ async function runPaperBinanceForBar({
         reason: "INTENT_FILL_PROJECTED_POSITION_WRITE",
       });
     }
+    await maybeWriteV2ShadowEntryBootstrap({
+      exchange,
+      symbol,
+      tf,
+      intent,
+      opening,
+      newState,
+      nextPosSide,
+      fillPrice,
+      newQtyBase,
+      execQtyBase,
+      intentRow: it,
+      fillWrite,
+      linkedTradeId,
+      liveOrderId,
+      entryEventIdForFill,
+      execBarCloseMs,
+      projectedMetaForWrite,
+    });
 
     if (profitableTrailCooldownMeta) {
       const cooldownObservation = buildSameDirectionTrailProfitObservationPayload(profitableTrailCooldownMeta);
@@ -15719,11 +15832,20 @@ async function runPaperFuturesForBar({
       if (Number.isFinite(Number(liveResult.budgetMaxUsed)) && Number(liveResult.budgetMaxUsed) > 0) {
         budgetMaxForIntent = Number(liveResult.budgetMaxUsed);
       }
+      // NOTE: `posMeta` is the function-parameter meta that is in scope here.
+      // Do NOT write `posMeta: nextMeta` — `nextMeta` is declared ~300 lines
+      // below in the same for-iteration block (inside the "live fills apply"
+      // section) with `let`, so referencing it here throws
+      // "Cannot access 'nextMeta' before initialization" (TDZ) and drops the
+      // signal entirely. See 2026-04-20 ETHUSDT incident. The helper only
+      // reads `posMeta` via resolveSimplifiedExitV2PositionFlag, which wants
+      // the meta AS IT STANDS BEFORE this intent's fill-derived patch, i.e.
+      // exactly the outer `posMeta`.
       nativeProtectionMetaPatch = buildNativeProtectionMetaPatch({
         nativeProtection: liveResult && liveResult.nativeProtection,
         intent,
         execBarCloseMs,
-        posMeta: nextMeta,
+        posMeta,
       });
       // Maker-first telemetry from the entry helper (null if the flag is
       // off or this was an EXIT — exits still use a plain market order).
@@ -16294,6 +16416,25 @@ async function runPaperFuturesForBar({
         reason: "INTENT_FILL_PROJECTED_POSITION_WRITE",
       });
     }
+    await maybeWriteV2ShadowEntryBootstrap({
+      exchange,
+      symbol,
+      tf,
+      intent,
+      opening,
+      newState,
+      nextPosSide,
+      fillPrice,
+      newQtyBase,
+      execQtyBase,
+      intentRow: it,
+      fillWrite,
+      linkedTradeId,
+      liveOrderId,
+      entryEventIdForFill,
+      execBarCloseMs,
+      projectedMetaForWrite,
+    });
 
     if (profitableTrailCooldownMeta) {
       const cooldownObservation = buildSameDirectionTrailProfitObservationPayload(profitableTrailCooldownMeta);

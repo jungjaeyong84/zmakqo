@@ -40,6 +40,19 @@ function resolveRouterLoader() {
   return cachedRouterLoader;
 }
 
+let cachedV2ShadowWriter = null;
+function resolveV2ShadowWriter() {
+  if (cachedV2ShadowWriter) return cachedV2ShadowWriter;
+  try {
+    cachedV2ShadowWriter = require("../v2/openclawShadowWriter");
+  } catch (_) {
+    cachedV2ShadowWriter = {
+      writeOpenClawShadowDecision: async () => ({ ok: false, written: false, skipped: true, reason: "V2_SHADOW_WRITER_UNAVAILABLE" }),
+    };
+  }
+  return cachedV2ShadowWriter;
+}
+
 const SCALE_MAX = (() => {
   const raw = Number(process.env.LIVE_EXEC_POLICY_SCALE_MAX);
   if (Number.isFinite(raw) && raw >= 1 && raw <= 2) return raw;
@@ -261,6 +274,30 @@ async function decideOnSignal(input = {}) {
     },
     composite,
   });
+
+  if (shadowEnabled() && !applyEnabled()) {
+    try {
+      const v2ShadowWriter = resolveV2ShadowWriter();
+      const shadowWrite = await v2ShadowWriter.writeOpenClawShadowDecision({
+        input,
+        ruleResult,
+        composite,
+        mlVote,
+        narrativeVote,
+      });
+      if (shadowWrite && shadowWrite.ok !== true && shadowWrite.skipped !== true) {
+        console.warn("[OPENCLAW_AGENT_V2_SHADOW_WRITE_FAIL]", {
+          symbol: input && input.symbol ? String(input.symbol).toUpperCase() : null,
+          reason: shadowWrite.reason || "UNKNOWN",
+        });
+      }
+    } catch (shadowWriteError) {
+      console.warn("[OPENCLAW_AGENT_V2_SHADOW_WRITE_THROW]", {
+        symbol: input && input.symbol ? String(input.symbol).toUpperCase() : null,
+        error: shadowWriteError && shadowWriteError.message ? shadowWriteError.message : String(shadowWriteError),
+      });
+    }
+  }
 
   // Shadow mode — return the rule result verbatim to production so
   // nothing actually changes. The agent's composite is only in the

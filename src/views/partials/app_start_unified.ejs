@@ -10,14 +10,14 @@
       : 'env';
 
   const __pageMetaMap = {
-    home:             { eyebrow: '홈',           hint: '현재 자산, 수익, 최근 신호와 체결을 확인합니다.' },
-    mission:          { eyebrow: '홈',           hint: '현재 자산, 수익, 최근 신호와 체결을 확인합니다.' },
+    home:             { eyebrow: 'V2 Mission',   hint: 'V2 canary, performance, cost, OpenClaw evidence를 기준으로 운영 가능 여부를 확인합니다.' },
+    mission:          { eyebrow: 'V2 Mission',   hint: 'V2 canary, performance, cost, OpenClaw evidence를 기준으로 운영 가능 여부를 확인합니다.' },
     profit:           { eyebrow: '수익',         hint: '기간별 손익과 주요 기여 마켓을 분석합니다.' },
     cashflow:         { eyebrow: '입출금',       hint: '입출금과 자금 흐름을 확인합니다.' },
     trading:          { eyebrow: '거래기록',     hint: '신호, 드롭, 주문, 포지션, 체결 기록을 봅니다.' },
-    recovery:         { eyebrow: '전략상태',     hint: '자기진화 상태와 서버 신호 전환을 확인합니다.' },
-    'server-primary': { eyebrow: '전략상태',     hint: '서버 정본 전환 진행과 승격 준비 상태를 확인합니다.' },
-    audit:            { eyebrow: '전략상태',     hint: '운영 기록, 드리프트, 증거 체인을 점검합니다.' },
+    recovery:         { eyebrow: 'V2 Gate',      hint: 'OpenClaw와 V2 승격 증거 수집 상태를 확인합니다.' },
+    'server-primary': { eyebrow: 'V2 Gate',      hint: 'OpenClaw 정본과 V2 cutover 진행 상태를 확인합니다.' },
+    audit:            { eyebrow: 'V2 Audit',     hint: 'V2 evidence, canary, cost, lineage 체인을 점검합니다.' },
     settings:         { eyebrow: '설정',         hint: '거래소, 리스크, 실행 설정을 조정합니다.' },
     openclaw:         { eyebrow: 'AI 에이전트',  hint: 'OpenClaw AI 에이전트의 페이즈, 크론 상태, 최근 판단 기록을 모니터링합니다.' },
     protection:       { eyebrow: '보호주문',     hint: '모든 활성 포지션의 SL/TP/트레일링 상태를 DB ↔ 거래소 실제 주문과 실시간 대조합니다.' },
@@ -61,7 +61,7 @@
         <div class="sidebar-brand-icon">DB</div>
         <div class="sidebar-brand-text">
           <div class="sidebar-brand-name">DONBEOLJA</div>
-          <div class="sidebar-brand-sub">자동 코인 선물 거래</div>
+          <div class="sidebar-brand-sub">V2 OpenClaw Futures</div>
         </div>
       </div>
 
@@ -69,7 +69,7 @@
 
       <nav class="sidebar-nav">
         <a href="/dashboard/home" class="<%= __homeActive ? 'active' : '' %>">
-          <span class="nav-icon">&#x1f3e0;</span> 지금
+          <span class="nav-icon">&#x1f3e0;</span> V2 미션
         </a>
         <a href="/dashboard/profit" class="<%= __profitActive ? 'active' : '' %>">
           <span class="nav-icon">&#x1f4c8;</span> 수익
@@ -88,7 +88,7 @@
           <span class="nav-icon">&#x1f4b0;</span> 입출금
         </a>
         <a href="/dashboard/recovery" class="<%= __automationActive ? 'active' : '' %>">
-          <span class="nav-icon">&#x2699;</span> 전략상태
+          <span class="nav-icon">&#x2699;</span> V2 게이트
         </a>
         <a href="/dashboard/protection/view" class="<%= __protectionActive ? 'active' : '' %>">
           <span class="nav-icon">&#x1f6e1;</span> 보호주문
@@ -105,8 +105,8 @@
         </div>
         <div id="exchange-hint" class="body-sm text-muted">선물 · 멀티 마켓</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <span class="chip sm primary">서버 정본</span>
-          <span class="chip sm filled">Pine 비교</span>
+          <span class="chip sm primary">OpenClaw 정본</span>
+          <span class="chip sm filled">V2 evidence</span>
         </div>
         <div class="sidebar-env-chip"><%= __envLabel.toUpperCase() %></div>
       </div>
@@ -126,8 +126,8 @@
           <% } %>
         </div>
         <div class="topbar-actions">
-          <span class="chip primary">서버 정본</span>
-          <span class="chip filled">Pine 비교</span>
+          <span class="chip primary">OpenClaw 정본</span>
+          <span class="chip filled">V2 evidence</span>
           <% if (!__compactTopbar) { %>
             <span class="chip filled"><span class="mono"><%= __envLabel.toUpperCase() %></span></span>
           <% } %>

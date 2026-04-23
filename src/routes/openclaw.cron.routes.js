@@ -110,6 +110,58 @@ router.post("/api/openclaw/cron/retrospect", requireSchedulerToken, async (req, 
   }
 });
 
+// v2-production-entry-route-canary: proves OpenClaw scheduler traffic can
+// reach the V2 production entry route without allowing exchange writes.
+router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/run-v2-production-entry-route-canary");
+    const outcome = await runWithShortTimeout("v2_production_entry_route_canary", () => main({ setProcessExitCode: false }), 120000);
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
+// v2-exit-runtime-canary: read-only collector for live exit runtime health.
+// This feeds the Firestore-backed 24h streak required before LIVE cutover.
+router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/run-v2-exit-runtime-canary");
+    const outcome = await runWithShortTimeout("v2_exit_runtime_canary", () => main({ setProcessExitCode: false }), 120000);
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
+// v2-production-entry-live: deliberately disabled by default. When enabled,
+// this endpoint still delegates only to the V2 production entry route.
+router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, express.json({ type: "*/*", limit: "128kb" }), async (req, res) => {
+  try {
+    const { runV2ProductionEntryLiveEndpoint } = require("../v2/productionEntryLiveEndpoint");
+    const outcome = await runWithShortTimeout("v2_production_entry_live", () => runV2ProductionEntryLiveEndpoint({
+      env: process.env,
+      body: req.body,
+      requestId: req.get("x-request-id") || req.get("X-Request-Id") || null,
+    }), 120000);
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 409).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // Health probe — returns 200 with a small payload so scheduler smoke
 // tests can verify auth + routing without kicking off a full run.
 router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
@@ -119,6 +171,9 @@ router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
       "POST /api/openclaw/cron/evidence-linker",
       "POST /api/openclaw/cron/calibration",
       "POST /api/openclaw/cron/retrospect",
+      "POST /api/openclaw/cron/v2-production-entry-route-canary",
+      "POST /api/openclaw/cron/v2-exit-runtime-canary",
+      "POST /api/openclaw/cron/v2-production-entry-live",
     ],
     now_iso: new Date().toISOString(),
   });

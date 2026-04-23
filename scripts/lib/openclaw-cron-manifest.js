@@ -1,6 +1,8 @@
 "use strict";
 
-const REPO_ROOT = "/Users/jeongjaeyong/Projects/donbeolja";
+const path = require("path");
+
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const OPENCLAW_SCHEDULER_SOT = "OPENCLAW_CRON";
 
 const OPENCLAW_CRON_JOBS = Object.freeze([
@@ -35,6 +37,21 @@ const OPENCLAW_CRON_JOBS = Object.freeze([
     scheduler_sot: OPENCLAW_SCHEDULER_SOT,
   },
   {
+    job_id: "v2_repair_queue_service",
+    label: "com.jeongjaeyong.donbeolja.v2repairqueue",
+    name: "donbeolja-v2-repair-queue-service",
+    wrapper: `${REPO_ROOT}/ops/launchd/run_v2_repair_queue_service.sh`,
+    cron: "*/2 * * * *",
+    runAtLoad: true,
+    owner: "openclaw",
+    criticality: "HIGH",
+    produces_artifact: "v2_repair_queue_service_latest.json",
+    artifact_sla_hours: 0.25,
+    depends_on: [],
+    recovery_strategy: "re-run-once",
+    scheduler_sot: OPENCLAW_SCHEDULER_SOT,
+  },
+  {
     job_id: "openclaw_daily_cycle",
     label: "com.jeongjaeyong.donbeolja.openclawdaily",
     name: "donbeolja-openclaw-daily-cycle",
@@ -55,6 +72,27 @@ const OPENCLAW_CRON_JOBS = Object.freeze([
   // 2026-04-17 cost incident. They are intentionally NOT in
   // OPENCLAW_CRON_JOBS so the local automation-watchdog stops flagging
   // them as launchd MISSING. See OPENCLAW_CLOUD_SCHEDULER_JOBS below.
+]);
+
+const OPENCLAW_OPTIONAL_CRON_JOBS = Object.freeze([
+  {
+    job_id: "v2_repair_queue_firestore_canary_collector",
+    label: "com.jeongjaeyong.donbeolja.v2repairfirestorecanary",
+    name: "donbeolja-v2-repair-firestore-canary-collector",
+    wrapper: `${REPO_ROOT}/ops/launchd/run_v2_repair_queue_firestore_canary_collector.sh`,
+    plist: `${REPO_ROOT}/ops/launchd/com.jeongjaeyong.donbeolja.v2repairfirestorecanary.plist`,
+    cron: "0 */2 * * *",
+    start_interval_seconds: 7200,
+    runAtLoad: false,
+    owner: "openclaw",
+    criticality: "MEDIUM",
+    produces_artifact: "v2_repair_queue_firestore_canary_latest.json",
+    artifact_sla_hours: 3,
+    depends_on: [],
+    recovery_strategy: "re-run-once",
+    scheduler_sot: OPENCLAW_SCHEDULER_SOT,
+    opt_in_env: "DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_WRITE_ENABLED=1",
+  },
 ]);
 
 // Cloud Scheduler jobs — same OpenClaw agent crons, but invoked via HTTP
@@ -91,6 +129,28 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     http_path: "/api/openclaw/cron/retrospect?lookback_hours=24",
     owner: "openclaw",
     criticality: "MEDIUM",
+  },
+  {
+    job_id: "v2_production_entry_route_canary",
+    scheduler_name: "v2-production-entry-route-canary",
+    scheduler_region: "asia-northeast3",
+    scheduler_schedule: "5 * * * *",
+    scheduler_time_zone: "Asia/Seoul",
+    http_path: "/api/openclaw/cron/v2-production-entry-route-canary",
+    owner: "openclaw",
+    criticality: "HIGH",
+    canary_mode: "NO_EXCHANGE_ROUTE_PROOF",
+  },
+  {
+    job_id: "v2_exit_runtime_canary",
+    scheduler_name: "v2-exit-runtime-canary",
+    scheduler_region: "asia-northeast3",
+    scheduler_schedule: "35 * * * *",
+    scheduler_time_zone: "Asia/Seoul",
+    http_path: "/api/openclaw/cron/v2-exit-runtime-canary",
+    owner: "openclaw",
+    criticality: "HIGH",
+    canary_mode: "LIVE_EXIT_RUNTIME_OBSERVATION",
   },
   // weekly_summary intentionally not recreated until the evidence
   // ledger accumulates enough data to make the digest worth reading.
@@ -153,6 +213,7 @@ module.exports = {
   REPO_ROOT,
   OPENCLAW_SCHEDULER_SOT,
   OPENCLAW_CRON_JOBS,
+  OPENCLAW_OPTIONAL_CRON_JOBS,
   OPENCLAW_CRON_ARTIFACT_MAP,
   OPENCLAW_CLOUD_SCHEDULER_JOBS,
   LEGACY_OPENCLAW_CRON_JOB_NAMES,

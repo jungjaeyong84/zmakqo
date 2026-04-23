@@ -777,27 +777,15 @@ function normalizeSystem(req, body, current = {}) {
   let tp1LadderStage1RealizedNMin = clampInt(body.tp1_ladder_stage1_realized_n_min, 1, 500);
   if (tp1LadderStage1RealizedNMin == null) tp1LadderStage1RealizedNMin = 8;
   clean.tp1_ladder_stage1_realized_n_min = tp1LadderStage1RealizedNMin;
-  let tp1LadderStage1Tp0HitRateMin = clampNumber(body.tp1_ladder_stage1_tp0_hit_rate_min, 0, 1);
-  if (tp1LadderStage1Tp0HitRateMin == null) tp1LadderStage1Tp0HitRateMin = 0.55;
-  clean.tp1_ladder_stage1_tp0_hit_rate_min = tp1LadderStage1Tp0HitRateMin;
-  let tp1LadderStage1Tp0ToTp1ConversionMin = clampNumber(body.tp1_ladder_stage1_tp0_to_tp1_conversion_min, 0, 1);
-  if (tp1LadderStage1Tp0ToTp1ConversionMin == null) tp1LadderStage1Tp0ToTp1ConversionMin = 0.20;
-  clean.tp1_ladder_stage1_tp0_to_tp1_conversion_min = tp1LadderStage1Tp0ToTp1ConversionMin;
   let tp1LadderStage1FeeAdjustedExpectancyMin = clampNumber(body.tp1_ladder_stage1_fee_adjusted_expectancy_min, -1, 1);
   if (tp1LadderStage1FeeAdjustedExpectancyMin == null) tp1LadderStage1FeeAdjustedExpectancyMin = -0.0005;
   clean.tp1_ladder_stage1_fee_adjusted_expectancy_min = tp1LadderStage1FeeAdjustedExpectancyMin;
   let tp1LadderStage2RealizedNMin = clampInt(body.tp1_ladder_stage2_realized_n_min, 1, 1000);
   if (tp1LadderStage2RealizedNMin == null) tp1LadderStage2RealizedNMin = 16;
   clean.tp1_ladder_stage2_realized_n_min = tp1LadderStage2RealizedNMin;
-  let tp1LadderStage2Tp0HitRateMin = clampNumber(body.tp1_ladder_stage2_tp0_hit_rate_min, 0, 1);
-  if (tp1LadderStage2Tp0HitRateMin == null) tp1LadderStage2Tp0HitRateMin = 0.60;
-  clean.tp1_ladder_stage2_tp0_hit_rate_min = tp1LadderStage2Tp0HitRateMin;
   let tp1LadderStage2Tp1HitRateMin = clampNumber(body.tp1_ladder_stage2_tp1_hit_rate_min, 0, 1);
   if (tp1LadderStage2Tp1HitRateMin == null) tp1LadderStage2Tp1HitRateMin = 0.30;
   clean.tp1_ladder_stage2_tp1_hit_rate_min = tp1LadderStage2Tp1HitRateMin;
-  let tp1LadderStage2Tp0ToTp1ConversionMin = clampNumber(body.tp1_ladder_stage2_tp0_to_tp1_conversion_min, 0, 1);
-  if (tp1LadderStage2Tp0ToTp1ConversionMin == null) tp1LadderStage2Tp0ToTp1ConversionMin = 0.35;
-  clean.tp1_ladder_stage2_tp0_to_tp1_conversion_min = tp1LadderStage2Tp0ToTp1ConversionMin;
   let tp1LadderStage2FeeAdjustedExpectancyMin = clampNumber(body.tp1_ladder_stage2_fee_adjusted_expectancy_min, -1, 1);
   if (tp1LadderStage2FeeAdjustedExpectancyMin == null) tp1LadderStage2FeeAdjustedExpectancyMin = 0;
   clean.tp1_ladder_stage2_fee_adjusted_expectancy_min = tp1LadderStage2FeeAdjustedExpectancyMin;
@@ -997,13 +985,9 @@ const SYSTEM_PROVIDER_KEYS = [
   "tp1_ladder_enabled",
   "tp1_ladder_freeze",
   "tp1_ladder_stage1_realized_n_min",
-  "tp1_ladder_stage1_tp0_hit_rate_min",
-  "tp1_ladder_stage1_tp0_to_tp1_conversion_min",
   "tp1_ladder_stage1_fee_adjusted_expectancy_min",
   "tp1_ladder_stage2_realized_n_min",
-  "tp1_ladder_stage2_tp0_hit_rate_min",
   "tp1_ladder_stage2_tp1_hit_rate_min",
-  "tp1_ladder_stage2_tp0_to_tp1_conversion_min",
   "tp1_ladder_stage2_fee_adjusted_expectancy_min",
   "same_direction_trail_profit_cooldown_enabled",
   "same_direction_trail_profit_cooldown_ms",

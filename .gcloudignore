@@ -20,10 +20,17 @@ desktop/
 # macOS
 .DS_Store
 
-# Docs (not needed in container)
-docs/
+# Docs are excluded from the runtime image, but CloudBuild validation reads
+# the V2 promotion contract/runbook before the Docker build step.
+docs/*
+!docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md
+!docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md
+!docs/DONBEOLJA_V2_IMPLEMENTATION_STATUS_2026-04-21.md
 noye/
 *.md
+!docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md
+!docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md
+!docs/DONBEOLJA_V2_IMPLEMENTATION_STATUS_2026-04-21.md
 
 # Large runtime/report artifacts not needed for container build
 ops/daily/

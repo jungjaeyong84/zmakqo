@@ -46,6 +46,12 @@ const {
   validateExitQuantityContractLedger,
 } = require("./positionStateMachine");
 const {
+  writeOpenClawShadowTp1Transition,
+  writeOpenClawShadowStopExit,
+  writeOpenClawShadowExternalClose,
+} = require("../v2/openclawShadowExitWriter");
+const { normalizeV2ExitFillEvidence } = require("../v2/exitFillIngestion");
+const {
   COLLECTION: EXIT_AUTHORITY_STATE_COLLECTION,
   mergeStates: mergeExitAuthorityStates,
   normalizeState: normalizeExitAuthorityState,
@@ -547,10 +553,9 @@ function shouldSendImmediateProjectionMismatchAlert({ symbol, event, issues = []
   return { send: shouldSend, key, repeatCount, firstAtMs: prev.firstAtMs, lastAtMs: now };
 }
 
-async function markSameDirectionTrailProfitCooldownFromExternalFill({
-  exchange,
-  symbol,
+function shouldMarkSameDirectionTrailProfitCooldownFromExternalFill({
   event,
+  fullExit,
   realizedPnl,
   execTimeIso,
   positionSideBefore,
@@ -560,8 +565,33 @@ async function markSameDirectionTrailProfitCooldownFromExternalFill({
   const dir = String(positionSideBefore || "").trim().toUpperCase();
   const execMs = Date.parse(String(execTimeIso || ""));
   if (!ev.startsWith("EXIT_TRAIL")) return false;
+  if (fullExit !== true) return false;
   if (!Number.isFinite(pnl) || pnl <= 0) return false;
   if ((dir !== "LONG" && dir !== "SHORT") || !Number.isFinite(execMs)) return false;
+  return true;
+}
+
+async function markSameDirectionTrailProfitCooldownFromExternalFill({
+  exchange,
+  symbol,
+  event,
+  fullExit,
+  realizedPnl,
+  execTimeIso,
+  positionSideBefore,
+} = {}) {
+  if (!shouldMarkSameDirectionTrailProfitCooldownFromExternalFill({
+    event,
+    fullExit,
+    realizedPnl,
+    execTimeIso,
+    positionSideBefore,
+  })) return false;
+
+  const ev = String(event || "").trim().toUpperCase();
+  const pnl = Number(realizedPnl);
+  const dir = String(positionSideBefore || "").trim().toUpperCase();
+  const execMs = Date.parse(String(execTimeIso || ""));
 
   await upsertSameDirectionTrailProfitObservation({
     exchange,
@@ -1318,15 +1348,6 @@ function resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio } = {}) {
   if (isTpP1Event(ev)) return false;
   if (orderMeta && orderMeta.closePosition === true) return true;
   if (Number.isFinite(closeRatio) && closeRatio >= 0.999) return true;
-  if (
-    ev.startsWith("EXIT_SL")
-    || ev.startsWith("EXIT_TIME_STOP")
-    || ev === "EXIT_EXTERNAL_SYNC"
-    || ev === "EXIT_OPPOSITE_SIGNAL"
-    || ev === "EXIT_LIQUIDATION_RISK"
-  ) {
-    return true;
-  }
   return false;
 }
 
@@ -1591,6 +1612,11 @@ function queueFillSyncAlertBatch(batchMap, {
   payload,
 } = {}) {
   if (!(batchMap instanceof Map) || !payload || typeof payload !== "object") return;
+  const firstFullExit = resolveFillSyncAlertFullExit({
+    event: payload.event || event,
+    orderMeta,
+    closeRatio: payload.closeRatio,
+  });
   const key = buildFillSyncAlertKey({ symbol, event, intent, side, orderMeta, tradeMs, payload });
   const chainKey = buildFillSyncAlertChainKey({ symbol, event, intent, side, orderMeta, tradeMs, payload });
   const current = batchMap.get(key) || findExistingFillSyncAlertBatchByChainKey(batchMap, chainKey);
@@ -1600,7 +1626,10 @@ function queueFillSyncAlertBatch(batchMap, {
       chainKey,
       latestTradeMs: Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : 0,
       fillCount: 1,
-      payload: { ...payload },
+      payload: {
+        ...payload,
+        fullExit: firstFullExit,
+      },
     });
     return;
   }
@@ -1627,7 +1656,11 @@ function queueFillSyncAlertBatch(batchMap, {
       String(current.payload.closeRatioAggregation || "").trim().toUpperCase() === "MAX"
       && String(payload.closeRatioAggregation || "").trim().toUpperCase() === "MAX"
     ) ? "MAX" : "SUM",
-    fullExit: current.payload.fullExit === true || payload.fullExit === true,
+    fullExit: resolveFillSyncAlertFullExit({
+      event: preferredEvent,
+      orderMeta,
+      closeRatio: mergedCloseRatio,
+    }),
   };
   if (!(Number.isFinite(Number(payload.execPrice)) && nextTradeMs >= current.latestTradeMs)) {
     mergedPayload.execPrice = current.payload.execPrice;
@@ -2635,6 +2668,136 @@ function shouldEnforceSingleStopWriter() {
   return true;
 }
 
+function parseFillSyncBool(value, fallback = false) {
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+function normalizeV2ShadowWriteKeys(result = null) {
+  const rows = Array.isArray(result && result.writes) ? result.writes : [];
+  return new Set(rows.map((row) => String(row && row.collectionKey || "").trim().toUpperCase()).filter(Boolean));
+}
+
+function validateV2ShadowCanonicalBatchWrite(result = null) {
+  const row = result && typeof result === "object" ? result : null;
+  if (!row || row.ok !== true || row.written !== true) {
+    return {
+      ok: false,
+      reason: "V2_SHADOW_CANONICAL_WRITE_NOT_WRITTEN",
+    };
+  }
+  if (String(row.write_mode || "").trim().toUpperCase() !== "BATCH") {
+    return {
+      ok: false,
+      reason: "V2_SHADOW_CANONICAL_BATCH_EVIDENCE_MISSING",
+    };
+  }
+  const keys = normalizeV2ShadowWriteKeys(row);
+  const required = [
+    "CANONICAL_EXIT_TRANSITIONS",
+    "EXIT_RUNTIME_PROJECTIONS",
+    "TRADE_ALERT_OUTBOX",
+  ];
+  const missing = required.filter((key) => !keys.has(key));
+  if (missing.length) {
+    return {
+      ok: false,
+      reason: "V2_SHADOW_CANONICAL_BATCH_WRITES_INCOMPLETE",
+      issue_codes: missing.map((key) => `MISSING_${key}`),
+    };
+  }
+  return {
+    ok: true,
+    reason: "V2_SHADOW_CANONICAL_BATCH_WRITTEN",
+  };
+}
+
+function isLegacyCanonicalBackfillEnabled(env = process.env) {
+  return parseFillSyncBool(env && env.DONBEOLJA_FILL_SYNC_LEGACY_CANONICAL_BACKFILL_ENABLED, false);
+}
+
+function isV2CanonicalBatchWrittenGate(gate = null) {
+  const row = gate && typeof gate === "object" ? gate : null;
+  const reason = String(row && row.reason || "").trim().toUpperCase();
+  return !!(
+    row &&
+    row.ok === true &&
+    [
+      "V2_SHADOW_TP1_BATCH_WRITTEN",
+      "V2_SHADOW_STOP_EXIT_BATCH_WRITTEN",
+      "V2_SHADOW_EXTERNAL_CLOSE_BATCH_WRITTEN",
+    ].includes(reason)
+  );
+}
+
+function hasV2CanonicalBatchWrittenGate({
+  legacyCanonicalTp1Gate = null,
+  legacyCanonicalStopGate = null,
+  legacyCanonicalExternalCloseGate = null,
+} = {}) {
+  return isV2CanonicalBatchWrittenGate(legacyCanonicalTp1Gate)
+    || isV2CanonicalBatchWrittenGate(legacyCanonicalStopGate)
+    || isV2CanonicalBatchWrittenGate(legacyCanonicalExternalCloseGate);
+}
+
+function resolveLegacyCanonicalWriteDecision({
+  canonicalExitMutationAllowed = false,
+  legacyCanonicalTp1Gate = null,
+  legacyCanonicalStopGate = null,
+  legacyCanonicalExternalCloseGate = null,
+  env = process.env,
+} = {}) {
+  if (canonicalExitMutationAllowed !== true) {
+    return {
+      ok: true,
+      write: false,
+      reason: "CANONICAL_EXIT_MUTATION_NOT_ALLOWED",
+      v2_batch_written: false,
+    };
+  }
+  const gates = [legacyCanonicalTp1Gate, legacyCanonicalStopGate, legacyCanonicalExternalCloseGate]
+    .filter((row) => row && typeof row === "object");
+  const blockedGate = gates.find((row) => row.ok !== true);
+  if (blockedGate) {
+    return {
+      ok: false,
+      write: false,
+      reason: String(blockedGate.reason || "").trim().toUpperCase() || "V2_SHADOW_GATE_BLOCKED",
+      issue_codes: Array.isArray(blockedGate.issue_codes) ? blockedGate.issue_codes.slice() : [],
+      v2_batch_written: hasV2CanonicalBatchWrittenGate({
+        legacyCanonicalTp1Gate,
+        legacyCanonicalStopGate,
+        legacyCanonicalExternalCloseGate,
+      }),
+    };
+  }
+  const v2BatchWritten = hasV2CanonicalBatchWrittenGate({
+    legacyCanonicalTp1Gate,
+    legacyCanonicalStopGate,
+    legacyCanonicalExternalCloseGate,
+  });
+  if (v2BatchWritten) {
+    return {
+      ok: true,
+      write: false,
+      reason: "V2_BATCH_CANONICAL_ALREADY_WRITTEN",
+      v2_batch_written: true,
+      legacy_backfill_enabled: isLegacyCanonicalBackfillEnabled(env),
+    };
+  }
+  return {
+    ok: true,
+    write: true,
+    reason: isLegacyCanonicalBackfillEnabled(env)
+      ? "LEGACY_CANONICAL_BACKFILL_ENABLED"
+      : "LEGACY_CANONICAL_WRITE_ALLOWED",
+    v2_batch_written: v2BatchWritten,
+  };
+}
+
 async function recordCanonicalExitTransitionsForFill({
   exchange,
   symbol,
@@ -2664,6 +2827,318 @@ async function recordCanonicalExitTransitionsForFill({
     ledger,
     source: "BINANCE_FUTURES_FILLS_SYNC",
   });
+}
+
+async function maybeWriteV2ShadowTp1Transition({
+  symbol,
+  event,
+  transitionEvents = null,
+  entryEventId,
+  positionSide,
+  orderMeta = null,
+  fillId,
+  execQtyBase,
+  execPrice = null,
+  stageHintPosition = null,
+  writeTp1Transition = writeOpenClawShadowTp1Transition,
+} = {}) {
+  const transitions = Array.isArray(transitionEvents)
+    ? transitionEvents.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  if (!isTpP1Event(event) && !transitions.includes("TP1_REACHED")) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: "V2_SHADOW_TP1_EVENT_NOT_APPLICABLE",
+    };
+  }
+  try {
+    if (typeof writeTp1Transition !== "function") throw new Error("V2_SHADOW_TP1_WRITER_REQUIRED");
+    const evidence = normalizeV2ExitFillEvidence({
+      exitFill: {
+        exit_kind: isTpP0Event(event) ? event : "TP1",
+        source_fill_id: fillId,
+        source_order_id: orderMeta && orderMeta.orderId ? String(orderMeta.orderId) : fillId,
+        fill_qty_abs: execQtyBase,
+        fill_price: execPrice,
+      },
+    });
+    return await writeTp1Transition({
+      symbol,
+      entryEventId,
+      positionSide,
+      sourceFillId: evidence.sourceFillId,
+      sourceOrderId: evidence.sourceOrderId,
+      fillQtyAbs: evidence.fillQtyAbs,
+      fillPrice: evidence.fillPrice,
+      positionMeta: stageHintPosition && stageHintPosition.meta && typeof stageHintPosition.meta === "object"
+        ? stageHintPosition.meta
+        : null,
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      written: false,
+      skipped: false,
+      reason: error && error.message ? error.message : String(error),
+    };
+  }
+}
+
+function resolveLegacyCanonicalTp1WriteGate({
+  event,
+  transitionEvents = null,
+  shadowTp1Write = null,
+} = {}) {
+  const transitions = Array.isArray(transitionEvents)
+    ? transitionEvents.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const requiresTp1Gate = isTpP1Event(event) || transitions.includes("TP1_REACHED");
+  if (!requiresTp1Gate) return { ok: true, reason: "TP1_GATE_NOT_APPLICABLE" };
+
+  const result = shadowTp1Write && typeof shadowTp1Write === "object" ? shadowTp1Write : null;
+  if (!result) return { ok: false, reason: "V2_SHADOW_TP1_GATE_RESULT_MISSING" };
+  if (result.written === true && result.ok === true) {
+    const batchGate = validateV2ShadowCanonicalBatchWrite(result);
+    return batchGate.ok === true
+      ? { ok: true, reason: "V2_SHADOW_TP1_BATCH_WRITTEN" }
+      : batchGate;
+  }
+
+  const reason = String(result.reason || "").trim().toUpperCase();
+  if ([
+    "V2_DISABLED",
+    "V2_DRY_RUN",
+    "V2_SHADOW_EXIT_WRITE_DISABLED",
+    "V2_CANARY_SYMBOL_FILTERED",
+  ].includes(reason)) {
+    return { ok: true, reason };
+  }
+
+  return {
+    ok: false,
+    reason: reason || "V2_SHADOW_TP1_GATE_NOT_SATISFIED",
+    issue_codes: Array.isArray(result.issue_codes) ? result.issue_codes.slice() : [],
+  };
+}
+
+function resolveLegacyCanonicalStopWriteGate({
+  transitionEvents = null,
+  shadowStopWrite = null,
+} = {}) {
+  const transitions = Array.isArray(transitionEvents)
+    ? transitionEvents.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const requiresStopGate = transitions.includes("SL_HIT") || transitions.includes("TRAIL_HIT");
+  if (!requiresStopGate) return { ok: true, reason: "STOP_GATE_NOT_APPLICABLE" };
+
+  const result = shadowStopWrite && typeof shadowStopWrite === "object" ? shadowStopWrite : null;
+  if (!result) return { ok: false, reason: "V2_SHADOW_STOP_EXIT_GATE_RESULT_MISSING" };
+  if (result.written === true && result.ok === true) {
+    const batchGate = validateV2ShadowCanonicalBatchWrite(result);
+    return batchGate.ok === true
+      ? { ok: true, reason: "V2_SHADOW_STOP_EXIT_BATCH_WRITTEN" }
+      : batchGate;
+  }
+
+  const reason = String(result.reason || "").trim().toUpperCase();
+  if ([
+    "V2_DISABLED",
+    "V2_DRY_RUN",
+    "V2_SHADOW_EXIT_WRITE_DISABLED",
+    "V2_CANARY_SYMBOL_FILTERED",
+  ].includes(reason)) {
+    return { ok: true, reason };
+  }
+
+  return {
+    ok: false,
+    reason: reason || "V2_SHADOW_STOP_EXIT_GATE_NOT_SATISFIED",
+    issue_codes: Array.isArray(result.issue_codes) ? result.issue_codes.slice() : [],
+  };
+}
+
+function resolveLegacyCanonicalExternalCloseWriteGate({
+  transitionEvents = null,
+  shadowExternalCloseWrite = null,
+} = {}) {
+  const transitions = Array.isArray(transitionEvents)
+    ? transitionEvents.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const requiresExternalCloseGate = transitions.includes("EXTERNAL_CLOSE_SYNC") || transitions.includes("MANUAL_CLOSE_SYNC");
+  if (!requiresExternalCloseGate) return { ok: true, reason: "EXTERNAL_CLOSE_GATE_NOT_APPLICABLE" };
+
+  const result = shadowExternalCloseWrite && typeof shadowExternalCloseWrite === "object" ? shadowExternalCloseWrite : null;
+  if (!result) return { ok: false, reason: "V2_SHADOW_EXTERNAL_CLOSE_GATE_RESULT_MISSING" };
+  if (result.written === true && result.ok === true) {
+    const batchGate = validateV2ShadowCanonicalBatchWrite(result);
+    return batchGate.ok === true
+      ? { ok: true, reason: "V2_SHADOW_EXTERNAL_CLOSE_BATCH_WRITTEN" }
+      : batchGate;
+  }
+
+  const reason = String(result.reason || "").trim().toUpperCase();
+  if ([
+    "V2_DISABLED",
+    "V2_DRY_RUN",
+    "V2_SHADOW_EXIT_WRITE_DISABLED",
+    "V2_CANARY_SYMBOL_FILTERED",
+  ].includes(reason)) {
+    return { ok: true, reason };
+  }
+
+  return {
+    ok: false,
+    reason: reason || "V2_SHADOW_EXTERNAL_CLOSE_GATE_NOT_SATISFIED",
+    issue_codes: Array.isArray(result.issue_codes) ? result.issue_codes.slice() : [],
+  };
+}
+
+async function maybeWriteV2ShadowStopExit({
+  symbol,
+  event,
+  fullExit,
+  entryEventId,
+  positionSide,
+  orderMeta = null,
+  fillId,
+  execPrice = null,
+  tradeMs = null,
+  writeStopExit = writeOpenClawShadowStopExit,
+} = {}) {
+  const normalizedEvent = String(event || "").trim().toUpperCase();
+  if (fullExit !== true) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: "V2_SHADOW_STOP_EXIT_NOT_FULL_EXIT",
+    };
+  }
+  if (!(normalizedEvent.startsWith("EXIT_SL") || normalizedEvent.startsWith("EXIT_TRAIL"))) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: "V2_SHADOW_STOP_EXIT_EVENT_NOT_APPLICABLE",
+    };
+  }
+  try {
+    if (typeof writeStopExit !== "function") throw new Error("V2_SHADOW_STOP_EXIT_WRITER_REQUIRED");
+    const evidence = normalizeV2ExitFillEvidence({
+      exitFill: {
+        exit_kind: normalizedEvent.startsWith("EXIT_TRAIL") ? "TRAIL_HIT" : "STOP",
+        source_fill_id: fillId,
+        source_order_id: orderMeta && orderMeta.orderId ? String(orderMeta.orderId) : fillId,
+        fill_price: execPrice,
+      },
+    });
+    return await writeStopExit({
+      symbol,
+      entryEventId,
+      positionSide,
+      sourceFillId: evidence.sourceFillId,
+      sourceOrderId: evidence.sourceOrderId,
+      fillPrice: evidence.fillPrice,
+      event: normalizedEvent,
+      fullExit,
+      observedAtMs: tradeMs,
+      exchangeEvidence: {
+        event_type: "BINANCE_USER_TRADES_SYNC",
+        execution_type: "TRADE",
+        order_type: orderMeta && orderMeta.orderType ? String(orderMeta.orderType).toUpperCase() : null,
+        order_status: orderMeta && orderMeta.status ? String(orderMeta.status).toUpperCase() : null,
+        client_order_id: orderMeta && orderMeta.clientOrderId ? String(orderMeta.clientOrderId) : null,
+        close_position: orderMeta && orderMeta.closePosition === true,
+        reduce_only: orderMeta && orderMeta.reduceOnly === true,
+        stop_price: orderMeta && Number.isFinite(Number(orderMeta.stopPrice)) ? Number(orderMeta.stopPrice) : null,
+        avg_price: orderMeta && Number.isFinite(Number(orderMeta.avgPrice)) ? Number(orderMeta.avgPrice) : null,
+        full_exit: fullExit === true,
+      },
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      written: false,
+      skipped: false,
+      reason: error && error.message ? error.message : String(error),
+    };
+  }
+}
+
+async function maybeWriteV2ShadowExternalClose({
+  symbol,
+  event,
+  transitionEvents = null,
+  fullExit,
+  entryEventId,
+  positionSide,
+  orderMeta = null,
+  fillId,
+  tradeMs = null,
+  writeExternalClose = writeOpenClawShadowExternalClose,
+} = {}) {
+  const transitions = Array.isArray(transitionEvents)
+    ? transitionEvents.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const externalClose = transitions.includes("EXTERNAL_CLOSE_SYNC");
+  const manualClose = transitions.includes("MANUAL_CLOSE_SYNC");
+  if (!externalClose && !manualClose) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: "V2_SHADOW_EXTERNAL_CLOSE_EVENT_NOT_APPLICABLE",
+    };
+  }
+  if (fullExit !== true) {
+    return {
+      ok: true,
+      written: false,
+      skipped: true,
+      reason: "V2_SHADOW_EXTERNAL_CLOSE_NOT_FULL_EXIT",
+    };
+  }
+  try {
+    if (typeof writeExternalClose !== "function") throw new Error("V2_SHADOW_EXTERNAL_CLOSE_WRITER_REQUIRED");
+    const closeKind = manualClose ? "MANUAL" : "EXTERNAL";
+    const evidence = normalizeV2ExitFillEvidence({
+      exitFill: {
+        exit_kind: closeKind,
+        source_fill_id: fillId,
+        source_order_id: orderMeta && orderMeta.orderId ? String(orderMeta.orderId) : fillId,
+      },
+    });
+    return await writeExternalClose({
+      symbol,
+      entryEventId,
+      positionSide,
+      sourceFillId: evidence.sourceFillId,
+      sourceOrderId: evidence.sourceOrderId,
+      event,
+      closeKind,
+      fullExit,
+      observedAtMs: tradeMs,
+      exchangeEvidence: {
+        event_type: "BINANCE_USER_TRADES_SYNC",
+        execution_type: "TRADE",
+        order_type: orderMeta && orderMeta.orderType ? String(orderMeta.orderType).toUpperCase() : null,
+        order_status: orderMeta && orderMeta.status ? String(orderMeta.status).toUpperCase() : null,
+        client_order_id: orderMeta && orderMeta.clientOrderId ? String(orderMeta.clientOrderId) : null,
+        close_position: orderMeta && orderMeta.closePosition === true,
+        reduce_only: orderMeta && orderMeta.reduceOnly === true,
+        full_exit: fullExit === true,
+      },
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      written: false,
+      skipped: false,
+      reason: error && error.message ? error.message : String(error),
+    };
+  }
 }
 
 function getExitAuthorityState(map, chainKey) {
@@ -2983,6 +3458,8 @@ function normalizeFetchedOrderMeta(ord) {
       reduceOnly: false,
       clientOrderId: null,
       status: null,
+      stopPrice: null,
+      avgPrice: null,
     };
   }
   return {
@@ -2991,6 +3468,8 @@ function normalizeFetchedOrderMeta(ord) {
     reduceOnly: normalizeOrderBool(ord.reduceOnly),
     clientOrderId: String(ord.clientOrderId || ord.origClientOrderId || "").trim() || null,
     status: String(ord.status || "").toUpperCase() || null,
+    stopPrice: Number.isFinite(Number(ord.stopPrice)) ? Number(ord.stopPrice) : null,
+    avgPrice: Number.isFinite(Number(ord.avgPrice)) ? Number(ord.avgPrice) : null,
   };
 }
 
@@ -3010,6 +3489,8 @@ async function resolveExternalOrderMeta({
       reduceOnly: false,
       clientOrderId: null,
       status: null,
+      stopPrice: null,
+      avgPrice: null,
     };
   }
   if (orderMetaCache && orderMetaCache.has(orderId)) {
@@ -3023,6 +3504,8 @@ async function resolveExternalOrderMeta({
     reduceOnly: false,
     clientOrderId: null,
     status: null,
+    stopPrice: null,
+    avgPrice: null,
   };
   let regularFetchError = null;
   try {
@@ -3776,8 +4259,143 @@ async function syncMarketTrades({
       }
 
       if (upserted && upserted.inserted && looksLikeExit) {
+        let shadowTp1Write = null;
+        let shadowStopWrite = null;
+        let shadowExternalCloseWrite = null;
+        let legacyCanonicalTp1Gate = { ok: true, reason: "TP1_GATE_NOT_EVALUATED" };
+        let legacyCanonicalStopGate = { ok: true, reason: "STOP_GATE_NOT_EVALUATED" };
+        let legacyCanonicalExternalCloseGate = { ok: true, reason: "EXTERNAL_CLOSE_GATE_NOT_EVALUATED" };
         try {
-          if (canonicalExitMutationAllowed) {
+          shadowTp1Write = await maybeWriteV2ShadowTp1Transition({
+            symbol: sym,
+            event,
+            transitionEvents: canonicalTransitionDecision.transitionEvents,
+            fullExit,
+            entryEventId,
+            positionSide: positionSideBefore,
+            orderMeta,
+            fillId,
+            execQtyBase,
+            execPrice,
+            stageHintPosition: positionCtx,
+          });
+          if (shadowTp1Write && shadowTp1Write.ok !== true) {
+            console.warn("[BINANCEFUT_V2_SHADOW_TP1_WRITE_FAIL]", shadowTp1Write.reason || "UNKNOWN");
+          }
+        } catch (shadowTp1Err) {
+          shadowTp1Write = {
+            ok: false,
+            written: false,
+            skipped: false,
+            reason: shadowTp1Err && shadowTp1Err.message ? shadowTp1Err.message : String(shadowTp1Err),
+          };
+          console.warn("[BINANCEFUT_V2_SHADOW_TP1_WRITE_THROW]", shadowTp1Write.reason);
+        }
+        try {
+          shadowStopWrite = await maybeWriteV2ShadowStopExit({
+            symbol: sym,
+            event,
+            fullExit,
+            entryEventId,
+            positionSide: positionSideBefore,
+            orderMeta,
+            fillId,
+            execPrice,
+            tradeMs,
+          });
+          if (shadowStopWrite && shadowStopWrite.ok !== true) {
+            console.warn("[BINANCEFUT_V2_SHADOW_STOP_EXIT_FAIL]", shadowStopWrite.reason || "UNKNOWN");
+          }
+        } catch (shadowStopErr) {
+          shadowStopWrite = {
+            ok: false,
+            written: false,
+            skipped: false,
+            reason: shadowStopErr && shadowStopErr.message ? shadowStopErr.message : String(shadowStopErr),
+          };
+          console.warn("[BINANCEFUT_V2_SHADOW_STOP_EXIT_THROW]", shadowStopWrite.reason);
+        }
+        try {
+          shadowExternalCloseWrite = await maybeWriteV2ShadowExternalClose({
+            symbol: sym,
+            event,
+            transitionEvents: canonicalTransitionDecision.transitionEvents,
+            entryEventId,
+            positionSide: positionSideBefore,
+            orderMeta,
+            fillId,
+            tradeMs,
+          });
+          if (shadowExternalCloseWrite && shadowExternalCloseWrite.ok !== true) {
+            console.warn("[BINANCEFUT_V2_SHADOW_EXTERNAL_CLOSE_FAIL]", shadowExternalCloseWrite.reason || "UNKNOWN");
+          }
+        } catch (shadowExternalCloseErr) {
+          shadowExternalCloseWrite = {
+            ok: false,
+            written: false,
+            skipped: false,
+            reason: shadowExternalCloseErr && shadowExternalCloseErr.message ? shadowExternalCloseErr.message : String(shadowExternalCloseErr),
+          };
+          console.warn("[BINANCEFUT_V2_SHADOW_EXTERNAL_CLOSE_THROW]", shadowExternalCloseWrite.reason);
+        }
+        legacyCanonicalTp1Gate = resolveLegacyCanonicalTp1WriteGate({
+          event,
+          transitionEvents: canonicalTransitionDecision.transitionEvents,
+          shadowTp1Write,
+        });
+        if (legacyCanonicalTp1Gate.ok !== true) {
+          console.warn("[BINANCEFUT_CANONICAL_TP1_WRITE_BLOCKED_BY_V2_GATE]", JSON.stringify({
+            symbol: sym,
+            fillId,
+            reason: legacyCanonicalTp1Gate.reason,
+            issue_codes: legacyCanonicalTp1Gate.issue_codes || [],
+          }));
+        }
+        legacyCanonicalStopGate = resolveLegacyCanonicalStopWriteGate({
+          transitionEvents: canonicalTransitionDecision.transitionEvents,
+          shadowStopWrite,
+        });
+        if (legacyCanonicalStopGate.ok !== true) {
+          console.warn("[BINANCEFUT_CANONICAL_STOP_WRITE_BLOCKED_BY_V2_GATE]", JSON.stringify({
+            symbol: sym,
+            fillId,
+            reason: legacyCanonicalStopGate.reason,
+            issue_codes: legacyCanonicalStopGate.issue_codes || [],
+          }));
+        }
+        legacyCanonicalExternalCloseGate = resolveLegacyCanonicalExternalCloseWriteGate({
+          transitionEvents: canonicalTransitionDecision.transitionEvents,
+          shadowExternalCloseWrite,
+        });
+        if (legacyCanonicalExternalCloseGate.ok !== true) {
+          console.warn("[BINANCEFUT_CANONICAL_EXTERNAL_CLOSE_WRITE_BLOCKED_BY_V2_GATE]", JSON.stringify({
+            symbol: sym,
+            fillId,
+            reason: legacyCanonicalExternalCloseGate.reason,
+            issue_codes: legacyCanonicalExternalCloseGate.issue_codes || [],
+          }));
+        }
+        const legacyCanonicalWriteDecision = resolveLegacyCanonicalWriteDecision({
+          canonicalExitMutationAllowed,
+          legacyCanonicalTp1Gate,
+          legacyCanonicalStopGate,
+          legacyCanonicalExternalCloseGate,
+        });
+        const canonicalExitWriteAllowed = legacyCanonicalWriteDecision.write === true
+          && legacyCanonicalTp1Gate.ok === true
+          && legacyCanonicalStopGate.ok === true
+          && legacyCanonicalExternalCloseGate.ok === true;
+        if (canonicalExitMutationAllowed && legacyCanonicalWriteDecision.write !== true) {
+          console.warn("[BINANCEFUT_LEGACY_CANONICAL_EXIT_WRITE_SKIPPED]", JSON.stringify({
+            symbol: sym,
+            fillId,
+            reason: legacyCanonicalWriteDecision.reason,
+            v2_batch_written: legacyCanonicalWriteDecision.v2_batch_written === true,
+            issue_codes: legacyCanonicalWriteDecision.issue_codes || [],
+          }));
+        }
+        try {
+          if (canonicalExitWriteAllowed) {
             await recordCanonicalExitTransitionsForFill({
               exchange: "BINANCEFUT",
               symbol: sym,
@@ -3797,7 +4415,7 @@ async function syncMarketTrades({
           console.warn("[BINANCEFUT_CANONICAL_EXIT_TRANSITION_RECORD_FAIL]", transitionErr && transitionErr.message ? transitionErr.message : String(transitionErr));
         }
         try {
-          if (canonicalExitMutationAllowed) {
+          if (canonicalExitWriteAllowed) {
             const stageHintResult = await promotePositionStageHintsFromExternalExit({
               exchange: "BINANCEFUT",
               symbol: sym,
@@ -3808,6 +4426,13 @@ async function syncMarketTrades({
             if (stageHintResult && stageHintResult.position) {
               positionEntryCache.set(`BINANCEFUT__${sym}`, {
                 ...(positionCtx && typeof positionCtx === "object" ? positionCtx : {}),
+                entryEventId: stageHintResult.position.meta && stageHintResult.position.meta.entry_event_id
+                  ? String(stageHintResult.position.meta.entry_event_id)
+                  : ((positionCtx && positionCtx.entryEventId) || null),
+                positionSide: resolvePositionSideFromPosition(stageHintResult.position) || ((positionCtx && positionCtx.positionSide) || null),
+                qtyBase: Number.isFinite(Number(stageHintResult.position.qty_base))
+                  ? Number(stageHintResult.position.qty_base)
+                  : ((positionCtx && Number.isFinite(Number(positionCtx.qtyBase))) ? Number(positionCtx.qtyBase) : null),
                 tpP0Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p0_done === true,
                 tpP1Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p1_done === true,
                 trailActive: stageHintResult.position.meta && stageHintResult.position.meta.trail_active === true,
@@ -3842,6 +4467,7 @@ async function syncMarketTrades({
             exchange: "BINANCEFUT",
             symbol: sym,
             event,
+            fullExit,
             realizedPnl,
             execTimeIso,
             positionSideBefore,
@@ -4247,6 +4873,13 @@ module.exports = {
     applyExternalExitQtyAuthority,
     resolveCanonicalExternalExitEvent,
     shouldPromoteCanonicalExternalExit,
+    parseFillSyncBool,
+    normalizeV2ShadowWriteKeys,
+    validateV2ShadowCanonicalBatchWrite,
+    isLegacyCanonicalBackfillEnabled,
+    isV2CanonicalBatchWrittenGate,
+    hasV2CanonicalBatchWrittenGate,
+    resolveLegacyCanonicalWriteDecision,
     inferStageConstrainedTakeProfitKind,
     applyActiveExitStageBackstopOverride,
     buildFillSyncNativeProtectionRefreshArgs,
@@ -4268,6 +4901,7 @@ module.exports = {
     resolveFillSyncAlertIdentityEvent,
     shouldSendFillSyncTradeAlert,
     flushFillSyncAlertBatches,
+    shouldMarkSameDirectionTrailProfitCooldownFromExternalFill,
     canFinalizeIntentFromExternalFill,
     resolveExternalSyncHintStage,
     inferAuthoritativeForcedExitEventFromRefs,
@@ -4276,5 +4910,11 @@ module.exports = {
     applyAuthoritativeIntentEventOverride,
     inferExitEventFromDecisionReason,
     resolvePersistedExternalExitEvent,
+    maybeWriteV2ShadowTp1Transition,
+    resolveLegacyCanonicalTp1WriteGate,
+    maybeWriteV2ShadowStopExit,
+    resolveLegacyCanonicalStopWriteGate,
+    maybeWriteV2ShadowExternalClose,
+    resolveLegacyCanonicalExternalCloseWriteGate,
   },
 };

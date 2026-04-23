@@ -6,16 +6,25 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
 (() => {
   const artifactNames = __test.ARTIFACT_SPECS.map((row) => row.name);
   assert.ok(artifactNames.includes("openclaw_hourly_cycle"));
+  assert.ok(artifactNames.includes("v2_repair_queue_canary"));
+  assert.ok(artifactNames.includes("v2_repair_queue_operational_canary"));
+  assert.ok(artifactNames.includes("v2_repair_queue_canary_preflight"));
+  assert.ok(artifactNames.includes("v2_repair_queue_service"));
   assert.ok(artifactNames.includes("openclaw_daily_cycle"));
   assert.ok(!artifactNames.includes("rollback_monitor"));
   assert.ok(!artifactNames.includes("signal_data_integrity"));
   assert.ok(!artifactNames.includes("stage_outcome_ledgers"));
   assert.ok(!artifactNames.includes("ml_filter_policy"));
 
-  assert.strictEqual(__test.AUTOMATION_SPECS.length, 2);
-  assert.strictEqual(__test.AUTOMATION_SPECS[0].job_id, "openclaw_hourly_cycle");
-  assert.strictEqual(__test.AUTOMATION_SPECS[0].produces_artifact, "openclaw_hourly_cycle_latest.json");
-  assert.strictEqual(__test.AUTOMATION_SPECS[0].scheduler_sot, "OPENCLAW_CRON");
+  assert.ok(__test.AUTOMATION_SPECS.length >= 4);
+  const hourlySpec = __test.AUTOMATION_SPECS.find((row) => row.job_id === "openclaw_hourly_cycle");
+  assert.ok(hourlySpec);
+  assert.strictEqual(hourlySpec.produces_artifact, "openclaw_hourly_cycle_latest.json");
+  assert.strictEqual(hourlySpec.scheduler_sot, "OPENCLAW_CRON");
+  const repairSpec = __test.AUTOMATION_SPECS.find((row) => row.job_id === "v2_repair_queue_service");
+  assert.ok(repairSpec);
+  assert.strictEqual(repairSpec.produces_artifact, "v2_repair_queue_service_latest.json");
+  assert.strictEqual(repairSpec.severity, "FAIL");
 
   const rows = __test.parseLaunchctlList([
     "123\t0\tcom.jeongjaeyong.donbeolja.objectivesupervisor",
@@ -198,6 +207,37 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   });
   assert.strictEqual(passRow.issueCode, null);
   assert.strictEqual(passRow.severity, "PASS");
+
+  assert.strictEqual(
+    __test.shouldMonitorLegacySchedulerTick({
+      schedulerMode: "OPENCLAW_CRON",
+      env: {},
+    }),
+    false
+  );
+  assert.strictEqual(
+    __test.shouldMonitorLegacySchedulerTick({
+      schedulerMode: "OPENCLAW_CRON",
+      env: { AUTOMATION_WATCHDOG_LEGACY_SCHEDULER_TICK_SLA_ENABLED: "1" },
+    }),
+    true
+  );
+  assert.strictEqual(
+    __test.shouldMonitorLegacySchedulerTick({
+      schedulerMode: "LAUNCHD_FALLBACK",
+      env: {},
+    }),
+    true
+  );
+
+  const skippedSla = __test.buildSkippedSchedulerTickSla({
+    baseUrl: "https://example.invalid",
+    reason: "OPENCLAW_CRON",
+  });
+  assert.strictEqual(skippedSla.issueCode, null);
+  assert.strictEqual(skippedSla.severity, "PASS");
+  assert.strictEqual(skippedSla.skipped, true);
+  assert.strictEqual(skippedSla.skipReason, "LEGACY_SCHEDULER_TICK_SLA_SKIPPED_OPENCLAW_CRON");
 
   assert.strictEqual(
     __test.shouldAttemptSchedulerRecovery(
