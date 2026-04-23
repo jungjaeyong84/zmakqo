@@ -1,5 +1,7 @@
 "use strict";
 
+const { summarizeOutcomeCohorts, extractOutcomeContext } = require("./signalCohortReport");
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -81,6 +83,7 @@ function summarizeOpenClawOutcomes(outcomes = []) {
 function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null, source = "OPENCLAW_OUTCOME_ADJUDICATIONS", lookbackHours = 24 } = {}) {
   const generated = trimOrNull(generatedAt) || new Date().toISOString();
   const summary = summarizeOpenClawOutcomes(outcomes);
+  const cohortSummary = summarizeOutcomeCohorts(outcomes);
   return Object.freeze({
     ok: true,
     reason: "V2_OPENCLAW_DAILY_PERFORMANCE_REPORT_GENERATED",
@@ -94,6 +97,7 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
     expectancy: summary.expectancy,
     net_pnl_usdt: summary.net_pnl_usdt,
     summary,
+    cohort_summary: cohortSummary,
     outcomes: Object.freeze(asArray(outcomes).map((row) => Object.freeze({
       openclaw_outcome_adjudication_id: trimOrNull(row.openclaw_outcome_adjudication_id),
       openclaw_decision_id: trimOrNull(row.openclaw_decision_id),
@@ -104,6 +108,7 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
       realized_exit_event: upper(row.realized_exit_event),
       realized_pnl: toNumberOrNull(row.realized_pnl),
       adjudicated_at: trimOrNull(row.adjudicated_at),
+      context: extractOutcomeContext(row),
     }))),
   });
 }

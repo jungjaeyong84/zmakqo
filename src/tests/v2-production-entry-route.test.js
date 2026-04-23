@@ -7,6 +7,7 @@ const { buildV2ExecutedEntryFromIntent } = require("../v2/entryExecutor");
 const { runV2ProductionEntryRoute } = require("../v2/productionEntryRoute");
 const { buildOpenClawWorldState } = require("../v2/openclawWorldState");
 const { issueOpenClawExecutionPermit } = require("../v2/openclawExecutionPermit");
+const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSeed");
 
 function buildEnv(overrides = {}) {
   return {
@@ -52,8 +53,9 @@ function buildBundle(overrides = {}) {
       ok: true,
       reason: "V2_MARKET_DATA_QUALITY_PASS",
       blockers: [],
-      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+      metrics: { symbol: "ETHUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
     },
+    signalCriteria: buildPassSignalCriteriaSeed("LONG"),
     ...overrides,
   });
 }

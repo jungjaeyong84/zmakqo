@@ -5,6 +5,7 @@ const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
 const { LIVE_CONFIRM_PHRASE } = require("../v2/productionEntryLiveEndpoint");
 const { DISCOVERY_CONFIRM_PHRASE } = require("../v2/discoveryCanaryContract");
 const { buildV2ProductionEntryLiveRequest, __test } = require("../v2/productionEntryLiveRequest");
+const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSeed");
 
 function buildBundle(overrides = {}) {
   return buildOpenClawDecisionBundle({
@@ -41,8 +42,9 @@ function buildBundle(overrides = {}) {
       ok: true,
       reason: "V2_MARKET_DATA_QUALITY_PASS",
       blockers: [],
-      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+      metrics: { symbol: "ETHUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
     },
+    signalCriteria: buildPassSignalCriteriaSeed("LONG"),
     ...overrides,
   });
 }

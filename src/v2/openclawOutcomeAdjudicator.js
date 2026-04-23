@@ -16,6 +16,15 @@ function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function cloneJson(value) {
+  if (value == null) return null;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return null;
+  }
+}
+
 function toNumberOrNull(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -30,6 +39,41 @@ function extractIds({ bundle = null, positionCycle = null, executedEntry = null 
     signalIntentId: trimOrNull(signal && signal.signal_intent_id),
     positionCycleId: trimOrNull(cycle && cycle.position_cycle_id),
   });
+}
+
+function buildDefaultOutcomeEvidence({
+  bundle = null,
+  positionCycle = null,
+  executedEntry = null,
+  evidence = null,
+} = {}) {
+  const seed = cloneJson(evidence) || {};
+  const decision = asObject(asObject(bundle) && bundle.openclawDecision);
+  const signal = asObject(asObject(bundle) && bundle.signalIntent);
+  const criteria = asObject(asObject(bundle) && bundle.signalCriteria);
+  const cycle = asObject(positionCycle) || asObject(asObject(executedEntry) && executedEntry.positionCycle);
+  if (!seed.symbol && signal && signal.symbol) seed.symbol = signal.symbol;
+  if (!seed.side && signal && signal.side) seed.side = signal.side;
+  if (!seed.position_cycle_id && cycle && cycle.position_cycle_id) seed.position_cycle_id = cycle.position_cycle_id;
+  if (!seed.openclaw_decision_bundle_hash && bundle && bundle.openclawDecisionBundleHash) {
+    seed.openclaw_decision_bundle_hash = bundle.openclawDecisionBundleHash;
+  }
+  if (!seed.openclaw_decision_id && decision && decision.openclaw_decision_id) {
+    seed.openclaw_decision_id = decision.openclaw_decision_id;
+  }
+  if (!seed.signal_criteria && criteria) {
+    seed.signal_criteria = cloneJson(criteria);
+  }
+  if (!seed.signal_regime_profile && criteria && criteria.regime_profile) {
+    seed.signal_regime_profile = cloneJson(criteria.regime_profile);
+  }
+  if (!seed.expected_edge_model && criteria && criteria.expected_edge_model) {
+    seed.expected_edge_model = cloneJson(criteria.expected_edge_model);
+  }
+  if (!seed.setup_type && criteria && criteria.setup_gate) {
+    seed.setup_type = trimOrNull(criteria.setup_gate.setup_type);
+  }
+  return seed;
 }
 
 function classifyOutcome({
@@ -98,7 +142,7 @@ function adjudicateOpenClawOutcome({
     executionOk,
     protectionOk,
     modelOk: classification.label === "MODEL_WIN" || classification.label === "EXPECTED_BLOCKED_LOSS",
-    evidence: evidence || {},
+    evidence: buildDefaultOutcomeEvidence({ bundle, positionCycle, executedEntry, evidence }),
     adjudicatedAt,
   }));
 }
@@ -134,7 +178,9 @@ module.exports = {
     trimOrNull,
     upper,
     asObject,
+    cloneJson,
     toNumberOrNull,
     extractIds,
+    buildDefaultOutcomeEvidence,
   },
 };

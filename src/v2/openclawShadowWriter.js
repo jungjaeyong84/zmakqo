@@ -357,6 +357,7 @@ function buildShadowBundlePayload({
     payload.expectedGrossR = toNumberOrNull(input.expectedGrossR || input.expected_gross_r || features.expected_gross_r);
     payload.expectedNetRAfterCost = toNumberOrNull(input.expectedNetRAfterCost || input.expected_net_r_after_cost || features.expected_net_r_after_cost);
     payload.costEstimateBps = toNumberOrNull(input.costEstimateBps || input.cost_estimate_bps || features.cost_estimate_bps);
+    payload.costREquivalent = toNumberOrNull(input.costREquivalent || input.cost_r_equivalent || features.cost_r_equivalent);
     payload.fundingPenaltyBps = toNumberOrNull(input.fundingPenaltyBps || input.funding_penalty_bps || features.funding_penalty_bps);
     payload.signalScore = toNumberOrNull(input.signalScore || input.signal_score || features.signal_score);
   }

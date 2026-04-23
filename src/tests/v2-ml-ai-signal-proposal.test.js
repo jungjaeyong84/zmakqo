@@ -44,9 +44,18 @@ const { buildMlAiSignalProposal } = require("../v2/mlAiSignalProposal");
       setup_gate: {
         setup_type: "PULLBACK_RECLAIM",
       },
+      regime_profile: {
+        structural_regime: "TREND",
+        regime_cohort: "TREND__NORMAL_VOL__ADEQUATE",
+      },
       signal_score: 86,
       expected_edge_gate: {
         expected_net_r_after_cost: 0.31,
+      },
+      expected_edge_model: {
+        edge_cohort: "BUILDABLE_EDGE",
+        tp1_reach_probability: 0.64,
+        stop_hit_probability: 0.29,
       },
     },
     decisionMode: "CANARY",
@@ -65,6 +74,11 @@ const { buildMlAiSignalProposal } = require("../v2/mlAiSignalProposal");
   assert.strictEqual(proposal.setup_type, "PULLBACK_RECLAIM");
   assert.strictEqual(proposal.signal_score, 86);
   assert.strictEqual(proposal.expected_net_r_after_cost, 0.31);
+  assert.strictEqual(proposal.structural_regime, "TREND");
+  assert.strictEqual(proposal.regime_cohort, "TREND__NORMAL_VOL__ADEQUATE");
+  assert.strictEqual(proposal.edge_cohort, "BUILDABLE_EDGE");
+  assert.strictEqual(proposal.tp1_reach_probability, 0.64);
+  assert.strictEqual(proposal.stop_hit_probability, 0.29);
 })();
 
 console.log("V2_ML_AI_SIGNAL_PROPOSAL_TEST_OK");

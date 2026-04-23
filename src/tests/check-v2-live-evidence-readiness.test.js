@@ -250,6 +250,7 @@ function buildProductionEntryRouteStreakFixture({ artifactDir }) {
 
 function buildExitRuntimeStreakFixture({ artifactDir }) {
   const defectCounts = {
+    active_position_n: 5,
     tp1_missing_n: 0,
     native_refresh_unhealthy_n: 0,
     unprotected_window_violation_n: 0,
@@ -296,6 +297,7 @@ function buildExitRuntimeStreakFixture({ artifactDir }) {
       firestore_source_required: true,
       row_n: 13,
       healthy_run_n: 13,
+      active_position_n: 5,
       latest_age_minutes: 15,
       coverage_minutes: 1440,
       max_observed_gap_minutes: 120,
@@ -305,6 +307,7 @@ function buildExitRuntimeStreakFixture({ artifactDir }) {
       status: "PASS",
       history_source: "FIRESTORE",
       firestore_source_required: true,
+      active_position_evidence_required: true,
       coverage_minutes: 1440,
       latest_age_minutes: 15,
       max_observed_gap_minutes: 120,

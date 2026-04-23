@@ -504,6 +504,11 @@ function buildMlAiSignalProposalDoc({
   setupType = null,
   signalScore = null,
   expectedNetRAfterCost = null,
+  structuralRegime = null,
+  regimeCohort = null,
+  edgeCohort = null,
+  tp1ReachProbability = null,
+  stopHitProbability = null,
   createdAt = null,
 } = {}) {
   return {
@@ -529,6 +534,11 @@ function buildMlAiSignalProposalDoc({
     setup_type: trimOrNull(upper(setupType)),
     signal_score: toNumberOrNull(signalScore),
     expected_net_r_after_cost: toNumberOrNull(expectedNetRAfterCost),
+    structural_regime: trimOrNull(upper(structuralRegime)),
+    regime_cohort: trimOrNull(upper(regimeCohort)),
+    edge_cohort: trimOrNull(upper(edgeCohort)),
+    tp1_reach_probability: toNumberOrNull(tp1ReachProbability),
+    stop_hit_probability: toNumberOrNull(stopHitProbability),
     rationale_summary: validateRequiredString("rationale_summary", rationaleSummary),
     created_at: trimOrNull(createdAt) || new Date().toISOString(),
   };

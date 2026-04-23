@@ -48,7 +48,7 @@ const V2_PERFORMANCE_GATE_STAGE_DEFAULTS = Object.freeze({
     min_profit_factor: 1.05,
     min_expectancy_r: 0,
     min_net_pnl_pct: 0,
-    max_drawdown_pct: -5,
+    max_drawdown_pct: -8,
     max_cost_ratio_pct: 0.35,
     max_error_count_24h: 0,
   }),
@@ -63,7 +63,7 @@ const V2_PERFORMANCE_GATE_STAGE_DEFAULTS = Object.freeze({
     max_error_count_24h: 0,
   }),
   LIVE: Object.freeze({
-    min_sample_n: 100,
+    min_sample_n: 200,
     min_win_rate_pct: 50,
     min_profit_factor: 1.15,
     min_expectancy_r: 0,

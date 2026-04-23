@@ -55,6 +55,21 @@ function buildMlAiSignalProposal({
     expectedNetRAfterCost: signalCriteria && signalCriteria.expected_edge_gate
       ? signalCriteria.expected_edge_gate.expected_net_r_after_cost
       : null,
+    structuralRegime: signalCriteria && signalCriteria.regime_profile
+      ? signalCriteria.regime_profile.structural_regime
+      : null,
+    regimeCohort: signalCriteria && signalCriteria.regime_profile
+      ? signalCriteria.regime_profile.regime_cohort
+      : null,
+    edgeCohort: signalCriteria && signalCriteria.expected_edge_model
+      ? signalCriteria.expected_edge_model.edge_cohort
+      : null,
+    tp1ReachProbability: signalCriteria && signalCriteria.expected_edge_model
+      ? signalCriteria.expected_edge_model.tp1_reach_probability
+      : null,
+    stopHitProbability: signalCriteria && signalCriteria.expected_edge_model
+      ? signalCriteria.expected_edge_model.stop_hit_probability
+      : null,
     rationaleSummary,
     createdAt,
   }));
