@@ -1,4 +1,5 @@
 //@version=6
+// Experimental branch only. Canonical production signal system is donbeolja_v6.1.1.0.
 indicator("돈벌자 :) Ω Full v7.0.0.0", overlay = true, max_lines_count = 500, max_labels_count = 500)
 
 // V7 objective:

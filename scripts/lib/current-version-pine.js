@@ -84,10 +84,54 @@ function syncCurrentVersionPineAlias({ sourceFilePath, latestFilePath } = {}) {
   };
 }
 
+function syncCurrentVersionPineAliases({ sourceFilePath, aliasFilePaths = [] } = {}) {
+  const source = String(sourceFilePath || "").trim();
+  const aliases = Array.isArray(aliasFilePaths)
+    ? aliasFilePaths.map((v) => String(v || "").trim()).filter(Boolean)
+    : [];
+  if (!source || !fs.existsSync(source)) {
+    return {
+      ok: false,
+      synced: false,
+      source_sha256: null,
+      aliases: aliases.map((filePath) => ({
+        file_path: filePath,
+        synced: false,
+        sha256: filePath ? sha256File(filePath) : null,
+      })),
+      reason: "SOURCE_FILE_MISSING",
+    };
+  }
+  const sourceHash = sha256File(source);
+  const results = [];
+  let anySynced = false;
+  for (const filePath of aliases) {
+    const beforeHash = sha256File(filePath);
+    const needsSync = !filePath || !fs.existsSync(filePath) || beforeHash !== sourceHash;
+    if (needsSync) {
+      fs.copyFileSync(source, filePath);
+      anySynced = true;
+    }
+    results.push({
+      file_path: filePath,
+      synced: needsSync,
+      sha256: sha256File(filePath),
+    });
+  }
+  return {
+    ok: true,
+    synced: anySynced,
+    source_sha256: sourceHash,
+    aliases: results,
+    reason: anySynced ? "SYNCED" : "UNCHANGED",
+  };
+}
+
 module.exports = {
   normalizeStrategyId,
   buildCurrentVersionPineCandidates,
   resolveCurrentVersionPineSource,
   sha256File,
   syncCurrentVersionPineAlias,
+  syncCurrentVersionPineAliases,
 };

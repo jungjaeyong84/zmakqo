@@ -18,7 +18,7 @@ const {
 } = require("./lib/pine-file-ops");
 const {
   resolveCurrentVersionPineSource,
-  syncCurrentVersionPineAlias,
+  syncCurrentVersionPineAliases,
 } = require("./lib/current-version-pine");
 
 loadLocalEnv();
@@ -26,6 +26,7 @@ loadLocalEnv();
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "current_version_pine_sync_latest.json");
 const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "current_version_pine_sync_latest.md");
 const LATEST_GENERATED_PATH = path.join(REPO_ROOT, "code", "donbeolja_latest_generated.pine.txt");
+const GENERIC_PINE_PATH = path.join(REPO_ROOT, "code", "donbeolja.pine.txt");
 
 function shouldOpenSyncedPine(sync = {}) {
   return sync && sync.ok === true && sync.synced === true;
@@ -40,6 +41,7 @@ function renderMarkdown(report = {}) {
     `- strategy_id: ${report.strategy_id || "N/A"}`,
     `- source: ${report.source_file_path || "N/A"}`,
     `- latest: ${report.latest_generated_file_path || "N/A"}`,
+    `- generic: ${report.generic_file_path || "N/A"}`,
     `- synced: ${report.synced ? "YES" : "NO"}`,
     `- opened: ${report.opened ? "YES" : "NO"}`,
   ];
@@ -64,9 +66,9 @@ function main() {
     strategyId,
     engineVersion,
   });
-  const sync = syncCurrentVersionPineAlias({
+  const sync = syncCurrentVersionPineAliases({
     sourceFilePath: resolved.source_file_path,
-    latestFilePath: LATEST_GENERATED_PATH,
+    aliasFilePaths: [LATEST_GENERATED_PATH, GENERIC_PINE_PATH],
   });
   let openResult = { ok: false, method: null, error: null };
   let openContext = buildPineOpenContext({
@@ -96,6 +98,7 @@ function main() {
     strategy_id: resolved.strategy_id,
     source_file_path: resolved.source_file_path,
     latest_generated_file_path: LATEST_GENERATED_PATH,
+    generic_file_path: GENERIC_PINE_PATH,
     synced: sync.synced === true,
     opened: openResult.ok === true,
     open_method: openResult.method || null,
@@ -105,7 +108,9 @@ function main() {
     open_notified: notifyResult.ok === true,
     open_notify_error: notifyResult.ok === true ? null : notifyResult.error,
     source_sha256: sync.source_sha256 || null,
-    latest_sha256: sync.latest_sha256 || null,
+    latest_sha256: (sync.aliases || []).find((row) => row.file_path === LATEST_GENERATED_PATH)?.sha256 || null,
+    generic_sha256: (sync.aliases || []).find((row) => row.file_path === GENERIC_PINE_PATH)?.sha256 || null,
+    alias_results: sync.aliases || [],
     tried_candidates: resolved.tried_candidates || [],
   };
 
@@ -123,6 +128,7 @@ function main() {
     strategy_id: report.strategy_id,
     source_file_path: report.source_file_path,
     latest_generated_file_path: report.latest_generated_file_path,
+    generic_file_path: report.generic_file_path,
     synced: report.synced,
     opened: report.opened,
     open_context: report.open_context,
