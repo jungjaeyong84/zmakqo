@@ -16,7 +16,7 @@ function buildV2ProductionCutoverGuard(env = process.env) {
   const allowLegacyWebhookSignal = parseBool(env.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, false);
   const blockLegacyWebhookSignal = parseBool(
     env.DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL,
-    v2Enabled === true && dryRun === false && canaryOnly === false
+    v2Enabled === true
   );
 
   const context = Object.freeze({

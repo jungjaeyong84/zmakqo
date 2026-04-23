@@ -5,6 +5,7 @@ const {
   auditWorkspaceV2ProductionCutoverContract,
   auditV2ProductionCutoverReadiness,
 } = require("../v2/productionCutoverAudit");
+const { buildV2ProductionCutoverGuard } = require("../v2/productionCutoverGuard");
 
 const VALID_WEBHOOK_CUTOVER_ROUTE_SOURCE = [
   'router.post("/webhook/signal", async () => {',
@@ -132,6 +133,17 @@ const VALID_WEBHOOK_CUTOVER_ROUTE_SOURCE = [
   assert.strictEqual(result.fail_n, 0);
   assert.strictEqual(result.guard.allowed, false);
   assert.strictEqual(result.guard.reason, "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED");
+})();
+
+(function v2EnabledDefaultsLegacyWebhookBlockedEvenInCanaryOnly() {
+  const guard = buildV2ProductionCutoverGuard({
+    DONBEOLJA_V2_ENABLED: "1",
+    DONBEOLJA_V2_DRY_RUN: "0",
+    DONBEOLJA_V2_CANARY_ONLY: "1",
+  });
+  assert.strictEqual(guard.allowed, false);
+  assert.strictEqual(guard.reason, "V2_LEGACY_WEBHOOK_SIGNAL_BLOCKED");
+  assert.strictEqual(guard.context.block_legacy_webhook_signal, true);
 })();
 
 (function missingCutoverEnvBlocksReadinessWithTraceableIds() {

@@ -490,6 +490,8 @@ function buildApprovalContract(plan) {
       production_entry_route_canary_streak_required: false,
       exit_runtime_canary_streak_required: false,
       production_entry_protected_canary_required: false,
+      performance_gate_required: false,
+      firestore_cost_guard_required: false,
       live_cutover_readiness_summary_required: false,
       runbook_review_pass_required: false,
       candidate_selection_ready_required: false,
@@ -524,6 +526,8 @@ function buildApprovalContract(plan) {
     production_entry_route_canary_streak_required: row.promotionMode === "LIVE",
     exit_runtime_canary_streak_required: row.promotionMode === "LIVE",
     production_entry_protected_canary_required: true,
+    performance_gate_required: row.promotionMode === "LIVE",
+    firestore_cost_guard_required: row.promotionMode === "LIVE",
     live_cutover_readiness_summary_required: row.promotionMode === "LIVE",
     runbook_review_pass_required: true,
     candidate_selection_ready_required: row.canaryAutoSelectEnabled === true,
@@ -688,6 +692,20 @@ function buildApprovalEvidenceSources(plan) {
       field: "bounded_runtime_summary.production_entry_protected_canary",
       note: "CANARY/LIVE requires fresh no-exchange proof that route, kernel, submitter, protection activation, SL and TP1 are connected",
     }),
+    performance_gate: row.promotionMode === "LIVE"
+      ? buildEvidenceRef({
+          file: "promotion-deploy-decision.json",
+          field: "bounded_runtime_summary.performance_gate",
+          note: "LIVE requires realized outcome performance gate PASS from current artifact cycle",
+        })
+      : null,
+    firestore_cost_guard: row.promotionMode === "LIVE"
+      ? buildEvidenceRef({
+          file: "promotion-deploy-decision.json",
+          field: "bounded_runtime_summary.firestore_cost_guard",
+          note: "LIVE requires Firestore cost guard PASS from current artifact cycle",
+        })
+      : null,
     live_cutover_readiness_summary: row.promotionMode === "LIVE"
       ? buildEvidenceRef({
           file: "promotion-cloudbuild-context.json",
@@ -776,6 +794,8 @@ function hasRequiredApprovalContract(contract, { promotionMode = null } = {}) {
     mustBeLiveTrue(row, "production_entry_route_canary_streak_required", liveRequired) &&
     mustBeLiveTrue(row, "exit_runtime_canary_streak_required", liveRequired) &&
     row.production_entry_protected_canary_required === true &&
+    mustBeLiveTrue(row, "performance_gate_required", liveRequired) &&
+    mustBeLiveTrue(row, "firestore_cost_guard_required", liveRequired) &&
     mustBeLiveTrue(row, "live_cutover_readiness_summary_required", liveRequired) &&
     row.runbook_review_pass_required === true &&
     typeof row.candidate_selection_ready_required === "boolean" &&

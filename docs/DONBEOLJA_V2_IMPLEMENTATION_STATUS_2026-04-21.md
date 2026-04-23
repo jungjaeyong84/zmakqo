@@ -2926,3 +2926,13 @@ V1 약점 재발 방지:
 4. `src/v2/firestoreCostGuard.js` 와 `scripts/check-v2-firestore-cost-guard.js` 를 추가했다. promotion unified report와 canary streak artifact의 query/read budget을 합산해 Firestore read 회귀를 `V2_FIRESTORE_COST_GUARD_PASS/BLOCKED` 로 판정한다.
 5. `test:v2-promotion` 은 이제 `test:v2-profit-cost-guards` 를 포함한다. 즉 수익성 gate, daily performance report, Firestore cost guard의 behavior test가 promotion path에서 빠지면 CI가 깨진다.
 6. 2026-04-23 10시대 현재 dev Firestore V2 outcome 표본은 `sample_n=0` 이므로 performance gate는 정상적으로 `SAMPLE_INSUFFICIENT`, `PROFIT_FACTOR_BELOW_FLOOR`, `EXPECTANCY_NOT_POSITIVE`, `NET_PNL_NOT_POSITIVE` 로 차단한다. 이는 시스템 결함이 아니라 아직 실거래 성과 증거가 없다는 의미다.
+
+## 2026-04-23 추가: LIVE 성과/비용 Artifact Hard Gate 및 Webhook 기본 차단 강화
+
+1. `run-v2-promotion-pipeline` 은 이제 promotion artifact cycle 안에서 `v2_openclaw_daily_performance_report_latest.json`, `v2_performance_gate_latest.json`, `v2_firestore_cost_guard_latest.json` 를 생성한다.
+2. `generate-v2-unified-promotion-report` 는 성과 gate와 Firestore cost guard artifact를 `bounded_runtime_summary.performance_gate`, `bounded_runtime_summary.firestore_cost_guard` 로 포함한다.
+3. `check-v2-promotion-deploy-decision` 은 LIVE 모드에서 두 artifact가 current artifact dir, freshness 180분 이내, PASS 상태가 아니면 `DEPLOY_DECISION:PERFORMANCE_GATE_REQUIRED` 또는 `DEPLOY_DECISION:FIRESTORE_COST_GUARD_REQUIRED` 로 차단한다.
+4. `check-v2-live-evidence-readiness` 는 LIVE evidence axes에 `performance_gate`, `firestore_cost_guard` 를 추가했다. 따라서 canary 24h streak만 통과해도 성과/비용 artifact가 없으면 LIVE evidence ready가 아니다.
+5. `submit-v2-promotion-cloudbuild` 의 LIVE approval contract에도 `performance_gate_required`, `firestore_cost_guard_required` 를 추가했다. submit wrapper가 deploy decision의 해당 fields를 approval evidence source로 추적한다.
+6. `productionCutoverGuard` 의 legacy webhook 기본 차단값을 `DONBEOLJA_V2_ENABLED=true` 로 강화했다. 이제 canary-only 상태에서도 명시 env가 누락되면 legacy `/webhook/signal` 은 기본 차단된다.
+7. 현재 `sample_n=0` 이므로 이 변경은 LIVE 승격을 더 강하게 막는 방향이다. 초소액 discovery live canary를 열더라도 별도 capped discovery contract 없이는 `LIVE_READY` 로 승격하지 않는다.

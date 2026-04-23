@@ -11,6 +11,8 @@ const REPAIR_FIRESTORE_CANARY_STREAK_FILENAME = "v2_repair_queue_firestore_canar
 const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
 const PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME = "v2_production_entry_protected_canary_latest.json";
 const EXIT_RUNTIME_CANARY_STREAK_FILENAME = "v2_exit_runtime_canary_streak_latest.json";
+const PERFORMANCE_GATE_FILENAME = "v2_performance_gate_latest.json";
+const FIRESTORE_COST_GUARD_FILENAME = "v2_firestore_cost_guard_latest.json";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -288,6 +290,46 @@ function readExitRuntimeCanaryStreakArtifact(env = process.env, artifactDir = nu
   );
 }
 
+function resolvePerformanceGateFile(env = process.env, artifactDir = null) {
+  const explicit = trimOrNull(env.V2_PERFORMANCE_GATE_OUTPUT_FILE);
+  if (explicit) return path.resolve(explicit);
+  const artifactScoped = trimOrNull(artifactDir)
+    ? path.resolve(artifactDir, PERFORMANCE_GATE_FILENAME)
+    : null;
+  if (artifactScoped && fs.existsSync(artifactScoped)) return artifactScoped;
+  return path.resolve("ops", "daily", PERFORMANCE_GATE_FILENAME);
+}
+
+function readPerformanceGateArtifact(env = process.env, artifactDir = null) {
+  const filePath = resolvePerformanceGateFile(env, artifactDir);
+  return withArtifactProvenance(
+    readOptionalJson(filePath),
+    filePath,
+    artifactDir,
+    PERFORMANCE_GATE_FILENAME
+  );
+}
+
+function resolveFirestoreCostGuardFile(env = process.env, artifactDir = null) {
+  const explicit = trimOrNull(env.V2_FIRESTORE_COST_GUARD_OUTPUT_FILE);
+  if (explicit) return path.resolve(explicit);
+  const artifactScoped = trimOrNull(artifactDir)
+    ? path.resolve(artifactDir, FIRESTORE_COST_GUARD_FILENAME)
+    : null;
+  if (artifactScoped && fs.existsSync(artifactScoped)) return artifactScoped;
+  return path.resolve("ops", "daily", FIRESTORE_COST_GUARD_FILENAME);
+}
+
+function readFirestoreCostGuardArtifact(env = process.env, artifactDir = null) {
+  const filePath = resolveFirestoreCostGuardFile(env, artifactDir);
+  return withArtifactProvenance(
+    readOptionalJson(filePath),
+    filePath,
+    artifactDir,
+    FIRESTORE_COST_GUARD_FILENAME
+  );
+}
+
 function buildRepairFirestoreCanaryStreakSummary(streak) {
   const row = normalizeObject(streak);
   if (!row) return null;
@@ -441,6 +483,67 @@ function buildProductionEntryProtectedCanarySummary(canary) {
   });
 }
 
+function buildPerformanceGateSummary(gateSummary) {
+  const row = normalizeObject(gateSummary);
+  if (!row) return null;
+  const metrics = normalizeObject(row.metrics);
+  const thresholds = normalizeObject(row.thresholds);
+  return Object.freeze({
+    ok: row.ok === true,
+    reason: trimOrNull(row.reason),
+    generated_at: trimOrNull(row.generated_at),
+    artifact_generated_at: trimOrNull(row.artifact_generated_at),
+    artifact_generated_age_minutes: normalizeNumber(row.artifact_generated_age_minutes),
+    artifact_file: trimOrNull(row.artifact_file || row.output_file),
+    artifact_dir: trimOrNull(row.artifact_dir),
+    artifact_filename: trimOrNull(row.artifact_filename),
+    artifact_current_dir_match: row.artifact_current_dir_match === true,
+    mode: trimOrNull(row.mode),
+    blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
+    metrics: metrics ? Object.freeze({
+      sample_n: normalizeNumber(metrics.sample_n),
+      win_rate_pct: normalizeNumber(metrics.win_rate_pct),
+      profit_factor: normalizeNumber(metrics.profit_factor),
+      expectancy_r: normalizeNumber(metrics.expectancy_r),
+      net_pnl_pct: normalizeNumber(metrics.net_pnl_pct),
+      max_drawdown_pct: normalizeNumber(metrics.max_drawdown_pct),
+    }) : null,
+    thresholds: thresholds ? Object.freeze({
+      min_sample_n: normalizeNumber(thresholds.min_sample_n),
+      min_win_rate_pct: normalizeNumber(thresholds.min_win_rate_pct),
+      min_profit_factor: normalizeNumber(thresholds.min_profit_factor),
+      min_expectancy_r: normalizeNumber(thresholds.min_expectancy_r),
+      min_net_pnl_pct: normalizeNumber(thresholds.min_net_pnl_pct),
+    }) : null,
+  });
+}
+
+function buildFirestoreCostGuardSummary(costGuard) {
+  const row = normalizeObject(costGuard);
+  if (!row) return null;
+  const thresholds = normalizeObject(row.thresholds);
+  return Object.freeze({
+    ok: row.ok === true,
+    reason: trimOrNull(row.reason),
+    generated_at: trimOrNull(row.generated_at),
+    artifact_generated_at: trimOrNull(row.artifact_generated_at),
+    artifact_generated_age_minutes: normalizeNumber(row.artifact_generated_age_minutes),
+    artifact_file: trimOrNull(row.artifact_file || row.output_file),
+    artifact_dir: trimOrNull(row.artifact_dir),
+    artifact_filename: trimOrNull(row.artifact_filename),
+    artifact_current_dir_match: row.artifact_current_dir_match === true,
+    estimated_total_reads: normalizeNumber(row.estimated_total_reads),
+    collector_query_limit_total: normalizeNumber(row.collector_query_limit_total),
+    blocker_n: normalizeNumber(row.blocker_n),
+    blockers: Array.isArray(row.blockers) ? row.blockers.slice() : [],
+    thresholds: thresholds ? Object.freeze({
+      max_total_estimated_reads: normalizeNumber(thresholds.max_total_estimated_reads),
+      max_collector_query_limit_total: normalizeNumber(thresholds.max_collector_query_limit_total),
+      max_stale_artifact_age_minutes: normalizeNumber(thresholds.max_stale_artifact_age_minutes),
+    }) : null,
+  });
+}
+
 function buildOpenClawSupremeControlPlaneSummary(summary) {
   const row = normalizeObject(summary);
   if (!row) return null;
@@ -511,6 +614,8 @@ function buildBoundedRuntimeSummary(manifest, selectorMeta, {
   productionEntryRouteCanaryStreak = null,
   productionEntryProtectedCanary = null,
   exitRuntimeCanaryStreak = null,
+  performanceGate = null,
+  firestoreCostGuard = null,
 } = {}) {
   const manifestRow = normalizeObject(manifest);
   const selectorRow = normalizeObject(selectorMeta);
@@ -534,6 +639,8 @@ function buildBoundedRuntimeSummary(manifest, selectorMeta, {
     production_entry_route_canary_streak: buildProductionEntryRouteCanaryStreakSummary(productionEntryRouteCanaryStreak),
     production_entry_protected_canary: buildProductionEntryProtectedCanarySummary(productionEntryProtectedCanary),
     exit_runtime_canary_streak: buildExitRuntimeCanaryStreakSummary(exitRuntimeCanaryStreak),
+    performance_gate: buildPerformanceGateSummary(performanceGate),
+    firestore_cost_guard: buildFirestoreCostGuardSummary(firestoreCostGuard),
   });
 }
 
@@ -573,6 +680,8 @@ function buildUnifiedArtifactPayload(result, {
   productionEntryRouteCanaryStreak = null,
   productionEntryProtectedCanary = null,
   exitRuntimeCanaryStreak = null,
+  performanceGate = null,
+  firestoreCostGuard = null,
 } = {}) {
   const row = result && typeof result === "object" ? result : {};
   const inputs = row.inputs && typeof row.inputs === "object" ? row.inputs : {};
@@ -594,6 +703,8 @@ function buildUnifiedArtifactPayload(result, {
       productionEntryRouteCanaryStreak,
       productionEntryProtectedCanary,
       exitRuntimeCanaryStreak,
+      performanceGate,
+      firestoreCostGuard,
     }),
     alert_retry_summary: buildAlertRetrySummary(manifest && manifest.snapshot_meta && manifest.snapshot_meta.alert_retry_summary),
     candidate_selection_summary: buildCandidateSelectionSummary(candidateSelection),
@@ -609,12 +720,16 @@ function generateUnifiedPromotionReport(env = process.env) {
   const productionEntryRouteCanaryStreak = readProductionEntryRouteCanaryStreakArtifact(env, artifactDir);
   const productionEntryProtectedCanary = readProductionEntryProtectedCanaryArtifact(env, artifactDir);
   const exitRuntimeCanaryStreak = readExitRuntimeCanaryStreakArtifact(env, artifactDir);
+  const performanceGate = readPerformanceGateArtifact(env, artifactDir);
+  const firestoreCostGuard = readFirestoreCostGuardArtifact(env, artifactDir);
   return buildUnifiedArtifactPayload(result, {
     candidateSelection,
     repairFirestoreCanaryStreak,
     productionEntryRouteCanaryStreak,
     productionEntryProtectedCanary,
     exitRuntimeCanaryStreak,
+    performanceGate,
+    firestoreCostGuard,
   });
 }
 
@@ -652,12 +767,16 @@ if (require.main === module) {
       PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME,
       PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME,
       EXIT_RUNTIME_CANARY_STREAK_FILENAME,
+      PERFORMANCE_GATE_FILENAME,
+      FIRESTORE_COST_GUARD_FILENAME,
       trimOrNull,
       resolveArtifactDir,
       resolveRepairFirestoreCanaryStreakFile,
       resolveProductionEntryRouteCanaryStreakFile,
       resolveProductionEntryProtectedCanaryFile,
       resolveExitRuntimeCanaryStreakFile,
+      resolvePerformanceGateFile,
+      resolveFirestoreCostGuardFile,
       normalizeObject,
       normalizeNumber,
       toMs,
@@ -674,10 +793,14 @@ if (require.main === module) {
       readProductionEntryRouteCanaryStreakArtifact,
       readProductionEntryProtectedCanaryArtifact,
       readExitRuntimeCanaryStreakArtifact,
+      readPerformanceGateArtifact,
+      readFirestoreCostGuardArtifact,
       buildRepairFirestoreCanaryStreakSummary,
       buildProductionEntryRouteCanaryStreakSummary,
       buildProductionEntryProtectedCanarySummary,
       buildExitRuntimeCanaryStreakSummary,
+      buildPerformanceGateSummary,
+      buildFirestoreCostGuardSummary,
       buildBoundedRuntimeSummary,
       buildCandidateSelectionSummary,
       buildUnifiedArtifactPayload,

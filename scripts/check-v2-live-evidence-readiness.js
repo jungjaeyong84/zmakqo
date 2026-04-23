@@ -69,6 +69,26 @@ const AXES = Object.freeze([
       return deployDecisionCheck.__test.hasOpenClawSupremeControlPlaneCoverage(bounded);
     },
   }),
+  Object.freeze({
+    id: "performance_gate",
+    label: "realized performance gate",
+    submit_check_ids: Object.freeze([]),
+    runbook_refs: Object.freeze([]),
+    blocker: "LIVE_EVIDENCE:PERFORMANCE_GATE_REQUIRED",
+    evaluate(decision, bounded) {
+      return deployDecisionCheck.__test.hasPerformanceGate(bounded);
+    },
+  }),
+  Object.freeze({
+    id: "firestore_cost_guard",
+    label: "Firestore cost guard",
+    submit_check_ids: Object.freeze([]),
+    runbook_refs: Object.freeze([]),
+    blocker: "LIVE_EVIDENCE:FIRESTORE_COST_GUARD_REQUIRED",
+    evaluate(decision, bounded) {
+      return deployDecisionCheck.__test.hasFirestoreCostGuard(bounded);
+    },
+  }),
 ]);
 
 function trimOrNull(value) {

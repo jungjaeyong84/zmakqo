@@ -11,6 +11,9 @@ const comparisonArtifacts = require("./generate-v2-comparison-artifacts");
 const unifiedPromotionReport = require("./generate-v2-unified-promotion-report");
 const deployDecision = require("./check-v2-promotion-deploy-decision");
 const gate = require("./check-v2-promotion-gate");
+const openclawDailyPerformanceReport = require("./generate-v2-openclaw-daily-performance-report");
+const performanceGate = require("./check-v2-performance-gate");
+const firestoreCostGuard = require("./check-v2-firestore-cost-guard");
 const repairFirestoreCanaryStreak = require("./check-v2-repair-queue-firestore-canary-streak");
 const productionEntryRouteCanaryStreak = require("./check-v2-production-entry-route-canary-streak");
 const exitRuntimeCanaryStreak = require("./check-v2-exit-runtime-canary-streak");
@@ -20,6 +23,9 @@ const REPAIR_FIRESTORE_CANARY_STREAK_FILENAME = "v2_repair_queue_firestore_canar
 const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route_canary_streak_latest.json";
 const EXIT_RUNTIME_CANARY_STREAK_FILENAME = "v2_exit_runtime_canary_streak_latest.json";
 const PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME = "v2_production_entry_protected_canary_latest.json";
+const OPENCLAW_DAILY_PERFORMANCE_REPORT_FILENAME = "v2_openclaw_daily_performance_report_latest.json";
+const PERFORMANCE_GATE_FILENAME = "v2_performance_gate_latest.json";
+const FIRESTORE_COST_GUARD_FILENAME = "v2_firestore_cost_guard_latest.json";
 const REPAIR_FIRESTORE_CANARY_HISTORY_FILENAME = "v2_repair_queue_firestore_canary_history.jsonl";
 const PRODUCTION_ENTRY_PROTECTED_CANARY_HISTORY_FILENAME = "v2_production_entry_protected_canary_history.jsonl";
 
@@ -291,6 +297,87 @@ async function refreshProductionEntryProtectedCanary(env = process.env) {
   });
 }
 
+async function refreshPerformanceGate(env = process.env) {
+  const artifactDir = resolveArtifactDir(env);
+  const performanceReportFile = path.join(artifactDir, OPENCLAW_DAILY_PERFORMANCE_REPORT_FILENAME);
+  const performanceGateFile = path.join(artifactDir, PERFORMANCE_GATE_FILENAME);
+  const reportEnv = Object.freeze({
+    ...env,
+    V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    V2_OPENCLAW_DAILY_PERFORMANCE_REPORT_FILE: performanceReportFile,
+  });
+  let report = null;
+  let gateReport = null;
+  try {
+    report = await openclawDailyPerformanceReport.main(reportEnv);
+    gateReport = performanceGate.main(Object.freeze({
+      ...reportEnv,
+      V2_PERFORMANCE_GATE_INPUT_FILE: performanceReportFile,
+      V2_PERFORMANCE_GATE_OUTPUT_FILE: performanceGateFile,
+      // The deploy decision owns hard blocking. Always write the artifact.
+      V2_PERFORMANCE_GATE_SOFT: "1",
+    }));
+  } catch (error) {
+    gateReport = Object.freeze({
+      ok: false,
+      reason: "V2_PERFORMANCE_GATE_THROWN",
+      output_file: performanceGateFile,
+      blockers: Object.freeze(["PERFORMANCE_GATE:THROWN"]),
+      error: Object.freeze({
+        message: error && error.message ? error.message : String(error),
+      }),
+    });
+    writeJson(performanceGateFile, gateReport);
+  }
+  return Object.freeze({
+    required: true,
+    skipped: false,
+    reason: gateReport && gateReport.ok === true
+      ? "PERFORMANCE_GATE_REFRESH_PASS"
+      : "PERFORMANCE_GATE_REFRESH_BLOCKED",
+    report,
+    gate: gateReport,
+    performance_report_file: performanceReportFile,
+    output_file: performanceGateFile,
+  });
+}
+
+function refreshFirestoreCostGuard(env = process.env) {
+  const artifactDir = resolveArtifactDir(env);
+  const outputFile = path.join(artifactDir, FIRESTORE_COST_GUARD_FILENAME);
+  let report = null;
+  try {
+    report = firestoreCostGuard.main(Object.freeze({
+      ...env,
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_FIRESTORE_COST_GUARD_OUTPUT_FILE: outputFile,
+      V2_FIRESTORE_COST_GUARD_UNIFIED_REPORT_FILE: path.join(artifactDir, "unified-promotion-report.json"),
+      // The deploy decision owns hard blocking. Always write the artifact.
+      V2_FIRESTORE_COST_GUARD_SOFT: "1",
+    }));
+  } catch (error) {
+    report = Object.freeze({
+      ok: false,
+      reason: "V2_FIRESTORE_COST_GUARD_THROWN",
+      output_file: outputFile,
+      blockers: Object.freeze(["FIRESTORE_COST_GUARD:THROWN"]),
+      error: Object.freeze({
+        message: error && error.message ? error.message : String(error),
+      }),
+    });
+    writeJson(outputFile, report);
+  }
+  return Object.freeze({
+    required: true,
+    skipped: false,
+    reason: report && report.ok === true
+      ? "FIRESTORE_COST_GUARD_REFRESH_PASS"
+      : "FIRESTORE_COST_GUARD_REFRESH_BLOCKED",
+    report,
+    output_file: outputFile,
+  });
+}
+
 async function runPipeline(env = process.env, {
   selectorDb = null,
   collectorDb = null,
@@ -322,6 +409,7 @@ async function runPipeline(env = process.env, {
     db: collectorDb || selectorDb,
   });
   const productionEntryProtectedCanaryRefresh = await refreshProductionEntryProtectedCanary(effectiveEnv);
+  const performanceGateRefresh = await refreshPerformanceGate(effectiveEnv);
   const reportEnv = {
     ...effectiveEnv,
     ...(repairFirestoreCanaryStreakRefresh.output_file
@@ -336,10 +424,21 @@ async function runPipeline(env = process.env, {
     ...(productionEntryProtectedCanaryRefresh.output_file
       ? { DONBEOLJA_V2_PRODUCTION_ENTRY_PROTECTED_CANARY_FILE: productionEntryProtectedCanaryRefresh.output_file }
       : {}),
+    ...(performanceGateRefresh.output_file
+      ? { V2_PERFORMANCE_GATE_OUTPUT_FILE: performanceGateRefresh.output_file }
+      : {}),
   };
   const gateResult = gate.__test.evaluateGateFromEnv(reportEnv);
-  const unifiedReport = await unifiedPromotionReport.main(reportEnv);
-  const deployDecisionResult = deployDecision.writeDeployDecisionArtifact(reportEnv);
+  await unifiedPromotionReport.main(reportEnv);
+  const firestoreCostGuardRefresh = refreshFirestoreCostGuard(reportEnv);
+  const finalReportEnv = {
+    ...reportEnv,
+    ...(firestoreCostGuardRefresh.output_file
+      ? { V2_FIRESTORE_COST_GUARD_OUTPUT_FILE: firestoreCostGuardRefresh.output_file }
+      : {}),
+  };
+  const unifiedReport = await unifiedPromotionReport.main(finalReportEnv);
+  const deployDecisionResult = deployDecision.writeDeployDecisionArtifact(finalReportEnv);
   return Object.freeze({
     ...gateResult,
     repairFirestoreCanaryStreak: repairFirestoreCanaryStreakRefresh.report,
@@ -354,6 +453,12 @@ async function runPipeline(env = process.env, {
     productionEntryProtectedCanary: productionEntryProtectedCanaryRefresh.report,
     productionEntryProtectedCanaryFile: productionEntryProtectedCanaryRefresh.output_file,
     productionEntryProtectedCanaryStatus: productionEntryProtectedCanaryRefresh.reason,
+    performanceGate: performanceGateRefresh.gate,
+    performanceGateFile: performanceGateRefresh.output_file,
+    performanceGateStatus: performanceGateRefresh.reason,
+    firestoreCostGuard: firestoreCostGuardRefresh.report,
+    firestoreCostGuardFile: firestoreCostGuardRefresh.output_file,
+    firestoreCostGuardStatus: firestoreCostGuardRefresh.reason,
     unifiedReport,
     deployDecision: deployDecisionResult.decision,
   });
@@ -424,6 +529,8 @@ if (require.main === module) {
       refreshProductionEntryRouteCanaryStreak,
       refreshExitRuntimeCanaryStreak,
       refreshProductionEntryProtectedCanary,
+      refreshPerformanceGate,
+      refreshFirestoreCostGuard,
     },
   };
 }

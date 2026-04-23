@@ -357,6 +357,54 @@ function buildBoundedRuntimeSummaryFixture() {
         tp1_order_id: "TP1__PROTECTED_CANARY__01",
       },
     },
+    performance_gate: {
+      ok: true,
+      reason: "V2_PERFORMANCE_GATE_PASS",
+      mode: "LIVE",
+      artifact_file: "/tmp/dbj-v2-artifacts/v2_performance_gate_latest.json",
+      artifact_dir: "/tmp/dbj-v2-artifacts",
+      artifact_filename: "v2_performance_gate_latest.json",
+      artifact_current_dir_match: true,
+      generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_age_minutes: 15,
+      blockers: [],
+      metrics: {
+        sample_n: 30,
+        win_rate_pct: 55,
+        profit_factor: 1.3,
+        expectancy_r: 0.12,
+        net_pnl_pct: 2.5,
+        max_drawdown_pct: 1.1,
+      },
+      thresholds: {
+        min_sample_n: 20,
+        min_win_rate_pct: 45,
+        min_profit_factor: 1.1,
+        min_expectancy_r: 0.01,
+        min_net_pnl_pct: 0.01,
+      },
+    },
+    firestore_cost_guard: {
+      ok: true,
+      reason: "V2_FIRESTORE_COST_GUARD_PASS",
+      artifact_file: "/tmp/dbj-v2-artifacts/v2_firestore_cost_guard_latest.json",
+      artifact_dir: "/tmp/dbj-v2-artifacts",
+      artifact_filename: "v2_firestore_cost_guard_latest.json",
+      artifact_current_dir_match: true,
+      generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_at: "2026-04-22T12:00:00.000Z",
+      artifact_generated_age_minutes: 15,
+      estimated_total_reads: 480,
+      collector_query_limit_total: 300,
+      blocker_n: 0,
+      blockers: [],
+      thresholds: {
+        max_total_estimated_reads: 2000,
+        max_collector_query_limit_total: 1000,
+        max_stale_artifact_age_minutes: 180,
+      },
+    },
     alert_retry_summary: {
       outbox_n: 3,
       failed_n: 1,
@@ -429,6 +477,10 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   summary.exit_runtime_canary_streak.artifact_file = path.join(artifactDir, "v2_exit_runtime_canary_streak_latest.json");
   summary.production_entry_protected_canary.artifact_dir = artifactDir;
   summary.production_entry_protected_canary.artifact_file = path.join(artifactDir, "v2_production_entry_protected_canary_latest.json");
+  summary.performance_gate.artifact_dir = artifactDir;
+  summary.performance_gate.artifact_file = path.join(artifactDir, "v2_performance_gate_latest.json");
+  summary.firestore_cost_guard.artifact_dir = artifactDir;
+  summary.firestore_cost_guard.artifact_file = path.join(artifactDir, "v2_firestore_cost_guard_latest.json");
   summary.openclaw_supreme_control_plane_summary.collector_execution_summary.artifact_dir = artifactDir;
   summary.openclaw_supreme_control_plane_summary.collector_execution_summary.artifact_file = path.join(artifactDir, "promotion-runtime-snapshot.json");
   return summary;
@@ -480,6 +532,8 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   assert.strictEqual(deployDecision.__test.hasExitRuntimeLongRunQualitySummary(decision.bounded_runtime_summary.exit_runtime_canary_streak), true);
   assert.strictEqual(deployDecision.__test.hasProductionEntryProtectedCanary(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasFreshProtectedCanaryArtifact(decision.bounded_runtime_summary.production_entry_protected_canary), true);
+  assert.strictEqual(deployDecision.__test.hasPerformanceGate(decision.bounded_runtime_summary), true);
+  assert.strictEqual(deployDecision.__test.hasFirestoreCostGuard(decision.bounded_runtime_summary), true);
   assert.strictEqual(deployDecision.__test.hasEntryBoundaryAudit(decision.entry_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasFillSyncCanonicalBoundaryAudit(decision.fill_sync_canonical_boundary_audit), true);
   assert.strictEqual(deployDecision.__test.hasProductionRuntimeChainAudit(decision.production_runtime_chain_audit), true);

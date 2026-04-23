@@ -43,6 +43,8 @@ const MAX_LIVE_STREAK_ARTIFACT_SKEW_MINUTES = 30;
 const MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES = 180;
 const MAX_OPENCLAW_SUPREME_ARTIFACT_AGE_MINUTES = 180;
 const MAX_OPENCLAW_LEARNER_SHADOW_EVALUATION_AGE_MINUTES = 24 * 60;
+const MAX_PERFORMANCE_GATE_ARTIFACT_AGE_MINUTES = 180;
+const MAX_FIRESTORE_COST_GUARD_ARTIFACT_AGE_MINUTES = 180;
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -773,15 +775,69 @@ function hasProductionEntryProtectedCanary(summary) {
   );
 }
 
+function hasPerformanceGate(summary) {
+  const row = normalizeObject(summary);
+  const gate = normalizeObject(row && row.performance_gate);
+  const metrics = normalizeObject(gate && gate.metrics);
+  const thresholds = normalizeObject(gate && gate.thresholds);
+  if (!gate || !metrics || !thresholds) return false;
+  return (
+    gate.ok === true &&
+    trimOrNull(gate.reason) === "V2_PERFORMANCE_GATE_PASS" &&
+    trimOrNull(gate.artifact_filename) === "v2_performance_gate_latest.json" &&
+    !!trimOrNull(gate.artifact_file) &&
+    !!trimOrNull(gate.artifact_dir) &&
+    gate.artifact_current_dir_match === true &&
+    hasFreshArtifact(gate, MAX_PERFORMANCE_GATE_ARTIFACT_AGE_MINUTES) &&
+    Number(metrics.sample_n) >= Number(thresholds.min_sample_n) &&
+    Number(metrics.win_rate_pct) >= Number(thresholds.min_win_rate_pct) &&
+    Number(metrics.profit_factor) >= Number(thresholds.min_profit_factor) &&
+    Number(metrics.expectancy_r) >= Number(thresholds.min_expectancy_r) &&
+    Number(metrics.net_pnl_pct) >= Number(thresholds.min_net_pnl_pct) &&
+    ensureArray(gate.blockers).length === 0
+  );
+}
+
+function hasFirestoreCostGuard(summary) {
+  const row = normalizeObject(summary);
+  const guard = normalizeObject(row && row.firestore_cost_guard);
+  const thresholds = normalizeObject(guard && guard.thresholds);
+  if (!guard || !thresholds) return false;
+  const estimatedReads = Number(guard.estimated_total_reads);
+  const collectorQueryLimitTotal = Number(guard.collector_query_limit_total);
+  return (
+    guard.ok === true &&
+    trimOrNull(guard.reason) === "V2_FIRESTORE_COST_GUARD_PASS" &&
+    trimOrNull(guard.artifact_filename) === "v2_firestore_cost_guard_latest.json" &&
+    !!trimOrNull(guard.artifact_file) &&
+    !!trimOrNull(guard.artifact_dir) &&
+    guard.artifact_current_dir_match === true &&
+    hasFreshArtifact(guard, MAX_FIRESTORE_COST_GUARD_ARTIFACT_AGE_MINUTES) &&
+    Number.isFinite(estimatedReads) &&
+    estimatedReads <= Number(thresholds.max_total_estimated_reads) &&
+    Number.isFinite(collectorQueryLimitTotal) &&
+    collectorQueryLimitTotal <= Number(thresholds.max_collector_query_limit_total) &&
+    Number(guard.blocker_n || 0) === 0 &&
+    ensureArray(guard.blockers).length === 0
+  );
+}
+
 function hasFreshProtectedCanaryArtifact(canary) {
-  const row = normalizeObject(canary);
+  return hasFreshArtifact(canary, MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES);
+}
+
+function hasFreshArtifact(artifact, maxAgeMinutes) {
+  const row = normalizeObject(artifact);
   if (!row) return false;
   const artifactGeneratedAgeMinutes = Number(row.artifact_generated_age_minutes);
+  const maxAge = Number(maxAgeMinutes);
   return (
     !!trimOrNull(row.generated_at) &&
     !!trimOrNull(row.artifact_generated_at) &&
+    Number.isFinite(maxAge) &&
+    maxAge > 0 &&
     Number.isFinite(artifactGeneratedAgeMinutes) &&
-    artifactGeneratedAgeMinutes <= MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES
+    artifactGeneratedAgeMinutes <= maxAge
   );
 }
 
@@ -892,6 +948,18 @@ function collectStaleArtifactProvenanceBlockers(summary, { mode = null } = {}) {
     hasStaleArtifactFreshness(row.exit_runtime_canary_streak, row.exit_runtime_canary_streak && row.exit_runtime_canary_streak.max_gap_minutes)
   )) {
     pushUnique(blockers, "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:EXIT_RUNTIME_CANARY_STREAK");
+  }
+  if (mode === "LIVE" && (
+    hasStaleArtifactProvenance(row.performance_gate, "v2_performance_gate_latest.json") ||
+    hasStaleArtifactFreshness(row.performance_gate, MAX_PERFORMANCE_GATE_ARTIFACT_AGE_MINUTES)
+  )) {
+    pushUnique(blockers, "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:PERFORMANCE_GATE");
+  }
+  if (mode === "LIVE" && (
+    hasStaleArtifactProvenance(row.firestore_cost_guard, "v2_firestore_cost_guard_latest.json") ||
+    hasStaleArtifactFreshness(row.firestore_cost_guard, MAX_FIRESTORE_COST_GUARD_ARTIFACT_AGE_MINUTES)
+  )) {
+    pushUnique(blockers, "DEPLOY_DECISION:STALE_ARTIFACT_PROVENANCE:FIRESTORE_COST_GUARD");
   }
   return blockers;
 }
@@ -1194,6 +1262,18 @@ function buildDeployDecision(unifiedReport, {
   if (["CANARY", "LIVE"].includes(mode || "") && !hasProductionEntryProtectedCanary(boundedRuntimeSummary)) {
     blockers.push("DEPLOY_DECISION:PRODUCTION_ENTRY_PROTECTED_CANARY_REQUIRED");
   }
+  if (mode === "LIVE" && !hasPerformanceGate(boundedRuntimeSummary)) {
+    blockers.push("DEPLOY_DECISION:PERFORMANCE_GATE_REQUIRED");
+  }
+  if (mode === "CANARY" && !hasPerformanceGate(boundedRuntimeSummary)) {
+    warnings.push("DEPLOY_DECISION:PERFORMANCE_GATE_NOT_READY");
+  }
+  if (mode === "LIVE" && !hasFirestoreCostGuard(boundedRuntimeSummary)) {
+    blockers.push("DEPLOY_DECISION:FIRESTORE_COST_GUARD_REQUIRED");
+  }
+  if (mode === "CANARY" && !hasFirestoreCostGuard(boundedRuntimeSummary)) {
+    warnings.push("DEPLOY_DECISION:FIRESTORE_COST_GUARD_NOT_READY");
+  }
   blockers.push(...collectLiveEvidenceCycleConsistencyBlockers(boundedRuntimeSummary, {
     mode,
     positionCycleId,
@@ -1351,6 +1431,8 @@ if (require.main === module) {
       REQUIRED_PRODUCTION_LIVE_ENTRY_SIZING_CHECK_IDS,
       MIN_LIVE_STREAK_COVERAGE_MINUTES,
       MAX_PROTECTED_CANARY_ARTIFACT_AGE_MINUTES,
+      MAX_PERFORMANCE_GATE_ARTIFACT_AGE_MINUTES,
+      MAX_FIRESTORE_COST_GUARD_ARTIFACT_AGE_MINUTES,
       hasProductionLiveEntrySizingContract,
       hasRepairFirestoreCanaryStreak,
       hasCollectorExecutionSummary,
@@ -1358,6 +1440,9 @@ if (require.main === module) {
       hasProductionEntryRouteCanaryStreak,
       hasProductionEntryProtectedCanary,
       hasFreshProtectedCanaryArtifact,
+      hasFreshArtifact,
+      hasPerformanceGate,
+      hasFirestoreCostGuard,
       hasExitRuntimeCollectorExecutionSummary,
       hasExitRuntimeLongRunQualitySummary,
       hasFreshLongRunStreakCoverage,

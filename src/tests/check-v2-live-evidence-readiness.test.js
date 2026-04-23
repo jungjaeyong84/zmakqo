@@ -96,6 +96,8 @@ function buildBoundedRuntimeSummaryFixture({ artifactDir = "/tmp/dbj-v2-live-evi
     production_entry_route_canary_streak: buildProductionEntryRouteStreakFixture({ artifactDir }),
     exit_runtime_canary_streak: buildExitRuntimeStreakFixture({ artifactDir }),
     production_entry_protected_canary: buildProtectedEntryCanaryFixture({ artifactDir }),
+    performance_gate: buildPerformanceGateFixture({ artifactDir }),
+    firestore_cost_guard: buildFirestoreCostGuardFixture({ artifactDir }),
   };
 }
 
@@ -363,6 +365,59 @@ function buildProtectedEntryCanaryFixture({ artifactDir }) {
       runtime_health_status: "HEALTHY",
       sl_order_id: "SL__LIVE__EVIDENCE__01",
       tp1_order_id: "TP1__LIVE__EVIDENCE__01",
+    },
+  };
+}
+
+function buildPerformanceGateFixture({ artifactDir }) {
+  return {
+    ok: true,
+    reason: "V2_PERFORMANCE_GATE_PASS",
+    mode: "LIVE",
+    artifact_file: path.join(artifactDir, "v2_performance_gate_latest.json"),
+    artifact_dir: artifactDir,
+    artifact_filename: "v2_performance_gate_latest.json",
+    artifact_current_dir_match: true,
+    generated_at: GENERATED_AT,
+    artifact_generated_at: GENERATED_AT,
+    artifact_generated_age_minutes: 15,
+    blockers: [],
+    metrics: {
+      sample_n: 30,
+      win_rate_pct: 55,
+      profit_factor: 1.3,
+      expectancy_r: 0.12,
+      net_pnl_pct: 2.5,
+    },
+    thresholds: {
+      min_sample_n: 20,
+      min_win_rate_pct: 45,
+      min_profit_factor: 1.1,
+      min_expectancy_r: 0.01,
+      min_net_pnl_pct: 0.01,
+    },
+  };
+}
+
+function buildFirestoreCostGuardFixture({ artifactDir }) {
+  return {
+    ok: true,
+    reason: "V2_FIRESTORE_COST_GUARD_PASS",
+    artifact_file: path.join(artifactDir, "v2_firestore_cost_guard_latest.json"),
+    artifact_dir: artifactDir,
+    artifact_filename: "v2_firestore_cost_guard_latest.json",
+    artifact_current_dir_match: true,
+    generated_at: GENERATED_AT,
+    artifact_generated_at: GENERATED_AT,
+    artifact_generated_age_minutes: 15,
+    estimated_total_reads: 480,
+    collector_query_limit_total: 300,
+    blocker_n: 0,
+    blockers: [],
+    thresholds: {
+      max_total_estimated_reads: 2000,
+      max_collector_query_limit_total: 1000,
+      max_stale_artifact_age_minutes: 180,
     },
   };
 }
