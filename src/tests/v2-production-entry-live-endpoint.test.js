@@ -3,6 +3,9 @@
 const assert = require("assert");
 const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
 const {
+  DISCOVERY_CONFIRM_PHRASE,
+} = require("../v2/discoveryCanaryContract");
+const {
   LIVE_CONFIRM_PHRASE,
   runV2ProductionEntryLiveEndpoint,
 } = require("../v2/productionEntryLiveEndpoint");
@@ -261,6 +264,112 @@ async function transportFailureBlocksBeforeRoute() {
   assert.deepStrictEqual(calls, []);
 }
 
+async function discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath() {
+  const calls = [];
+  const bundle = buildBundle({
+    signalLineageId: "LINEAGE__ETH__DISCOVERY__CANARY_ENDPOINT",
+    decisionMode: "CANARY",
+  });
+  const sizingDecision = buildSizingDecision(bundle, {
+    requestedNotionalQuote: 12,
+    maxNotionalQuote: 20,
+    maxSizeRatio: 1,
+  });
+  const result = await runV2ProductionEntryLiveEndpoint({
+    env: buildEnv({
+      DONBEOLJA_V2_CANARY_ONLY: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "20",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "5",
+    }),
+    body: {
+      confirm: DISCOVERY_CONFIRM_PHRASE,
+      bundle,
+      entrySizingDecision: sizingDecision,
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+    },
+    buildLiveTransports: async () => ({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+      entry_intent_id: sizingDecision.entry_intent_id,
+      symbol: "ETHUSDT",
+      side: "LONG",
+      entry_qty_abs: sizingDecision.entry_qty_abs,
+      entryTransport: { submitEntryOrder: async () => ({}) },
+      protectionTransports: {
+        placeInitialSl: async () => ({}),
+        placeInitialTp1: async () => ({}),
+      },
+    }),
+    runProductionEntryRoute: async ({ bundle: routedBundle }) => {
+      calls.push(routedBundle.openclawDecision.decision_mode);
+      return { ok: true, reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED" };
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_EXECUTED_AND_PROTECTED");
+  assert.strictEqual(result.discovery_canary_contract.ok, true);
+  assert.deepStrictEqual(calls, ["CANARY"]);
+}
+
+async function discoveryCanaryBlocksUnsafeContractBeforeRoute() {
+  const calls = [];
+  const bundle = buildBundle({
+    signalLineageId: "LINEAGE__ETH__DISCOVERY__CANARY_BLOCKED",
+    decisionMode: "CANARY",
+  });
+  const sizingDecision = buildSizingDecision(bundle, {
+    requestedNotionalQuote: 30,
+    maxNotionalQuote: 40,
+    maxSizeRatio: 1,
+  });
+  const result = await runV2ProductionEntryLiveEndpoint({
+    env: buildEnv({
+      DONBEOLJA_V2_CANARY_ONLY: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "20",
+    }),
+    body: {
+      confirm: DISCOVERY_CONFIRM_PHRASE,
+      bundle,
+      entrySizingDecision: sizingDecision,
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+    },
+    buildLiveTransports: async () => ({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+      symbol: "ETHUSDT",
+      side: "LONG",
+      entry_qty_abs: sizingDecision.entry_qty_abs,
+      entryTransport: { submitEntryOrder: async () => ({}) },
+      protectionTransports: {
+        placeInitialSl: async () => ({}),
+        placeInitialTp1: async () => ({}),
+      },
+    }),
+    runProductionEntryRoute: async () => {
+      calls.push("route");
+      return { ok: true };
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_CONTRACT_BLOCKED");
+  assert.ok(result.discovery_canary_contract.blockers.includes("DISCOVERY_CANARY:MAX_NOTIONAL_EXCEEDED"));
+  assert.deepStrictEqual(calls, []);
+}
+
 async function main() {
   await disabledEndpointBlocksBeforeRoute();
   await missingConfirmBlocksBeforeRoute();
@@ -269,6 +378,8 @@ async function main() {
   await liveEndpointDelegatesOnlyToProductionRoute();
   await routeFailureIsNotReclassifiedAsSuccess();
   await transportFailureBlocksBeforeRoute();
+  await discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath();
+  await discoveryCanaryBlocksUnsafeContractBeforeRoute();
 }
 
 main()

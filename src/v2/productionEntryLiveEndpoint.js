@@ -3,6 +3,10 @@
 const { resolveV2RuntimeConfig } = require("./runtime");
 const { runV2ProductionEntryRoute } = require("./productionEntryRoute");
 const { buildV2ProductionEntryLiveTransports } = require("./productionEntryLiveTransports");
+const {
+  DISCOVERY_CONFIRM_PHRASE,
+  evaluateDiscoveryCanaryContract,
+} = require("./discoveryCanaryContract");
 
 const LIVE_CONFIRM_PHRASE = "EXECUTE_V2_LIVE_ENTRY";
 
@@ -64,6 +68,11 @@ function extractDecisionMode(bundle) {
   return upper(decision && decision.decision_mode);
 }
 
+function isDiscoveryCanaryAttempt({ env = process.env, confirm = null } = {}) {
+  return parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, false)
+    || trimOrNull(confirm) === DISCOVERY_CONFIRM_PHRASE;
+}
+
 function extractExecutionPermit({ body = null, bundle = null, executionPermit = null } = {}) {
   return asObject(executionPermit)
     || asObject(asObject(body) && body.executionPermit)
@@ -106,6 +115,7 @@ async function runV2ProductionEntryLiveEndpoint({
   const resolvedExecutionPermit = extractExecutionPermit({ body, bundle: resolvedBundle, executionPermit });
   const resolvedWorldState = extractWorldState({ body, bundle: resolvedBundle, worldState });
   const decisionMode = extractDecisionMode(resolvedBundle);
+  const discoveryCanaryAttempt = isDiscoveryCanaryAttempt({ env, confirm: resolvedConfirm });
 
   const base = Object.freeze({
     scope: "production_entry_live_endpoint",
@@ -116,14 +126,18 @@ async function runV2ProductionEntryLiveEndpoint({
     route_called: false,
     route_result: null,
     transport_resolution: null,
+    discovery_canary_contract: null,
     exchange_write_boundary: "V2_PRODUCTION_ENTRY_ROUTE_ONLY",
   });
 
   if (!endpointEnabled) {
     return buildBlock("V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_DISABLED", base);
   }
-  if (resolvedConfirm !== LIVE_CONFIRM_PHRASE) {
+  if (!discoveryCanaryAttempt && resolvedConfirm !== LIVE_CONFIRM_PHRASE) {
     return buildBlock("V2_PRODUCTION_ENTRY_LIVE_CONFIRM_REQUIRED", base);
+  }
+  if (discoveryCanaryAttempt && resolvedConfirm !== DISCOVERY_CONFIRM_PHRASE) {
+    return buildBlock("V2_DISCOVERY_CANARY_CONFIRM_REQUIRED", base);
   }
   if (!runtimeConfig.enabled) {
     return buildBlock("V2_PRODUCTION_ENTRY_LIVE_V2_DISABLED", base);
@@ -131,14 +145,20 @@ async function runV2ProductionEntryLiveEndpoint({
   if (runtimeConfig.dryRun) {
     return buildBlock("V2_PRODUCTION_ENTRY_LIVE_DRY_RUN_BLOCKED", base);
   }
-  if (runtimeConfig.canaryOnly) {
+  if (runtimeConfig.canaryOnly && !discoveryCanaryAttempt) {
     return buildBlock("V2_PRODUCTION_ENTRY_LIVE_CANARY_ONLY_BLOCKED", base);
   }
   if (!resolvedBundle) {
     return buildBlock("V2_PRODUCTION_ENTRY_LIVE_BUNDLE_REQUIRED", base);
   }
-  if (decisionMode !== "LIVE") {
+  if (!discoveryCanaryAttempt && decisionMode !== "LIVE") {
     return buildBlock("V2_PRODUCTION_ENTRY_LIVE_DECISION_REQUIRED", {
+      ...base,
+      decision_mode: decisionMode,
+    });
+  }
+  if (discoveryCanaryAttempt && decisionMode !== "CANARY") {
+    return buildBlock("V2_DISCOVERY_CANARY_DECISION_REQUIRED", {
       ...base,
       decision_mode: decisionMode,
     });
@@ -169,6 +189,26 @@ async function runV2ProductionEntryLiveEndpoint({
     }
   }
 
+  let discoveryContract = null;
+  if (discoveryCanaryAttempt) {
+    discoveryContract = evaluateDiscoveryCanaryContract({
+      env,
+      body,
+      bundle: resolvedBundle,
+      confirm: resolvedConfirm,
+      runtime,
+      decisionMode,
+      symbol: transportResolution && transportResolution.symbol,
+    });
+    if (!discoveryContract.ok) {
+      return buildBlock("V2_DISCOVERY_CANARY_CONTRACT_BLOCKED", {
+        ...base,
+        transport_resolution: summarizeTransportResolution(transportResolution),
+        discovery_canary_contract: discoveryContract,
+      });
+    }
+  }
+
   const routeResult = await runProductionEntryRoute({
     db,
     env,
@@ -186,6 +226,7 @@ async function runV2ProductionEntryLiveEndpoint({
       route_called: true,
       route_result: routeResult || null,
       transport_resolution: summarizeTransportResolution(transportResolution),
+      discovery_canary_contract: discoveryContract,
     });
   }
 
@@ -196,6 +237,7 @@ async function runV2ProductionEntryLiveEndpoint({
     route_called: true,
     route_result: routeResult,
     transport_resolution: summarizeTransportResolution(transportResolution),
+    discovery_canary_contract: discoveryContract,
   });
 }
 
@@ -226,6 +268,7 @@ module.exports = {
     extractDecisionMode,
     extractExecutionPermit,
     extractWorldState,
+    isDiscoveryCanaryAttempt,
     summarizeTransportResolution,
     summarizeRuntimeConfig,
   },

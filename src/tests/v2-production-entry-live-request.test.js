@@ -3,6 +3,7 @@
 const assert = require("assert");
 const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
 const { LIVE_CONFIRM_PHRASE } = require("../v2/productionEntryLiveEndpoint");
+const { DISCOVERY_CONFIRM_PHRASE } = require("../v2/discoveryCanaryContract");
 const { buildV2ProductionEntryLiveRequest, __test } = require("../v2/productionEntryLiveRequest");
 
 function buildBundle(overrides = {}) {
@@ -86,6 +87,35 @@ function buildSizing(overrides = {}) {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.executionPermit.issued_at, "2026-04-22T01:10:00.000Z");
   assert.strictEqual(result.executionPermit.expires_at, "2026-04-22T01:30:00.000Z");
+})();
+
+(function discoveryCanaryRequestEmbedsStateWithoutChangingLiveDefault() {
+  const result = buildV2ProductionEntryLiveRequest({
+    bundle: buildBundle({
+      signalLineageId: "LINEAGE__ETH__PROD_ENTRY__DISCOVERY_REQUEST",
+      decisionMode: "CANARY",
+    }),
+    sizing: buildSizing({
+      requestedNotionalQuote: 12,
+      maxNotionalQuote: 20,
+      maxSizeRatio: 1,
+    }),
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    discoveryCanaryState: {
+      active_position_n: 0,
+      trade_count_24h: 0,
+      daily_loss_quote: 0,
+    },
+    now: () => "2026-04-22T01:10:00.000Z",
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.body.confirm, DISCOVERY_CONFIRM_PHRASE);
+  assert.deepStrictEqual(result.body.discoveryCanaryState, {
+    active_position_n: 0,
+    trade_count_24h: 0,
+    daily_loss_quote: 0,
+  });
+  assert.strictEqual(result.executionPermit.decision_mode, "CANARY");
 })();
 
 (function blockedSizingDoesNotCreateEndpointBody() {

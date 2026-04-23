@@ -45,6 +45,7 @@ function buildV2ProductionEntryLiveRequest({
   bundle,
   sizing = {},
   confirm = LIVE_CONFIRM_PHRASE,
+  discoveryCanaryState = null,
   worldState = null,
   executionPermit = null,
   env = process.env,
@@ -139,6 +140,7 @@ function buildV2ProductionEntryLiveRequest({
       confirm,
       bundle: enrichedBundle,
       entrySizingDecision: sizingDecision,
+      discoveryCanaryState: asObject(discoveryCanaryState) ? Object.freeze({ ...discoveryCanaryState }) : null,
       worldState: resolvedWorldState,
       executionPermit: resolvedPermit,
       request_contract: Object.freeze({

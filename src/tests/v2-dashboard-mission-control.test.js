@@ -30,6 +30,9 @@ process.env.DONBEOLJA_V2_CANARY_ONLY = '1';
 process.env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED = '0';
 process.env.DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE = 'OPENCLAW_CRON';
 process.env.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL = '0';
+process.env.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED = '0';
+process.env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS = 'ETHUSDT';
+process.env.V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC = '1';
 process.env.OPENCLAW_AGENT_APPLY_ENABLED = '0';
 process.env.OPENCLAW_CONDUCTOR_SHADOW_ONLY = '1';
 
@@ -49,6 +52,10 @@ try {
   assert.strictEqual(payload.scheduler_cutover, 'OPENCLAW_CRON');
   assert.strictEqual(payload.runtime_flags.v2_enabled, '1');
   assert.strictEqual(payload.runtime_flags.allow_legacy_webhook_signal, '0');
+  assert.strictEqual(payload.runtime_flags.firestore_cost_guard_require_billing_metric, '1');
+  assert.strictEqual(payload.runtime_flags.discovery_canary_enabled, '0');
+  assert.deepStrictEqual(payload.discovery_canary.allowed_symbols, ['ETHUSDT']);
+  assert.strictEqual(payload.discovery_canary.confirm_phrase, 'EXECUTE_V2_DISCOVERY_CANARY');
   assert.strictEqual(payload.entry_canary.coverage_target_minutes, 1440);
   assert.strictEqual(payload.exit_canary.coverage_target_minutes, 1440);
   assert.ok(Array.isArray(payload.blockers), 'Mission snapshot must expose blockers as an array');

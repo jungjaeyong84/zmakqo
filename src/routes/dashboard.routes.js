@@ -102,12 +102,28 @@ function summarizeFirestoreCostGuard(row) {
   };
 }
 
+function summarizeDiscoveryCanaryPolicy() {
+  return {
+    enabled: runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", "0") === "1",
+    allowed_symbols: String(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS", "") || "")
+      .split(",")
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean),
+    max_notional_quote: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE", "25")),
+    max_position_count: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT", "1")),
+    max_trades_per_day: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY", "1")),
+    daily_loss_halt_quote: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE", "10")),
+    confirm_phrase: "EXECUTE_V2_DISCOVERY_CANARY",
+  };
+}
+
 function buildV2MissionControlSnapshot() {
   const entryCanary = summarizeCanary(readJsonSafe("v2_production_entry_route_canary_streak_latest.json"));
   const exitCanary = summarizeCanary(readJsonSafe("v2_exit_runtime_canary_streak_latest.json"));
   const repairCanary = summarizeCanary(readJsonSafe("v2_repair_queue_firestore_canary_streak_latest.json"));
   const performanceGate = summarizePerformanceGate(readJsonSafe("v2_performance_gate_latest.json"));
   const firestoreCostGuard = summarizeFirestoreCostGuard(readJsonSafe("v2_firestore_cost_guard_latest.json"));
+  const discoveryCanary = summarizeDiscoveryCanaryPolicy();
   const liveEvidence = readJsonSafe("v2_live_evidence_readiness_latest.json");
 
   const blockers = [
@@ -152,7 +168,10 @@ function buildV2MissionControlSnapshot() {
       scheduler_cutover_mode: schedulerCutoverMode,
       openclaw_agent_apply_enabled: runtimeFlag("OPENCLAW_AGENT_APPLY_ENABLED", "0"),
       openclaw_conductor_shadow_only: runtimeFlag("OPENCLAW_CONDUCTOR_SHADOW_ONLY", "1"),
+      firestore_cost_guard_require_billing_metric: runtimeFlag("V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC", "0"),
+      discovery_canary_enabled: runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", "0"),
     },
+    discovery_canary: discoveryCanary,
     entry_canary: entryCanary,
     exit_canary: exitCanary,
     repair_canary: repairCanary,

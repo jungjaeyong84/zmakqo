@@ -1069,6 +1069,10 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE, "FIRESTORE");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
+  assert.strictEqual(request.substitutions._V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "1");
   assert.strictEqual(
     request.approval_evidence_sources.repair_firestore_canary_streak.field,
     "bounded_runtime_summary.repair_firestore_canary_streak"
