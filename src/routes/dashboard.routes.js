@@ -1,5 +1,7 @@
 // src/routes/dashboard.routes.js
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
 const { getLastTrades, getFirestore } = require("../storage/firestore");
 const { listExchangePositionReadViews } = require("../services/positionReadModel");
 
@@ -21,6 +23,153 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
+const MIN_LIVE_COVERAGE_MINUTES = 24 * 60;
+
+function readJsonSafe(filename) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(OPS_DAILY_DIR, filename), "utf8"));
+  } catch (_) {
+    return null;
+  }
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function numOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function runtimeFlag(name, fallback = null) {
+  const value = process.env[name];
+  return value === undefined ? fallback : String(value);
+}
+
+function summarizeCanary(row) {
+  const source = row && typeof row === "object" ? row : {};
+  return {
+    ok: source.ok === true,
+    reason: source.reason || null,
+    generated_at: source.generated_at || null,
+    position_cycle_id: source.position_cycle_id || null,
+    coverage_minutes: numOrNull(source.coverage_minutes),
+    coverage_target_minutes: MIN_LIVE_COVERAGE_MINUTES,
+    healthy_run_n: numOrNull(source.healthy_run_n),
+    unhealthy_run_n: numOrNull(source.unhealthy_run_n),
+    latest_age_minutes: numOrNull(source.latest_age_minutes),
+    max_observed_gap_minutes: numOrNull(source.max_observed_gap_minutes),
+    blockers: asArray(source.blockers),
+    history_source: source.history_source || null,
+    tp1_missing_n: numOrNull(source.tp1_missing_n),
+    native_refresh_unhealthy_n: numOrNull(source.native_refresh_unhealthy_n),
+    unprotected_window_violation_n: numOrNull(source.unprotected_window_violation_n),
+    trail_activation_evidence_gap_n: numOrNull(source.trail_activation_evidence_gap_n),
+  };
+}
+
+function summarizePerformanceGate(row) {
+  const source = row && typeof row === "object" ? row : {};
+  const metrics = source.metrics && typeof source.metrics === "object" ? source.metrics : {};
+  return {
+    ok: source.ok === true,
+    reason: source.reason || null,
+    blockers: asArray(source.blockers),
+    sample_n: numOrNull(metrics.sample_n),
+    win_rate_pct: numOrNull(metrics.win_rate_pct),
+    profit_factor: numOrNull(metrics.profit_factor),
+    expectancy_r: numOrNull(metrics.expectancy_r),
+    net_pnl_pct: numOrNull(metrics.net_pnl_pct),
+    net_pnl_usdt: numOrNull(metrics.net_pnl_usdt),
+    generated_at: source.generated_at || metrics.generated_at || null,
+  };
+}
+
+function summarizeFirestoreCostGuard(row) {
+  const source = row && typeof row === "object" ? row : {};
+  return {
+    ok: source.ok === true,
+    reason: source.reason || null,
+    blockers: asArray(source.blockers),
+    estimated_total_reads: numOrNull(source.estimated_total_reads),
+    collector_query_limit_total: numOrNull(source.collector_query_limit_total),
+    billing_metric_required: source.billing_metric_required === true,
+    billing_read_ops_total: numOrNull(source.billing_read_ops_total),
+    billing_metric_row_n: asArray(source.billing_metric_rows).length,
+    generated_at: source.generated_at || null,
+  };
+}
+
+function buildV2MissionControlSnapshot() {
+  const entryCanary = summarizeCanary(readJsonSafe("v2_production_entry_route_canary_streak_latest.json"));
+  const exitCanary = summarizeCanary(readJsonSafe("v2_exit_runtime_canary_streak_latest.json"));
+  const repairCanary = summarizeCanary(readJsonSafe("v2_repair_queue_firestore_canary_streak_latest.json"));
+  const performanceGate = summarizePerformanceGate(readJsonSafe("v2_performance_gate_latest.json"));
+  const firestoreCostGuard = summarizeFirestoreCostGuard(readJsonSafe("v2_firestore_cost_guard_latest.json"));
+  const liveEvidence = readJsonSafe("v2_live_evidence_readiness_latest.json");
+
+  const blockers = [
+    ...asArray(entryCanary.blockers),
+    ...asArray(exitCanary.blockers),
+    ...asArray(repairCanary.blockers),
+    ...asArray(performanceGate.blockers),
+    ...asArray(firestoreCostGuard.blockers),
+  ];
+  if (entryCanary.ok !== true) blockers.push("V2_SITE:ENTRY_24H_CANARY_NOT_READY");
+  if (exitCanary.ok !== true) blockers.push("V2_SITE:EXIT_24H_CANARY_NOT_READY");
+  if (repairCanary.ok !== true) blockers.push("V2_SITE:REPAIR_24H_CANARY_NOT_READY");
+  if (performanceGate.ok !== true) blockers.push("V2_SITE:PERFORMANCE_GATE_NOT_READY");
+  if (firestoreCostGuard.ok !== true) blockers.push("V2_SITE:FIRESTORE_COST_GUARD_NOT_READY");
+
+  const v2Enabled = runtimeFlag("DONBEOLJA_V2_ENABLED", "0");
+  const canaryOnly = runtimeFlag("DONBEOLJA_V2_CANARY_ONLY", "1");
+  const liveEndpointEnabled = runtimeFlag("DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED", "0");
+  const allowLegacyWebhook = runtimeFlag("DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL", "0");
+  const schedulerCutoverMode = runtimeFlag("DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE", null);
+
+  let verdict = "CANARY_RUNNING";
+  if (v2Enabled !== "1") verdict = "V2_DISABLED";
+  else if (blockers.length > 0) verdict = "LIVE_READY_BLOCKED";
+  else if (canaryOnly === "1" || liveEndpointEnabled !== "1") verdict = "CANARY_READY_ONLY";
+  else verdict = "LIVE_READY";
+
+  return {
+    ok: true,
+    snapshot_at: nowIso(),
+    mode: "V2",
+    verdict,
+    live_evidence_ready: liveEvidence && liveEvidence.ok === true ? true : false,
+    scheduler_cutover: schedulerCutoverMode === "OPENCLAW_CRON" ? "OPENCLAW_CRON" : (schedulerCutoverMode || "UNKNOWN"),
+    runtime_flags: {
+      v2_enabled: v2Enabled,
+      dry_run: runtimeFlag("DONBEOLJA_V2_DRY_RUN", "1"),
+      canary_only: canaryOnly,
+      live_endpoint_enabled: liveEndpointEnabled,
+      block_legacy_webhook_signal: runtimeFlag("DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL", "1"),
+      allow_legacy_webhook_signal: allowLegacyWebhook,
+      scheduler_cutover_mode: schedulerCutoverMode,
+      openclaw_agent_apply_enabled: runtimeFlag("OPENCLAW_AGENT_APPLY_ENABLED", "0"),
+      openclaw_conductor_shadow_only: runtimeFlag("OPENCLAW_CONDUCTOR_SHADOW_ONLY", "1"),
+    },
+    entry_canary: entryCanary,
+    exit_canary: exitCanary,
+    repair_canary: repairCanary,
+    performance_gate: performanceGate,
+    firestore_cost_guard: firestoreCostGuard,
+    live_evidence: liveEvidence ? {
+      ok: liveEvidence.ok === true,
+      reason: liveEvidence.reason || null,
+      blocker_n: numOrNull(liveEvidence.blocker_n),
+      blockers: asArray(liveEvidence.blockers),
+      artifact_dir: liveEvidence.artifact_dir || null,
+      position_cycle_id: liveEvidence.position_cycle_id || null,
+    } : null,
+    blockers: Array.from(new Set(blockers)),
+  };
+}
+
 function classifyTickResult(r) {
   if (!r) return { tick_type: "NONE", details: null };
   if (r.ok === false || r.stage === "ERROR") return { tick_type: "ERROR", details: { stage: r.stage || "ERROR" } };
@@ -33,6 +182,10 @@ function classifyTickResult(r) {
 
 function createDashboardRoutes(stateMachine, scheduler) {
   const router = express.Router();
+
+  router.get("/api/v2/mission-control", (req, res) => {
+    res.json(buildV2MissionControlSnapshot());
+  });
 
   router.get("/dashboard", async (req, res) => {
   // UI default: show dashboard home.

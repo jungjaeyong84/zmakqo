@@ -3,103 +3,87 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DONBEOLJA Ω Dashboard</title>
+  <title>DONBEOLJA V2 Mission Control</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 20px; }
-    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom: 12px; }
-    button { padding:10px 12px; border:1px solid #ccc; border-radius:10px; background:#fff; cursor:pointer; }
-    button:hover { background:#f6f6f6; }
-    .card { border:1px solid #e5e5e5; border-radius:14px; padding:14px; margin:10px 0; }
-    pre { background:#0b0b0b; color:#eaeaea; padding:12px; border-radius:12px; overflow:auto; }
-    table { border-collapse: collapse; width:100%; }
-    th, td { border-bottom: 1px solid #eee; padding:8px; text-align:left; font-size: 14px; }
-    .pill { display:inline-block; padding:4px 10px; border-radius:999px; border:1px solid #ddd; font-size:12px;}
+    :root {
+      --bg:#f6f3ea; --panel:#fffaf0; --ink:#181511; --muted:#6f675b; --line:#ded4c2;
+      --ok:#137a4b; --warn:#b26a00; --bad:#b43224; --info:#2d5f8b; --shadow:0 20px 60px rgba(46,34,17,.10);
+    }
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at top left,#fff7df 0,#f6f3ea 34%,#eee8db 100%);color:var(--ink);font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Noto Sans KR",Segoe UI,sans-serif;}
+    .wrap{max-width:1180px;margin:0 auto;padding:28px 18px 48px}.hero{display:grid;grid-template-columns:1.25fr .75fr;gap:18px;align-items:stretch;margin-bottom:18px}.panel{background:rgba(255,250,240,.86);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);padding:22px}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--info)}h1{margin:8px 0 8px;font-size:42px;line-height:1.02;letter-spacing:-.05em}.sub{color:var(--muted);line-height:1.55;font-size:14px}.verdict{display:flex;flex-direction:column;justify-content:center;gap:12px}.verdict .status{font-size:30px;font-weight:900;letter-spacing:-.04em}.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;background:#fff}.pill.ok{color:var(--ok);border-color:rgba(19,122,75,.28);background:rgba(19,122,75,.07)}.pill.warn{color:var(--warn);border-color:rgba(178,106,0,.28);background:rgba(178,106,0,.08)}.pill.bad{color:var(--bad);border-color:rgba(180,50,36,.28);background:rgba(180,50,36,.08)}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.card{background:rgba(255,250,240,.82);border:1px solid var(--line);border-radius:20px;padding:18px;min-height:142px}.k{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.08em}.v{margin-top:8px;font-size:25px;font-weight:900;letter-spacing:-.04em}.note{margin-top:8px;color:var(--muted);font-size:13px;line-height:1.45}.bar{height:10px;background:#e8decf;border-radius:999px;overflow:hidden;margin-top:12px}.bar>span{display:block;height:100%;width:0;background:linear-gradient(90deg,#2d5f8b,#137a4b);border-radius:999px}.blockers{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.btn{border:1px solid var(--line);background:#fffaf0;color:var(--ink);border-radius:14px;padding:10px 13px;text-decoration:none;font-size:13px;font-weight:800}.btn.primary{background:#181511;color:#fff;border-color:#181511}.danger-zone{margin-top:18px;border:1px dashed rgba(180,50,36,.38);background:rgba(180,50,36,.05);border-radius:18px;padding:14px;color:var(--bad);font-size:13px;line-height:1.55}.raw{white-space:pre-wrap;max-height:420px;overflow:auto;background:#17130e;color:#efe7da;border-radius:16px;padding:14px;font-size:12px}.footer{margin-top:16px;color:var(--muted);font-size:12px}@media(max-width:900px){.hero{grid-template-columns:1fr}h1{font-size:34px}.grid{grid-template-columns:1fr}.wrap{padding:18px 12px 34px}}
   </style>
 </head>
 <body>
-  <h2>DONBEOLJA Ω Dashboard</h2>
+  <main class="wrap">
+    <section class="hero">
+      <div class="panel">
+        <div class="eyebrow">DONBEOLJA V2 · OpenClaw Control Plane</div>
+        <h1>Mission Control</h1>
+        <div class="sub">V2의 기준 화면입니다. LIVE 가능 여부는 감이 아니라 canary 24h, performance gate, Firestore cost guard, OpenClaw lineage 증거로만 판단합니다.</div>
+        <div class="actions">
+          <a class="btn primary" href="/dashboard/home">운영 홈</a>
+          <a class="btn" href="/dashboard/audit">감사</a>
+          <a class="btn" href="/dashboard/protection/view">보호주문</a>
+          <a class="btn" href="/dashboard/openclaw/view">OpenClaw</a>
+        </div>
+        <div class="danger-zone">V1 scheduler start/stop/tick force 버튼은 이 화면에서 제거했습니다. V2 운영은 OpenClaw cron, promotion gate, protected entry endpoint만 사용합니다.</div>
+      </div>
+      <div class="panel verdict">
+        <div class="k">대표 판정</div>
+        <div class="status" id="verdict">확인 중</div>
+        <div id="verdict-pills" class="blockers"></div>
+        <button class="btn" type="button" onclick="refresh()">새로고침</button>
+      </div>
+    </section>
 
-  <div class="row">
-    <button onclick="callApi('/system/run')">RUN</button>
-    <button onclick="callApi('/system/halt')">HALT</button>
-    <button onclick="callApi('/scheduler/start')">Scheduler START</button>
-    <button onclick="callApi('/scheduler/stop')">Scheduler STOP</button>
-    <button onclick="callApi('/scheduler/tick?force=1')">Tick (force)</button>
-    <button onclick="callApi('/pipeline/run')">Pipeline RUN (default)</button>
-  </div>
+    <section class="grid">
+      <div class="card"><div class="k">Entry 24h Canary</div><div class="v" id="entry-v">-</div><div class="bar"><span id="entry-bar"></span></div><div class="note" id="entry-note">-</div></div>
+      <div class="card"><div class="k">Exit Runtime 24h Canary</div><div class="v" id="exit-v">-</div><div class="bar"><span id="exit-bar"></span></div><div class="note" id="exit-note">-</div></div>
+      <div class="card"><div class="k">Repair Firestore Canary</div><div class="v" id="repair-v">-</div><div class="bar"><span id="repair-bar"></span></div><div class="note" id="repair-note">-</div></div>
+      <div class="card"><div class="k">Performance Gate</div><div class="v" id="perf-v">-</div><div class="note" id="perf-note">-</div><div class="blockers" id="perf-blockers"></div></div>
+      <div class="card"><div class="k">Firestore Cost Guard</div><div class="v" id="cost-v">-</div><div class="note" id="cost-note">-</div><div class="blockers" id="cost-blockers"></div></div>
+      <div class="card"><div class="k">V2 Runtime Flags</div><div class="v" id="flags-v">-</div><div class="note mono" id="flags-note">-</div></div>
+    </section>
 
-  <div class="card">
-    <div class="row">
-      <span class="pill" id="statePill">STATE: ?</span>
-      <span class="pill" id="schedPill">SCHED: ?</span>
-      <span class="pill" id="closePill">CLOSE: ?</span>
-      <span class="pill" id="sumPill">SUMMARY: ?</span>
-      <button onclick="refresh()">Refresh</button>
-    </div>
-    <pre id="dashboardJson">loading...</pre>
-  </div>
-
-  <div class="card">
-    <h3>Recent Trades (UPBIT_60M)</h3>
-    <table id="tradesTable">
-      <thead>
-        <tr>
-          <th>time</th><th>market</th><th>action</th><th>price</th><th>idemKey</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
+    <section class="panel" style="margin-top:14px;">
+      <div class="k">Blockers</div>
+      <div class="blockers" id="all-blockers"></div>
+      <details style="margin-top:14px;"><summary class="k" style="cursor:pointer;">raw evidence</summary><pre class="raw" id="raw">loading...</pre></details>
+      <div class="footer" id="updated">-</div>
+    </section>
+  </main>
 <script>
-  async function refresh() {
-    const res = await fetch('/dashboard');
-    const data = await res.json();
-
-    document.getElementById('dashboardJson').textContent = JSON.stringify(data, null, 2);
-
-    const st = data?.state?.state || '?';
-    const sr = data?.scheduler?.running ? 'ON' : 'OFF';
-    const lc = data?.scheduler?.lastCloseTime || 'null';
-    const sum = data?.scheduler?.summary
-      ? `total=${data.scheduler.summary.total}, ok=${data.scheduler.summary.ok}, dup=${data.scheduler.summary.duplicate}, gate=${data.scheduler.summary.gate_failed}`
-      : '?';
-
-    document.getElementById('statePill').textContent = `STATE: ${st}`;
-    document.getElementById('schedPill').textContent = `SCHED: ${sr}`;
-    document.getElementById('closePill').textContent = `CLOSE: ${lc}`;
-    document.getElementById('sumPill').textContent = `SUMMARY: ${sum}`;
-
-    const tbody = document.querySelector('#tradesTable tbody');
-    tbody.innerHTML = '';
-    (data.lastTrades || []).slice().reverse().forEach(t => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${t.time || ''}</td>
-        <td>${t.market || ''}</td>
-        <td>${t.action || ''}</td>
-        <td>${t.price || ''}</td>
-        <td style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px;">${t.idemKey || ''}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-
-  async function callApi(path) {
-    try {
-      const res = await fetch(path);
-      const text = await res.text();
-      // 일부는 409/403도 정상 시나리오라 alert 대신 콘솔
-      console.log('[API]', path, res.status, text);
-      await refresh();
-    } catch (e) {
-      console.error(e);
-      alert(String(e));
-    }
-  }
-
-  refresh();
-  setInterval(refresh, 5000);
+function pct(x){ const n=Number(x); if(!Number.isFinite(n)) return 0; return Math.max(0, Math.min(100, n/1440*100)); }
+function minFmt(x){ const n=Number(x); if(!Number.isFinite(n)) return '-'; return `${Math.round(n)} / 1440분`; }
+function esc(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
+  });
+}
+function pill(text,tone){ return `<span class="pill ${tone||''}">${esc(text)}</span>`; }
+function blockersHtml(items){ const xs=Array.isArray(items)?items:[]; return xs.length ? xs.map(x=>pill(String(x),'bad')).join('') : pill('blocker 없음','ok'); }
+function set(id,v){ const el=document.getElementById(id); if(el) el.innerHTML=v; }
+function setBar(id,v){ const el=document.getElementById(id); if(el) el.style.width=pct(v)+'%'; }
+async function refresh(){
+  const r = await fetch('/api/v2/mission-control', { credentials:'include' });
+  const data = await r.json();
+  document.getElementById('raw').textContent = JSON.stringify(data,null,2);
+  const verdict = data.verdict || 'UNKNOWN';
+  set('verdict', verdict);
+  const tone = verdict === 'LIVE_READY' ? 'ok' : verdict.includes('BLOCKED') || verdict.includes('RUNNING') ? 'warn' : 'bad';
+  const schedulerOk = data.scheduler_cutover === 'OPENCLAW_CRON' || data.scheduler_cutover === 'PASS';
+  set('verdict-pills', pill(data.mode || 'V2', tone) + pill(data.scheduler_cutover || 'scheduler ?', schedulerOk ? 'ok':'warn'));
+  const e=data.entry_canary||{}, x=data.exit_canary||{}, rr=data.repair_canary||{}, p=data.performance_gate||{}, c=data.firestore_cost_guard||{}, f=data.runtime_flags||{};
+  set('entry-v', minFmt(e.coverage_minutes)); setBar('entry-bar', e.coverage_minutes); set('entry-note', `${e.reason||'-'} · healthy=${e.healthy_run_n??'-'} · latest age=${Math.round(Number(e.latest_age_minutes)||0)}m`);
+  set('exit-v', minFmt(x.coverage_minutes)); setBar('exit-bar', x.coverage_minutes); set('exit-note', `${x.reason||'-'} · TP1 missing=${x.tp1_missing_n??0} · native unhealthy=${x.native_refresh_unhealthy_n??0} · unprotected=${x.unprotected_window_violation_n??0}`);
+  set('repair-v', minFmt(rr.coverage_minutes)); setBar('repair-bar', rr.coverage_minutes); set('repair-note', `${rr.reason||'-'} · healthy=${rr.healthy_run_n??'-'} · latest age=${Math.round(Number(rr.latest_age_minutes)||0)}m`);
+  set('perf-v', p.ok ? 'PASS' : 'BLOCKED'); set('perf-note', `sample=${p.sample_n??0} · PF=${p.profit_factor??'-'} · expectancy=${p.expectancy_r??'-'} · pnl=${p.net_pnl_pct??'-'}`); set('perf-blockers', blockersHtml(p.blockers));
+  set('cost-v', c.ok ? 'PASS' : 'BLOCKED'); set('cost-note', `estimated reads=${c.estimated_total_reads??'-'} · billing required=${c.billing_metric_required===true?'YES':'NO'} · billing reads=${c.billing_read_ops_total??0}`); set('cost-blockers', blockersHtml(c.blockers));
+  set('flags-v', f.v2_enabled === '1' ? 'V2 ON' : 'V2 OFF'); set('flags-note', `canary_only=${f.canary_only} · live_endpoint=${f.live_endpoint_enabled} · legacy_webhook_allow=${f.allow_legacy_webhook_signal} · dry_run=${f.dry_run}`);
+  set('all-blockers', blockersHtml(data.blockers));
+  set('updated', `snapshot ${data.snapshot_at || '-'} · source ops/daily + runtime env`);
+}
+refresh(); setInterval(refresh, 30000);
 </script>
 </body>
 </html>

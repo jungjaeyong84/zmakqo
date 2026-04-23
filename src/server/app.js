@@ -100,8 +100,11 @@ const ensureAuthMaybe = (req, res, next) => {
       "/dashboard/profit",
       "/dashboard/cashflow",
       "/dashboard/state",
+      "/dashboard/openclaw",
+      "/dashboard/protection",
     ];
     const apiAllowed = [
+      "/api/v2/mission-control",
       "/api/eval/latest",
       "/api/report/latest",
       "/api/report/preview",
