@@ -18,6 +18,8 @@ const {
 
 const { detectAccessScope } = require("../utils/accessScope");
 const { loadSystemRuntimeGuardView } = require("../services/systemRuntimeGuardView");
+const { planOperatorSafeModeAction } = require("../v2/operatorSafeMode");
+const { buildRunbookDiagnosticPlan } = require("../v2/runbookDiagnosticRunner");
 
 function nowIso() {
   return new Date().toISOString();
@@ -117,12 +119,27 @@ function summarizeDiscoveryCanaryPolicy() {
   };
 }
 
+function summarizeGenericGate(row, fallbackReason) {
+  const source = row && typeof row === "object" ? row : {};
+  return {
+    ok: source.ok === true,
+    reason: source.reason || fallbackReason || null,
+    blockers: asArray(source.blockers),
+    warnings: asArray(source.warnings),
+    generated_at: source.generated_at || null,
+    metrics: source.metrics && typeof source.metrics === "object" ? source.metrics : {},
+  };
+}
+
 function buildV2MissionControlSnapshot() {
   const entryCanary = summarizeCanary(readJsonSafe("v2_production_entry_route_canary_streak_latest.json"));
   const exitCanary = summarizeCanary(readJsonSafe("v2_exit_runtime_canary_streak_latest.json"));
   const repairCanary = summarizeCanary(readJsonSafe("v2_repair_queue_firestore_canary_streak_latest.json"));
   const performanceGate = summarizePerformanceGate(readJsonSafe("v2_performance_gate_latest.json"));
   const firestoreCostGuard = summarizeFirestoreCostGuard(readJsonSafe("v2_firestore_cost_guard_latest.json"));
+  const riskGovernor = summarizeGenericGate(readJsonSafe("v2_risk_governor_latest.json"), "V2_RISK_GOVERNOR_NOT_COLLECTED");
+  const policyPromotion = summarizeGenericGate(readJsonSafe("v2_openclaw_policy_promotion_gate_latest.json"), "OPENCLAW_POLICY_PROMOTION_NOT_COLLECTED");
+  const marketDataQuality = summarizeGenericGate(readJsonSafe("v2_market_data_quality_latest.json"), "V2_MARKET_DATA_QUALITY_NOT_COLLECTED");
   const discoveryCanary = summarizeDiscoveryCanaryPolicy();
   const liveEvidence = readJsonSafe("v2_live_evidence_readiness_latest.json");
 
@@ -132,12 +149,18 @@ function buildV2MissionControlSnapshot() {
     ...asArray(repairCanary.blockers),
     ...asArray(performanceGate.blockers),
     ...asArray(firestoreCostGuard.blockers),
+    ...asArray(riskGovernor.blockers),
+    ...asArray(policyPromotion.blockers),
+    ...asArray(marketDataQuality.blockers),
   ];
   if (entryCanary.ok !== true) blockers.push("V2_SITE:ENTRY_24H_CANARY_NOT_READY");
   if (exitCanary.ok !== true) blockers.push("V2_SITE:EXIT_24H_CANARY_NOT_READY");
   if (repairCanary.ok !== true) blockers.push("V2_SITE:REPAIR_24H_CANARY_NOT_READY");
   if (performanceGate.ok !== true) blockers.push("V2_SITE:PERFORMANCE_GATE_NOT_READY");
   if (firestoreCostGuard.ok !== true) blockers.push("V2_SITE:FIRESTORE_COST_GUARD_NOT_READY");
+  if (riskGovernor.ok === false && riskGovernor.reason !== "V2_RISK_GOVERNOR_NOT_COLLECTED") blockers.push("V2_SITE:RISK_GOVERNOR_NOT_READY");
+  if (policyPromotion.ok === false && policyPromotion.reason !== "OPENCLAW_POLICY_PROMOTION_NOT_COLLECTED") blockers.push("V2_SITE:POLICY_PROMOTION_NOT_READY");
+  if (marketDataQuality.ok === false && marketDataQuality.reason !== "V2_MARKET_DATA_QUALITY_NOT_COLLECTED") blockers.push("V2_SITE:MARKET_DATA_QUALITY_NOT_READY");
 
   const v2Enabled = runtimeFlag("DONBEOLJA_V2_ENABLED", "0");
   const canaryOnly = runtimeFlag("DONBEOLJA_V2_CANARY_ONLY", "1");
@@ -177,6 +200,9 @@ function buildV2MissionControlSnapshot() {
     repair_canary: repairCanary,
     performance_gate: performanceGate,
     firestore_cost_guard: firestoreCostGuard,
+    risk_governor: riskGovernor,
+    policy_promotion: policyPromotion,
+    market_data_quality: marketDataQuality,
     live_evidence: liveEvidence ? {
       ok: liveEvidence.ok === true,
       reason: liveEvidence.reason || null,
@@ -186,6 +212,7 @@ function buildV2MissionControlSnapshot() {
       position_cycle_id: liveEvidence.position_cycle_id || null,
     } : null,
     blockers: Array.from(new Set(blockers)),
+    diagnostic_plan: buildRunbookDiagnosticPlan({ blockers }),
   };
 }
 
@@ -204,6 +231,16 @@ function createDashboardRoutes(stateMachine, scheduler) {
 
   router.get("/api/v2/mission-control", (req, res) => {
     res.json(buildV2MissionControlSnapshot());
+  });
+
+  router.post("/api/v2/operator/safe-action", express.json({ limit: "32kb" }), (req, res) => {
+    const result = planOperatorSafeModeAction({
+      action: req.body && req.body.action,
+      options: req.body && req.body.options,
+      confirm: req.body && req.body.confirm,
+      env: process.env,
+    });
+    res.status(result.ok ? 200 : 409).json(result);
   });
 
   router.get("/dashboard", async (req, res) => {

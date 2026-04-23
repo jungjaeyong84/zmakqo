@@ -7,6 +7,7 @@ const {
   DISCOVERY_CONFIRM_PHRASE,
   evaluateDiscoveryCanaryContract,
 } = require("./discoveryCanaryContract");
+const { evaluateV2RiskGovernor } = require("./riskGovernor");
 
 const LIVE_CONFIRM_PHRASE = "EXECUTE_V2_LIVE_ENTRY";
 
@@ -89,6 +90,14 @@ function extractWorldState({ body = null, bundle = null, worldState = null } = {
     || null;
 }
 
+function extractRiskGovernorInput({ body = null, bundle = null } = {}) {
+  const row = asObject(body);
+  const bundled = asObject(bundle);
+  return asObject(row && (row.riskGovernor || row.risk_governor))
+    || asObject(bundled && (bundled.riskGovernor || bundled.risk_governor))
+    || null;
+}
+
 async function runV2ProductionEntryLiveEndpoint({
   db = null,
   env = process.env,
@@ -127,6 +136,7 @@ async function runV2ProductionEntryLiveEndpoint({
     route_result: null,
     transport_resolution: null,
     discovery_canary_contract: null,
+    risk_governor: null,
     exchange_write_boundary: "V2_PRODUCTION_ENTRY_ROUTE_ONLY",
   });
 
@@ -209,6 +219,29 @@ async function runV2ProductionEntryLiveEndpoint({
     }
   }
 
+  let riskGovernorSummary = null;
+  const riskGovernorInput = extractRiskGovernorInput({ body, bundle: resolvedBundle });
+  if (riskGovernorInput || parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, false)) {
+    riskGovernorSummary = evaluateV2RiskGovernor({
+      env,
+      account: riskGovernorInput && riskGovernorInput.account,
+      positions: riskGovernorInput && riskGovernorInput.positions,
+      candidate: (riskGovernorInput && riskGovernorInput.candidate) || {
+        symbol: transportResolution && transportResolution.symbol,
+        notional_quote: (transportResolution && Number(transportResolution.entry_qty_abs) * Number(transportResolution.reference_price || 0)) || undefined,
+      },
+      market: riskGovernorInput && riskGovernorInput.market,
+    });
+    if (!riskGovernorSummary.ok) {
+      return buildBlock("V2_RISK_GOVERNOR_BLOCKED", {
+        ...base,
+        transport_resolution: summarizeTransportResolution(transportResolution),
+        discovery_canary_contract: discoveryContract,
+        risk_governor: riskGovernorSummary,
+      });
+    }
+  }
+
   const routeResult = await runProductionEntryRoute({
     db,
     env,
@@ -227,6 +260,7 @@ async function runV2ProductionEntryLiveEndpoint({
       route_result: routeResult || null,
       transport_resolution: summarizeTransportResolution(transportResolution),
       discovery_canary_contract: discoveryContract,
+      risk_governor: riskGovernorSummary,
     });
   }
 
@@ -238,6 +272,7 @@ async function runV2ProductionEntryLiveEndpoint({
     route_result: routeResult,
     transport_resolution: summarizeTransportResolution(transportResolution),
     discovery_canary_contract: discoveryContract,
+    risk_governor: riskGovernorSummary,
   });
 }
 

@@ -50,6 +50,7 @@ function buildCanonicalEvidenceSummary({
   featureSnapshot,
   mlAiSignalProposal,
   mlAiEvidence,
+  marketDataQuality = null,
 } = {}) {
   const intent = signalIntent && typeof signalIntent === "object" ? signalIntent : null;
   const filter = strategyFilterResult && typeof strategyFilterResult === "object" ? strategyFilterResult : null;
@@ -108,6 +109,19 @@ function buildCanonicalEvidenceSummary({
       decision_id: mlAiEvidence ? mlAiEvidence.decision_id : null,
       model_version: mlAiEvidence ? mlAiEvidence.model_version : null,
     }),
+    market_data_quality: Object.freeze(marketDataQuality ? {
+      present: true,
+      ok: marketDataQuality.ok === true,
+      reason: marketDataQuality.reason || null,
+      blockers: Array.isArray(marketDataQuality.blockers) ? marketDataQuality.blockers : [],
+      metrics: marketDataQuality.metrics && typeof marketDataQuality.metrics === "object" ? marketDataQuality.metrics : {},
+    } : {
+      present: false,
+      ok: null,
+      reason: null,
+      blockers: [],
+      metrics: {},
+    }),
     evidence_complete: true,
   });
 }
@@ -141,6 +155,7 @@ function buildOpenClawDecisionBundle({
   featuresHash = null,
   modelVersion = null,
   decisionSummary = null,
+  marketDataQuality = null,
   createdAt = null,
 } = {}) {
   const signalIntent = buildSignalIntentDoc({
@@ -239,6 +254,7 @@ function buildOpenClawDecisionBundle({
     featureSnapshot,
     mlAiSignalProposal,
     mlAiEvidence,
+    marketDataQuality,
   });
 
   const openclawDecision = buildOpenClawDecisionDoc({
@@ -261,6 +277,7 @@ function buildOpenClawDecisionBundle({
     mlAiEvidence,
     strategyFilterResult: resolvedStrategyFilterResult,
     canonicalEvidenceSummary,
+    marketDataQuality,
   });
   const openclawDecisionBundleHash = sha256Hex(stableJson(bundleHashPayload));
   const enrichedOpenClawDecision = Object.freeze({
@@ -304,6 +321,7 @@ function buildOpenClawDecisionBundleLedgerDoc({
     mlAiEvidence: cloneJson(row.mlAiEvidence),
     strategyFilterResult: cloneJson(row.strategyFilterResult),
     canonicalEvidenceSummary: cloneJson(row.canonicalEvidenceSummary),
+    marketDataQuality: cloneJson(row.marketDataQuality),
   });
   const hashPayload = Object.freeze({
     ...payload,

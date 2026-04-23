@@ -44,6 +44,10 @@
       <div class="card"><div class="k">Firestore Cost Guard</div><div class="v" id="cost-v">-</div><div class="note" id="cost-note">-</div><div class="blockers" id="cost-blockers"></div></div>
       <div class="card"><div class="k">V2 Runtime Flags</div><div class="v" id="flags-v">-</div><div class="note mono" id="flags-note">-</div></div>
       <div class="card"><div class="k">Discovery Canary</div><div class="v" id="disc-v">-</div><div class="note mono" id="disc-note">-</div></div>
+      <div class="card"><div class="k">Risk Governor</div><div class="v" id="risk-v">-</div><div class="note mono" id="risk-note">-</div></div>
+      <div class="card"><div class="k">Market Data Quality</div><div class="v" id="mdq-v">-</div><div class="note mono" id="mdq-note">-</div></div>
+      <div class="card"><div class="k">Policy Promotion</div><div class="v" id="promo-v">-</div><div class="note mono" id="promo-note">-</div></div>
+      <div class="card"><div class="k">Runbook Diagnostics</div><div class="v" id="diag-v">-</div><div class="note mono" id="diag-note">-</div></div>
     </section>
 
     <section class="panel" style="margin-top:14px;">
@@ -89,7 +93,7 @@ async function refresh(){
   const tone = verdict === 'LIVE_READY' ? 'ok' : verdict.includes('BLOCKED') || verdict.includes('RUNNING') ? 'warn' : 'bad';
   const schedulerOk = data.scheduler_cutover === 'OPENCLAW_CRON' || data.scheduler_cutover === 'PASS';
   set('verdict-pills', pill(data.mode || 'V2', tone) + pill(data.scheduler_cutover || 'scheduler ?', schedulerOk ? 'ok':'warn'));
-  const e=data.entry_canary||{}, x=data.exit_canary||{}, rr=data.repair_canary||{}, p=data.performance_gate||{}, c=data.firestore_cost_guard||{}, f=data.runtime_flags||{}, d=data.discovery_canary||{};
+  const e=data.entry_canary||{}, x=data.exit_canary||{}, rr=data.repair_canary||{}, p=data.performance_gate||{}, c=data.firestore_cost_guard||{}, f=data.runtime_flags||{}, d=data.discovery_canary||{}, rg=data.risk_governor||{}, mdq=data.market_data_quality||{}, promo=data.policy_promotion||{}, diag=data.diagnostic_plan||{};
   set('entry-v', minFmt(e.coverage_minutes)); setBar('entry-bar', e.coverage_minutes); set('entry-note', `${e.reason||'-'} · healthy=${e.healthy_run_n??'-'} · latest age=${Math.round(Number(e.latest_age_minutes)||0)}m`);
   set('exit-v', minFmt(x.coverage_minutes)); setBar('exit-bar', x.coverage_minutes); set('exit-note', `${x.reason||'-'} · TP1 missing=${x.tp1_missing_n??0} · native unhealthy=${x.native_refresh_unhealthy_n??0} · unprotected=${x.unprotected_window_violation_n??0}`);
   set('repair-v', minFmt(rr.coverage_minutes)); setBar('repair-bar', rr.coverage_minutes); set('repair-note', `${rr.reason||'-'} · healthy=${rr.healthy_run_n??'-'} · latest age=${Math.round(Number(rr.latest_age_minutes)||0)}m`);
@@ -98,6 +102,14 @@ async function refresh(){
   set('flags-v', f.v2_enabled === '1' ? 'V2 ON' : 'V2 OFF'); set('flags-note', `canary_only=${f.canary_only} · live_endpoint=${f.live_endpoint_enabled} · legacy_webhook_allow=${f.allow_legacy_webhook_signal} · dry_run=${f.dry_run} · billing_metric=${f.firestore_cost_guard_require_billing_metric}`);
   set('disc-v', d.enabled === true ? 'ARMED' : 'LOCKED');
   set('disc-note', `symbol=${(d.allowed_symbols||[]).join(',')||'-'} · max_notional=${d.max_notional_quote??'-'} · max_pos=${d.max_position_count??'-'} · max_trades=${d.max_trades_per_day??'-'} · loss_halt=${d.daily_loss_halt_quote??'-'}`);
+  set('risk-v', rg.ok === true ? 'PASS' : (rg.reason === 'V2_RISK_GOVERNOR_NOT_COLLECTED' ? 'NO DATA' : 'BLOCKED'));
+  set('risk-note', `reason=${rg.reason||'-'} · blockers=${(rg.blockers||[]).length}`);
+  set('mdq-v', mdq.ok === true ? 'PASS' : (mdq.reason === 'V2_MARKET_DATA_QUALITY_NOT_COLLECTED' ? 'NO DATA' : 'BLOCKED'));
+  set('mdq-note', `reason=${mdq.reason||'-'} · blockers=${(mdq.blockers||[]).length}`);
+  set('promo-v', promo.ok === true ? 'READY' : (promo.reason === 'OPENCLAW_POLICY_PROMOTION_NOT_COLLECTED' ? 'NO DATA' : 'HOLD'));
+  set('promo-note', `reason=${promo.reason||'-'} · blockers=${(promo.blockers||[]).length}`);
+  set('diag-v', `${diag.blocker_n??0} blockers`);
+  set('diag-note', `families=${(diag.families||[]).join(',')||'-'} · runbooks=${(diag.runbook_refs||[]).join(',')||'-'}`);
   set('all-blockers', blockersHtml(data.blockers));
   set('updated', `snapshot ${data.snapshot_at || '-'} · source ops/daily + runtime env`);
 }

@@ -103,6 +103,27 @@ function resolveMlAiProposalGate({ signalIntent, openclawDecision } = {}) {
   });
 }
 
+function resolveMarketDataQualityDecisionGate(openclawDecision) {
+  const decision = openclawDecision && typeof openclawDecision === "object" ? openclawDecision : null;
+  const summary = decision && decision.canonical_evidence_summary && typeof decision.canonical_evidence_summary === "object"
+    ? decision.canonical_evidence_summary
+    : null;
+  const marketData = summary && summary.market_data_quality && typeof summary.market_data_quality === "object"
+    ? summary.market_data_quality
+    : null;
+  if (!marketData || marketData.present !== true) {
+    return Object.freeze({ ok: true, reason: null, blockers: Object.freeze([]) });
+  }
+  if (marketData.ok !== true) {
+    return Object.freeze({
+      ok: false,
+      reason: "MARKET_DATA_QUALITY_BLOCKED",
+      blockers: Object.freeze(Array.isArray(marketData.blockers) ? marketData.blockers : []),
+    });
+  }
+  return Object.freeze({ ok: true, reason: null, blockers: Object.freeze([]) });
+}
+
 function resolveEntryIntentFromOpenClaw({
   signalIntent,
   openclawDecision,
@@ -179,6 +200,17 @@ function resolveEntryIntentFromOpenClaw({
     });
   }
 
+  const marketDataGate = resolveMarketDataQualityDecisionGate(decision);
+  if (!marketDataGate.ok) {
+    return Object.freeze({
+      ok: false,
+      reason: marketDataGate.reason,
+      detail: marketDataGate.blockers.join(","),
+      market_data_quality_gate: marketDataGate,
+      entryIntent: null,
+    });
+  }
+
   const signalIntentId = trimOrNull(intent.signal_intent_id);
   const entryIntentId = `EINTV2__${hash10(signalIntentId)}`;
   return Object.freeze({
@@ -203,5 +235,6 @@ module.exports = {
   resolveStrategyFilter,
   extractMlAiProposalFromDecision,
   resolveMlAiProposalGate,
+  resolveMarketDataQualityDecisionGate,
   resolveEntryIntentFromOpenClaw,
 };
