@@ -14,9 +14,9 @@
     profit: { eyebrow: 'Performance', hint: '기간별 손익과 주요 기여 마켓을 확인합니다.' },
     cashflow: { eyebrow: 'Treasury', hint: '입출금과 자금 흐름을 별도 화면으로 확인합니다.' },
     trading: { eyebrow: 'Execution Log', hint: '신호, 드롭, 주문, 포지션, 체결을 거래소형 화면으로 봅니다.' },
-    recovery: { eyebrow: 'Strategy Status', hint: '자연 진화 상태와 서버 우선 전환 상태를 확인합니다.' },
-    'server-primary': { eyebrow: '전략상태', hint: '서버 우선 전환 진행과 승격 준비 상태를 확인합니다.' },
-    audit: { eyebrow: '전략상태', hint: '운영 기록, 드리프트, 증거 체인을 점검합니다.' },
+    recovery: { eyebrow: 'Strategy Status', hint: '자연 진화 상태와 V2 전환 상태를 확인합니다.' },
+    'server-primary': { eyebrow: 'V2 게이트', hint: 'V2 전환 진행과 승격 준비 상태를 확인합니다.' },
+    audit: { eyebrow: 'V2 게이트', hint: '운영 기록, 드리프트, 증거 체인을 점검합니다.' },
     settings: { eyebrow: 'Settings', hint: '거래소, 리스크, 실행 설정을 조정합니다.' },
   };
   const __pageMeta = __pageMetaMap[__active] || { eyebrow: 'DONBEOLJA Trader', hint: '' };
@@ -595,8 +595,8 @@
           <% } %>
         </div>
         <div class="trader-top-actions">
-          <span class="trade-chip gold"><%= __compactTopbar ? '서버 정본' : '신호 정본 · 서버' %></span>
-          <span class="trade-chip soft"><%= __compactTopbar ? 'Pine 비교' : '비교 신호 · Pine Shadow' %></span>
+          <span class="trade-chip gold"><%= __compactTopbar ? 'OpenClaw 정본' : '신호 정본 · OpenClaw' %></span>
+          <span class="trade-chip soft"><%= __compactTopbar ? 'Shadow 비교' : '비교 신호 · Shadow' %></span>
           <% if (!__compactTopbar) { %>
             <span class="trade-chip soft">환경 · <span class="mono"><%= __envLabel.toUpperCase() %></span></span>
           <% } %>

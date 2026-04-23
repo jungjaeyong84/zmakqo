@@ -307,7 +307,7 @@ router.get("/dashboard/profit", async (req, res) => {
       ? `${String(exchange || "") || "BINANCEFUT"}:${execTf}:${fallbackTf}:${pnlBasis}:custom:${customStartMs}:${customEndMs}`
       : `${String(exchange || "") || "BINANCEFUT"}:${execTf}:${fallbackTf}:${pnlBasis}`;
     const cached = getCache(cacheKey);
-    if (cached) return res.render(String(req.query.legacy || "").trim() === "1" ? "profit.legacy.ejs" : "profit", cached);
+    if (cached) return res.render("profit", cached);
     const exchangeSettings = await getExchangeSettingsForProvider(exchange, 2000);
     const defaultFuturesLeverage = (() => {
       const lev = Number(exchangeSettings && exchangeSettings.futures_leverage);
@@ -579,7 +579,7 @@ router.get("/dashboard/profit", async (req, res) => {
     };
 
     setCache(cacheKey, payload);
-    return res.render(String(req.query.legacy || "").trim() === "1" ? "profit.legacy.ejs" : "profit", payload);
+    return res.render("profit", payload);
   } catch (e) {
     console.error("[PROFIT_ROUTE_ERROR]", {
       ...debug,
@@ -587,7 +587,7 @@ router.get("/dashboard/profit", async (req, res) => {
       stack: e && e.stack ? e.stack : null,
     });
     try {
-      return res.status(200).render(String(req.query.legacy || "").trim() === "1" ? "profit.legacy.ejs" : "profit", {
+      return res.status(200).render("profit", {
         exchange: req.query.exchange || '',
         markets_expected: [],
         as_of_kst: null,

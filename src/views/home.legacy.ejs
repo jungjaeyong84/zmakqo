@@ -507,7 +507,7 @@
     <div class="legacy-inline-summary" style="margin-top:2px; margin-bottom:10px;">
       <span class="pill dim">1. 수익 확인</span>
       <span class="pill dim">2. 거래기록 확인</span>
-      <span class="pill dim">3. 전략상태 확인</span>
+      <span class="pill dim">3. V2 게이트 확인</span>
     </div>
     <div class="legacy-inline-summary" style="margin-top:8px;">
       <span class="pill <%= liveStatus(system_settings).badge %>">운영 상태 · <%= liveStatus(system_settings).label %></span>
@@ -612,7 +612,7 @@
         <div class="subtle">자동 전략이 현재 어떤 상태인지 짧게만 보여주고, 자세한 내용은 별도 메뉴에서 확인합니다.</div>
       </div>
       <div class="control-actions">
-        <a class="btn ghost slim" href="/dashboard/recovery">전략상태 보기</a>
+        <a class="btn ghost slim" href="/dashboard/recovery">V2 게이트 보기</a>
       </div>
     </div>
     <% if (missionHero.title || missionHeroPills.length) { %>

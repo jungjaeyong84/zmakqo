@@ -902,7 +902,7 @@ function createStateRoutes() {
 
       const asOfKst = toKstString(new Date().toISOString());
       const selectedMarket = normalizeMarketSymbolForProvider(String(req.query.market || "").trim(), exchangeNorm) || null;
-      return res.render(String(req.query.legacy || "").trim() === "1" ? "state.legacy.ejs" : "state", {
+      return res.render("state", {
         markets_expected: markets,
         exchange,
         tf_default: tfDefault,

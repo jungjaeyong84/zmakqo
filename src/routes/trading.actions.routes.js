@@ -597,7 +597,6 @@ function createTradingActionsRoutes() {
         qty_base: payload.qty_base || null,
         native_refresh_status: nextMeta.native_protection_refresh_status || null,
         native_refresh_reason: nextMeta.native_protection_refresh_reason || null,
-        tp0_order_id: nextMeta.native_protection_tp0_order_id || null,
         tp1_order_id: nextMeta.native_protection_tp_order_id || null,
         stop_order_id: nextMeta.native_protection_stop_order_id || null,
       });

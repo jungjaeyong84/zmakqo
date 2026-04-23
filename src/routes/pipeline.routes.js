@@ -6,6 +6,14 @@ function createPipelineRoutes(stateMachine) {
   const router = express.Router();
 
   router.get("/pipeline/run", async (req, res) => {
+    if (String(process.env.DONBEOLJA_V2_ENABLED || "0").trim() === "1") {
+      return res.status(410).json({
+        ok: false,
+        reason: "V2_LEGACY_PIPELINE_RUN_DISABLED",
+        replacement: "OPENCLAW_CRON_AND_V2_PRODUCTION_ENTRY_ROUTE",
+      });
+    }
+
     const enabled = String(process.env.ENABLE_PIPELINE_RUN || "0") === "1";
     if (!enabled) {
       return res.status(403).json({ ok: false, reason: "PIPELINE_RUN_DISABLED" });
