@@ -255,6 +255,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  main,
   __test: {
     buildRuntimeIntegrityAlertSections,
   },
