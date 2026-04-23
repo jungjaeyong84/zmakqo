@@ -18,25 +18,27 @@ grp_dev = "═══ V7 Debug / Trace ═══"
 
 htf_tf = input.timeframe("240", "HTF regime timeframe", group = grp_regime)
 trend_min_adx = input.float(20.0, "Trend ADX min", minval = 1.0, maxval = 60.0, step = 0.5, group = grp_regime)
-trend_min_alignment = input.float(0.60, "HTF alignment min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
+trend_min_alignment = input.float(0.55, "HTF alignment min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
 range_compression_min = input.float(0.72, "Range compression min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
 setup_quality_min = input.float(0.60, "Setup quality min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
 trigger_body_min = input.float(0.45, "Trigger body ratio min", minval = 0.05, maxval = 1.0, step = 0.01, group = grp_regime)
+min_rsi_long = input.float(52.0, "LONG RSI min", minval = 40.0, maxval = 70.0, step = 0.5, group = grp_regime)
+max_rsi_short = input.float(48.5, "SHORT RSI max", minval = 30.0, maxval = 60.0, step = 0.5, group = grp_regime)
 
-market_quality_min = input.float(0.70, "Market quality min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_quality)
-max_spread_bps = input.float(8.0, "Spread proxy max (bps)", minval = 0.1, maxval = 30.0, step = 0.1, group = grp_quality)
+market_quality_min = input.float(0.50, "Market quality min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_quality)
+max_spread_bps = input.float(14.0, "Spread proxy max (bps)", minval = 0.1, maxval = 30.0, step = 0.1, group = grp_quality)
 max_mark_gap_bps = input.float(10.0, "Mark/index gap proxy max (bps)", minval = 0.1, maxval = 50.0, step = 0.1, group = grp_quality)
 max_funding_penalty_bps = input.float(3.0, "Funding penalty max (bps)", minval = 0.0, maxval = 30.0, step = 0.1, group = grp_quality)
 manual_funding_penalty_bps = input.float(0.0, "Funding penalty input (bps)", minval = 0.0, maxval = 30.0, step = 0.1, group = grp_quality)
-spread_proxy_weight = input.float(0.18, "Spread proxy weight", minval = 0.01, maxval = 1.0, step = 0.01, group = grp_quality)
+spread_proxy_weight = input.float(0.08, "Spread proxy weight", minval = 0.01, maxval = 1.0, step = 0.01, group = grp_quality)
 
 stop_atr = input.float(1.6, "Stop ATR multiple", minval = 0.5, maxval = 5.0, step = 0.1, group = grp_risk)
 base_target_atr = input.float(2.5, "Base target ATR multiple", minval = 0.5, maxval = 8.0, step = 0.1, group = grp_risk)
-min_expected_gross_r = input.float(1.8, "Expected gross R min", minval = 0.5, maxval = 5.0, step = 0.05, group = grp_risk)
+min_expected_gross_r = input.float(1.6, "Expected gross R min", minval = 0.5, maxval = 5.0, step = 0.05, group = grp_risk)
 min_expected_net_r = input.float(0.25, "Expected net R after cost min", minval = -1.0, maxval = 2.0, step = 0.01, group = grp_risk)
 fee_bps = input.float(4.0, "Fee estimate (bps)", minval = 0.0, maxval = 50.0, step = 0.1, group = grp_risk)
-early_score_min = input.float(64.0, "EARLY score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
-core_score_min = input.float(78.0, "CORE score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
+early_score_min = input.float(45.0, "EARLY score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
+core_score_min = input.float(60.0, "CORE score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
 same_dir_cooldown_bars = input.int(8, "Same direction cooldown bars", minval = 0, maxval = 50, group = grp_risk)
 
 provider_id = input.string("BINANCEFUT", "Webhook provider", options = ["BINANCEFUT", "UPBIT"], group = grp_webhook)
@@ -118,9 +120,9 @@ session_vwap = ta.vwap(hlc3)
 spread_proxy_bps = ((bar_range / math.max(close, syminfo.mintick)) * 10000.0) * spread_proxy_weight
 mark_index_gap_proxy_bps = math.abs(close - session_vwap) / math.max(close, syminfo.mintick) * 10000.0
 market_quality_score = f_clamp01(
-    0.35 * f_clamp01(1.0 - spread_proxy_bps / math.max(max_spread_bps, 0.1)) +
+    0.25 * f_clamp01(1.0 - spread_proxy_bps / math.max(max_spread_bps, 0.1)) +
     0.25 * f_clamp01(1.0 - math.abs(volatility_zscore) / 3.0) +
-    0.20 * f_clamp01((volume_zscore + 1.5) / 3.0) +
+    0.30 * f_clamp01((volume_zscore + 1.5) / 3.0) +
     0.20 * f_clamp01(body_ratio / 0.65)
 )
 
@@ -179,8 +181,6 @@ trigger_level_short = setup_type_short == "PULLBACK_RECLAIM" ? ema_fast : recent
 trigger_confirmed_long = setup_type_long != "NONE" and close > trigger_level_long and body_ratio >= trigger_body_min and close_pos_in_bar >= 0.55
 trigger_confirmed_short = setup_type_short != "NONE" and close < trigger_level_short and body_ratio >= trigger_body_min and close_pos_in_bar <= 0.45
 
-rsi_long_ok = rsi_val >= 55
-rsi_short_ok = rsi_val <= 45
 volume_trigger_ok = volume_zscore >= 1.0
 
 trigger_strength_long = f_clamp01(0.60 * f_clamp01((volume_zscore - 1.0) / 2.0) + 0.40 * f_clamp01((rsi_val - 55.0) / 15.0))
@@ -233,10 +233,13 @@ edge_cohort_short = expected_net_r_short <= 0 ? "NEGATIVE_EDGE" : edge_score_sho
 // Gate evaluation
 //────────────────────────────────────
 no_trade_pass = market_quality_score >= market_quality_min and spread_proxy_bps <= max_spread_bps and mark_index_gap_proxy_bps <= max_mark_gap_bps and manual_funding_penalty_bps <= max_funding_penalty_bps and structural_regime != "RANGE"
-htf_gate_long = htf_regime == "LONG" and trend_alignment_local >= trend_min_alignment
-htf_gate_short = htf_regime == "SHORT" and trend_alignment_local >= trend_min_alignment
+effective_htf_alignment_min = structural_regime == "TRANSITION" ? trend_min_alignment * 0.85 : trend_min_alignment
+htf_gate_long = htf_regime == "LONG" and trend_alignment_local >= effective_htf_alignment_min
+htf_gate_short = htf_regime == "SHORT" and trend_alignment_local >= effective_htf_alignment_min
 setup_gate_long = setup_type_long != "NONE" and setup_quality_long >= setup_quality_min
 setup_gate_short = setup_type_short != "NONE" and setup_quality_short >= setup_quality_min
+rsi_long_ok = rsi_val >= min_rsi_long or macd_hist > 0
+rsi_short_ok = rsi_val <= max_rsi_short or macd_hist < 0
 trigger_gate_long = trigger_confirmed_long and volume_trigger_ok and rsi_long_ok
 trigger_gate_short = trigger_confirmed_short and volume_trigger_ok and rsi_short_ok
 expected_edge_gate_long = expected_gross_r_long >= min_expected_gross_r and expected_net_r_long >= min_expected_net_r and edge_cohort_long != "NEGATIVE_EDGE"
