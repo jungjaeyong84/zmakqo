@@ -66,6 +66,56 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
   assert.ok(fs.existsSync(historyFile));
   assert.ok(fs.readFileSync(historyFile, "utf8").includes("OPENCLAW_SERVER_PRIMARY_TICK_PASS"));
 
+  const warned = await runner.main({
+    env: {
+      DONBEOLJA_OPENCLAW_SERVER_PRIMARY_TICK_FILE: path.join(tmpDir, "warned_latest.json"),
+      DONBEOLJA_OPENCLAW_SERVER_PRIMARY_TICK_HISTORY_FILE: path.join(tmpDir, "warned_history.jsonl"),
+    },
+    nowMs: Date.parse("2026-04-24T00:05:00.000Z"),
+    createRunFn: async () => ({ run_id: "RUN__SERVER_PRIMARY_TICK__WARN" }),
+    finishRunFn: async () => {},
+    getMultiExchangesSettingsFn: async () => ({
+      mode: "single",
+      exchanges: [
+        {
+          provider: "BINANCEFUT",
+          enabled: true,
+          markets: ["SOLUSDT"],
+          tf_allowlist: ["15m"],
+          exec_tf: "15m",
+        },
+      ],
+    }),
+    runOneMarketFn: async ({ exchange, market }) => ({
+      exchange,
+      market,
+      bar_close_time_utc_ms: Date.parse("2026-04-24T00:05:00.000Z"),
+      snapshot_refresh: { ok: true },
+      snapshot_refresh_signal: null,
+      signal_trace: {
+        status: "NO_SERVER_SIGNAL",
+        signals_seen: 0,
+        signals_internal: 0,
+        intents_created: 0,
+      },
+    }),
+    analyticsRunner: () => ({ ok: false, skipped: false, reason: "CACHE_REFRESH_FAILED" }),
+    reportAuthority: () => ({ ok: true }),
+    reportQuality: () => ({ ok: true }),
+    reportRuntime: async () => ({ ok: true }),
+    reportCutover: () => ({ ok: true }),
+    reportObservation: () => ({ ok: true }),
+    setProcessExitCode: false,
+  });
+
+  assert.strictEqual(warned.ok, true);
+  assert.strictEqual(warned.reason, "OPENCLAW_SERVER_PRIMARY_TICK_PASS_WITH_DERIVED_ARTIFACT_WARNINGS");
+  assert.strictEqual(warned.summary.market_error_n, 0);
+  assert.strictEqual(warned.summary.snapshot_refresh_fail_n, 0);
+  assert.strictEqual(warned.derived_artifacts.ok, false);
+  assert.strictEqual(warned.warnings.length, 1);
+  assert.strictEqual(warned.warnings[0].id, "analytics_local_cache");
+
   const failed = await runner.main({
     env: {
       DONBEOLJA_OPENCLAW_SERVER_PRIMARY_TICK_FILE: path.join(tmpDir, "failed_latest.json"),

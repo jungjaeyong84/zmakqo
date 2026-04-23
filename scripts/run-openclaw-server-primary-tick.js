@@ -269,13 +269,19 @@ async function main({
       reportCutover,
       reportObservation,
     });
-    const ok = summary.market_error_n === 0
+    const primaryOk = summary.market_error_n === 0
       && summary.snapshot_refresh_fail_n === 0
-      && summary.snapshot_refresh_signal_fail_n === 0
-      && derivedArtifacts.ok === true;
+      && summary.snapshot_refresh_signal_fail_n === 0;
+    const derivedArtifactFailN = derivedArtifacts.steps.filter((step) => step.ok !== true && step.skipped !== true).length;
+    const ok = primaryOk;
+    const reason = ok
+      ? (derivedArtifacts.ok === true
+        ? "OPENCLAW_SERVER_PRIMARY_TICK_PASS"
+        : "OPENCLAW_SERVER_PRIMARY_TICK_PASS_WITH_DERIVED_ARTIFACT_WARNINGS")
+      : "OPENCLAW_SERVER_PRIMARY_TICK_BLOCKED";
     artifact = Object.freeze({
       ok,
-      reason: ok ? "OPENCLAW_SERVER_PRIMARY_TICK_PASS" : "OPENCLAW_SERVER_PRIMARY_TICK_BLOCKED",
+      reason,
       generated_at: new Date(nowMs).toISOString(),
       run_id: runId,
       output_file: outputFile,
@@ -287,6 +293,9 @@ async function main({
       mode: tick.mode,
       summary,
       derived_artifacts: derivedArtifacts,
+      warnings: derivedArtifacts.ok === true
+        ? []
+        : derivedArtifacts.steps.filter((step) => step.ok !== true && step.skipped !== true),
     });
     writeJsonFn(outputFile, artifact);
     appendJsonlFn(historyFile, artifact);
@@ -298,6 +307,7 @@ async function main({
       server_signal_created_n: summary.server_signal_created_n,
       signals_seen_n: summary.signals_seen_n,
       intents_created_n: summary.intents_created_n,
+      derived_artifact_fail_n: derivedArtifactFailN,
     });
     console.log(JSON.stringify({
       ok: artifact.ok,
@@ -312,7 +322,7 @@ async function main({
       newest_bar_close_time_utc_ms: artifact.summary.newest_bar_close_time_utc_ms,
       market_error_n: artifact.summary.market_error_n,
       snapshot_refresh_fail_n: artifact.summary.snapshot_refresh_fail_n,
-      derived_artifact_fail_n: artifact.derived_artifacts.steps.filter((step) => step.ok !== true && step.skipped !== true).length,
+      derived_artifact_fail_n: derivedArtifactFailN,
     }));
     if (!artifact.ok && setProcessExitCode) process.exitCode = 1;
     return artifact;
