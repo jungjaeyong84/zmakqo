@@ -631,6 +631,7 @@ const markets = (tickResult && tickResult.markets) ? tickResult.markets : [];
       const result = runAnalyticsLocalCacheRefresh({
         trigger: force ? "scheduler_route_force" : "scheduler_route",
         force,
+        skipDependentReports: true,
       });
       if (!result.ok && !result.skipped) {
         return res.status(500).json({ ok: false, error: "ANALYTICS_LOCAL_CACHE_REFRESH_FAIL", result });

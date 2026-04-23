@@ -25,6 +25,31 @@ function trimOrNull(value) {
   return text || null;
 }
 
+function compactTail(values = [], maxItems = 3) {
+  return (Array.isArray(values) ? values : [])
+    .map((value) => trimOrNull(value))
+    .filter(Boolean)
+    .slice(-maxItems);
+}
+
+function summarizeAnalyticsRefreshReason(analytics = null) {
+  if (!analytics || typeof analytics !== "object") return "ANALYTICS_LOCAL_CACHE_NO_RESULT";
+  const directReason = trimOrNull(analytics.reason);
+  if (directReason) return directReason;
+  const failedReports = analytics.parsed && Array.isArray(analytics.parsed.dependent_reports)
+    ? analytics.parsed.dependent_reports.filter((row) => row && row.status === "FAIL")
+    : [];
+  if (failedReports.length > 0) {
+    const first = failedReports[0];
+    return `DEPENDENT_REPORT_FAILED:${trimOrNull(first.script) || "UNKNOWN"}`;
+  }
+  const stderrTail = compactTail(analytics.stderr_tail, 5).join(" | ");
+  if (/heap out of memory/i.test(stderrTail)) return "ANALYTICS_LOCAL_CACHE_OOM";
+  if (stderrTail) return stderrTail.slice(0, 240);
+  if (analytics.exit_code != null) return `ANALYTICS_LOCAL_CACHE_EXIT_${analytics.exit_code}`;
+  return "ANALYTICS_LOCAL_CACHE_FAILED";
+}
+
 function toBool(value, fallback = false) {
   const text = String(value == null ? "" : value).trim().toLowerCase();
   if (!text) return fallback;
@@ -131,12 +156,19 @@ async function refreshDerivedArtifacts({
   reportObservation = reportServerSignalObservation24h,
 } = {}) {
   const steps = [];
-  const analytics = analyticsRunner({ trigger: "openclaw_server_primary_tick", force: true });
+  const analytics = analyticsRunner({
+    trigger: "openclaw_server_primary_tick",
+    force: true,
+    skipDependentReports: true,
+  });
   steps.push(Object.freeze({
     id: "analytics_local_cache",
     ok: analytics && analytics.ok === true,
     skipped: analytics && analytics.skipped === true,
-    reason: trimOrNull(analytics && analytics.reason) || null,
+    reason: analytics && analytics.ok === true
+      ? (trimOrNull(analytics.reason) || null)
+      : summarizeAnalyticsRefreshReason(analytics),
+    exit_code: analytics && analytics.exit_code != null ? analytics.exit_code : null,
   }));
   if (!(analytics && analytics.ok === true)) {
     return Object.freeze({

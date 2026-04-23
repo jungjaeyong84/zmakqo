@@ -80,7 +80,14 @@ function releaseLock() {
   }
 }
 
-function runAnalyticsLocalCacheRefresh({ trigger = "manual", force = false, maxAgeMs = 15 * 60 * 1000, staleLockMs = 60 * 60 * 1000 } = {}) {
+function runAnalyticsLocalCacheRefresh({
+  trigger = "manual",
+  force = false,
+  maxAgeMs = 15 * 60 * 1000,
+  staleLockMs = 60 * 60 * 1000,
+  skipDependentReports = false,
+  envOverrides = {},
+} = {}) {
   const nowMs = Date.now();
   const latest = readLatestAnalyticsLocalCache();
   if (!force && isFreshAnalyticsLocalCache(latest, nowMs, maxAgeMs)) {
@@ -92,7 +99,12 @@ function runAnalyticsLocalCacheRefresh({ trigger = "manual", force = false, maxA
     const child = spawnSync(process.execPath, [SCRIPT_PATH], {
       cwd: REPO_ROOT,
       encoding: "utf8",
-      env: { ...process.env, ANALYTICS_CACHE_TRIGGER: trigger },
+      env: {
+        ...process.env,
+        ...envOverrides,
+        ANALYTICS_CACHE_TRIGGER: trigger,
+        ...(skipDependentReports ? { ANALYTICS_CACHE_SKIP_DEPENDENT_REPORTS: "1" } : {}),
+      },
       maxBuffer: 1024 * 1024 * 16,
     });
     return {
