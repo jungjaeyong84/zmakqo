@@ -9,6 +9,12 @@ const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
 const SCRIPT_PATH = path.join(REPO_ROOT, "scripts", "refresh-analytics-local-cache.js");
 const LATEST_PATH = path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json");
 const LOCK_PATH = path.join(OPS_DAILY_DIR, ".analytics_local_cache_refresh.lock.json");
+const BOUNDED_REFRESH_ENV = Object.freeze({
+  ANALYTICS_CACHE_DEFAULT_LIMIT: "3000",
+  ANALYTICS_CACHE_FILLS_LIMIT: "6000",
+  ANALYTICS_CACHE_PAGE_SIZE: "500",
+  ANALYTICS_CACHE_SKIP_DEPENDENT_REPORTS: "1",
+});
 
 function readJsonSafe(filePath) {
   try {
@@ -101,6 +107,7 @@ function runAnalyticsLocalCacheRefresh({
       encoding: "utf8",
       env: {
         ...process.env,
+        ...(skipDependentReports ? BOUNDED_REFRESH_ENV : {}),
         ...envOverrides,
         ANALYTICS_CACHE_TRIGGER: trigger,
         ...(skipDependentReports ? { ANALYTICS_CACHE_SKIP_DEPENDENT_REPORTS: "1" } : {}),
@@ -126,6 +133,7 @@ module.exports = {
   readLatestAnalyticsLocalCache,
   isFreshAnalyticsLocalCache,
   __test: {
+    BOUNDED_REFRESH_ENV,
     latestGeneratedAtMs,
     parseLastJsonLine,
     isFreshAnalyticsLocalCache,
