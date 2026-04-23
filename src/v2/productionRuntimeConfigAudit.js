@@ -5,6 +5,7 @@ const path = require("path");
 
 const REQUIRED_CUTOVER_SUBSTITUTIONS = Object.freeze([
   "_ML_LIVE_SERVING_ARMED",
+  "_COMMIT_SHA",
   "_DONBEOLJA_V2_ENABLED",
   "_DONBEOLJA_V2_DRY_RUN",
   "_DONBEOLJA_V2_CANARY_ONLY",
@@ -53,6 +54,11 @@ const REQUIRED_CUTOVER_ENV = Object.freeze({
   SCHEDULER_AUTOSTART: "0",
 });
 
+const REQUIRED_DEPLOY_LABELS = Object.freeze({
+  "commit-sha": "$_COMMIT_SHA",
+  "image-tag": "$_TAG",
+});
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -97,6 +103,18 @@ function parseEnvArg(envArg = "") {
   return Object.freeze(rows);
 }
 
+function parseLabelsArg(labelsArg = "") {
+  const rows = {};
+  String(labelsArg || "").split(",").forEach((entry) => {
+    const idx = entry.indexOf("=");
+    if (idx <= 0) return;
+    const key = entry.slice(0, idx).trim();
+    const value = entry.slice(idx + 1).trim();
+    if (key) rows[key] = value;
+  });
+  return Object.freeze(rows);
+}
+
 function extractDeploySetEnvVars(cloudbuildSource = "", serviceToken = "$_SERVICE") {
   const source = String(cloudbuildSource || "");
   const marker = `"run", "deploy", "${serviceToken}"`;
@@ -107,6 +125,18 @@ function extractDeploySetEnvVars(cloudbuildSource = "", serviceToken = "$_SERVIC
   if (!line) return null;
   const match = line.match(/"--set-env-vars",\s*"([^"]*)"/);
   return match ? parseEnvArg(match[1]) : null;
+}
+
+function extractDeployUpdateLabels(cloudbuildSource = "", serviceToken = "$_SERVICE") {
+  const source = String(cloudbuildSource || "");
+  const marker = `"run", "deploy", "${serviceToken}"`;
+  const start = source.indexOf(marker);
+  if (start < 0) return null;
+  const rest = source.slice(start);
+  const line = rest.split(/\r?\n/).find((row) => row.includes('"--update-labels"'));
+  if (!line) return null;
+  const match = line.match(/"--update-labels",\s*"([^"]*)"/);
+  return match ? parseLabelsArg(match[1]) : null;
 }
 
 function hasSelfCheckInCloudBuildValidation(cloudbuildSource = "") {
@@ -165,10 +195,28 @@ function buildRequiredEnvMappingChecks(serviceLabel, envVars) {
   return rows;
 }
 
+function buildRequiredLabelMappingChecks(serviceLabel, labels) {
+  const rows = [];
+  const current = labels || {};
+  Object.entries(REQUIRED_DEPLOY_LABELS).forEach(([name, expected]) => {
+    rows.push(buildCheck(
+      `${serviceLabel}_LABEL_${name.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_MAPPED`,
+      current[name] === expected,
+      `${serviceLabel} must map deploy label ${name} to ${expected}`,
+      { actual: current[name] || null, expected }
+    ));
+  });
+  return rows;
+}
+
 function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) {
   const substitutions = parseSubstitutionDefaults(cloudbuildSource);
   const mainEnv = extractDeploySetEnvVars(cloudbuildSource, "$_SERVICE");
+  const mainLabels = extractDeployUpdateLabels(cloudbuildSource, "$_SERVICE");
+  const egressLabels = extractDeployUpdateLabels(cloudbuildSource, "$_EGRESS_SERVICE");
+  const egressPrivateLabels = extractDeployUpdateLabels(cloudbuildSource, "$_EGRESS_PRIVATE_SERVICE");
   const exitEnv = extractDeploySetEnvVars(cloudbuildSource, "$_EXIT_SERVICE");
+  const exitLabels = extractDeployUpdateLabels(cloudbuildSource, "$_EXIT_SERVICE");
   const checks = [
     ...REQUIRED_CUTOVER_SUBSTITUTIONS.map((name) => buildCheck(
       `CLOUDBUILD_SUBSTITUTION_${name}`,
@@ -231,8 +279,32 @@ function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) 
       !!exitEnv,
       "exit-worker Cloud Run deploy step must expose --set-env-vars"
     ),
+    buildCheck(
+      "CLOUDBUILD_MAIN_SERVICE_LABELS_FOUND",
+      !!mainLabels,
+      "main Cloud Run deploy step must expose --update-labels"
+    ),
+    buildCheck(
+      "CLOUDBUILD_EGRESS_SERVICE_LABELS_FOUND",
+      !!egressLabels,
+      "egress Cloud Run deploy step must expose --update-labels"
+    ),
+    buildCheck(
+      "CLOUDBUILD_EGRESS_PRIVATE_SERVICE_LABELS_FOUND",
+      !!egressPrivateLabels,
+      "egress-private Cloud Run deploy step must expose --update-labels"
+    ),
+    buildCheck(
+      "CLOUDBUILD_EXIT_SERVICE_LABELS_FOUND",
+      !!exitLabels,
+      "exit-worker Cloud Run deploy step must expose --update-labels"
+    ),
     ...buildRequiredEnvMappingChecks("MAIN_SERVICE", mainEnv),
     ...buildRequiredEnvMappingChecks("EXIT_SERVICE", exitEnv),
+    ...buildRequiredLabelMappingChecks("MAIN_SERVICE", mainLabels),
+    ...buildRequiredLabelMappingChecks("EGRESS_SERVICE", egressLabels),
+    ...buildRequiredLabelMappingChecks("EGRESS_PRIVATE_SERVICE", egressPrivateLabels),
+    ...buildRequiredLabelMappingChecks("EXIT_SERVICE", exitLabels),
     buildCheck(
       "CLOUDBUILD_VALIDATION_RUNS_RUNTIME_CONFIG_AUDIT",
       hasSelfCheckInCloudBuildValidation(cloudbuildSource),
@@ -250,7 +322,11 @@ function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) 
     failed_check_ids: Object.freeze(failed.map((row) => row.id)),
     substitutions: Object.freeze({ ...substitutions }),
     main_service_env: mainEnv ? Object.freeze({ ...mainEnv }) : null,
+    main_service_labels: mainLabels ? Object.freeze({ ...mainLabels }) : null,
+    egress_service_labels: egressLabels ? Object.freeze({ ...egressLabels }) : null,
+    egress_private_service_labels: egressPrivateLabels ? Object.freeze({ ...egressPrivateLabels }) : null,
     exit_service_env: exitEnv ? Object.freeze({ ...exitEnv }) : null,
+    exit_service_labels: exitLabels ? Object.freeze({ ...exitLabels }) : null,
     checks: Object.freeze(checks),
   });
 }
@@ -272,7 +348,9 @@ module.exports = {
     buildCheck,
     parseSubstitutionDefaults,
     parseEnvArg,
+    parseLabelsArg,
     extractDeploySetEnvVars,
+    extractDeployUpdateLabels,
     hasSelfCheckInCloudBuildValidation,
     hasSchedulerTrafficStateForwardedToPromotionRuntime,
     hasV2CutoverEnvForwardedToPromotionRuntime,

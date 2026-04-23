@@ -29,6 +29,12 @@ function resolveTag(env = process.env) {
     || `v2-${execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: process.cwd(), encoding: "utf8" }).trim()}`;
 }
 
+function resolveCommitSha(env = process.env) {
+  return trimOrNull(env.COMMIT_SHA)
+    || trimOrNull(env._COMMIT_SHA)
+    || execFileSync("git", ["rev-parse", "HEAD"], { cwd: process.cwd(), encoding: "utf8" }).trim();
+}
+
 function resolveStateFile(env = process.env) {
   return trimOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_AUTODEPLOY_STATE_FILE)
     || path.resolve(process.cwd(), "ops", "daily", "v2_discovery_canary_autodeploy_latest.json");
@@ -55,6 +61,7 @@ function readJsonIfExists(filePath) {
 function buildDiscoverySubstitutions(env = process.env) {
   return Object.freeze({
     _TAG: resolveTag(env),
+    _COMMIT_SHA: resolveCommitSha(env),
     _DONBEOLJA_V2_ENABLED: "1",
     _DONBEOLJA_V2_DRY_RUN: "0",
     _DONBEOLJA_V2_CANARY_ONLY: "1",
@@ -237,6 +244,7 @@ if (require.main === module) {
       parseBool,
       resolveSymbol,
       resolveTag,
+      resolveCommitSha,
       resolveStateFile,
       readJsonIfExists,
       samePlainObject,

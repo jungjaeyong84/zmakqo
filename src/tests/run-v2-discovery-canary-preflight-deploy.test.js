@@ -47,11 +47,13 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
   }, async () => {
     const result = await runner.main({
       TAG: "v2-fixture",
+      COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL: "ETHUSDT",
     }, { skipDeploy: true, softFail: true });
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_PREFLIGHT_PASS_DEPLOY_SKIPPED");
     assert.strictEqual(result.substitutions._TAG, "v2-fixture");
+    assert.strictEqual(result.substitutions._COMMIT_SHA, "0123456789abcdef0123456789abcdef01234567");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS, "ETHUSDT");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "1");

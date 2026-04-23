@@ -262,6 +262,7 @@ function buildBoundedRuntimeSummaryFixture() {
       latest_age_minutes: 15,
       coverage_minutes: 1440,
       max_observed_gap_minutes: 120,
+      active_position_n: 5,
       tp1_missing_n: 0,
       native_refresh_unhealthy_n: 0,
       unprotected_window_violation_n: 0,
@@ -284,16 +285,20 @@ function buildBoundedRuntimeSummaryFixture() {
         latest_age_minutes: 15,
         coverage_minutes: 1440,
         max_observed_gap_minutes: 120,
+        active_position_evidence_required: true,
+        active_position_n: 5,
         blockers: [],
       },
       long_run_quality_summary: {
         status: "PASS",
         history_source: "FIRESTORE",
         firestore_source_required: true,
+        active_position_evidence_required: true,
         coverage_minutes: 1440,
         latest_age_minutes: 15,
         max_observed_gap_minutes: 120,
         defect_counts: {
+          active_position_n: 5,
           tp1_missing_n: 0,
           native_refresh_unhealthy_n: 0,
           unprotected_window_violation_n: 0,
@@ -1429,6 +1434,38 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
       selected_preflight: {
         ok: true,
         position_cycle_id: "PCY__LIVE__JSONL_EXIT_STREAK",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:EXIT_RUNTIME_CANARY_STREAK_REQUIRED"));
+})();
+
+(function liveWithExitRuntimeWithoutActivePositionEvidenceFailsClosed() {
+  const bounded = buildBoundedRuntimeSummaryFixture();
+  bounded.exit_runtime_canary_streak.active_position_n = 0;
+  bounded.exit_runtime_canary_streak.collector_execution_summary.active_position_n = 0;
+  bounded.exit_runtime_canary_streak.long_run_quality_summary.defect_counts.active_position_n = 0;
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeLongRunQualitySummary(bounded.exit_runtime_canary_streak), false);
+  assert.strictEqual(deployDecision.__test.hasExitRuntimeCanaryStreak(bounded), false);
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__EXIT_NO_ACTIVE_POSITION",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__EXIT_NO_ACTIVE_POSITION",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__EXIT_NO_ACTIVE_POSITION",
         snapshot_counts: {
           episode_n: 1,
           shadow_live_pair_n: 1,
@@ -2584,6 +2621,25 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED"));
+})();
+
+(function missingUnifiedReportWritesStructuredFailClosedArtifact() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-missing-unified-report-"));
+  try {
+    const result = deployDecision.writeDeployDecisionArtifact({
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_PROMOTION_MODE: "LIVE",
+    });
+    const written = JSON.parse(fs.readFileSync(path.join(dir, "promotion-deploy-decision.json"), "utf8"));
+    assert.strictEqual(result.decision.approved, false);
+    assert.strictEqual(result.decision.reason, "V2_PROMOTION_UNIFIED_REPORT_REQUIRED");
+    assert.deepStrictEqual(result.decision.blockers, ["DEPLOY_DECISION:UNIFIED_REPORT_ARTIFACT_MISSING"]);
+    assert.strictEqual(result.decision.unified_report_summary.error_code, "ENOENT");
+    assert.strictEqual(written.reason, "V2_PROMOTION_UNIFIED_REPORT_REQUIRED");
+    assert.deepStrictEqual(written.blockers, ["DEPLOY_DECISION:UNIFIED_REPORT_ARTIFACT_MISSING"]);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
 })();
 
 console.log("CHECK_V2_PROMOTION_DEPLOY_DECISION_TEST_OK");

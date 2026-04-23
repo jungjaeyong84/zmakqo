@@ -361,6 +361,7 @@ function seedBoundedSubmitArtifacts(
         latest_age_minutes: 15,
         coverage_minutes: 1440,
         max_observed_gap_minutes: 120,
+        active_position_n: 5,
         tp1_missing_n: 0,
         native_refresh_unhealthy_n: 0,
         unprotected_window_violation_n: 0,
@@ -383,16 +384,20 @@ function seedBoundedSubmitArtifacts(
           latest_age_minutes: 15,
           coverage_minutes: 1440,
           max_observed_gap_minutes: 120,
+          active_position_evidence_required: true,
+          active_position_n: 5,
           blockers: [],
         },
         long_run_quality_summary: {
           status: "PASS",
           history_source: "FIRESTORE",
           firestore_source_required: true,
+          active_position_evidence_required: true,
           coverage_minutes: 1440,
           latest_age_minutes: 15,
           max_observed_gap_minutes: 120,
           defect_counts: {
+            active_position_n: 5,
             tp1_missing_n: 0,
             native_refresh_unhealthy_n: 0,
             unprotected_window_violation_n: 0,
@@ -844,6 +849,8 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.candidate_selection.file, "promotion-deploy-decision.json");
   assert.strictEqual(request.approval_evidence_sources.candidate_selection.field, "candidate_selection_summary.selection_contract");
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED, "1");
+  assert.ok(typeof request.substitutions._COMMIT_SHA === "string");
+  assert.ok(request.substitutions._COMMIT_SHA.length >= 7);
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "1");
@@ -1053,6 +1060,8 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.live_evidence_readiness_summary_required, true);
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "1");
+  assert.ok(typeof request.substitutions._COMMIT_SHA === "string");
+  assert.ok(request.substitutions._COMMIT_SHA.length >= 7);
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_CANARY_ONLY, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "1");

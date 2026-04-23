@@ -55,6 +55,7 @@ function resolveStreakConfig(env = process.env) {
     maxGapMinutes: parsePositiveNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_MAX_GAP_MINUTES, 180),
     firestoreReadLimit: Math.floor(parsePositiveNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_READ_LIMIT, 200)),
     requireFirestoreSource: String(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE || "").trim() === "1",
+    requireActivePositionEvidence: String(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_ACTIVE_POSITION_EVIDENCE || "1").trim() !== "0",
   });
 }
 
@@ -161,6 +162,7 @@ function buildLongRunQualitySummary({
   latestAgeMinutes,
   coverageMinutes,
   maxObservedGapMinutes,
+  activePositionN,
   tp1MissingN,
   nativeRefreshUnhealthyN,
   unprotectedWindowViolationN,
@@ -182,7 +184,9 @@ function buildLongRunQualitySummary({
     latest_age_minutes: Number.isFinite(Number(latestAgeMinutes)) ? Number(latestAgeMinutes) : null,
     coverage_minutes: Number.isFinite(Number(coverageMinutes)) ? Number(coverageMinutes) : 0,
     max_observed_gap_minutes: Number.isFinite(Number(maxObservedGapMinutes)) ? Number(maxObservedGapMinutes) : null,
+    active_position_evidence_required: config && config.requireActivePositionEvidence === true,
     defect_counts: Object.freeze({
+      active_position_n: Number(activePositionN) || 0,
       tp1_missing_n: Number(tp1MissingN) || 0,
       native_refresh_unhealthy_n: Number(nativeRefreshUnhealthyN) || 0,
       unprotected_window_violation_n: Number(unprotectedWindowViolationN) || 0,
@@ -204,6 +208,7 @@ function buildCollectorExecutionSummary({
   latestAgeMinutes,
   coverageMinutes,
   maxObservedGapMinutes,
+  activePositionN,
   blockers,
 } = {}) {
   return Object.freeze({
@@ -224,6 +229,8 @@ function buildCollectorExecutionSummary({
     latest_age_minutes: Number.isFinite(Number(latestAgeMinutes)) ? Number(latestAgeMinutes) : null,
     coverage_minutes: Number.isFinite(Number(coverageMinutes)) ? Number(coverageMinutes) : 0,
     max_observed_gap_minutes: Number.isFinite(Number(maxObservedGapMinutes)) ? Number(maxObservedGapMinutes) : null,
+    active_position_evidence_required: config && config.requireActivePositionEvidence === true,
+    active_position_n: Number(activePositionN) || 0,
     blockers: Object.freeze(Array.isArray(blockers) ? blockers.slice() : []),
   });
 }
@@ -265,6 +272,7 @@ function evaluateExitRuntimeCanaryStreak({
   const alertRetryUnresolvedN = sumCounter(rowsInWindow, "alert_retry_unresolved_n");
   const alertOutboxIntegrityGapN = sumCounter(rowsInWindow, "alert_outbox_integrity_gap_n");
   const trailActivationEvidenceGapN = sumCounter(rowsInWindow, "trail_activation_evidence_gap_n");
+  const activePositionN = sumCounter(rowsInWindow, "active_position_n");
   const positionCycleIds = extractHealthyPositionCycleIds(healthyRows);
   const blockers = [];
   if (config.requireFirestoreSource === true && normalizedHistorySource !== "FIRESTORE") {
@@ -277,6 +285,9 @@ function evaluateExitRuntimeCanaryStreak({
   if (gaps.some((gap) => gap > Number(config.maxGapMinutes))) blockers.push("EXIT_RUNTIME_CANARY_STREAK:GAP_EXCEEDED");
   if (coverageMinutes < Math.max(0, Number(config.lookbackHours) * 60 - Number(config.maxGapMinutes))) {
     blockers.push("EXIT_RUNTIME_CANARY_STREAK:COVERAGE_INSUFFICIENT");
+  }
+  if (config.requireActivePositionEvidence === true && activePositionN <= 0) {
+    blockers.push("EXIT_RUNTIME_CANARY_STREAK:ACTIVE_POSITION_EVIDENCE_REQUIRED");
   }
   if (tp1MissingN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:TP1_MISSING");
   if (nativeRefreshUnhealthyN > 0) blockers.push("EXIT_RUNTIME_CANARY_STREAK:NATIVE_REFRESH_UNHEALTHY");
@@ -295,6 +306,7 @@ function evaluateExitRuntimeCanaryStreak({
     latestAgeMinutes,
     coverageMinutes,
     maxObservedGapMinutes: gaps.length ? Math.max(...gaps) : null,
+    activePositionN,
     tp1MissingN,
     nativeRefreshUnhealthyN,
     unprotectedWindowViolationN,
@@ -313,6 +325,7 @@ function evaluateExitRuntimeCanaryStreak({
     latestAgeMinutes,
     coverageMinutes,
     maxObservedGapMinutes: gaps.length ? Math.max(...gaps) : null,
+    activePositionN,
     blockers,
   });
   return Object.freeze({
@@ -337,7 +350,7 @@ function evaluateExitRuntimeCanaryStreak({
     latest_age_minutes: latestAgeMinutes,
     coverage_minutes: coverageMinutes,
     max_observed_gap_minutes: gaps.length ? Math.max(...gaps) : null,
-    active_position_n: sumCounter(rowsInWindow, "active_position_n"),
+    active_position_n: activePositionN,
     tp1_missing_n: tp1MissingN,
     native_refresh_unhealthy_n: nativeRefreshUnhealthyN,
     unprotected_window_violation_n: unprotectedWindowViolationN,

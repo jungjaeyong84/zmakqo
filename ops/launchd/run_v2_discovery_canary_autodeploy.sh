@@ -16,4 +16,4 @@ export DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE="${DONBEOLJA_V2_DISCO
 export DONBEOLJA_V2_DISCOVERY_CANARY_AUTODEPLOY_STATE_FILE="${DONBEOLJA_V2_DISCOVERY_CANARY_AUTODEPLOY_STATE_FILE:-/Users/jeongjaeyong/Projects/donbeolja/ops/daily/v2_discovery_canary_autodeploy_latest.json}"
 
 cd /Users/jeongjaeyong/Projects/donbeolja
-node scripts/run-v2-discovery-canary-preflight-deploy.js || true
+node scripts/run-v2-discovery-canary-preflight-deploy.js

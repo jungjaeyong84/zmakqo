@@ -93,6 +93,48 @@ function resolveUnifiedPromotionReport(env = process.env) {
   throw new Error("V2_PROMOTION_UNIFIED_REPORT_REQUIRED");
 }
 
+function isMissingUnifiedPromotionReportError(error) {
+  const message = trimOrNull(error && error.message);
+  return message === "V2_PROMOTION_UNIFIED_REPORT_REQUIRED"
+    || (error && error.code === "ENOENT");
+}
+
+function buildMissingUnifiedPromotionReportDecision({ env = process.env, error = null } = {}) {
+  const artifactDir = resolveArtifactDir(env);
+  const outputFile = path.join(artifactDir, OUTPUT_FILENAME);
+  const artifactFile = trimOrNull(env.V2_PROMOTION_UNIFIED_REPORT_FILE)
+    || path.join(artifactDir, UNIFIED_REPORT_FILENAME);
+  const mode = upper(env.V2_PROMOTION_MODE) || "CANARY";
+  const blocker = "DEPLOY_DECISION:UNIFIED_REPORT_ARTIFACT_MISSING";
+  const errorCode = trimOrNull(error && error.code) || "ENOENT";
+  return Object.freeze({
+    artifactDir,
+    outputFile,
+    unifiedReport: null,
+    decision: Object.freeze({
+      approved: false,
+      decision: "HOLD",
+      fail_closed: true,
+      reason: "V2_PROMOTION_UNIFIED_REPORT_REQUIRED",
+      mode,
+      position_cycle_id: null,
+      blocker_n: 1,
+      warning_n: 0,
+      blockers: Object.freeze([blocker]),
+      warnings: Object.freeze([]),
+      unified_report_summary: Object.freeze({
+        ok: false,
+        reason: "V2_PROMOTION_UNIFIED_REPORT_REQUIRED",
+        artifact_file: artifactFile,
+        artifact_dir: path.dirname(artifactFile),
+        artifact_filename: path.basename(artifactFile),
+        error_code: errorCode,
+        error_message: trimOrNull(error && error.message) || "V2_PROMOTION_UNIFIED_REPORT_REQUIRED",
+      }),
+    }),
+  });
+}
+
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -649,6 +691,7 @@ function hasExitRuntimeCanaryStreak(summary) {
     Number(streak.healthy_run_n) >= Number(streak.min_run_count) &&
     Number(streak.unhealthy_run_n) === 0 &&
     Number(streak.invalid_line_n) === 0 &&
+    Number(streak.active_position_n || 0) > 0 &&
     Number(streak.tp1_missing_n || 0) === 0 &&
     Number(streak.native_refresh_unhealthy_n || 0) === 0 &&
     Number(streak.unprotected_window_violation_n || 0) === 0 &&
@@ -684,6 +727,7 @@ function hasExitRuntimeLongRunQualitySummary(streak) {
     trimOrNull(quality.status) === "PASS" &&
     trimOrNull(quality.history_source) === "FIRESTORE" &&
     quality.firestore_source_required === true &&
+    quality.active_position_evidence_required === true &&
     Number(quality.coverage_minutes) >= MIN_LIVE_STREAK_COVERAGE_MINUTES &&
     numericFieldsMatch(quality, row, [
       "coverage_minutes",
@@ -691,6 +735,7 @@ function hasExitRuntimeLongRunQualitySummary(streak) {
       "max_observed_gap_minutes",
     ]) &&
     numericFieldsMatch(defectCounts, row, [
+      "active_position_n",
       "tp1_missing_n",
       "native_refresh_unhealthy_n",
       "unprotected_window_violation_n",
@@ -705,6 +750,7 @@ function hasExitRuntimeLongRunQualitySummary(streak) {
     latestAgeMinutes <= maxGapMinutes &&
     Number.isFinite(maxObservedGapMinutes) &&
     maxObservedGapMinutes <= maxGapMinutes &&
+    Number(defectCounts.active_position_n || 0) > 0 &&
     Number(defectCounts.tp1_missing_n || 0) === 0 &&
     Number(defectCounts.native_refresh_unhealthy_n || 0) === 0 &&
     Number(defectCounts.unprotected_window_violation_n || 0) === 0 &&
@@ -1372,7 +1418,16 @@ function applyPreflightLineageChecks(decision, { preflightReport = null } = {}) 
 
 function writeDeployDecisionArtifact(env = process.env) {
   const artifactDir = resolveArtifactDir(env);
-  const unifiedReport = resolveUnifiedPromotionReport(env);
+  let unifiedReport;
+  try {
+    unifiedReport = resolveUnifiedPromotionReport(env);
+  } catch (error) {
+    if (!isMissingUnifiedPromotionReportError(error)) throw error;
+    const missing = buildMissingUnifiedPromotionReportDecision({ env, error });
+    ensureDir(artifactDir);
+    writeJson(missing.outputFile, missing.decision);
+    return missing;
+  }
   const preflightReport = readOptionalArtifact(artifactDir, "promotion-preflight.json");
   const decision = applyPreflightLineageChecks(
     buildDeployDecision(unifiedReport, { artifactDir }),
@@ -1477,6 +1532,8 @@ if (require.main === module) {
       applyPreflightLineageChecks,
       resolveArtifactDir,
       resolveUnifiedPromotionReport,
+      isMissingUnifiedPromotionReportError,
+      buildMissingUnifiedPromotionReportDecision,
       buildDeployDecision,
     },
   };

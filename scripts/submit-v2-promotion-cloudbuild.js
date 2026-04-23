@@ -365,6 +365,16 @@ function resolveCloudBuildSourceDir(env = process.env) {
   return trimOrNull(env.V2_PROMOTION_CLOUDBUILD_SOURCE_DIR) || ".";
 }
 
+function resolveCommitSha(env = process.env) {
+  return trimOrNull(env.COMMIT_SHA)
+    || trimOrNull(env._COMMIT_SHA)
+    || trimOrNull(execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+    }));
+}
+
 function buildEvidenceRef({ file, field, expectedValue = null, note = null }) {
   return Object.freeze({
     file: trimOrNull(file),
@@ -401,6 +411,7 @@ function buildSubstitutions(plan) {
   const enablesProductionEntryRouteCanaryFirestore = ["CANARY", "LIVE"].includes(row.promotionMode);
   const requiresCanaryStreakFirestore = enablesProductionEntryRouteCanaryFirestore;
   return Object.freeze({
+    _COMMIT_SHA: resolveCommitSha(row.effectiveEnv || process.env) || "unknown",
     _V2_PROMOTION_CANARY_FLOW_ENABLED: row.mode === "CANARY_FLOW" ? "1" : "0",
     _V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED: row.canaryAutoSelectEnabled ? "1" : "0",
     _V2_PROMOTION_PIPELINE_ENABLED: row.mode === "PIPELINE" ? "1" : "0",

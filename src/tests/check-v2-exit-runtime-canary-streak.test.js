@@ -108,11 +108,40 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.collector_execution_summary.exchange_write_performed, false);
   assert.strictEqual(report.long_run_quality_summary.status, "PASS");
   assert.strictEqual(report.long_run_quality_summary.defect_counts.tp1_missing_n, 0);
+  assert.strictEqual(report.long_run_quality_summary.defect_counts.active_position_n, 26);
   assert.strictEqual(report.long_run_quality_summary.defect_counts.alert_retry_unresolved_n, 0);
   assert.strictEqual(report.long_run_quality_summary.defect_counts.alert_outbox_integrity_gap_n, 0);
   assert.strictEqual(report.long_run_quality_summary.defect_counts.trail_activation_evidence_gap_n, 0);
   assert.strictEqual(report.long_run_quality_summary.coverage_minutes, 1440);
+  assert.strictEqual(report.collector_execution_summary.active_position_n, 26);
   assert.deepStrictEqual(report.blockers, []);
+})();
+
+(function streakFailsWithoutActivePositionEvidence() {
+  const nowMs = Date.parse("2026-04-22T12:00:00.000Z");
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push({
+      ...buildHealthyPayload(new Date(nowMs - hour * 60 * 60000).toISOString()),
+      active_position_n: 0,
+    });
+  }
+  const report = checker.evaluateExitRuntimeCanaryStreak({
+    history: buildHistory(rows),
+    config: {
+      lookbackHours: 24,
+      minRunCount: 12,
+      maxGapMinutes: 180,
+      requireActivePositionEvidence: true,
+    },
+    nowMs,
+    historySource: "FIRESTORE",
+  });
+  assert.strictEqual(report.ok, false);
+  assert.strictEqual(report.active_position_n, 0);
+  assert.ok(report.blockers.includes("EXIT_RUNTIME_CANARY_STREAK:ACTIVE_POSITION_EVIDENCE_REQUIRED"));
+  assert.strictEqual(report.long_run_quality_summary.active_position_evidence_required, true);
+  assert.strictEqual(report.collector_execution_summary.active_position_evidence_required, true);
 })();
 
 (function streakFailsOnAlertOutboxIntegrityGap() {
