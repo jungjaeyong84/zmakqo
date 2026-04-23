@@ -2881,3 +2881,39 @@ V1 약점 재발 방지:
 1. V1식 rule-only 승인 착시는 줄었다. V2에서는 ML 제안이 bundle에 보이는 것만으로 충분하지 않고, proposal verdict가 실제 entry intent gate에 연결된다
 2. ML sizing이 문서/permit 장식 필드로 남는 공백도 닫았다. 이제 size ratio는 실제 주문 수량 산정 전 notional cap으로 작동한다
 3. OpenClaw 폐루프는 decision bundle hash까지 보존하므로, 사후 감사에서 어떤 ML evidence/proposal/filter 조합이 entry decision으로 이어졌는지 더 명확하게 추적할 수 있다
+
+## 2026-04-23 Decision Bundle Ledger / Cloud Run Env Gate Hardening
+
+추가 증거:
+
+1. `src/v2/constants.js`
+2. `src/v2/storage.js`
+3. `src/v2/openclawControlPlane.js`
+4. `src/v2/openclawShadowWriter.js`
+5. `scripts/collect-v2-promotion-runtime-snapshot.js`
+6. `src/v2/schedulerTrafficCollectorPreflight.js`
+7. `src/v2/productionRuntimeConfigAudit.js`
+8. `cloudbuild.yaml`
+9. `src/tests/v2-openclaw-supreme-control-plane.test.js`
+10. `src/tests/v2-scheduler-traffic-collector-preflight.test.js`
+11. `src/tests/v2-production-runtime-config-audit.test.js`
+12. `scripts/check-v2-promotion-submit-contract.js`
+13. `docs/DONBEOLJA_V2_PROMOTION_ARTIFACT_CONTRACT_2026-04-20.md`
+14. `docs/DONBEOLJA_V2_CANARY_RUNBOOK_2026-04-20.md`
+
+판정:
+
+1. OpenClaw decision bundle ledger is reconstructable. `OPENCLAW_DECISION_BUNDLES` collection을 추가하고, `openclaw_decision_bundle_id` 를 storage doc id field로 등록했다
+2. `buildOpenClawDecisionBundleLedgerDoc` 는 `openclaw_decision_bundle_hash`, `openclaw_decision_id`, `signal_intent_id`, `bundle_payload`, `canonical_json_sha256` 를 함께 저장하므로, decision doc만으로 부족했던 사후 재구성 공백을 닫는다
+3. `openclawShadowWriter` 는 signal intent, feature snapshot, ML proposal, ML evidence, OpenClaw decision과 함께 decision bundle ledger를 저장한다
+4. promotion collector는 `OPENCLAW_DECISION_BUNDLES` 를 조회하고, OpenClaw supreme summary에서 bundle ledger 누락을 `OPENCLAW_DECISION_BUNDLE_LEDGER_REQUIRED` 로 fail-closed 한다
+5. Cloud Run live env exact values are enforced. scheduler traffic collector preflight는 이제 `DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=1` 과 `DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL=0` 을 실제 Cloud Run 서비스 env에서 exact-match로 확인한다
+6. `productionRuntimeConfigAudit` 와 `cloudbuild.yaml` 은 `DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED` 를 main/exit-worker Cloud Run deploy env로 전달하는지 검사한다
+7. submit contract는 `SUBMIT_CONTRACT_CHK_84` 와 `SUBMIT_CONTRACT_CHK_85` 로 ledger reconstructability와 live env exact-match 계약을 문서/runbook/code/test에 고정한다
+
+V1 약점 재발 방지:
+
+1. V1에서는 "결정이 있었다"는 결과 doc은 있어도, 그 결정이 어떤 bundle 입력 조합에서 나왔는지 사후 재구성이 약했다
+2. 이번 단계부터는 decision bundle 자체가 hash-addressed ledger로 남으므로, 감사자가 signal intent / feature / ML proposal / strategy filter / decision을 같은 payload로 다시 검증할 수 있다
+3. V1에서는 CloudBuild substitution은 안전해도 실제 Cloud Run service env가 다른 값이면 운영에서 legacy webhook이나 audit 누락이 재발할 수 있었다
+4. 이번 단계는 실제 Cloud Run describe 결과에서 audit ledger write on / legacy webhook allow off를 확인하지 못하면 LIVE evidence를 통과시키지 않는다

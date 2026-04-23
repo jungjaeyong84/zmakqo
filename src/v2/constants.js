@@ -17,6 +17,7 @@ const V2_COLLECTIONS = Object.freeze({
   FEATURE_SNAPSHOTS: "feature_snapshots_v2",
   ML_AI_EVIDENCE_LEDGER: "ml_ai_evidence_ledger_v2",
   OPENCLAW_DECISIONS: "openclaw_decisions_v2",
+  OPENCLAW_DECISION_BUNDLES: "openclaw_decision_bundles_v2",
   OPENCLAW_EXECUTION_AUDITS: "openclaw_execution_audits_v2",
   OPENCLAW_WORLD_STATES: "openclaw_world_states_v2",
   OPENCLAW_EXECUTION_PERMITS: "openclaw_execution_permits_v2",

@@ -16,6 +16,7 @@ const DOC_ID_FIELDS = Object.freeze({
   FEATURE_SNAPSHOTS: "feature_snapshot_id",
   ML_AI_EVIDENCE_LEDGER: "decision_id",
   OPENCLAW_DECISIONS: "openclaw_decision_id",
+  OPENCLAW_DECISION_BUNDLES: "openclaw_decision_bundle_id",
   OPENCLAW_EXECUTION_AUDITS: "openclaw_execution_audit_id",
   OPENCLAW_WORLD_STATES: "openclaw_world_state_id",
   OPENCLAW_EXECUTION_PERMITS: "openclaw_execution_permit_id",

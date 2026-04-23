@@ -1,7 +1,11 @@
 "use strict";
 
 const assert = require("assert");
-const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
+const {
+  buildOpenClawDecisionBundle,
+  buildOpenClawDecisionBundleLedgerDoc,
+  persistOpenClawDecisionBundleLedger,
+} = require("../v2/openclawControlPlane");
 const { buildOpenClawWorldState } = require("../v2/openclawWorldState");
 const {
   issueOpenClawExecutionPermit,
@@ -53,6 +57,7 @@ function buildBundle(overrides = {}) {
 }
 
 function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
+  const bundleDoc = buildOpenClawDecisionBundleLedgerDoc({ bundle });
   return {
     status: "PASS",
     producer_script: "collect-v2-promotion-runtime-snapshot",
@@ -60,6 +65,8 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
     source: "V2_FIRESTORE_COLLECTOR",
     position_cycle_id: positionCycle.position_cycle_id,
     openclaw_decision_id: bundle.openclawDecision.openclaw_decision_id,
+    openclaw_decision_bundle_ids: [bundleDoc.openclaw_decision_bundle_id],
+    openclaw_decision_bundle_hashes: [bundleDoc.openclaw_decision_bundle_hash],
     openclaw_execution_permit_ids: [],
     openclaw_outcome_adjudication_ids: [],
     collected_at: "2026-04-22T01:02:00.000Z",
@@ -95,6 +102,53 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
     storage.__test.DOC_ID_FIELDS.OPENCLAW_WORLD_STATES,
     "openclaw_world_state_id"
   );
+})();
+
+(async function decisionBundleLedgerPersistsReconstructablePayload() {
+  const bundle = buildBundle();
+  const doc = buildOpenClawDecisionBundleLedgerDoc({
+    bundle,
+    source: "UNIT_TEST",
+    createdAt: "2026-04-22T00:03:00.000Z",
+  });
+  assert.ok(doc.openclaw_decision_bundle_id.startsWith("OCDBV2__"));
+  assert.strictEqual(doc.openclaw_decision_bundle_hash, bundle.openclawDecisionBundleHash);
+  assert.strictEqual(doc.openclaw_decision_id, bundle.openclawDecision.openclaw_decision_id);
+  assert.strictEqual(doc.signal_intent_id, bundle.signalIntent.signal_intent_id);
+  assert.strictEqual(doc.bundle_payload.openclawDecision.openclaw_decision_bundle_hash, bundle.openclawDecisionBundleHash);
+  assert.strictEqual(doc.bundle_payload.mlAiSignalProposal.size_ratio, 0.5);
+  assert.strictEqual(
+    storage.__test.DOC_ID_FIELDS.OPENCLAW_DECISION_BUNDLES,
+    "openclaw_decision_bundle_id"
+  );
+
+  const writes = [];
+  const db = {
+    collection(name) {
+      return {
+        doc(id) {
+          return {
+            async set(payload) {
+              writes.push({ collection: name, id, payload });
+            },
+          };
+        },
+      };
+    },
+  };
+  const persisted = await persistOpenClawDecisionBundleLedger({
+    db,
+    env: { DONBEOLJA_V2_COLLECTION_PREFIX: "dbjv2__" },
+    bundle,
+    source: "UNIT_TEST",
+    createdAt: "2026-04-22T00:03:00.000Z",
+  });
+  assert.strictEqual(persisted.ok, true);
+  assert.strictEqual(persisted.reason, "OPENCLAW_DECISION_BUNDLE_LEDGER_WRITTEN");
+  assert.strictEqual(persisted.persisted.collectionKey, "OPENCLAW_DECISION_BUNDLES");
+  assert.strictEqual(writes.length, 1);
+  assert.strictEqual(writes[0].collection, "dbjv2__openclaw_decision_bundles_v2");
+  assert.strictEqual(writes[0].payload.openclaw_decision_bundle_hash, bundle.openclawDecisionBundleHash);
 })();
 
 (function decisionBundleCarriesStableHashIntoDecisionDoc() {
@@ -244,6 +298,7 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
   });
   const summary = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
     worldState,
+    decisionBundles: [buildOpenClawDecisionBundleLedgerDoc({ bundle })],
     executionPermits: [permit],
     outcomeAdjudications: [adjudication],
     learnerShadowEvaluations: [evaluation],
@@ -258,12 +313,14 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
   assert.strictEqual(summary.ok, true);
   assert.strictEqual(summary.lineage_consistency_summary.ok, true);
   assert.strictEqual(summary.lineage_consistency_summary.permit_lineage_mismatch_n, 0);
+  assert.strictEqual(summary.lineage_consistency_summary.decision_bundle_lineage_mismatch_n, 0);
   assert.strictEqual(summary.lineage_consistency_summary.outcome_lineage_mismatch_n, 0);
   assert.strictEqual(summary.lineage_consistency_summary.learner_lineage_mismatch_n, 0);
   assert.strictEqual(summary.learner_shadow_summary.max_observed_evaluation_age_minutes, 1);
   assert.strictEqual(summary.learner_shadow_summary.latest_evaluated_at, "2026-04-22T01:01:00.000Z");
   assert.strictEqual(summary.collector_execution_summary.producer_script, "collect-v2-promotion-runtime-snapshot");
   assert.deepStrictEqual(summary.lineage_consistency_summary.expected_openclaw_execution_permit_ids, [permit.openclaw_execution_permit_id]);
+  assert.strictEqual(summary.lineage_consistency_summary.expected_openclaw_decision_bundle_hash, bundle.openclawDecisionBundleHash);
   assert.deepStrictEqual(summary.lineage_consistency_summary.expected_openclaw_outcome_adjudication_ids, [adjudication.openclaw_outcome_adjudication_id]);
 
   const mismatchedLearner = {
@@ -272,6 +329,7 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
   };
   const broken = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
     worldState,
+    decisionBundles: [buildOpenClawDecisionBundleLedgerDoc({ bundle })],
     executionPermits: [permit],
     outcomeAdjudications: [adjudication],
     learnerShadowEvaluations: [mismatchedLearner],
@@ -318,6 +376,7 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
   });
   const summary = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
     worldState,
+    decisionBundles: [buildOpenClawDecisionBundleLedgerDoc({ bundle })],
     executionPermits: [expiredPermit],
     outcomeAdjudications: [adjudication],
     learnerShadowEvaluations: [staleEvaluation],
@@ -339,6 +398,55 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
   assert.strictEqual(summary.learner_shadow_summary.latest_evaluated_at, "2026-04-20T01:00:00.000Z");
   assert.ok(summary.blockers.includes("OPENCLAW_EXECUTION_PERMIT_VALIDATION_REQUIRED"));
   assert.ok(summary.blockers.includes("OPENCLAW_LEARNER_SHADOW_EVALUATION_STALE"));
+})();
+
+(function supremeSummaryRequiresDecisionBundleLedger() {
+  const bundle = buildBundle();
+  const worldState = buildOpenClawWorldState({
+    mode: "CANARY",
+    generatedAt: "2026-04-22T00:00:00.000Z",
+  });
+  const permit = issueOpenClawExecutionPermit({
+    bundle,
+    worldState,
+    approvalReason: "TEST_PERMIT",
+    issuedAt: "2026-04-22T00:00:00.000Z",
+    ttlMinutes: 120,
+  });
+  const positionCycle = {
+    position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__SUPREME_NO_BUNDLE",
+  };
+  const adjudication = adjudicateOpenClawOutcome({
+    bundle,
+    positionCycle,
+    realizedExitEvent: "TP1_REACHED",
+    realizedPnl: 0.02,
+    adjudicatedAt: "2026-04-22T01:00:00.000Z",
+  });
+  const evaluation = buildOpenClawLearnerShadowEvaluation({
+    adjudication,
+    evaluatedAt: "2026-04-22T01:01:00.000Z",
+  });
+  const summary = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
+    worldState,
+    decisionBundles: [],
+    executionPermits: [permit],
+    outcomeAdjudications: [adjudication],
+    learnerShadowEvaluations: [evaluation],
+    expectedOpenClawDecisionId: bundle.openclawDecision.openclaw_decision_id,
+    expectedPositionCycleId: positionCycle.position_cycle_id,
+    expectedOpenClawDecisionBundleHash: bundle.openclawDecisionBundleHash,
+    collectorExecutionSummary: buildCollectorSummary(bundle, positionCycle, {
+      openclaw_decision_bundle_ids: [],
+      openclaw_decision_bundle_hashes: [],
+      openclaw_execution_permit_ids: [permit.openclaw_execution_permit_id],
+      openclaw_outcome_adjudication_ids: [adjudication.openclaw_outcome_adjudication_id],
+    }),
+    nowMs: Date.parse("2026-04-22T01:02:00.000Z"),
+  });
+  assert.strictEqual(summary.ok, false);
+  assert.strictEqual(summary.openclaw_decision_bundle_n, 0);
+  assert.ok(summary.blockers.includes("OPENCLAW_DECISION_BUNDLE_LEDGER_REQUIRED"));
 })();
 
 (function supremeSummaryRejectsMissingCollectorProvenance() {
@@ -370,6 +478,7 @@ function buildCollectorSummary(bundle, positionCycle, overrides = {}) {
   });
   const summary = runtimeSnapshotCollector.__test.buildOpenClawSupremeControlPlaneSummary({
     worldState,
+    decisionBundles: [buildOpenClawDecisionBundleLedgerDoc({ bundle })],
     executionPermits: [permit],
     outcomeAdjudications: [adjudication],
     learnerShadowEvaluations: [evaluation],

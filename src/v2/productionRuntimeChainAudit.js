@@ -148,6 +148,7 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
   const entrySizingDecision = readRepoFile("src/v2/entrySizingDecision.js", sourceOverrides);
   const productionEntryLiveRequest = readRepoFile("src/v2/productionEntryLiveRequest.js", sourceOverrides);
   const openclawControlPlane = readRepoFile("src/v2/openclawControlPlane.js", sourceOverrides);
+  const openclawShadowWriter = readRepoFile("src/v2/openclawShadowWriter.js", sourceOverrides);
   const entryExecutionKernel = readRepoFile("src/v2/entryExecutionKernel.js", sourceOverrides);
   const fillSync = readRepoFile("src/services/binanceFuturesFillsSync.js", sourceOverrides);
   const shadowExitWriter = readRepoFile("src/v2/openclawShadowExitWriter.js", sourceOverrides);
@@ -285,13 +286,17 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
         && productionEntryLiveRequest.includes("extractMlMaxSizeRatioFromBundle")
         && productionEntryLiveRequest.includes("maxSizeRatio")
         && openclawControlPlane.includes("openclawDecisionBundleHash")
-        && openclawControlPlane.includes("openclaw_decision_bundle_hash"),
-      "OpenClaw ML proposal verdict must gate entry and ML size ratio must cap entry sizing before live request/permit creation",
+        && openclawControlPlane.includes("openclaw_decision_bundle_hash")
+        && openclawControlPlane.includes("buildOpenClawDecisionBundleLedgerDoc")
+        && openclawControlPlane.includes("OPENCLAW_DECISION_BUNDLE_LEDGER_WRITTEN")
+        && openclawShadowWriter.includes("OPENCLAW_DECISION_BUNDLES"),
+      "OpenClaw ML proposal verdict must gate entry, ML size ratio must cap sizing, and decision bundles must be ledgered for replay",
       {
         proposal_gate: signalAuthorityRouter.includes("resolveMlAiProposalGate") && signalAuthorityRouter.includes("ML_AI_PROPOSAL_NOT_APPROVED"),
         size_ratio_cap: entrySizingDecision.includes("resolveMaxSizeRatio") && entrySizingDecision.includes("ML_SIZE_RATIO_CAPPED"),
         live_request_uses_bundle_ratio: productionEntryLiveRequest.includes("extractMlMaxSizeRatioFromBundle") && productionEntryLiveRequest.includes("maxSizeRatio"),
         decision_bundle_hash: openclawControlPlane.includes("openclawDecisionBundleHash") && openclawControlPlane.includes("openclaw_decision_bundle_hash"),
+        decision_bundle_ledger: openclawControlPlane.includes("buildOpenClawDecisionBundleLedgerDoc") && openclawShadowWriter.includes("OPENCLAW_DECISION_BUNDLES"),
       }
     ),
     buildCheck(

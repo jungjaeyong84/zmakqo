@@ -8,6 +8,7 @@ const pipeline = require("../../scripts/run-v2-promotion-pipeline");
 const deployDecisionCheck = require("../../scripts/check-v2-promotion-deploy-decision");
 const { buildReferencePassEpisode, buildReferenceNativeMlEvidencePack } = require("../v2/replayFixtureFactory");
 const { buildWebhookBundle } = require("../v2/comparisonFixtureFactory");
+const { buildOpenClawDecisionBundleLedgerDoc } = require("../v2/openclawControlPlane");
 
 const PREFIX = "donbeolja_v2__";
 const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUNTIME_CHAIN_CHECK_IDS;
@@ -726,6 +727,7 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
   const episode = buildReferencePassEpisode();
   const nativeBundle = buildReferenceNativeMlEvidencePack();
   const webhookBundle = buildWebhookBundle();
+  const nativeBundleLedger = buildOpenClawDecisionBundleLedgerDoc({ bundle: nativeBundle });
   const shadowProposal = {
     ...nativeBundle.mlAiSignalProposal,
     ml_ai_signal_proposal_id: "MSPV2__SHADOW__PIPE",
@@ -785,6 +787,9 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
         policy_scope: nativeBundle.openclawDecision.policy_scope,
       },
     },
+    [`${PREFIX}openclaw_decision_bundles_v2`]: {
+      [nativeBundleLedger.openclaw_decision_bundle_id]: nativeBundleLedger,
+    },
   };
   try {
     const result = await pipeline.runPipeline({
@@ -830,6 +835,7 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
   const episode = buildReferencePassEpisode();
   const nativeBundle = buildReferenceNativeMlEvidencePack();
   const webhookBundle = buildWebhookBundle();
+  const nativeBundleLedger = buildOpenClawDecisionBundleLedgerDoc({ bundle: nativeBundle });
   const shadowProposal = {
     ...nativeBundle.mlAiSignalProposal,
     ml_ai_signal_proposal_id: "MSPV2__SHADOW__PIPE_TERMINAL_MISMATCH",
@@ -895,6 +901,9 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
         policy_scope: nativeBundle.openclawDecision.policy_scope,
       },
     },
+    [`${PREFIX}openclaw_decision_bundles_v2`]: {
+      [nativeBundleLedger.openclaw_decision_bundle_id]: nativeBundleLedger,
+    },
   };
   try {
     const result = await pipeline.runPipeline({
@@ -940,6 +949,7 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
   const episode = buildReferencePassEpisode();
   const nativeBundle = buildReferenceNativeMlEvidencePack();
   const webhookBundle = buildWebhookBundle();
+  const nativeBundleLedger = buildOpenClawDecisionBundleLedgerDoc({ bundle: nativeBundle });
   const shadowProposal = {
     ...nativeBundle.mlAiSignalProposal,
     ml_ai_signal_proposal_id: "MSPV2__SHADOW__PIPE_SELECTOR",
@@ -1006,6 +1016,9 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
         signal_intent_id: webhookBundle.signalIntent.signal_intent_id,
         created_at: "2026-04-20T00:06:00.000Z",
       },
+    },
+    [`${PREFIX}openclaw_decision_bundles_v2`]: {
+      [nativeBundleLedger.openclaw_decision_bundle_id]: nativeBundleLedger,
     },
   };
   try {

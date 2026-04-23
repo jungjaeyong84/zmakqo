@@ -172,6 +172,7 @@ function resolveCollectorConfig(env = process.env) {
       openclawPermitLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_OPENCLAW_PERMIT_LIMIT, 20, { max: 50 }),
       openclawOutcomeLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_OPENCLAW_OUTCOME_LIMIT, 20, { max: 50 }),
       openclawLearnerLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_OPENCLAW_LEARNER_LIMIT, 20, { max: 50 }),
+      openclawBundleLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_OPENCLAW_BUNDLE_LIMIT, 20, { max: 50 }),
       linkedDocLimit: parsePositiveInt(env.V2_PROMOTION_COLLECT_LINKED_DOC_LIMIT, 20, { max: 50 }),
     }),
   });
@@ -494,16 +495,19 @@ function buildRepairEvidenceSummary({ repairRequests = [], repairExecutionLedger
 
 function buildOpenClawSupremeControlPlaneSummary({
   worldState = null,
+  decisionBundles = [],
   executionPermits = [],
   outcomeAdjudications = [],
   learnerShadowEvaluations = [],
   expectedOpenClawDecisionId = null,
   expectedPositionCycleId = null,
+  expectedOpenClawDecisionBundleHash = null,
   collectorExecutionSummary = null,
   nowMs = Date.now(),
   maxLearnerEvaluationAgeMinutes = 1440,
 } = {}) {
   const permits = Array.isArray(executionPermits) ? executionPermits : [];
+  const bundles = Array.isArray(decisionBundles) ? decisionBundles : [];
   const adjudications = Array.isArray(outcomeAdjudications) ? outcomeAdjudications : [];
   const learnerRows = Array.isArray(learnerShadowEvaluations) ? learnerShadowEvaluations : [];
   const collector = collectorExecutionSummary && typeof collectorExecutionSummary === "object"
@@ -514,6 +518,10 @@ function buildOpenClawSupremeControlPlaneSummary({
   const expectedDecisionId = trimOrNull(expectedOpenClawDecisionId);
   const expectedCycleId = trimOrNull(expectedPositionCycleId);
   const expectedWorldStateHash = trimOrNull(worldState && worldState.world_state_hash);
+  const expectedDecisionBundleHash = trimOrNull(expectedOpenClawDecisionBundleHash)
+    || trimOrNull((bundles[0] && bundles[0].openclaw_decision_bundle_hash) || null);
+  const decisionBundleIds = normalizeIdList(bundles.map((row) => row && row.openclaw_decision_bundle_id));
+  const decisionBundleHashes = normalizeIdList(bundles.map((row) => row && row.openclaw_decision_bundle_hash));
   const permitIds = normalizeIdList(permits.map((row) => row && row.openclaw_execution_permit_id));
   const outcomeAdjudicationIds = normalizeIdList(adjudications.map((row) => row && row.openclaw_outcome_adjudication_id));
   const adjudicationIds = new Set(adjudications.map((row) => trimOrNull(row && row.openclaw_outcome_adjudication_id)).filter(Boolean));
@@ -545,6 +553,8 @@ function buildOpenClawSupremeControlPlaneSummary({
     trimOrNull(collector.source) === "V2_FIRESTORE_COLLECTOR" &&
     trimOrNull(collector.position_cycle_id) === expectedCycleId &&
     trimOrNull(collector.openclaw_decision_id) === expectedDecisionId &&
+    JSON.stringify(normalizeIdList(collector.openclaw_decision_bundle_ids)) === JSON.stringify(decisionBundleIds) &&
+    JSON.stringify(normalizeIdList(collector.openclaw_decision_bundle_hashes)) === JSON.stringify(decisionBundleHashes) &&
     JSON.stringify(normalizeIdList(collector.openclaw_execution_permit_ids)) === JSON.stringify(permitIds) &&
     JSON.stringify(normalizeIdList(collector.openclaw_outcome_adjudication_ids)) === JSON.stringify(outcomeAdjudicationIds) &&
     trimOrNull(collector.collected_at) &&
@@ -563,12 +573,20 @@ function buildOpenClawSupremeControlPlaneSummary({
     const worldOk = !expectedWorldStateHash || trimOrNull(row && row.world_state_hash) === expectedWorldStateHash;
     return decisionOk && worldOk;
   });
+  const bundleLineageMatches = bundles.filter((row) => {
+    const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
+    const hashOk = !expectedDecisionBundleHash || trimOrNull(row && row.openclaw_decision_bundle_hash) === expectedDecisionBundleHash;
+    const signalOk = trimOrNull(row && row.signal_intent_id);
+    const payloadOk = row && row.bundle_payload && typeof row.bundle_payload === "object";
+    return decisionOk && hashOk && signalOk && payloadOk;
+  });
   const outcomeLineageMatches = adjudications.filter((row) => {
     const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
     const cycleOk = !expectedCycleId || trimOrNull(row && row.position_cycle_id) === expectedCycleId;
     return decisionOk && cycleOk;
   });
   const permitLineageMatchIds = normalizeIdList(permitLineageMatches.map((row) => row && row.openclaw_execution_permit_id));
+  const bundleLineageMatchIds = normalizeIdList(bundleLineageMatches.map((row) => row && row.openclaw_decision_bundle_id));
   const outcomeLineageMatchIds = normalizeIdList(outcomeLineageMatches.map((row) => row && row.openclaw_outcome_adjudication_id));
   const learnerLineageMatches = learnerRows.filter((row) => {
     const decisionOk = !expectedDecisionId || trimOrNull(row && row.openclaw_decision_id) === expectedDecisionId;
@@ -582,10 +600,12 @@ function buildOpenClawSupremeControlPlaneSummary({
   const staleEvaluationCount = learnerRows.filter((row) => !isLearnerFresh(row)).length;
   const lineageBlockers = [];
   if (expectedDecisionId && permitLineageMatches.length < permits.length) lineageBlockers.push("OPENCLAW_PERMIT_DECISION_OR_WORLD_STATE_LINEAGE_MISMATCH");
+  if (expectedDecisionId && bundleLineageMatches.length < bundles.length) lineageBlockers.push("OPENCLAW_DECISION_BUNDLE_LINEAGE_MISMATCH");
   if (expectedCycleId && outcomeLineageMatches.length < adjudications.length) lineageBlockers.push("OPENCLAW_OUTCOME_POSITION_OR_DECISION_LINEAGE_MISMATCH");
   if (learnerRows.length && learnerLineageMatches < learnerRows.length) lineageBlockers.push("OPENCLAW_LEARNER_OUTCOME_LINEAGE_MISMATCH");
   const blockers = [];
   if (!worldState || !trimOrNull(worldState.world_state_hash)) blockers.push("OPENCLAW_WORLD_STATE_REQUIRED");
+  if (!bundles.length) blockers.push("OPENCLAW_DECISION_BUNDLE_LEDGER_REQUIRED");
   if (!permits.length) blockers.push("OPENCLAW_EXECUTION_PERMIT_REQUIRED");
   if (permits.length && validationPassCount < permits.length) blockers.push("OPENCLAW_EXECUTION_PERMIT_VALIDATION_REQUIRED");
   if (!adjudications.length) blockers.push("OPENCLAW_OUTCOME_ADJUDICATION_REQUIRED");
@@ -598,6 +618,8 @@ function buildOpenClawSupremeControlPlaneSummary({
     ok: blockers.length === 0,
     world_state_n: worldState ? 1 : 0,
     latest_world_state_hash: trimOrNull(worldState && worldState.world_state_hash),
+    openclaw_decision_bundle_n: bundles.length,
+    latest_openclaw_decision_bundle_hash: expectedDecisionBundleHash,
     execution_permit_n: permits.length,
     permit_validation_pass_n: validationPassCount,
     permit_validation_fail_n: Math.max(permits.length - validationPassCount, 0),
@@ -627,6 +649,8 @@ function buildOpenClawSupremeControlPlaneSummary({
           source: trimOrNull(collector.source),
           position_cycle_id: trimOrNull(collector.position_cycle_id),
           openclaw_decision_id: trimOrNull(collector.openclaw_decision_id),
+          openclaw_decision_bundle_ids: normalizeIdList(collector.openclaw_decision_bundle_ids),
+          openclaw_decision_bundle_hashes: normalizeIdList(collector.openclaw_decision_bundle_hashes),
           openclaw_execution_permit_ids: normalizeIdList(collector.openclaw_execution_permit_ids),
           openclaw_outcome_adjudication_ids: normalizeIdList(collector.openclaw_outcome_adjudication_ids),
           collected_at: trimOrNull(collector.collected_at),
@@ -648,10 +672,14 @@ function buildOpenClawSupremeControlPlaneSummary({
       expected_openclaw_decision_id: expectedDecisionId,
       expected_position_cycle_id: expectedCycleId,
       expected_world_state_hash: expectedWorldStateHash,
+      expected_openclaw_decision_bundle_hash: expectedDecisionBundleHash,
+      expected_openclaw_decision_bundle_ids: bundleLineageMatchIds,
       expected_openclaw_execution_permit_ids: permitLineageMatchIds,
       expected_openclaw_outcome_adjudication_ids: outcomeLineageMatchIds,
       permit_lineage_match_n: permitLineageMatches.length,
       permit_lineage_mismatch_n: Math.max(permits.length - permitLineageMatches.length, 0),
+      decision_bundle_lineage_match_n: bundleLineageMatches.length,
+      decision_bundle_lineage_mismatch_n: Math.max(bundles.length - bundleLineageMatches.length, 0),
       outcome_lineage_match_n: outcomeLineageMatches.length,
       outcome_lineage_mismatch_n: Math.max(adjudications.length - outcomeLineageMatches.length, 0),
       learner_lineage_match_n: learnerLineageMatches,
@@ -909,6 +937,23 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
     docId: nativeDecisionId,
     reason: "V2_PROMOTION_COLLECT_NATIVE_DECISION_NOT_FOUND",
   });
+  const decisionBundles = sortRowsByTimestamp(
+    await listDocs({
+      db,
+      env,
+      collectionKey: "OPENCLAW_DECISION_BUNDLES",
+      field: "openclaw_decision_id",
+      value: nativeDecisionId,
+      limit: cfg.queryBudget.openclawBundleLimit,
+    }),
+    ["created_at"],
+    false
+  );
+  assertRowsWithinBudget({
+    rows: decisionBundles,
+    limit: cfg.queryBudget.openclawBundleLimit,
+    reason: "V2_PROMOTION_COLLECT_OPENCLAW_DECISION_BUNDLES_QUERY_LIMIT_REACHED",
+  });
   const executionPermits = sortRowsByTimestamp(
     await listDocs({
       db,
@@ -1050,11 +1095,13 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
   const snapshotFile = path.join(artifactDir, SNAPSHOT_FILENAME);
   const openclawSupremeControlPlaneSummary = buildOpenClawSupremeControlPlaneSummary({
     worldState,
+    decisionBundles,
     executionPermits,
     outcomeAdjudications,
     learnerShadowEvaluations,
     expectedOpenClawDecisionId: nativeDecisionId,
     expectedPositionCycleId: cfg.positionCycleId,
+    expectedOpenClawDecisionBundleHash: nativeDecision.openclaw_decision_bundle_hash,
     collectorExecutionSummary: {
       status: "PASS",
       producer_script: "collect-v2-promotion-runtime-snapshot",
@@ -1062,6 +1109,8 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
       source: "V2_FIRESTORE_COLLECTOR",
       position_cycle_id: cfg.positionCycleId,
       openclaw_decision_id: nativeDecisionId,
+      openclaw_decision_bundle_ids: normalizeIdList(decisionBundles.map((row) => row && row.openclaw_decision_bundle_id)),
+      openclaw_decision_bundle_hashes: normalizeIdList(decisionBundles.map((row) => row && row.openclaw_decision_bundle_hash)),
       openclaw_execution_permit_ids: normalizeIdList(executionPermits.map((row) => row && row.openclaw_execution_permit_id)),
       openclaw_outcome_adjudication_ids: normalizeIdList(outcomeAdjudications.map((row) => row && row.openclaw_outcome_adjudication_id)),
       collected_at: collectedAt,
@@ -1131,6 +1180,7 @@ async function collectRuntimeSnapshot({ db = null, env = process.env } = {}) {
           outboxes: outboxes.length,
           repair_requests: repairRequests.length,
           repair_execution_ledgers: repairExecutionLedgers.length,
+          openclaw_decision_bundles: decisionBundles.length,
           openclaw_execution_permits: executionPermits.length,
           openclaw_outcome_adjudications: outcomeAdjudications.length,
           openclaw_learner_shadow_evaluations: learnerShadowEvaluations.length,

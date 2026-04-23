@@ -4,14 +4,20 @@ const assert = require("assert");
 const preflight = require("../v2/schedulerTrafficCollectorPreflight");
 const script = require("../../scripts/check-v2-scheduler-traffic-collector-prereq");
 
-function buildRunService(name, { omitCutoverMode = false, wrongExitCanaryFirestoreWrite = false } = {}) {
+function buildRunService(name, {
+  omitCutoverMode = false,
+  wrongExitCanaryFirestoreWrite = false,
+  wrongLegacyWebhookAllow = false,
+} = {}) {
   const env = Object.entries(preflight.REQUIRED_LIVE_COLLECTOR_ENV)
     .filter(([key]) => !(omitCutoverMode && key === "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE"))
     .map(([key, value]) => ({
       name: key,
-      value: wrongExitCanaryFirestoreWrite && key === "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED"
-        ? "0"
-        : value,
+      value: (() => {
+        if (wrongExitCanaryFirestoreWrite && key === "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED") return "0";
+        if (wrongLegacyWebhookAllow && key === "DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL") return "1";
+        return value;
+      })(),
     }));
   return {
     template: {
@@ -36,6 +42,7 @@ function fakeExecFactory({
   failRunService = null,
   omitCutoverModeFor = null,
   wrongExitCanaryFirestoreWriteFor = null,
+  wrongLegacyWebhookAllowFor = null,
 } = {}) {
   return (cmd, args) => {
     assert.strictEqual(cmd, "gcloud");
@@ -59,6 +66,7 @@ function fakeExecFactory({
       return JSON.stringify(buildRunService(serviceName, {
         omitCutoverMode: omitCutoverModeFor === serviceName,
         wrongExitCanaryFirestoreWrite: wrongExitCanaryFirestoreWriteFor === serviceName,
+        wrongLegacyWebhookAllow: wrongLegacyWebhookAllowFor === serviceName,
       }));
     }
     throw new Error(`UNEXPECTED_GCLOUD:${joined}`);
@@ -77,6 +85,8 @@ function fakeExecFactory({
   assert.strictEqual(report.required_env_exact_match_n, 2);
   assert.strictEqual(report.required_env_mismatch_n, 0);
   assert.ok(report.required_env_names.includes("DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE"));
+  assert.ok(report.required_env_names.includes("DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED"));
+  assert.ok(report.required_env_names.includes("DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL"));
 })();
 
 (function preflightBlocksWithExactSchedulerPermissionCheck() {
@@ -122,6 +132,26 @@ function fakeExecFactory({
       name: "DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED",
       expected: "1",
       actual: "0",
+      present: true,
+      reason: "VALUE_MISMATCH",
+    },
+  ]);
+})();
+
+(function preflightBlocksWhenLegacyWebhookAllowIsEnabledInCloudRun() {
+  const report = script.runCheck({ GOOGLE_CLOUD_PROJECT: "donbeolja-dev" }, {
+    execFileSync: fakeExecFactory({ wrongLegacyWebhookAllowFor: "donbeolja" }),
+  });
+  assert.strictEqual(report.ok, false);
+  assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_COLLECTOR_PREREQ_03_RUN_SERVICE_DESCRIBE_DONBEOLJA"));
+  assert.strictEqual(report.required_env_exact_match_n, 1);
+  assert.strictEqual(report.required_env_mismatch_n, 1);
+  const failed = report.checks.find((row) => row.id === "SCHED_TRAFFIC_COLLECTOR_PREREQ_03_RUN_SERVICE_DESCRIBE_DONBEOLJA");
+  assert.deepStrictEqual(failed.evidence.details.required_env_mismatches, [
+    {
+      name: "DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL",
+      expected: "0",
+      actual: "1",
       present: true,
       reason: "VALUE_MISMATCH",
     },

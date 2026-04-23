@@ -2359,6 +2359,38 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         : "V2 production sizing must read OpenClaw ML max_size_ratio and cap entry notional",
       file: path.resolve(__dirname, "..", "src", "v2", "entrySizingDecision.js"),
     }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_84",
+      label: "OpenClaw decision bundle ledger is reconstructable",
+      ok: readText(path.resolve(__dirname, "..", "src", "v2", "constants.js")).includes("OPENCLAW_DECISION_BUNDLES")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "storage.js")).includes("OPENCLAW_DECISION_BUNDLES: \"openclaw_decision_bundle_id\"")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "openclawControlPlane.js")).includes("buildOpenClawDecisionBundleLedgerDoc")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "openclawControlPlane.js")).includes("OPENCLAW_DECISION_BUNDLE_LEDGER_WRITTEN")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "openclawShadowWriter.js")).includes("OPENCLAW_DECISION_BUNDLES")
+        && readText(path.resolve(__dirname, "..", "scripts", "collect-v2-promotion-runtime-snapshot.js")).includes("OPENCLAW_DECISION_BUNDLE_LEDGER_REQUIRED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-openclaw-supreme-control-plane.test.js")).includes("decisionBundleLedgerPersistsReconstructablePayload")
+        && artifactContractText.includes("OpenClaw decision bundle ledger is reconstructable")
+        && runbookText.includes("OpenClaw decision bundle ledger is reconstructable"),
+      reason: readText(path.resolve(__dirname, "..", "src", "v2", "openclawControlPlane.js")).includes("bundle_payload")
+        ? "OpenClaw decision bundles now have a hash-addressed ledger doc with reconstructable payload and collector lineage checks"
+        : "OpenClaw decision bundle hash must not be only an in-memory field",
+      file: path.resolve(__dirname, "..", "src", "v2", "openclawControlPlane.js"),
+    }),
+    buildCheck({
+      id: "SUBMIT_CONTRACT_CHK_85",
+      label: "Cloud Run live env exact values are enforced",
+      ok: readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: \"1\"")
+        && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: \"0\"")
+        && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: \"$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED\"")
+        && cloudbuildText.includes("DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "v2-scheduler-traffic-collector-preflight.test.js")).includes("preflightBlocksWhenLegacyWebhookAllowIsEnabledInCloudRun")
+        && artifactContractText.includes("Cloud Run live env exact values are enforced")
+        && runbookText.includes("Cloud Run live env exact values are enforced"),
+      reason: cloudbuildText.includes("DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED")
+        ? "Cloud Run deploy env and live collector preflight now require audit-ledger writes on and legacy webhook allow off"
+        : "Cloud Run live services must expose exact V2 audit/webhook safety env values before LIVE promotion",
+      file: path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js"),
+    }),
   ];
   const failed = checks.filter((row) => row.ok !== true);
   return Object.freeze({

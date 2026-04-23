@@ -9,6 +9,7 @@ const {
 } = require("./contracts");
 const { buildMlAiSignalProposal } = require("./mlAiSignalProposal");
 const { evaluateHtfDirectionAlignment } = require("./singleStrategyFilter");
+const { putV2Doc } = require("./storage");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -26,6 +27,21 @@ function stableJson(value) {
 
 function sha256Hex(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function cloneJson(value) {
+  if (value === null || value === undefined) return null;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function buildOpenClawDecisionBundleId({ bundleHash } = {}) {
+  const hash = trimOrNull(bundleHash);
+  if (!hash) throw new Error("OPENCLAW_DECISION_BUNDLE_HASH_REQUIRED");
+  return `OCDBV2__${hash.slice(0, 32)}`;
 }
 
 function buildCanonicalEvidenceSummary({
@@ -264,9 +280,88 @@ function buildOpenClawDecisionBundle({
   });
 }
 
+function buildOpenClawDecisionBundleLedgerDoc({
+  bundle,
+  source = "OPENCLAW_CONTROL_PLANE",
+  createdAt = null,
+} = {}) {
+  const row = asObject(bundle);
+  if (!row) throw new Error("OPENCLAW_DECISION_BUNDLE_REQUIRED");
+  const signalIntent = asObject(row.signalIntent);
+  const decision = asObject(row.openclawDecision);
+  if (!signalIntent) throw new Error("SIGNAL_INTENT_REQUIRED");
+  if (!decision) throw new Error("OPENCLAW_DECISION_REQUIRED");
+  const bundleHash = trimOrNull(row.openclawDecisionBundleHash || decision.openclaw_decision_bundle_hash);
+  if (!bundleHash) throw new Error("OPENCLAW_DECISION_BUNDLE_HASH_REQUIRED");
+  const decisionPayload = cloneJson(row.openclawDecision);
+  const hashDecisionPayload = cloneJson(row.openclawDecision);
+  if (hashDecisionPayload) delete hashDecisionPayload.openclaw_decision_bundle_hash;
+  const payload = Object.freeze({
+    signalIntent: cloneJson(row.signalIntent),
+    featureSnapshot: cloneJson(row.featureSnapshot),
+    mlAiSignalProposal: cloneJson(row.mlAiSignalProposal),
+    openclawDecision: decisionPayload,
+    mlAiEvidence: cloneJson(row.mlAiEvidence),
+    strategyFilterResult: cloneJson(row.strategyFilterResult),
+    canonicalEvidenceSummary: cloneJson(row.canonicalEvidenceSummary),
+  });
+  const hashPayload = Object.freeze({
+    ...payload,
+    openclawDecision: hashDecisionPayload,
+  });
+  const canonicalJson = stableJson(hashPayload);
+  const payloadHash = sha256Hex(canonicalJson);
+  if (payloadHash !== bundleHash) {
+    throw new Error("OPENCLAW_DECISION_BUNDLE_HASH_MISMATCH");
+  }
+  return Object.freeze({
+    openclaw_decision_bundle_id: buildOpenClawDecisionBundleId({ bundleHash }),
+    openclaw_decision_bundle_hash: bundleHash,
+    openclaw_decision_id: trimOrNull(decision.openclaw_decision_id),
+    signal_intent_id: trimOrNull(signalIntent.signal_intent_id),
+    signal_source_mode: trimOrNull(signalIntent.signal_source_mode),
+    decision_mode: trimOrNull(decision.decision_mode),
+    recommended_action: trimOrNull(decision.recommended_action),
+    ml_ai_signal_proposal_id: trimOrNull(row.mlAiSignalProposal && row.mlAiSignalProposal.ml_ai_signal_proposal_id),
+    feature_snapshot_id: trimOrNull(row.featureSnapshot && row.featureSnapshot.feature_snapshot_id),
+    ml_ai_evidence_decision_id: trimOrNull(row.mlAiEvidence && row.mlAiEvidence.decision_id),
+    strategy_filter_verdict: trimOrNull(decision.strategy_filter_verdict),
+    bundle_payload: payload,
+    canonical_json_sha256: payloadHash,
+    source: trimOrNull(source) || "OPENCLAW_CONTROL_PLANE",
+    created_at: trimOrNull(createdAt) || trimOrNull(decision.created_at) || new Date().toISOString(),
+    schema_version: 1,
+  });
+}
+
+async function persistOpenClawDecisionBundleLedger({
+  db = null,
+  env = process.env,
+  bundle,
+  source = "OPENCLAW_CONTROL_PLANE",
+  createdAt = null,
+} = {}) {
+  const doc = buildOpenClawDecisionBundleLedgerDoc({ bundle, source, createdAt });
+  const persisted = await putV2Doc({
+    db,
+    env,
+    collectionKey: "OPENCLAW_DECISION_BUNDLES",
+    doc,
+  });
+  return Object.freeze({
+    ok: true,
+    reason: "OPENCLAW_DECISION_BUNDLE_LEDGER_WRITTEN",
+    doc,
+    persisted,
+  });
+}
+
 module.exports = {
   stableJson,
   sha256Hex,
+  buildOpenClawDecisionBundleId,
   buildCanonicalEvidenceSummary,
   buildOpenClawDecisionBundle,
+  buildOpenClawDecisionBundleLedgerDoc,
+  persistOpenClawDecisionBundleLedger,
 };

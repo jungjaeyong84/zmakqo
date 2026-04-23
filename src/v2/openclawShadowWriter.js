@@ -4,7 +4,10 @@ const crypto = require("crypto");
 
 const { buildSignalIntentId, buildOpenClawDecisionId } = require("./contracts");
 const { resolveV2RuntimeConfig } = require("./runtime");
-const { buildOpenClawDecisionBundle } = require("./openclawControlPlane");
+const {
+  buildOpenClawDecisionBundle,
+  buildOpenClawDecisionBundleLedgerDoc,
+} = require("./openclawControlPlane");
 const { putV2Doc } = require("./storage");
 
 function trimOrNull(value) {
@@ -382,6 +385,15 @@ async function persistBundle({ db = null, env = process.env, bundle } = {}) {
     env,
     collectionKey: "OPENCLAW_DECISIONS",
     doc: bundle.openclawDecision,
+  }));
+  writes.push(await putV2Doc({
+    db,
+    env,
+    collectionKey: "OPENCLAW_DECISION_BUNDLES",
+    doc: buildOpenClawDecisionBundleLedgerDoc({
+      bundle,
+      source: "OPENCLAW_SHADOW_WRITER",
+    }),
   }));
   return writes;
 }

@@ -104,14 +104,17 @@ function buildFakeDb(store, calls) {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, true);
   assert.strictEqual(result.reason, "V2_SHADOW_SIGNAL_WRITE_OK");
-  assert.strictEqual(calls.length, 2);
+  assert.strictEqual(calls.length, 3);
 
   const intents = store["dbjv2__signal_intents_v2"];
   const decisions = store["dbjv2__openclaw_decisions_v2"];
+  const bundles = store["dbjv2__openclaw_decision_bundles_v2"];
   const intent = intents[result.signal_intent_id];
   const decision = decisions[result.openclaw_decision_id];
+  const bundle = Object.values(bundles)[0];
   assert.ok(intent);
   assert.ok(decision);
+  assert.ok(bundle);
   assert.strictEqual(intent.signal_source_mode, "WEBHOOK_ASSISTED");
   assert.strictEqual(intent.decision_status, "SHADOW_ONLY");
   assert.strictEqual(intent.side, "LONG");
@@ -119,6 +122,8 @@ function buildFakeDb(store, calls) {
   assert.strictEqual(decision.decision_mode, "SHADOW");
   assert.strictEqual(decision.recommended_action, "APPROVE_ENTRY");
   assert.strictEqual(decision.strategy_filter_verdict, "SHADOW");
+  assert.strictEqual(bundle.openclaw_decision_id, decision.openclaw_decision_id);
+  assert.strictEqual(bundle.bundle_payload.openclawDecision.openclaw_decision_id, decision.openclaw_decision_id);
 })();
 
 (async function serverNativeWriterFailsClosedWhenMlEvidenceIncomplete() {
