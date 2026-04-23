@@ -30,8 +30,12 @@ function assertAlertSurface(text) {
   assert.ok(text.includes('table.cell(diag, 1, 2, regime_cohort, text_color = color.white)'), "diagnostic panel should expose regime cohort");
   assert.ok(text.includes('momentum_continue_long'), "momentum continuation setup should exist");
   assert.ok(text.includes('setup_type_long == "MOMENTUM_CONTINUATION" ? "CONTINUATION" : "NONE"'), "momentum continuation trigger type should exist");
-  assert.ok(text.includes('plotshape(show_signal_shapes and long_probe_raw, title = "V7 Long Probe"'), "long probe marker should exist");
-  assert.ok(text.includes('plotshape(show_signal_shapes and short_probe_raw, title = "V7 Short Probe"'), "short probe marker should exist");
+  assert.ok(text.includes('plotshape(show_candidate_markers and long_probe_raw, title = "V7 Long Probe"'), "long probe marker should exist");
+  assert.ok(text.includes('plotshape(show_candidate_markers and short_probe_raw, title = "V7 Short Probe"'), "short probe marker should exist");
+  assert.ok(text.includes('show_gate_labels = input.bool(false, "Pulse labels on signals"'), "pulse labels should be off by default");
+  assert.ok(text.includes('show_latest_card = input.bool(true, "Latest status card"'), "latest status card should exist");
+  assert.ok(text.includes('f_state_emoji("LONG", long_live_grade)'), "panel should use emoji state display");
+  assert.ok(text.includes('plotshape(show_candidate_markers and long_watch_raw'), "watch markers should use separate candidate toggle");
 }
 
 (function testV7PineContractSurface() {

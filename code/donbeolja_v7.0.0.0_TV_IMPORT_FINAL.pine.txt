@@ -48,10 +48,12 @@ webhook_qty_pct = input.float(1.0, "Webhook qtyPct", minval = 0.01, maxval = 1.0
 
 show_trend_ribbon = input.bool(true, "EMA ribbon", group = grp_display)
 show_signal_shapes = input.bool(true, "Signal markers", group = grp_display)
+show_candidate_markers = input.bool(true, "Watch / probe markers", group = grp_display)
 show_quality_lines = input.bool(false, "Score / edge lines", group = grp_display)
 show_state_bg = input.bool(true, "Regime background", group = grp_display)
 show_status_panel = input.bool(true, "Signal dashboard", group = grp_display)
-show_gate_labels = input.bool(true, "Gate labels on signals", group = grp_display)
+show_latest_card = input.bool(true, "Latest status card", group = grp_display)
+show_gate_labels = input.bool(false, "Pulse labels on signals", group = grp_display)
 show_block_reason = input.bool(true, "Block reason", group = grp_dev)
 
 //────────────────────────────────────
@@ -76,6 +78,21 @@ f_gate_text(bool pass) => pass ? "PASS" : "BLOCK"
 f_append_reason(string current, string reason) => current == "" ? reason : current + " | " + reason
 f_bucket_signal_score(float score) => score >= 85 ? "S85" : score >= 75 ? "S75" : score >= 65 ? "S65" : score >= 50 ? "S50" : "S00"
 f_shape_text(string direction, string grade) => direction == "LONG" ? (grade == "CORE" ? "LC" : "LE") : (grade == "CORE" ? "SC" : "SE")
+f_regime_emoji(string regime) => regime == "TREND" ? "🌊" : regime == "TRANSITION" ? "🌀" : "🧊"
+f_setup_emoji(string setupType) => setupType == "PULLBACK_RECLAIM" ? "🧲" : setupType == "BREAKOUT_RETEST" ? "💥" : setupType == "MOMENTUM_CONTINUATION" ? "🏄" : "·"
+f_state_emoji(string direction, string state) =>
+    direction == "NONE" ? "⚪" : direction == "LONG" ? (
+         state == "CORE" ? "🚀" :
+         state == "EARLY" ? "🟢" :
+         state == "WATCH" ? "👀" :
+         state == "PROBE" ? "🧪" : "⚪"
+    ) : (
+         state == "CORE" ? "🪂" :
+         state == "EARLY" ? "🔴" :
+         state == "WATCH" ? "👀" :
+         state == "PROBE" ? "🧪" : "⚪"
+    )
+f_quality_emoji(bool pass) => pass ? "✅" : "⚠️"
 
 //────────────────────────────────────
 // Constants
@@ -151,7 +168,7 @@ p_anchor = plot(show_trend_ribbon ? ema_anchor : na, "EMA Anchor", color = color
 fill(p_fast, p_mid, color = color.new(ema_fast >= ema_mid ? color.lime : color.red, 86))
 fill(p_mid, p_slow, color = color.new(ema_mid >= ema_slow ? color.lime : color.red, 90))
 
-bgcolor(show_state_bg ? (structural_regime == "TREND" ? color.new(color.teal, 92) : structural_regime == "TRANSITION" ? color.new(color.orange, 93) : color.new(color.gray, 94)) : na)
+bgcolor(show_state_bg ? (structural_regime == "TREND" ? color.new(color.teal, 95) : structural_regime == "TRANSITION" ? color.new(color.orange, 96) : color.new(color.gray, 97)) : na)
 
 //────────────────────────────────────
 // Setup engine
@@ -330,6 +347,13 @@ if short_core_pulse or short_early_pulse
 
 long_live_grade = long_core_pulse or long_core_raw ? "CORE" : long_early_pulse or long_early_raw ? "EARLY" : long_watch_raw ? "WATCH" : long_probe_raw ? "PROBE" : "NONE"
 short_live_grade = short_core_pulse or short_core_raw ? "CORE" : short_early_pulse or short_early_raw ? "EARLY" : short_watch_raw ? "WATCH" : short_probe_raw ? "PROBE" : "NONE"
+primary_direction = long_live_grade != "NONE" ? "LONG" : short_live_grade != "NONE" ? "SHORT" : long_watch_raw or long_probe_raw ? "LONG" : short_watch_raw or short_probe_raw ? "SHORT" : htf_gate_long ? "LONG" : htf_gate_short ? "SHORT" : "NONE"
+primary_state = primary_direction == "LONG" ? long_live_grade : primary_direction == "SHORT" ? short_live_grade : "NONE"
+primary_setup = primary_direction == "LONG" ? setup_type_long : primary_direction == "SHORT" ? setup_type_short : "NONE"
+primary_trigger = primary_direction == "LONG" ? trigger_type_long : primary_direction == "SHORT" ? trigger_type_short : "NONE"
+primary_edge = primary_direction == "LONG" ? edge_cohort_long : primary_direction == "SHORT" ? edge_cohort_short : "NEGATIVE_EDGE"
+primary_score = primary_direction == "LONG" ? signal_score_long : primary_direction == "SHORT" ? signal_score_short : 0.0
+primary_block = primary_direction == "LONG" ? block_reason_long : primary_direction == "SHORT" ? block_reason_short : "NO_SIGNAL"
 
 //────────────────────────────────────
 // Payload builders
@@ -410,14 +434,14 @@ short_early_payload = f_entry_payload("SHORT", "EARLY", signal_score_short, setu
 //────────────────────────────────────
 // Visualization
 //────────────────────────────────────
-plotshape(show_signal_shapes and long_core_pulse, title = "V7 Long Core", style = shape.triangleup, location = location.belowbar, size = size.tiny, color = color.lime, text = "LC", textcolor = color.white)
-plotshape(show_signal_shapes and long_early_pulse, title = "V7 Long Early", style = shape.circle, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 0), text = "LE", textcolor = color.white)
-plotshape(show_signal_shapes and short_core_pulse, title = "V7 Short Core", style = shape.triangledown, location = location.abovebar, size = size.tiny, color = color.red, text = "SC", textcolor = color.white)
-plotshape(show_signal_shapes and short_early_pulse, title = "V7 Short Early", style = shape.circle, location = location.abovebar, size = size.tiny, color = color.new(color.red, 0), text = "SE", textcolor = color.white)
-plotshape(show_signal_shapes and long_watch_raw, title = "V7 Long Watch", style = shape.square, location = location.belowbar, size = size.tiny, color = color.new(color.aqua, 0), text = "LW", textcolor = color.black)
-plotshape(show_signal_shapes and short_watch_raw, title = "V7 Short Watch", style = shape.square, location = location.abovebar, size = size.tiny, color = color.new(color.orange, 0), text = "SW", textcolor = color.black)
-plotshape(show_signal_shapes and long_probe_raw, title = "V7 Long Probe", style = shape.diamond, location = location.belowbar, size = size.tiny, color = color.new(color.blue, 0), text = "LP", textcolor = color.white)
-plotshape(show_signal_shapes and short_probe_raw, title = "V7 Short Probe", style = shape.diamond, location = location.abovebar, size = size.tiny, color = color.new(color.purple, 0), text = "SP", textcolor = color.white)
+plotshape(show_signal_shapes and long_core_pulse, title = "V7 Long Core", style = shape.labelup, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 0), text = "🚀", textcolor = color.black)
+plotshape(show_signal_shapes and long_early_pulse, title = "V7 Long Early", style = shape.labelup, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 20), text = "🟢", textcolor = color.black)
+plotshape(show_signal_shapes and short_core_pulse, title = "V7 Short Core", style = shape.labeldown, location = location.abovebar, size = size.tiny, color = color.new(color.red, 0), text = "🪂", textcolor = color.white)
+plotshape(show_signal_shapes and short_early_pulse, title = "V7 Short Early", style = shape.labeldown, location = location.abovebar, size = size.tiny, color = color.new(color.red, 20), text = "🔴", textcolor = color.white)
+plotshape(show_candidate_markers and long_watch_raw, title = "V7 Long Watch", style = shape.square, location = location.belowbar, size = size.tiny, color = color.new(color.aqua, 0), text = "👀", textcolor = color.black)
+plotshape(show_candidate_markers and short_watch_raw, title = "V7 Short Watch", style = shape.square, location = location.abovebar, size = size.tiny, color = color.new(color.orange, 0), text = "👀", textcolor = color.black)
+plotshape(show_candidate_markers and long_probe_raw, title = "V7 Long Probe", style = shape.diamond, location = location.belowbar, size = size.tiny, color = color.new(color.blue, 0), text = "🧪", textcolor = color.white)
+plotshape(show_candidate_markers and short_probe_raw, title = "V7 Short Probe", style = shape.diamond, location = location.abovebar, size = size.tiny, color = color.new(color.purple, 0), text = "🧪", textcolor = color.white)
 
 plot(show_quality_lines ? signal_score_long : na, title = "Long Signal Score", color = color.new(color.lime, 0), linewidth = 2)
 plot(show_quality_lines ? -signal_score_short : na, title = "Short Signal Score (-)", color = color.new(color.red, 0), linewidth = 2)
@@ -426,59 +450,57 @@ plot(show_quality_lines ? core_score_min : na, title = "CORE Score", color = col
 plot(show_quality_lines ? expected_net_r_long : na, title = "Expected Net R Long", color = color.new(color.green, 40), linewidth = 1, style = plot.style_line)
 plot(show_quality_lines ? -expected_net_r_short : na, title = "Expected Net R Short (-)", color = color.new(color.maroon, 40), linewidth = 1, style = plot.style_line)
 
-if show_gate_labels and (long_core_pulse or long_early_pulse)
-    label.new(bar_index, low, "LONG " + long_live_grade + "\n" + setup_type_long + " / " + edge_cohort_long + "\nscore " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.lime, 5), textcolor = color.black, size = size.small)
-if show_gate_labels and (short_core_pulse or short_early_pulse)
-    label.new(bar_index, high, "SHORT " + short_live_grade + "\n" + setup_type_short + " / " + edge_cohort_short + "\nscore " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.red, 5), textcolor = color.white, size = size.small)
-if show_gate_labels and long_watch_raw and not long_watch_raw[1]
-    label.new(bar_index, low, "LONG WATCH\n" + setup_type_long + " / " + edge_cohort_long + "\nscore " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.aqua, 5), textcolor = color.black, size = size.small)
-if show_gate_labels and short_watch_raw and not short_watch_raw[1]
-    label.new(bar_index, high, "SHORT WATCH\n" + setup_type_short + " / " + edge_cohort_short + "\nscore " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.orange, 5), textcolor = color.black, size = size.small)
-if show_gate_labels and long_probe_raw and not long_probe_raw[1]
-    label.new(bar_index, low, "LONG PROBE\n" + block_reason_long + "\nscore " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.blue, 10), textcolor = color.white, size = size.small)
-if show_gate_labels and short_probe_raw and not short_probe_raw[1]
-    label.new(bar_index, high, "SHORT PROBE\n" + block_reason_short + "\nscore " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.purple, 10), textcolor = color.white, size = size.small)
+if show_gate_labels and long_core_pulse
+    label.new(bar_index, low, "🚀 " + setup_type_long + " | " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.lime, 5), textcolor = color.black, size = size.small)
+if show_gate_labels and long_early_pulse
+    label.new(bar_index, low, "🟢 " + setup_type_long + " | " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
+if show_gate_labels and short_core_pulse
+    label.new(bar_index, high, "🪂 " + setup_type_short + " | " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.red, 5), textcolor = color.white, size = size.small)
+if show_gate_labels and short_early_pulse
+    label.new(bar_index, high, "🔴 " + setup_type_short + " | " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
+
+var label latest_status_card = na
+if barstate.islast and show_latest_card
+    if not na(latest_status_card)
+        label.delete(latest_status_card)
+    float card_y = ta.highest(high, 30) + atr * 0.90
+    string card_text = "Ω " + f_regime_emoji(structural_regime) + " " + structural_regime + " / " + htf_regime + "\n" +
+         f_quality_emoji(no_trade_pass) + " Q " + str.tostring(market_quality_score, "#.00") + " | spread " + str.tostring(spread_proxy_bps, "#.0") + "\n" +
+         f_state_emoji(primary_direction, primary_state) + " " + primary_direction + " " + primary_state + " | " + f_setup_emoji(primary_setup) + " " + primary_setup + "\n" +
+         "score " + str.tostring(primary_score, "#.0") + " | " + primary_edge + "\n" +
+         (show_block_reason ? "⚠️ " + primary_block : "")
+    color card_bg = primary_direction == "SHORT" ? color.new(color.red, 65) : primary_direction == "LONG" ? color.new(color.lime, 72) : color.new(color.blue, 78)
+    color card_txt = primary_direction == "SHORT" ? color.white : color.black
+    latest_status_card := label.new(bar_index + 1, card_y, card_text, xloc = xloc.bar_index, yloc = yloc.price, style = label.style_label_left, color = card_bg, textcolor = card_txt, size = size.small)
 
 //────────────────────────────────────
 // Diagnostics table
 //────────────────────────────────────
-var table diag = table.new(position.bottom_left, 2, 16, bgcolor = color.new(color.black, 88), border_width = 1)
+var table diag = table.new(position.bottom_left, 2, 10, bgcolor = color.new(color.black, 88), border_width = 1)
 if barstate.islast
     if show_status_panel
         table.cell(diag, 0, 0, "돈벌자 Ω", text_color = color.white, bgcolor = color.rgb(24, 52, 92))
         table.cell(diag, 1, 0, "v7.0.0.0", text_color = color.white, bgcolor = color.rgb(24, 52, 92))
         table.cell(diag, 0, 1, "Regime", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 1, structural_regime + " / " + htf_regime, text_color = structural_regime == "TREND" ? color.lime : structural_regime == "TRANSITION" ? color.orange : color.gray)
+        table.cell(diag, 1, 1, f_regime_emoji(structural_regime) + " " + structural_regime + " / " + htf_regime, text_color = structural_regime == "TREND" ? color.lime : structural_regime == "TRANSITION" ? color.orange : color.gray)
         table.cell(diag, 0, 2, "Cohort", text_color = color.new(color.gray, 5))
         table.cell(diag, 1, 2, regime_cohort, text_color = color.white)
-        table.cell(diag, 0, 3, "Market Q", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 3, str.tostring(market_quality_score, "#.###") + " / spread " + str.tostring(spread_proxy_bps, "#.0"), text_color = no_trade_pass ? color.lime : color.orange)
-        table.cell(diag, 0, 4, "Long setup", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 4, setup_type_long + " / " + str.tostring(setup_quality_long, "#.###"), text_color = setup_gate_long ? color.lime : color.orange)
-        table.cell(diag, 0, 5, "Short setup", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 5, setup_type_short + " / " + str.tostring(setup_quality_short, "#.###"), text_color = setup_gate_short ? color.red : color.orange)
-        table.cell(diag, 0, 6, "Long trigger", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 6, trigger_type_long + " / z " + str.tostring(volume_zscore, "#.##"), text_color = trigger_gate_long ? color.lime : color.orange)
-        table.cell(diag, 0, 7, "Short trigger", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 7, trigger_type_short + " / RSI " + str.tostring(rsi_val, "#.0"), text_color = trigger_gate_short ? color.red : color.orange)
-        table.cell(diag, 0, 8, "Long edge", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 8, edge_cohort_long + " / netR " + str.tostring(expected_net_r_long, "#.##"), text_color = expected_edge_gate_long ? color.lime : color.orange)
-        table.cell(diag, 0, 9, "Short edge", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 9, edge_cohort_short + " / netR " + str.tostring(expected_net_r_short, "#.##"), text_color = expected_edge_gate_short ? color.red : color.orange)
-        table.cell(diag, 0, 10, "Long score", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 10, str.tostring(signal_score_long, "#.0") + " / " + long_live_grade, text_color = f_score_color(signal_score_long))
-        table.cell(diag, 0, 11, "Short score", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 11, str.tostring(signal_score_short, "#.0") + " / " + short_live_grade, text_color = f_score_color(signal_score_short))
-        table.cell(diag, 0, 12, "No-trade", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 12, f_gate_text(no_trade_pass), text_color = no_trade_pass ? color.lime : color.orange)
-        table.cell(diag, 0, 13, "HTF gates", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 13, "L " + f_gate_text(htf_gate_long) + " / S " + f_gate_text(htf_gate_short), text_color = htf_gate_long or htf_gate_short ? color.white : color.orange)
-        table.cell(diag, 0, 14, "Block", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 14, show_block_reason ? (long_live_grade == "NONE" and block_reason_long != "PASS" ? block_reason_long : short_live_grade == "NONE" and block_reason_short != "PASS" ? block_reason_short : long_probe_raw ? block_reason_long : short_probe_raw ? block_reason_short : "PASS") : "-", text_color = color.orange)
-        table.cell(diag, 0, 15, "Edge prob", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 15, "TP1 " + str.tostring(tp1_reach_probability_long, "#.##") + " / Stop " + str.tostring(stop_hit_probability_long, "#.##"), text_color = color.white)
+        table.cell(diag, 0, 3, "Market", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 3, f_quality_emoji(no_trade_pass) + " Q " + str.tostring(market_quality_score, "#.##") + " | sp " + str.tostring(spread_proxy_bps, "#.0"), text_color = no_trade_pass ? color.lime : color.orange)
+        table.cell(diag, 0, 4, "Long", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 4, f_state_emoji("LONG", long_live_grade) + " " + long_live_grade + " | " + f_setup_emoji(setup_type_long) + " " + setup_type_long + " | " + str.tostring(signal_score_long, "#.0"), text_color = f_score_color(signal_score_long))
+        table.cell(diag, 0, 5, "Short", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 5, f_state_emoji("SHORT", short_live_grade) + " " + short_live_grade + " | " + f_setup_emoji(setup_type_short) + " " + setup_type_short + " | " + str.tostring(signal_score_short, "#.0"), text_color = f_score_color(signal_score_short))
+        table.cell(diag, 0, 6, "Trigger", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 6, "L " + trigger_type_long + " / S " + trigger_type_short + " | z " + str.tostring(volume_zscore, "#.##"), text_color = trigger_gate_long or trigger_gate_short ? color.white : color.orange)
+        table.cell(diag, 0, 7, "Edge", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 7, "L " + edge_cohort_long + " " + str.tostring(expected_net_r_long, "#.##") + "R / S " + edge_cohort_short + " " + str.tostring(expected_net_r_short, "#.##") + "R", text_color = color.white)
+        table.cell(diag, 0, 8, "Block", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 8, show_block_reason ? (primary_block == "PASS" ? "PASS" : "⚠️ " + primary_block) : "-", text_color = primary_block == "PASS" ? color.lime : color.orange)
+        table.cell(diag, 0, 9, "Prob", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 9, "TP1 " + str.tostring(tp1_reach_probability_long, "#.##") + " / Stop " + str.tostring(stop_hit_probability_long, "#.##"), text_color = color.white)
     else
-        for row = 0 to 15
+        for row = 0 to 9
             table.cell(diag, 0, row, "", text_color = color.new(color.white, 100), bgcolor = color.new(color.black, 100))
             table.cell(diag, 1, row, "", text_color = color.new(color.white, 100), bgcolor = color.new(color.black, 100))
 
