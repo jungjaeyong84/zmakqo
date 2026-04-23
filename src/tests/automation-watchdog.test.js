@@ -209,6 +209,37 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   assert.strictEqual(passRow.severity, "PASS");
 
   assert.strictEqual(
+    __test.shouldMonitorLegacySchedulerTick({
+      schedulerMode: "OPENCLAW_CRON",
+      env: {},
+    }),
+    false
+  );
+  assert.strictEqual(
+    __test.shouldMonitorLegacySchedulerTick({
+      schedulerMode: "OPENCLAW_CRON",
+      env: { AUTOMATION_WATCHDOG_LEGACY_SCHEDULER_TICK_SLA_ENABLED: "1" },
+    }),
+    true
+  );
+  assert.strictEqual(
+    __test.shouldMonitorLegacySchedulerTick({
+      schedulerMode: "LAUNCHD_FALLBACK",
+      env: {},
+    }),
+    true
+  );
+
+  const skippedSla = __test.buildSkippedSchedulerTickSla({
+    baseUrl: "https://example.invalid",
+    reason: "OPENCLAW_CRON",
+  });
+  assert.strictEqual(skippedSla.issueCode, null);
+  assert.strictEqual(skippedSla.severity, "PASS");
+  assert.strictEqual(skippedSla.skipped, true);
+  assert.strictEqual(skippedSla.skipReason, "LEGACY_SCHEDULER_TICK_SLA_SKIPPED_OPENCLAW_CRON");
+
+  assert.strictEqual(
     __test.shouldAttemptSchedulerRecovery(
       {
         last_scheduler_recovery_attempt_ms: Date.now(),
