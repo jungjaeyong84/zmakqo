@@ -78,6 +78,16 @@ function buildSizingDecision(bundle = buildBundle(), overrides = {}) {
   });
 }
 
+function buildRiskGovernorInput(overrides = {}) {
+  return {
+    account: { equity_quote: 1000, daily_loss_quote: 0, consecutive_loss_n: 0, trade_count_24h: 0 },
+    positions: [],
+    candidate: { symbol: "ETHUSDT", notional_quote: 25 },
+    market: { volatility_bps: 80 },
+    ...overrides,
+  };
+}
+
 async function disabledEndpointBlocksBeforeRoute() {
   const calls = [];
   const result = await runV2ProductionEntryLiveEndpoint({
@@ -172,6 +182,7 @@ async function liveEndpointDelegatesOnlyToProductionRoute() {
       confirm: LIVE_CONFIRM_PHRASE,
       bundle,
       entrySizingDecision: buildSizingDecision(bundle),
+      riskGovernor: buildRiskGovernorInput(),
     },
     requestId: "REQ__LIVE_ENDPOINT__1",
     buildLiveTransports: async () => ({
@@ -212,6 +223,40 @@ async function liveEndpointDelegatesOnlyToProductionRoute() {
   assert.strictEqual(calls[0].routedProtectionTransports, protectionTransports);
 }
 
+async function missingRiskGovernorBlocksBeforeRouteByDefault() {
+  const calls = [];
+  const bundle = buildBundle();
+  const result = await runV2ProductionEntryLiveEndpoint({
+    env: buildEnv(),
+    body: {
+      confirm: LIVE_CONFIRM_PHRASE,
+      bundle,
+      entrySizingDecision: buildSizingDecision(bundle),
+    },
+    buildLiveTransports: async () => ({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+      symbol: "ETHUSDT",
+      side: "LONG",
+      entry_qty_abs: 0.01,
+      reference_price: 2500,
+      entryTransport: { submitEntryOrder: async () => ({}) },
+      protectionTransports: {
+        placeInitialSl: async () => ({}),
+        placeInitialTp1: async () => ({}),
+      },
+    }),
+    runProductionEntryRoute: async () => {
+      calls.push("route");
+      return { ok: true };
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_RISK_GOVERNOR_BLOCKED");
+  assert.ok(result.risk_governor.blockers.includes("RISK_GOVERNOR:EQUITY_REQUIRED"));
+  assert.deepStrictEqual(calls, []);
+}
+
 async function routeFailureIsNotReclassifiedAsSuccess() {
   const bundle = buildBundle();
   const result = await runV2ProductionEntryLiveEndpoint({
@@ -220,6 +265,7 @@ async function routeFailureIsNotReclassifiedAsSuccess() {
       confirm: LIVE_CONFIRM_PHRASE,
       bundle,
       entrySizingDecision: buildSizingDecision(bundle),
+      riskGovernor: buildRiskGovernorInput(),
     },
     buildLiveTransports: async () => ({
       ok: true,
@@ -294,6 +340,9 @@ async function discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath() {
         trade_count_24h: 0,
         daily_loss_quote: 0,
       },
+      riskGovernor: buildRiskGovernorInput({
+        candidate: { symbol: "ETHUSDT", notional_quote: 12 },
+      }),
     },
     buildLiveTransports: async () => ({
       ok: true,
@@ -376,6 +425,7 @@ async function main() {
   await canaryOnlyRuntimeBlocksBeforeRoute();
   await canaryDecisionBlocksBeforeRoute();
   await liveEndpointDelegatesOnlyToProductionRoute();
+  await missingRiskGovernorBlocksBeforeRouteByDefault();
   await routeFailureIsNotReclassifiedAsSuccess();
   await transportFailureBlocksBeforeRoute();
   await discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath();

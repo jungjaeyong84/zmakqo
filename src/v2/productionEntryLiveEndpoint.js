@@ -221,7 +221,7 @@ async function runV2ProductionEntryLiveEndpoint({
 
   let riskGovernorSummary = null;
   const riskGovernorInput = extractRiskGovernorInput({ body, bundle: resolvedBundle });
-  if (riskGovernorInput || parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, false)) {
+  if (riskGovernorInput || parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, true)) {
     riskGovernorSummary = evaluateV2RiskGovernor({
       env,
       account: riskGovernorInput && riskGovernorInput.account,

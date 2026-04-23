@@ -37,6 +37,12 @@ function buildBundle(overrides = {}) {
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "production live request long approved",
     createdAt: "2026-04-22T01:00:00.000Z",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+    },
     ...overrides,
   });
 }

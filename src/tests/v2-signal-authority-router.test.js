@@ -33,11 +33,53 @@ const { resolveEntryIntentFromOpenClaw } = require("../v2/signalAuthorityRouter"
     featuresHash: "feat_hash_sol_1",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "native quality passed canary threshold",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: { symbol: "SOLUSDT", spread_bps: 2 },
+    },
   });
   const routed = resolveEntryIntentFromOpenClaw(bundle);
   assert.strictEqual(routed.ok, true);
   assert.strictEqual(routed.entryIntent.signal_intent_id, bundle.signalIntent.signal_intent_id);
   assert.strictEqual(routed.entryIntent.policy_scope, "SOL_15M");
+})();
+
+(function missingMarketDataQualityBlocksServerNativeEntry() {
+  const bundle = buildOpenClawDecisionBundle({
+    signalSourceMode: "SERVER_NATIVE_ML_AI",
+    signalLineageId: "LINEAGE__SOL__MISSING_MDQ",
+    symbol: "SOLUSDT",
+    side: "LONG",
+    qualityScore: 0.77,
+    budgetCheckResult: "PASS",
+    minOrderCheckResult: "PASS",
+    decisionStatus: "APPROVED",
+    decisionMode: "CANARY",
+    recommendedAction: "APPROVE_ENTRY",
+    approved: true,
+    rationaleSummary: "missing market data quality should fail closed",
+    policyScope: "SOL_15M",
+    htfDirection: "LONG",
+    htfConfidence: 0.76,
+    timeframe: "15M",
+    featureSchemaVersion: "ml_features_v1",
+    featureValues: {
+      trend_bias: 0.77,
+      volatility_rank: 0.48,
+    },
+    proposalVerdict: "PASS",
+    rankScore: 0.79,
+    sizeRatio: 0.45,
+    featuresHash: "feat_hash_sol_missing_mdq",
+    modelVersion: "openclaw-ml-v2",
+    decisionSummary: "native quality passed but market data evidence missing",
+  });
+  const routed = resolveEntryIntentFromOpenClaw(bundle);
+  assert.strictEqual(routed.ok, false);
+  assert.strictEqual(routed.reason, "MARKET_DATA_QUALITY_REQUIRED");
+  assert.ok(routed.market_data_quality_gate.blockers.includes("MARKET_DATA:QUALITY_EVIDENCE_REQUIRED"));
 })();
 
 (function shadowDecisionNeverProducesLiveEntryIntent() {

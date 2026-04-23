@@ -48,6 +48,12 @@ function buildBundle(overrides = {}) {
     featuresHash: `feat_hash_prod_entry_${overrides.decisionMode || "CANARY"}`,
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "production entry route canary long approved",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+    },
     ...overrides,
   });
 }

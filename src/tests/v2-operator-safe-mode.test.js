@@ -45,4 +45,16 @@ const { ACTIONS, planOperatorSafeModeAction } = require("../v2/operatorSafeMode"
   assert.strictEqual(result.env_patch.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS, "");
 }
 
+{
+  const result = planOperatorSafeModeAction({
+    action: ACTIONS.PAUSE_ENTRIES,
+    options: { service: "donbeolja;rm -rf /", region: "asia-northeast3 && whoami" },
+    confirm: "CONFIRM_PAUSE_ENTRIES",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.blockers.includes("OPERATOR_SAFE_MODE:SERVICE_INVALID"));
+  assert.ok(result.blockers.includes("OPERATOR_SAFE_MODE:REGION_INVALID"));
+  assert.ok(result.command_preview.includes("gcloud run services update donbeolja --region=asia-northeast3"));
+}
+
 console.log("V2_OPERATOR_SAFE_MODE_TEST_OK");

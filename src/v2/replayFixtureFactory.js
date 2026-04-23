@@ -437,6 +437,12 @@ function buildReferenceNativeMlEvidencePack() {
     featuresHash: "feat_hash_native_replay_v1",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "native replay evidence complete",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+    },
   });
 }
 

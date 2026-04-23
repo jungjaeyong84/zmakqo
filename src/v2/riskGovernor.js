@@ -15,6 +15,11 @@ function toNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function numberWithDefault(value, fallback) {
+  const n = toNumberOrNull(value);
+  return n === null ? fallback : n;
+}
+
 function parseBool(value, fallback = false) {
   const raw = String(value == null ? "" : value).trim().toLowerCase();
   if (!raw) return fallback;
@@ -37,14 +42,14 @@ function resolveRiskGovernorPolicy(env = process.env) {
   return Object.freeze({
     enabled: parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_ENABLED, true),
     required: parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, false),
-    max_account_leverage: toNumberOrNull(env.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE) || 2,
-    max_total_notional_quote: toNumberOrNull(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE) || 250,
-    max_symbol_notional_quote: toNumberOrNull(env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE) || 100,
-    max_correlated_group_notional_quote: toNumberOrNull(env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE) || 150,
-    daily_loss_halt_quote: toNumberOrNull(env.DONBEOLJA_V2_RISK_DAILY_LOSS_HALT_QUOTE) || 25,
-    max_consecutive_loss_n: Math.floor(toNumberOrNull(env.DONBEOLJA_V2_RISK_MAX_CONSECUTIVE_LOSS_N) || 3),
-    max_trades_per_day: Math.floor(toNumberOrNull(env.DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY) || 4),
-    volatility_halt_bps: toNumberOrNull(env.DONBEOLJA_V2_RISK_VOLATILITY_HALT_BPS) || 250,
+    max_account_leverage: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE, 2),
+    max_total_notional_quote: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, 250),
+    max_symbol_notional_quote: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, 100),
+    max_correlated_group_notional_quote: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, 150),
+    daily_loss_halt_quote: numberWithDefault(env.DONBEOLJA_V2_RISK_DAILY_LOSS_HALT_QUOTE, 25),
+    max_consecutive_loss_n: Math.floor(numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CONSECUTIVE_LOSS_N, 3)),
+    max_trades_per_day: Math.floor(numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY, 4)),
+    volatility_halt_bps: numberWithDefault(env.DONBEOLJA_V2_RISK_VOLATILITY_HALT_BPS, 250),
     correlation_groups: Object.freeze({
       BTC_BETA: Object.freeze(ensureArray(env.DONBEOLJA_V2_RISK_CORR_GROUP_BTC_BETA || "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,LINKUSDT")),
       MEME: Object.freeze(ensureArray(env.DONBEOLJA_V2_RISK_CORR_GROUP_MEME || "DOGEUSDT")),
@@ -139,5 +144,5 @@ function evaluateV2RiskGovernor({
 module.exports = {
   resolveRiskGovernorPolicy,
   evaluateV2RiskGovernor,
-  __test: { trimOrNull, upper, toNumberOrNull, parseBool, symbolGroup, normalizePositions },
+  __test: { trimOrNull, upper, toNumberOrNull, numberWithDefault, parseBool, symbolGroup, normalizePositions },
 };

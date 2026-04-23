@@ -97,6 +97,12 @@ function buildDefaultLiveEndpointBundle({ createdAt } = {}) {
     featuresHash: "feat_hash_v2_protected_canary_live_endpoint_v1",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "protected canary live endpoint evidence complete",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+    },
     createdAt,
   });
 }
@@ -246,10 +252,21 @@ async function runProtectedCanaryLiveEndpointProbe({
     DONBEOLJA_V2_DRY_RUN: "0",
     DONBEOLJA_V2_CANARY_ONLY: "0",
     DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
+    DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "5000",
+    DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: "5000",
+    DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE: "5000",
   };
   const result = await runLiveEndpoint({
     env: endpointEnv,
-    body: request.body,
+    body: {
+      ...request.body,
+      riskGovernor: {
+        account: { equity_quote: 1000, daily_loss_quote: 0, consecutive_loss_n: 0, trade_count_24h: 0 },
+        positions: [],
+        candidate: { symbol: "ETHUSDT", notional_quote: Number(request.entrySizingDecision && request.entrySizingDecision.notional_quote) || 1 },
+        market: { volatility_bps: 80 },
+      },
+    },
     requestId: "REQ__NO_EXCHANGE__V2_PROTECTED_CANARY_LIVE_ENDPOINT",
     buildLiveTransports: async () => Object.freeze({
       ok: true,

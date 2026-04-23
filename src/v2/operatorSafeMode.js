@@ -23,6 +23,18 @@ function normalizeSymbol(value) {
   return /^[A-Z0-9_:-]{3,32}$/.test(symbol) ? symbol : null;
 }
 
+function normalizeService(value) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  return /^[a-z][a-z0-9-]{0,62}$/.test(text) ? text : null;
+}
+
+function normalizeRegion(value) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  return /^[a-z]+-[a-z]+[0-9]$/.test(text) ? text : null;
+}
+
 function parseBool(value, fallback = false) {
   const raw = String(value == null ? "" : value).trim().toLowerCase();
   if (!raw) return fallback;
@@ -94,8 +106,14 @@ function planOperatorSafeModeAction({
 } = {}) {
   const normalizedAction = upper(action);
   const envPatch = buildEnvPatch(normalizedAction, options);
+  const requestedService = trimOrNull(options.service);
+  const requestedRegion = trimOrNull(options.region);
+  const service = normalizeService(requestedService) || "donbeolja";
+  const region = normalizeRegion(requestedRegion) || "asia-northeast3";
   const blockers = [];
   if (!envPatch) blockers.push("OPERATOR_SAFE_MODE:ACTION_UNSUPPORTED");
+  if (requestedService && !normalizeService(requestedService)) blockers.push("OPERATOR_SAFE_MODE:SERVICE_INVALID");
+  if (requestedRegion && !normalizeRegion(requestedRegion)) blockers.push("OPERATOR_SAFE_MODE:REGION_INVALID");
   if (parseBool(env.DONBEOLJA_V2_OPERATOR_ACTION_REQUIRE_CONFIRM, true) && trimOrNull(confirm) !== `CONFIRM_${normalizedAction}`) {
     blockers.push("OPERATOR_SAFE_MODE:CONFIRM_REQUIRED");
   }
@@ -114,8 +132,8 @@ function planOperatorSafeModeAction({
     blockers: Object.freeze(blockers),
     env_patch: Object.freeze(envPatch || {}),
     command_preview: envPatch ? buildGcloudCommand({
-      service: trimOrNull(options.service) || "donbeolja",
-      region: trimOrNull(options.region) || "asia-northeast3",
+      service,
+      region,
       envPatch,
     }) : null,
     apply_performed: false,
@@ -128,5 +146,5 @@ module.exports = {
   buildEnvPatch,
   buildGcloudCommand,
   planOperatorSafeModeAction,
-  __test: { trimOrNull, upper, normalizeSymbol, parseBool },
+  __test: { trimOrNull, upper, normalizeSymbol, normalizeService, normalizeRegion, parseBool },
 };

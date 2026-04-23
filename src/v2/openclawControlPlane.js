@@ -293,6 +293,7 @@ function buildOpenClawDecisionBundle({
     mlAiEvidence,
     strategyFilterResult: resolvedStrategyFilterResult,
     canonicalEvidenceSummary,
+    marketDataQuality,
     openclawDecisionBundleHash,
   });
 }

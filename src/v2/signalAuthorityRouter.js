@@ -108,10 +108,18 @@ function resolveMarketDataQualityDecisionGate(openclawDecision) {
   const summary = decision && decision.canonical_evidence_summary && typeof decision.canonical_evidence_summary === "object"
     ? decision.canonical_evidence_summary
     : null;
+  const sourceMode = upper((summary && summary.signal_source_mode) || (decision && decision.signal_source_mode));
   const marketData = summary && summary.market_data_quality && typeof summary.market_data_quality === "object"
     ? summary.market_data_quality
     : null;
   if (!marketData || marketData.present !== true) {
+    if (sourceMode === "SERVER_NATIVE_ML_AI") {
+      return Object.freeze({
+        ok: false,
+        reason: "MARKET_DATA_QUALITY_REQUIRED",
+        blockers: Object.freeze(["MARKET_DATA:QUALITY_EVIDENCE_REQUIRED"]),
+      });
+    }
     return Object.freeze({ ok: true, reason: null, blockers: Object.freeze([]) });
   }
   if (marketData.ok !== true) {
