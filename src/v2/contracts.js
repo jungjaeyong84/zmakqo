@@ -608,6 +608,7 @@ function buildOpenClawExecutionAuditDoc({
     audit_id: auditId,
     signal_intent_id: validateRequiredString("signal_intent_id", row.signal_intent_id),
     openclaw_decision_id: validateRequiredString("openclaw_decision_id", row.openclaw_decision_id),
+    openclaw_decision_bundle_hash: trimOrNull(row.openclaw_decision_bundle_hash),
     position_cycle_id: trimOrNull(positionCycleId),
     decision_mode: validateEnum("decision_mode", row.decision_mode, V2_DECISION_MODES),
     deterministic_route_status: validateRequiredString("deterministic_route_status", upper(row.deterministic_route_status)),

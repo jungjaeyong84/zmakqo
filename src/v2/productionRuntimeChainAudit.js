@@ -289,14 +289,18 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
         && openclawControlPlane.includes("openclaw_decision_bundle_hash")
         && openclawControlPlane.includes("buildOpenClawDecisionBundleLedgerDoc")
         && openclawControlPlane.includes("OPENCLAW_DECISION_BUNDLE_LEDGER_WRITTEN")
+        && productionEntryRoute.includes("findExistingDecisionBundleExecution")
+        && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_BLOCKED")
+        && productionEntryRoute.includes("openclaw_decision_bundle_hash")
         && openclawShadowWriter.includes("OPENCLAW_DECISION_BUNDLES"),
-      "OpenClaw ML proposal verdict must gate entry, ML size ratio must cap sizing, and decision bundles must be ledgered for replay",
+      "OpenClaw ML proposal verdict must gate entry, ML size ratio must cap sizing, and decision bundles must be ledgered and replay-guarded",
       {
         proposal_gate: signalAuthorityRouter.includes("resolveMlAiProposalGate") && signalAuthorityRouter.includes("ML_AI_PROPOSAL_NOT_APPROVED"),
         size_ratio_cap: entrySizingDecision.includes("resolveMaxSizeRatio") && entrySizingDecision.includes("ML_SIZE_RATIO_CAPPED"),
         live_request_uses_bundle_ratio: productionEntryLiveRequest.includes("extractMlMaxSizeRatioFromBundle") && productionEntryLiveRequest.includes("maxSizeRatio"),
         decision_bundle_hash: openclawControlPlane.includes("openclawDecisionBundleHash") && openclawControlPlane.includes("openclaw_decision_bundle_hash"),
         decision_bundle_ledger: openclawControlPlane.includes("buildOpenClawDecisionBundleLedgerDoc") && openclawShadowWriter.includes("OPENCLAW_DECISION_BUNDLES"),
+        decision_bundle_replay_guard: productionEntryRoute.includes("findExistingDecisionBundleExecution") && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_BLOCKED"),
       }
     ),
     buildCheck(

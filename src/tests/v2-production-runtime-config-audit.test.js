@@ -12,7 +12,10 @@ const {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PRODUCTION_RUNTIME_CONFIG_CONTRACT_PASS");
   assert.strictEqual(result.fail_n, 0);
-  assert.ok(result.check_n >= 43);
+  assert.ok(result.check_n >= 50);
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_ENABLED, "1");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_DRY_RUN, "0");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_CANARY_ONLY, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON, "");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "0");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "0");
@@ -39,6 +42,9 @@ const {
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED, "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE, "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE, "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE");
+  assert.strictEqual(result.main_service_env.OPENCLAW_AGENT_APPLY_ENABLED, "0");
+  assert.strictEqual(result.main_service_env.ML_LIVE_SERVING_ARMED, "$_ML_LIVE_SERVING_ARMED");
+  assert.strictEqual(result.main_service_env.OPENCLAW_NARRATIVE_SHADOW_ONLY, "1");
   assert.strictEqual(result.main_service_env.SCHEDULER_AUTOSTART, "0");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_ENABLED, "$_DONBEOLJA_V2_ENABLED");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED");
@@ -54,6 +60,9 @@ const {
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED, "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE, "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE, "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE");
+  assert.strictEqual(result.exit_service_env.OPENCLAW_AGENT_APPLY_ENABLED, "0");
+  assert.strictEqual(result.exit_service_env.ML_LIVE_SERVING_ARMED, "$_ML_LIVE_SERVING_ARMED");
+  assert.strictEqual(result.exit_service_env.OPENCLAW_NARRATIVE_SHADOW_ONLY, "1");
   assert.strictEqual(result.exit_service_env.SCHEDULER_AUTOSTART, "0");
 })();
 

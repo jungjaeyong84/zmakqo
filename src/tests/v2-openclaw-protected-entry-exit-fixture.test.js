@@ -54,6 +54,13 @@ async function buildOpenClawSizingProtectedEntryExitFixture() {
       nowIso,
       exchangeWriteLedger,
     }),
+    findExistingBundleExecution: async () => Object.freeze({
+      ok: true,
+      replay: false,
+      reason: "OPENCLAW_DECISION_BUNDLE_EXECUTION_NOT_FOUND",
+      openclaw_decision_bundle_hash: request.body.bundle.openclawDecisionBundleHash,
+      existing_execution_audit: null,
+    }),
     persistExecutionAudit: async ({ audit, positionCycleId, source }) => Object.freeze({
       ok: true,
       skipped: true,

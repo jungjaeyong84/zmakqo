@@ -27,6 +27,29 @@ function createMemoryFirestore() {
         doc(docId) {
           return Object.freeze({ collectionName, id: docId, path: `${collectionName}/${docId}` });
         },
+        where(field, op, value) {
+          return {
+            limit(maxRows) {
+              return {
+                async get() {
+                  const matched = writes
+                    .filter((write) => write && write.ref && write.ref.collectionName === collectionName)
+                    .map((write) => write.payload || {})
+                    .filter((payload) => {
+                      if (op !== "==") return false;
+                      return payload && payload[field] === value;
+                    })
+                    .slice(0, Math.max(1, Number(maxRows) || 1));
+                  return {
+                    docs: matched.map((payload) => ({
+                      data: () => ({ ...payload }),
+                    })),
+                  };
+                },
+              };
+            },
+          };
+        },
       };
     },
     batch() {

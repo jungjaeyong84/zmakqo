@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const REQUIRED_CUTOVER_SUBSTITUTIONS = Object.freeze([
+  "_ML_LIVE_SERVING_ARMED",
   "_DONBEOLJA_V2_ENABLED",
   "_DONBEOLJA_V2_DRY_RUN",
   "_DONBEOLJA_V2_CANARY_ONLY",
@@ -46,6 +47,9 @@ const REQUIRED_CUTOVER_ENV = Object.freeze({
   DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED",
   DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE",
   DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE: "$_DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE",
+  OPENCLAW_AGENT_APPLY_ENABLED: "0",
+  ML_LIVE_SERVING_ARMED: "$_ML_LIVE_SERVING_ARMED",
+  OPENCLAW_NARRATIVE_SHADOW_ONLY: "1",
   SCHEDULER_AUTOSTART: "0",
 });
 
@@ -172,6 +176,30 @@ function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) 
       `cloudbuild substitutions must declare ${name}`,
       { value: Object.prototype.hasOwnProperty.call(substitutions, name) ? substitutions[name] : null }
     )),
+    buildCheck(
+      "CLOUDBUILD_DEFAULT_V2_ENABLED_CANARY_SAFE",
+      substitutions._DONBEOLJA_V2_ENABLED === "1",
+      "default Cloud Build deploy must keep V2 enabled so direct builds cannot roll back to V1-disabled runtime",
+      { value: substitutions._DONBEOLJA_V2_ENABLED || null }
+    ),
+    buildCheck(
+      "CLOUDBUILD_DEFAULT_V2_DRY_RUN_OFF_CANARY_SAFE",
+      substitutions._DONBEOLJA_V2_DRY_RUN === "0",
+      "default Cloud Build deploy must match the guarded V2 canary runtime rather than a dry-run-only revision",
+      { value: substitutions._DONBEOLJA_V2_DRY_RUN || null }
+    ),
+    buildCheck(
+      "CLOUDBUILD_DEFAULT_V2_CANARY_ONLY_ON",
+      substitutions._DONBEOLJA_V2_CANARY_ONLY === "1",
+      "default Cloud Build deploy must remain canary-only unless the submit wrapper explicitly promotes LIVE",
+      { value: substitutions._DONBEOLJA_V2_CANARY_ONLY || null }
+    ),
+    buildCheck(
+      "CLOUDBUILD_DEFAULT_LIVE_ENDPOINT_OFF",
+      substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED === "0",
+      "default Cloud Build deploy must keep the production entry live endpoint disabled",
+      { value: substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED || null }
+    ),
     buildCheck(
       "CLOUDBUILD_DEFAULT_SCHEDULER_CUTOVER_MODE_OPENCLAW_CRON",
       substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE === "OPENCLAW_CRON",

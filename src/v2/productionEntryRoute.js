@@ -6,6 +6,7 @@ const { runV2EntryExecutionKernel } = require("./entryExecutionKernel");
 const { evaluateOpenClawExecutionSeparation } = require("./openclawExecutionSeparationAudit");
 const { persistOpenClawExecutionAudit } = require("./openclawExecutionAuditLedger");
 const { validateOpenClawExecutionPermit } = require("./openclawExecutionPermit");
+const { queryV2DocsByField } = require("./storage");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -53,6 +54,48 @@ function extractExecutedEntry(kernelResult) {
   return asObject(submitterResult && submitterResult.executedEntry);
 }
 
+function extractDecisionBundleHash(bundle) {
+  const row = asObject(bundle);
+  const decision = asObject(row && row.openclawDecision);
+  return trimOrNull(row && row.openclawDecisionBundleHash)
+    || trimOrNull(decision && decision.openclaw_decision_bundle_hash);
+}
+
+async function findExistingDecisionBundleExecution({
+  db = null,
+  env = process.env,
+  bundle,
+} = {}) {
+  const bundleHash = extractDecisionBundleHash(bundle);
+  if (!bundleHash) {
+    return Object.freeze({
+      ok: false,
+      replay: false,
+      reason: "OPENCLAW_DECISION_BUNDLE_HASH_REQUIRED",
+      openclaw_decision_bundle_hash: null,
+      existing_execution_audit: null,
+    });
+  }
+  const query = await queryV2DocsByField({
+    db,
+    env,
+    collectionKey: "OPENCLAW_EXECUTION_AUDITS",
+    field: "openclaw_decision_bundle_hash",
+    value: bundleHash,
+    limit: 1,
+  });
+  const existing = Array.isArray(query.rows) && query.rows.length ? query.rows[0] : null;
+  return Object.freeze({
+    ok: true,
+    replay: !!existing,
+    reason: existing
+      ? "OPENCLAW_DECISION_BUNDLE_EXECUTION_ALREADY_EXISTS"
+      : "OPENCLAW_DECISION_BUNDLE_EXECUTION_NOT_FOUND",
+    openclaw_decision_bundle_hash: bundleHash,
+    existing_execution_audit: existing ? Object.freeze({ ...existing }) : null,
+  });
+}
+
 async function runV2ProductionEntryRoute({
   db = null,
   env = process.env,
@@ -64,6 +107,7 @@ async function runV2ProductionEntryRoute({
   runEntryKernel = runV2EntryExecutionKernel,
   persistExecutionAudit = persistOpenClawExecutionAudit,
   validateExecutionPermit = validateOpenClawExecutionPermit,
+  findExistingBundleExecution = findExistingDecisionBundleExecution,
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
   stopLossPct = 0.0165,
@@ -73,6 +117,7 @@ async function runV2ProductionEntryRoute({
   if (typeof runEntryKernel !== "function") throw new Error("RUN_ENTRY_KERNEL_REQUIRED");
   if (typeof persistExecutionAudit !== "function") throw new Error("PERSIST_EXECUTION_AUDIT_REQUIRED");
   if (typeof validateExecutionPermit !== "function") throw new Error("VALIDATE_EXECUTION_PERMIT_REQUIRED");
+  if (typeof findExistingBundleExecution !== "function") throw new Error("FIND_EXISTING_BUNDLE_EXECUTION_REQUIRED");
 
   const runtimeConfig = resolveV2RuntimeConfig(env);
   const runtime = summarizeRuntimeConfig(runtimeConfig);
@@ -141,6 +186,57 @@ async function runV2ProductionEntryRoute({
       kernelResult: null,
       executionPermitValidation,
       openclawExecutionAudit: preExecutionAudit,
+      decisionBundleReplayGuard: null,
+      auditLedgerResult: null,
+    });
+  }
+
+  let decisionBundleReplayGuard = null;
+  try {
+    decisionBundleReplayGuard = await findExistingBundleExecution({
+      db,
+      env,
+      bundle,
+      executionPermit,
+      worldState,
+      routedDecision,
+      now,
+    });
+  } catch (error) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_GUARD_FAILED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard: Object.freeze({
+        ok: false,
+        replay: false,
+        reason: "OPENCLAW_DECISION_BUNDLE_REPLAY_GUARD_THROWN",
+        error_message: trimOrNull(error && error.message) || String(error),
+      }),
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+  if (!decisionBundleReplayGuard || decisionBundleReplayGuard.ok !== true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_GUARD_FAILED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+  if (decisionBundleReplayGuard.replay === true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_BLOCKED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
   }
@@ -163,6 +259,7 @@ async function runV2ProductionEntryRoute({
       routedDecision,
       kernelResult,
       executionPermitValidation,
+      decisionBundleReplayGuard,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
@@ -192,6 +289,7 @@ async function runV2ProductionEntryRoute({
       routedDecision,
       kernelResult,
       executionPermitValidation,
+      decisionBundleReplayGuard,
       openclawExecutionAudit,
       auditLedgerResult: Object.freeze({
         ok: false,
@@ -207,6 +305,7 @@ async function runV2ProductionEntryRoute({
       routedDecision,
       kernelResult,
       executionPermitValidation,
+      decisionBundleReplayGuard,
       openclawExecutionAudit,
       auditLedgerResult,
     });
@@ -218,6 +317,7 @@ async function runV2ProductionEntryRoute({
       routedDecision,
       kernelResult,
       executionPermitValidation,
+      decisionBundleReplayGuard,
       openclawExecutionAudit,
       auditLedgerResult,
     });
@@ -228,6 +328,7 @@ async function runV2ProductionEntryRoute({
     routedDecision,
     kernelResult,
     executionPermitValidation,
+    decisionBundleReplayGuard,
     openclawExecutionAudit,
     auditLedgerResult,
   });
@@ -241,5 +342,7 @@ module.exports = {
     asObject,
     summarizeRuntimeConfig,
     extractExecutedEntry,
+    extractDecisionBundleHash,
+    findExistingDecisionBundleExecution,
   },
 };

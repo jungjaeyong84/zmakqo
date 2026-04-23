@@ -37,6 +37,7 @@ function normalizeBundle(bundle) {
     signalIntent,
     openclawDecision,
     strategyFilterResult: source.strategyFilterResult || null,
+    openclawDecisionBundleHash: trimOrNull(source.openclawDecisionBundleHash || openclawDecision.openclaw_decision_bundle_hash),
   });
 }
 
@@ -60,6 +61,7 @@ function evaluateOpenClawExecutionSeparation({
 
   const signalIntent = normalized.signalIntent;
   const openclawDecision = normalized.openclawDecision;
+  const openclawDecisionBundleHash = trimOrNull(normalized.openclawDecisionBundleHash);
   const signalIntentId = trimOrNull(signalIntent.signal_intent_id);
   const openclawDecisionId = trimOrNull(openclawDecision.openclaw_decision_id);
   const decisionSignalIntentId = trimOrNull(openclawDecision.signal_intent_id);
@@ -147,6 +149,7 @@ function evaluateOpenClawExecutionSeparation({
     generated_at: now(),
     signal_intent_id: signalIntentId,
     openclaw_decision_id: openclawDecisionId,
+    openclaw_decision_bundle_hash: openclawDecisionBundleHash,
     decision_mode: decisionMode,
     deterministic_route_status: routedOk ? "ENTRY_INTENT_CREATED" : "ENTRY_INTENT_BLOCKED",
     execution_kernel_status: executed ? "EXECUTED_ENTRY_PRESENT" : "NO_EXECUTION_ATTACHED",

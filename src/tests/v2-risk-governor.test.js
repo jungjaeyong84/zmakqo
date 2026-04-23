@@ -40,6 +40,12 @@ const { resolveRiskGovernorPolicy, evaluateV2RiskGovernor } = require("../v2/ris
 }
 
 {
+  const policy = resolveRiskGovernorPolicy({});
+  assert.strictEqual(policy.enabled, true);
+  assert.strictEqual(policy.required, true);
+}
+
+{
   const policy = resolveRiskGovernorPolicy({
     DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "0",
     DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY: "0",
