@@ -156,15 +156,21 @@ bgcolor(show_state_bg ? (structural_regime == "TREND" ? color.new(color.teal, 92
 //────────────────────────────────────
 recent_high = ta.highest(high, 10)[1]
 recent_low = ta.lowest(low, 10)[1]
+recent_high_3 = ta.highest(high, 3)
+recent_low_3 = ta.lowest(low, 3)
+low_touch_fast_3 = ta.lowest(low, 3) <= ema_fast + atr * 0.18
+high_touch_fast_3 = ta.highest(high, 3) >= ema_fast - atr * 0.18
+close_to_fast_long = math.abs(close - ema_fast) <= atr * 0.55 or math.abs(low - ema_fast) <= atr * 0.45
+close_to_fast_short = math.abs(close - ema_fast) <= atr * 0.55 or math.abs(high - ema_fast) <= atr * 0.45
 
 reclaim_strength_long = f_clamp01(0.45 * (low <= ema_fast ? 1.0 : 0.0) + 0.30 * close_pos_in_bar + 0.25 * (close > ema_fast ? 1.0 : 0.0))
 reclaim_strength_short = f_clamp01(0.45 * (high >= ema_fast ? 1.0 : 0.0) + 0.30 * (1.0 - close_pos_in_bar) + 0.25 * (close < ema_fast ? 1.0 : 0.0))
 
-pullback_reclaim_long = htf_regime == "LONG" and structural_regime != "RANGE" and low <= ema_fast and close > ema_fast and price_position >= 0.30 and price_position <= 0.72 and reclaim_strength_long >= 0.62
-pullback_reclaim_short = htf_regime == "SHORT" and structural_regime != "RANGE" and high >= ema_fast and close < ema_fast and price_position <= 0.70 and price_position >= 0.28 and reclaim_strength_short >= 0.62
+pullback_reclaim_long = htf_regime != "SHORT" and structural_regime != "RANGE" and close > ema_fast and ema_fast >= ema_mid * 0.995 and (low <= ema_fast or low_touch_fast_3 or close_to_fast_long) and price_position >= 0.24 and price_position <= 0.82 and reclaim_strength_long >= 0.52
+pullback_reclaim_short = htf_regime != "LONG" and structural_regime != "RANGE" and close < ema_fast and ema_fast <= ema_mid * 1.005 and (high >= ema_fast or high_touch_fast_3 or close_to_fast_short) and price_position <= 0.76 and price_position >= 0.18 and reclaim_strength_short >= 0.52
 
-breakout_retest_long = htf_regime == "LONG" and close > recent_high and low <= recent_high + atr * 0.20 and body_ratio >= trigger_body_min and close > ema_fast
-breakout_retest_short = htf_regime == "SHORT" and close < recent_low and high >= recent_low - atr * 0.20 and body_ratio >= trigger_body_min and close < ema_fast
+breakout_retest_long = htf_regime != "SHORT" and recent_high_3 > recent_high and close >= recent_high - atr * 0.12 and body_ratio >= trigger_body_min * 0.80 and close > ema_fast
+breakout_retest_short = htf_regime != "LONG" and recent_low_3 < recent_low and close <= recent_low + atr * 0.12 and body_ratio >= trigger_body_min * 0.80 and close < ema_fast
 
 setup_type_long = pullback_reclaim_long ? "PULLBACK_RECLAIM" : breakout_retest_long ? "BREAKOUT_RETEST" : "NONE"
 setup_type_short = pullback_reclaim_short ? "PULLBACK_RECLAIM" : breakout_retest_short ? "BREAKOUT_RETEST" : "NONE"
@@ -232,10 +238,12 @@ edge_cohort_short = expected_net_r_short <= 0 ? "NEGATIVE_EDGE" : edge_score_sho
 //────────────────────────────────────
 // Gate evaluation
 //────────────────────────────────────
-no_trade_pass = market_quality_score >= market_quality_min and spread_proxy_bps <= max_spread_bps and mark_index_gap_proxy_bps <= max_mark_gap_bps and manual_funding_penalty_bps <= max_funding_penalty_bps and structural_regime != "RANGE"
-effective_htf_alignment_min = structural_regime == "TRANSITION" ? trend_min_alignment * 0.85 : trend_min_alignment
-htf_gate_long = htf_regime == "LONG" and trend_alignment_local >= effective_htf_alignment_min
-htf_gate_short = htf_regime == "SHORT" and trend_alignment_local >= effective_htf_alignment_min
+no_trade_pass = market_quality_score >= market_quality_min and spread_proxy_bps <= max_spread_bps and mark_index_gap_proxy_bps <= max_mark_gap_bps and manual_funding_penalty_bps <= max_funding_penalty_bps
+effective_htf_alignment_min = structural_regime == "TRANSITION" ? trend_min_alignment * 0.75 : structural_regime == "RANGE" ? trend_min_alignment * 0.70 : trend_min_alignment
+local_long_bias = ema_fast >= ema_mid and macd_hist >= -0.02
+local_short_bias = ema_fast <= ema_mid and macd_hist <= 0.02
+htf_gate_long = (htf_regime == "LONG" or (htf_regime == "NEUTRAL" and local_long_bias)) and trend_alignment_local >= effective_htf_alignment_min
+htf_gate_short = (htf_regime == "SHORT" or (htf_regime == "NEUTRAL" and local_short_bias)) and trend_alignment_local >= effective_htf_alignment_min
 setup_gate_long = setup_type_long != "NONE" and setup_quality_long >= setup_quality_min
 setup_gate_short = setup_type_short != "NONE" and setup_quality_short >= setup_quality_min
 rsi_long_ok = rsi_val >= min_rsi_long or macd_hist > 0
