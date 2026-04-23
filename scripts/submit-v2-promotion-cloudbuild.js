@@ -2300,7 +2300,16 @@ function buildApprovalVerification(request) {
 
 function buildSubmitRequest(env = process.env) {
   submitContractCheck.assertSubmitContract();
-  const plan = cloudbuildRuntime.__test.buildCloudBuildPlan(env);
+  const promotionMode = upper(env.V2_PROMOTION_MODE) || "CANARY";
+  const boundedSubmit = (isEnabled(env.V2_PROMOTION_CANARY_FLOW_ENABLED) || isEnabled(env.V2_PROMOTION_PIPELINE_ENABLED))
+    && ["CANARY", "LIVE"].includes(promotionMode);
+  const planEnv = boundedSubmit
+    ? Object.freeze({
+        ...env,
+        DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "1",
+      })
+    : env;
+  const plan = cloudbuildRuntime.__test.buildCloudBuildPlan(planEnv);
   if (plan.mode === "OFF") throw new Error("V2_PROMOTION_CLOUDBUILD_SUBMIT_MODE_REQUIRED");
 
   const projectId = resolveProjectId(env);

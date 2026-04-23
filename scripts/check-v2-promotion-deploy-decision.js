@@ -442,10 +442,15 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
   const maxObservedLearnerAgeMinutes = Number(learner && learner.max_observed_evaluation_age_minutes);
   const expectedPermitIds = normalizeStringArray(lineage && lineage.expected_openclaw_execution_permit_ids);
   const expectedOutcomeIds = normalizeStringArray(lineage && lineage.expected_openclaw_outcome_adjudication_ids);
+  const expectedDecisionBundleIds = normalizeStringArray(lineage && lineage.expected_openclaw_decision_bundle_ids);
+  const expectedDecisionBundleHash = trimOrNull(lineage && lineage.expected_openclaw_decision_bundle_hash);
+  const expectedDecisionBundleHashes = expectedDecisionBundleHash ? [expectedDecisionBundleHash] : [];
   return (
     supreme.ok === true &&
     Number(supreme.world_state_n) > 0 &&
     !!trimOrNull(supreme.latest_world_state_hash) &&
+    Number(supreme.openclaw_decision_bundle_n) > 0 &&
+    !!trimOrNull(supreme.latest_openclaw_decision_bundle_hash) &&
     Number(supreme.execution_permit_n) > 0 &&
     Number(supreme.permit_validation_pass_n) >= Number(supreme.execution_permit_n) &&
     Number(supreme.permit_validation_fail_n || 0) === 0 &&
@@ -482,16 +487,23 @@ function hasOpenClawSupremeControlPlaneCoverage(summary) {
     !!trimOrNull(lineage.expected_openclaw_decision_id) &&
     !!trimOrNull(lineage.expected_position_cycle_id) &&
     !!trimOrNull(lineage.expected_world_state_hash) &&
+    !!expectedDecisionBundleHash &&
     expectedPermitIds.length > 0 &&
     expectedOutcomeIds.length > 0 &&
+    expectedDecisionBundleIds.length > 0 &&
     trimOrNull(lineage.expected_world_state_hash) === trimOrNull(supreme.latest_world_state_hash) &&
+    expectedDecisionBundleHash === trimOrNull(supreme.latest_openclaw_decision_bundle_hash) &&
     trimOrNull(collector.position_cycle_id) === trimOrNull(lineage.expected_position_cycle_id) &&
     trimOrNull(collector.openclaw_decision_id) === trimOrNull(lineage.expected_openclaw_decision_id) &&
+    sameStringArray(collector.openclaw_decision_bundle_ids, expectedDecisionBundleIds) &&
+    sameStringArray(collector.openclaw_decision_bundle_hashes, expectedDecisionBundleHashes) &&
     sameStringArray(collector.openclaw_execution_permit_ids, expectedPermitIds) &&
     sameStringArray(collector.openclaw_outcome_adjudication_ids, expectedOutcomeIds) &&
+    Number(lineage.decision_bundle_lineage_mismatch_n || 0) === 0 &&
     Number(lineage.permit_lineage_mismatch_n || 0) === 0 &&
     Number(lineage.outcome_lineage_mismatch_n || 0) === 0 &&
     Number(lineage.learner_lineage_mismatch_n || 0) === 0 &&
+    Number(lineage.decision_bundle_lineage_match_n) >= Number(supreme.openclaw_decision_bundle_n) &&
     Number(lineage.permit_lineage_match_n) >= Number(supreme.execution_permit_n) &&
     Number(lineage.outcome_lineage_match_n) >= Number(supreme.outcome_adjudication_n) &&
     Number(lineage.learner_lineage_match_n) >= Number(learner.evaluation_n) &&

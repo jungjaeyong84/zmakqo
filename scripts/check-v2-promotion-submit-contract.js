@@ -2368,7 +2368,10 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "..", "src", "v2", "openclawControlPlane.js")).includes("OPENCLAW_DECISION_BUNDLE_LEDGER_WRITTEN")
         && readText(path.resolve(__dirname, "..", "src", "v2", "openclawShadowWriter.js")).includes("OPENCLAW_DECISION_BUNDLES")
         && readText(path.resolve(__dirname, "..", "scripts", "collect-v2-promotion-runtime-snapshot.js")).includes("OPENCLAW_DECISION_BUNDLE_LEDGER_REQUIRED")
+        && readText(path.resolve(__dirname, "..", "scripts", "check-v2-promotion-deploy-decision.js")).includes("expected_openclaw_decision_bundle_ids")
+        && readText(path.resolve(__dirname, "..", "scripts", "check-v2-promotion-deploy-decision.js")).includes("decision_bundle_lineage_mismatch_n")
         && readText(path.resolve(__dirname, "..", "src", "tests", "v2-openclaw-supreme-control-plane.test.js")).includes("decisionBundleLedgerPersistsReconstructablePayload")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "check-v2-promotion-deploy-decision.test.js")).includes("openClawSupremeCoverageRequiresDecisionBundleLedgerLineage")
         && artifactContractText.includes("OpenClaw decision bundle ledger is reconstructable")
         && runbookText.includes("OpenClaw decision bundle ledger is reconstructable"),
       reason: readText(path.resolve(__dirname, "..", "src", "v2", "openclawControlPlane.js")).includes("bundle_payload")
@@ -2383,6 +2386,9 @@ function evaluateSubmitContract({ textOverrides = {} } = {}) {
         && readText(path.resolve(__dirname, "..", "src", "v2", "schedulerTrafficCollectorPreflight.js")).includes("DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: \"0\"")
         && productionRuntimeConfigAuditText.includes("DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: \"$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED\"")
         && cloudbuildText.includes("DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED")
+        && readText(path.resolve(__dirname, "..", "scripts", "run-v2-promotion-cloudbuild.js")).includes("V2_PROMOTION_CLOUDBUILD_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_REQUIRED")
+        && readText(path.resolve(__dirname, "..", "scripts", "submit-v2-promotion-cloudbuild.js")).includes("DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: \"1\"")
+        && readText(path.resolve(__dirname, "..", "src", "tests", "run-v2-promotion-cloudbuild.test.js")).includes("boundedPromotionRequiresAuditLedgerWriteEnv")
         && readText(path.resolve(__dirname, "..", "src", "tests", "v2-scheduler-traffic-collector-preflight.test.js")).includes("preflightBlocksWhenLegacyWebhookAllowIsEnabledInCloudRun")
         && artifactContractText.includes("Cloud Run live env exact values are enforced")
         && runbookText.includes("Cloud Run live env exact values are enforced"),

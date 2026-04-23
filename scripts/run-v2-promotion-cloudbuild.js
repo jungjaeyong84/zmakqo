@@ -699,6 +699,12 @@ function buildCloudBuildPlan(env = process.env) {
   }
   const requiresOpenClawExecutionAuditLedgerWrite = ["CANARY_FLOW", "PIPELINE"].includes(mode)
     && ["CANARY", "LIVE"].includes(promotionMode);
+  if (
+    requiresOpenClawExecutionAuditLedgerWrite &&
+    !isEnabled(env.DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED)
+  ) {
+    throw new Error("V2_PROMOTION_CLOUDBUILD_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_REQUIRED");
+  }
 
   const artifactDir = deriveArtifactDir({
     env,
@@ -709,9 +715,6 @@ function buildCloudBuildPlan(env = process.env) {
   const effectiveEnv = {
     ...env,
     V2_PROMOTION_ARTIFACT_DIR: artifactDir,
-    ...(requiresOpenClawExecutionAuditLedgerWrite
-      ? { DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "1" }
-      : {}),
   };
 
   let script = null;

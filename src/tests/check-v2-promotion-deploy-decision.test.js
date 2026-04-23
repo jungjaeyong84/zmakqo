@@ -103,6 +103,8 @@ function buildBoundedRuntimeSummaryFixture() {
       ok: true,
       world_state_n: 1,
       latest_world_state_hash: "world-state-hash-fixture",
+      openclaw_decision_bundle_n: 1,
+      latest_openclaw_decision_bundle_hash: "decision-bundle-hash-fixture",
       execution_permit_n: 1,
       permit_validation_pass_n: 1,
       permit_validation_fail_n: 0,
@@ -126,6 +128,8 @@ function buildBoundedRuntimeSummaryFixture() {
         source: "V2_FIRESTORE_COLLECTOR",
         position_cycle_id: "PCY__CANARY__01",
         openclaw_decision_id: "OCDV2__CANARY__01",
+        openclaw_decision_bundle_ids: ["OCDBV2__CANARY__01"],
+        openclaw_decision_bundle_hashes: ["decision-bundle-hash-fixture"],
         openclaw_execution_permit_ids: ["OCEPV2__CANARY__01"],
         openclaw_outcome_adjudication_ids: ["OCOAV2__CANARY__01"],
         collected_at: "2026-04-22T00:02:00.000Z",
@@ -144,8 +148,12 @@ function buildBoundedRuntimeSummaryFixture() {
         expected_openclaw_decision_id: "OCDV2__CANARY__01",
         expected_position_cycle_id: "PCY__CANARY__01",
         expected_world_state_hash: "world-state-hash-fixture",
+        expected_openclaw_decision_bundle_hash: "decision-bundle-hash-fixture",
+        expected_openclaw_decision_bundle_ids: ["OCDBV2__CANARY__01"],
         expected_openclaw_execution_permit_ids: ["OCEPV2__CANARY__01"],
         expected_openclaw_outcome_adjudication_ids: ["OCOAV2__CANARY__01"],
+        decision_bundle_lineage_match_n: 1,
+        decision_bundle_lineage_mismatch_n: 0,
         permit_lineage_match_n: 1,
         permit_lineage_mismatch_n: 0,
         outcome_lineage_match_n: 1,
@@ -481,6 +489,28 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   assert.strictEqual(decision.alert_retry_summary.failed_n, 1);
   assert.strictEqual(decision.alert_retry_summary.latest_failed.retry_policy_code, "ALERT_RETRY_TRANSPORT");
   assert.strictEqual(decision.candidate_selection_summary.selection_status, "READY");
+})();
+
+(function openClawSupremeCoverageRequiresDecisionBundleLedgerLineage() {
+  const summary = JSON.parse(JSON.stringify(buildBoundedRuntimeSummaryFixture()));
+  summary.openclaw_supreme_control_plane_summary.collector_execution_summary.openclaw_decision_bundle_hashes = [
+    "wrong-decision-bundle-hash",
+  ];
+  assert.strictEqual(deployDecision.__test.hasOpenClawSupremeControlPlaneCoverage(summary), false);
+
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__CANARY__01",
+    bounded_runtime_summary: summary,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture(),
+    blockers: [],
+    warnings: [],
+  }, {
+    productionCutoverAudit: buildProductionCutoverAuditFixture(),
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED"));
 })();
 
 (function canaryWithSelectorMetaPositionMismatchFailsClosed() {

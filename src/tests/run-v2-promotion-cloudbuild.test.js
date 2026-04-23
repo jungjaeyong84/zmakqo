@@ -588,6 +588,7 @@ function seedRunbookArtifacts(dir, cycleId) {
     V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED: "1",
     V2_PROMOTION_MODE: "CANARY",
     V2_PROMOTION_ARTIFACT_DIR: "tmp/v2-promotion-artifacts/canary_flow/auto-select",
+    DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "1",
   });
   assert.strictEqual(plan.mode, "CANARY_FLOW");
   assert.strictEqual(plan.positionCycleId, null);
@@ -601,6 +602,7 @@ function seedRunbookArtifacts(dir, cycleId) {
     V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
     V2_PROMOTION_MODE: "CANARY",
     V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__TEST__01",
+    DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "1",
   });
   assert.strictEqual(plan.mode, "CANARY_FLOW");
   assert.strictEqual(plan.script, "run:v2-promotion-canary-flow");
@@ -616,6 +618,7 @@ function seedRunbookArtifacts(dir, cycleId) {
       V2_PROMOTION_MODE: "LIVE",
       V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__LIVE__01",
       V2_PROMOTION_ARTIFACT_DIR: "tmp/v2-promotion-artifacts/live/wrong-cycle",
+      DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "1",
     });
   } catch (error) {
     err = error;
@@ -637,6 +640,22 @@ function seedRunbookArtifacts(dir, cycleId) {
   }
   assert.ok(err);
   assert.strictEqual(err.message, "V2_PROMOTION_CLOUDBUILD_BOUNDED_PIPELINE_POSITION_CYCLE_ID_REQUIRED");
+})();
+
+(function boundedPromotionRequiresAuditLedgerWriteEnv() {
+  let err = null;
+  try {
+    cloudbuild.__test.buildCloudBuildPlan({
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__TEST__AUDIT_OFF",
+      DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "0",
+    });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "V2_PROMOTION_CLOUDBUILD_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_REQUIRED");
 })();
 
 (function gateModeRequiresExplicitArtifactDir() {
