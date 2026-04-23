@@ -40,6 +40,15 @@ const { buildMlAiSignalProposal } = require("../v2/mlAiSignalProposal");
       filter_name: "HTF_DIRECTION_ALIGNMENT",
       verdict: "PASS",
     },
+    signalCriteria: {
+      setup_gate: {
+        setup_type: "PULLBACK_RECLAIM",
+      },
+      signal_score: 86,
+      expected_edge_gate: {
+        expected_net_r_after_cost: 0.31,
+      },
+    },
     decisionMode: "CANARY",
     proposalVerdict: "PASS",
     rankScore: 0.88,
@@ -53,6 +62,9 @@ const { buildMlAiSignalProposal } = require("../v2/mlAiSignalProposal");
   assert.strictEqual(proposal.rank_score, 0.88);
   assert.strictEqual(proposal.size_ratio, 0.5);
   assert.strictEqual(proposal.risk_band, "LOW");
+  assert.strictEqual(proposal.setup_type, "PULLBACK_RECLAIM");
+  assert.strictEqual(proposal.signal_score, 86);
+  assert.strictEqual(proposal.expected_net_r_after_cost, 0.31);
 })();
 
 console.log("V2_ML_AI_SIGNAL_PROPOSAL_TEST_OK");

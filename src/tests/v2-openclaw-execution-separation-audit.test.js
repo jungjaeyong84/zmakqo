@@ -39,6 +39,16 @@ function buildBundle(overrides = {}) {
     featuresHash: "feat_hash_openclaw_separation",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "deterministic router may create canary entry intent",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: {
+        symbol: "ETHUSDT",
+        spread_bps: 2,
+        mark_index_gap_bps: 1,
+      },
+    },
     ...overrides,
   });
 }

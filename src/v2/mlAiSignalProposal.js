@@ -12,6 +12,7 @@ function buildMlAiSignalProposal({
   signalIntent,
   featureSnapshot,
   strategyFilterResult,
+  signalCriteria = null,
   decisionMode,
   proposalVerdict,
   qualityScore = null,
@@ -49,6 +50,11 @@ function buildMlAiSignalProposal({
     riskBand,
     strategyFilterName: filter.filter_name,
     strategyFilterVerdict: filter.verdict,
+    setupType: signalCriteria && signalCriteria.setup_gate ? signalCriteria.setup_gate.setup_type : null,
+    signalScore: signalCriteria ? signalCriteria.signal_score : null,
+    expectedNetRAfterCost: signalCriteria && signalCriteria.expected_edge_gate
+      ? signalCriteria.expected_edge_gate.expected_net_r_after_cost
+      : null,
     rationaleSummary,
     createdAt,
   }));

@@ -259,4 +259,53 @@ const { resolveEntryIntentFromOpenClaw } = require("../v2/signalAuthorityRouter"
   assert.strictEqual(routed.detail, "BLOCK");
 })();
 
+(function blockedSignalCriteriaPreventsServerNativeEntryEvenWhenProposalPasses() {
+  const bundle = buildOpenClawDecisionBundle({
+    signalSourceMode: "SERVER_NATIVE_ML_AI",
+    signalLineageId: "LINEAGE__BTC__SIGNAL_CRITERIA_BLOCK__1",
+    symbol: "BTCUSDT",
+    side: "LONG",
+    qualityScore: 0.81,
+    budgetCheckResult: "PASS",
+    minOrderCheckResult: "PASS",
+    decisionStatus: "APPROVED",
+    decisionMode: "CANARY",
+    recommendedAction: "APPROVE_ENTRY",
+    approved: true,
+    rationaleSummary: "criteria should block weak expected edge",
+    policyScope: "BTC_15M",
+    htfDirection: "LONG",
+    htfConfidence: 0.83,
+    timeframe: "15M",
+    featureSchemaVersion: "ml_features_v1",
+    featureValues: {
+      trend_bias: 0.64,
+      volatility_rank: 0.44,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.79,
+      trigger_confirmed: true,
+      volume_zscore: 1.3,
+      rsi_entry_tf: 58,
+      expected_gross_r: 1.0,
+      expected_net_r_after_cost: 0.03,
+    },
+    proposalVerdict: "PASS",
+    rankScore: 0.72,
+    sizeRatio: 0.3,
+    featuresHash: "feat_hash_btc_signal_criteria_block_1",
+    modelVersion: "openclaw-ml-v2",
+    decisionSummary: "proposal passes but expected edge is too weak",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: { symbol: "BTCUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
+    },
+  });
+  const routed = resolveEntryIntentFromOpenClaw(bundle);
+  assert.strictEqual(routed.ok, false);
+  assert.strictEqual(routed.reason, "SIGNAL_CRITERIA_BLOCKED");
+  assert.ok(routed.detail.includes("EXPECTED_EDGE:NET_R_REQUIRED"));
+})();
+
 console.log("V2_SIGNAL_AUTHORITY_ROUTER_TEST_OK");

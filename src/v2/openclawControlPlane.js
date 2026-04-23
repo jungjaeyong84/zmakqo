@@ -9,6 +9,7 @@ const {
 } = require("./contracts");
 const { buildMlAiSignalProposal } = require("./mlAiSignalProposal");
 const { evaluateHtfDirectionAlignment } = require("./singleStrategyFilter");
+const { buildSignalCriteria } = require("./signalCriteria");
 const { putV2Doc } = require("./storage");
 
 function trimOrNull(value) {
@@ -51,6 +52,7 @@ function buildCanonicalEvidenceSummary({
   mlAiSignalProposal,
   mlAiEvidence,
   marketDataQuality = null,
+  signalCriteria = null,
 } = {}) {
   const intent = signalIntent && typeof signalIntent === "object" ? signalIntent : null;
   const filter = strategyFilterResult && typeof strategyFilterResult === "object" ? strategyFilterResult : null;
@@ -96,6 +98,9 @@ function buildCanonicalEvidenceSummary({
       rank_score: mlAiSignalProposal.rank_score,
       size_ratio: mlAiSignalProposal.size_ratio,
       risk_band: mlAiSignalProposal.risk_band,
+      setup_type: mlAiSignalProposal.setup_type || null,
+      signal_score: mlAiSignalProposal.signal_score ?? null,
+      expected_net_r_after_cost: mlAiSignalProposal.expected_net_r_after_cost ?? null,
     } : {
       present: false,
       proposal_id: null,
@@ -103,6 +108,9 @@ function buildCanonicalEvidenceSummary({
       rank_score: null,
       size_ratio: null,
       risk_band: null,
+      setup_type: null,
+      signal_score: null,
+      expected_net_r_after_cost: null,
     }),
     ml_ai_evidence: Object.freeze({
       present: !!mlAiEvidence,
@@ -122,6 +130,11 @@ function buildCanonicalEvidenceSummary({
       blockers: [],
       metrics: {},
     }),
+    signal_criteria: signalCriteria ? cloneJson(signalCriteria) : {
+      present: false,
+      verdict: null,
+      blockers: [],
+    },
     evidence_complete: true,
   });
 }
@@ -156,6 +169,23 @@ function buildOpenClawDecisionBundle({
   modelVersion = null,
   decisionSummary = null,
   marketDataQuality = null,
+  signalCriteria = null,
+  htfRegime = null,
+  htfAlignmentScore = null,
+  setupType = null,
+  setupQualityScore = null,
+  triggerLevel = null,
+  triggerConfirmed = null,
+  volumeZScore = null,
+  rsiEntryTf = null,
+  marketQualityScore = null,
+  spreadBps = null,
+  markIndexGapBps = null,
+  expectedGrossR = null,
+  expectedNetRAfterCost = null,
+  costEstimateBps = null,
+  fundingPenaltyBps = null,
+  signalScore = null,
   createdAt = null,
 } = {}) {
   const signalIntent = buildSignalIntentDoc({
@@ -232,11 +262,38 @@ function buildOpenClawDecisionBundle({
     throw new Error("ML_AI_SIGNAL_PROPOSAL_REQUIRED");
   }
 
+  const resolvedSignalCriteria = requiresMlEvidence
+    ? buildSignalCriteria({
+        signalSide: signalIntent.side,
+        qualityScore: signalIntent.quality_score,
+        featureValues: featureSnapshot ? featureSnapshot.feature_values : featureValues,
+        marketDataQuality,
+        signalCriteria,
+        htfRegime: htfRegime ?? htfDirection,
+        htfAlignmentScore: htfAlignmentScore ?? htfConfidence,
+        setupType,
+        setupQualityScore,
+        triggerLevel,
+        triggerConfirmed,
+        volumeZScore,
+        rsiEntryTf,
+        marketQualityScore,
+        spreadBps,
+        markIndexGapBps,
+        expectedGrossR,
+        expectedNetRAfterCost,
+        costEstimateBps,
+        fundingPenaltyBps,
+        signalScore,
+      })
+    : null;
+
   const mlAiSignalProposal = hasProposalPayload
     ? buildMlAiSignalProposal({
         signalIntent,
         featureSnapshot,
         strategyFilterResult: resolvedStrategyFilterResult,
+        signalCriteria: resolvedSignalCriteria,
         decisionMode,
         proposalVerdict,
         qualityScore: signalIntent.quality_score,
@@ -255,6 +312,7 @@ function buildOpenClawDecisionBundle({
     mlAiSignalProposal,
     mlAiEvidence,
     marketDataQuality,
+    signalCriteria: resolvedSignalCriteria,
   });
 
   const openclawDecision = buildOpenClawDecisionDoc({
@@ -278,6 +336,7 @@ function buildOpenClawDecisionBundle({
     strategyFilterResult: resolvedStrategyFilterResult,
     canonicalEvidenceSummary,
     marketDataQuality,
+    signalCriteria: resolvedSignalCriteria,
   });
   const openclawDecisionBundleHash = sha256Hex(stableJson(bundleHashPayload));
   const enrichedOpenClawDecision = Object.freeze({
@@ -294,6 +353,7 @@ function buildOpenClawDecisionBundle({
     strategyFilterResult: resolvedStrategyFilterResult,
     canonicalEvidenceSummary,
     marketDataQuality,
+    signalCriteria: resolvedSignalCriteria,
     openclawDecisionBundleHash,
   });
 }
@@ -323,6 +383,7 @@ function buildOpenClawDecisionBundleLedgerDoc({
     strategyFilterResult: cloneJson(row.strategyFilterResult),
     canonicalEvidenceSummary: cloneJson(row.canonicalEvidenceSummary),
     marketDataQuality: cloneJson(row.marketDataQuality),
+    signalCriteria: cloneJson(row.signalCriteria),
   });
   const hashPayload = Object.freeze({
     ...payload,

@@ -41,6 +41,16 @@ function buildHappyPath() {
     featuresHash: "feat_hash_eth_chain",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "runtime chain happy path approved",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: {
+        symbol: "ETHUSDT",
+        spread_bps: 2,
+        mark_index_gap_bps: 1,
+      },
+    },
   });
   const routed = resolveEntryIntentFromOpenClaw(bundle);
   const executed = buildV2ExecutedEntryFromIntent({

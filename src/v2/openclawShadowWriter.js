@@ -343,6 +343,22 @@ function buildShadowBundlePayload({
     payload.rankScore = toNumberOrNull(input.rankScore || input.rank_score) ?? qualityScore ?? 0;
     payload.sizeRatio = toNumberOrNull(input.sizeRatio || input.size_ratio) ?? toNumberOrNull(ruleResult && ruleResult.qtyPctFinal) ?? 0;
     payload.riskBand = upper(input.riskBand || input.risk_band) || "MEDIUM";
+    payload.htfRegime = upper(input.htfRegime || input.htf_regime || features.htf_regime || features.htf_direction);
+    payload.htfAlignmentScore = toNumberOrNull(input.htfAlignmentScore || input.htf_alignment_score || features.htf_alignment_score || features.htf_confidence);
+    payload.setupType = upper(input.setupType || input.setup_type || features.setup_type);
+    payload.setupQualityScore = toNumberOrNull(input.setupQualityScore || input.setup_quality_score || features.setup_quality_score);
+    payload.triggerLevel = toNumberOrNull(input.triggerLevel || input.trigger_level || features.trigger_level);
+    payload.triggerConfirmed = input.triggerConfirmed ?? input.trigger_confirmed ?? features.trigger_confirmed;
+    payload.volumeZScore = toNumberOrNull(input.volumeZScore || input.volume_zscore || features.volume_zscore);
+    payload.rsiEntryTf = toNumberOrNull(input.rsiEntryTf || input.rsi_entry_tf || features.rsi_entry_tf);
+    payload.marketQualityScore = toNumberOrNull(input.marketQualityScore || input.market_quality_score || features.market_quality_score);
+    payload.spreadBps = toNumberOrNull(input.spreadBps || input.spread_bps || features.spread_bps);
+    payload.markIndexGapBps = toNumberOrNull(input.markIndexGapBps || input.mark_index_gap_bps || features.mark_index_gap_bps);
+    payload.expectedGrossR = toNumberOrNull(input.expectedGrossR || input.expected_gross_r || features.expected_gross_r);
+    payload.expectedNetRAfterCost = toNumberOrNull(input.expectedNetRAfterCost || input.expected_net_r_after_cost || features.expected_net_r_after_cost);
+    payload.costEstimateBps = toNumberOrNull(input.costEstimateBps || input.cost_estimate_bps || features.cost_estimate_bps);
+    payload.fundingPenaltyBps = toNumberOrNull(input.fundingPenaltyBps || input.funding_penalty_bps || features.funding_penalty_bps);
+    payload.signalScore = toNumberOrNull(input.signalScore || input.signal_score || features.signal_score);
   }
 
   return payload;

@@ -501,6 +501,9 @@ function buildMlAiSignalProposalDoc({
   strategyFilterName,
   strategyFilterVerdict,
   rationaleSummary,
+  setupType = null,
+  signalScore = null,
+  expectedNetRAfterCost = null,
   createdAt = null,
 } = {}) {
   return {
@@ -523,6 +526,9 @@ function buildMlAiSignalProposalDoc({
     risk_band: validateEnum("risk_band", riskBand, V2_RISK_BANDS),
     strategy_filter_name: validateRequiredString("strategy_filter_name", upper(strategyFilterName)),
     strategy_filter_verdict: validateRequiredString("strategy_filter_verdict", upper(strategyFilterVerdict)),
+    setup_type: trimOrNull(upper(setupType)),
+    signal_score: toNumberOrNull(signalScore),
+    expected_net_r_after_cost: toNumberOrNull(expectedNetRAfterCost),
     rationale_summary: validateRequiredString("rationale_summary", rationaleSummary),
     created_at: trimOrNull(createdAt) || new Date().toISOString(),
   };
