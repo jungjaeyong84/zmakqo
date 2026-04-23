@@ -366,13 +366,20 @@ function resolveCloudBuildSourceDir(env = process.env) {
 }
 
 function resolveCommitSha(env = process.env) {
-  return trimOrNull(env.COMMIT_SHA)
+  const explicit = trimOrNull(env.COMMIT_SHA)
     || trimOrNull(env._COMMIT_SHA)
-    || trimOrNull(execFileSync("git", ["rev-parse", "HEAD"], {
+    || trimOrNull(env.BUILD_SOURCEVERSION)
+    || trimOrNull(env.REVISION_ID);
+  if (explicit) return explicit;
+  try {
+    return trimOrNull(execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "ignore"],
       encoding: "utf8",
-    }));
+    })) || "unknown";
+  } catch (_error) {
+    return "unknown";
+  }
 }
 
 function buildEvidenceRef({ file, field, expectedValue = null, note = null }) {
