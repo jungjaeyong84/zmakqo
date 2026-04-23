@@ -806,14 +806,14 @@ function hasPerformanceGate(summary) {
   );
 }
 
-function hasFirestoreCostGuard(summary) {
+function hasFirestoreCostGuard(summary, { requireBillingMetric = false } = {}) {
   const row = normalizeObject(summary);
   const guard = normalizeObject(row && row.firestore_cost_guard);
   const thresholds = normalizeObject(guard && guard.thresholds);
   if (!guard || !thresholds) return false;
   const estimatedReads = Number(guard.estimated_total_reads);
   const collectorQueryLimitTotal = Number(guard.collector_query_limit_total);
-  const billingMetricRequired = guard.billing_metric_required === true || thresholds.require_billing_metric === true;
+  const billingMetricRequired = requireBillingMetric === true || guard.billing_metric_required === true || thresholds.require_billing_metric === true;
   const billingReadOpsTotal = Number(guard.billing_read_ops_total);
   const billingMetricRows = ensureArray(guard.billing_metric_rows);
   return (
@@ -1284,7 +1284,7 @@ function buildDeployDecision(unifiedReport, {
   if (mode === "CANARY" && !hasPerformanceGate(boundedRuntimeSummary)) {
     warnings.push("DEPLOY_DECISION:PERFORMANCE_GATE_NOT_READY");
   }
-  if (mode === "LIVE" && !hasFirestoreCostGuard(boundedRuntimeSummary)) {
+  if (mode === "LIVE" && !hasFirestoreCostGuard(boundedRuntimeSummary, { requireBillingMetric: true })) {
     blockers.push("DEPLOY_DECISION:FIRESTORE_COST_GUARD_REQUIRED");
   }
   if (mode === "CANARY" && !hasFirestoreCostGuard(boundedRuntimeSummary)) {

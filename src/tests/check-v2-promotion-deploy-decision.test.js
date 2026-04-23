@@ -404,11 +404,22 @@ function buildBoundedRuntimeSummaryFixture() {
       artifact_generated_age_minutes: 15,
       estimated_total_reads: 480,
       collector_query_limit_total: 300,
+      billing_metric_required: true,
+      billing_read_ops_total: 320,
+      billing_metric_rows: [
+        {
+          id: "firestore_read_ops_live_fixture",
+          source: "cloud_monitoring_firestore_read_count",
+          read_ops: 320,
+        },
+      ],
       blocker_n: 0,
       blockers: [],
       thresholds: {
         max_total_estimated_reads: 2000,
         max_collector_query_limit_total: 1000,
+        max_billing_read_ops: 5000,
+        require_billing_metric: true,
         max_stale_artifact_age_minutes: 180,
       },
     },
@@ -2485,6 +2496,37 @@ function setLiveEvidenceArtifactDir(summary, artifactDir) {
   });
   assert.strictEqual(decision.approved, false);
   assert.ok(decision.blockers.includes("DEPLOY_DECISION:OPENCLAW_SUPREME_CONTROL_PLANE_CLOSED_LOOP_REQUIRED"));
+})();
+
+(function liveFirestoreCostGuardRequiresBillingMetricRows() {
+  const bounded = buildBoundedRuntimeSummaryForPositionCycle("PCY__LIVE__NO_BILLING_METRIC");
+  bounded.firestore_cost_guard.billing_metric_required = false;
+  bounded.firestore_cost_guard.billing_read_ops_total = 0;
+  bounded.firestore_cost_guard.billing_metric_rows = [];
+  bounded.firestore_cost_guard.thresholds.require_billing_metric = false;
+  const decision = deployDecision.__test.buildDeployDecision({
+    pass: true,
+    mode: "LIVE",
+    position_cycle_id: "PCY__LIVE__NO_BILLING_METRIC",
+    bounded_runtime_summary: bounded,
+    candidate_selection_summary: buildCandidateSelectionSummaryFixture({
+      selected_position_cycle_id: "PCY__LIVE__NO_BILLING_METRIC",
+      selected_preflight: {
+        ok: true,
+        position_cycle_id: "PCY__LIVE__NO_BILLING_METRIC",
+        snapshot_counts: {
+          episode_n: 1,
+          shadow_live_pair_n: 1,
+          source_mode_pair_n: 1,
+        },
+        blocker_n: 0,
+      },
+    }),
+    blockers: [],
+    warnings: [],
+  });
+  assert.strictEqual(decision.approved, false);
+  assert.ok(decision.blockers.includes("DEPLOY_DECISION:FIRESTORE_COST_GUARD_REQUIRED"));
 })();
 
 (function liveOpenClawSupremeMissingLearnerFreshnessContractFailsClosed() {

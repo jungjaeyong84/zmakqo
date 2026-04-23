@@ -419,11 +419,22 @@ function buildFirestoreCostGuardFixture({ artifactDir }) {
     artifact_generated_age_minutes: 15,
     estimated_total_reads: 480,
     collector_query_limit_total: 300,
+    billing_metric_required: true,
+    billing_read_ops_total: 320,
+    billing_metric_rows: [
+      {
+        id: "firestore_read_ops_live_fixture",
+        source: "cloud_monitoring_firestore_read_count",
+        read_ops: 320,
+      },
+    ],
     blocker_n: 0,
     blockers: [],
     thresholds: {
       max_total_estimated_reads: 2000,
       max_collector_query_limit_total: 1000,
+      max_billing_read_ops: 5000,
+      require_billing_metric: true,
       max_stale_artifact_age_minutes: 180,
     },
   };

@@ -86,7 +86,7 @@ const AXES = Object.freeze([
     runbook_refs: Object.freeze([]),
     blocker: "LIVE_EVIDENCE:FIRESTORE_COST_GUARD_REQUIRED",
     evaluate(decision, bounded) {
-      return deployDecisionCheck.__test.hasFirestoreCostGuard(bounded);
+      return deployDecisionCheck.__test.hasFirestoreCostGuard(bounded, { requireBillingMetric: true });
     },
   }),
 ]);
