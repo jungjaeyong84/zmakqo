@@ -6,6 +6,8 @@ const { __test } = require("../services/mlOpsPipeline");
 function run() {
   const markets = __test.parseMarkets("btcusdt, ethusdt", "BINANCEFUT");
   assert.deepStrictEqual(markets, ["BTCUSDT", "ETHUSDT"]);
+  const pipeMarkets = __test.parseMarkets("solusdt|xrpusdt", "BINANCEFUT");
+  assert.deepStrictEqual(pipeMarkets, ["SOLUSDT", "XRPUSDT"]);
 
   const featureSummary = __test.summarizeFeatureLabelDataset({
     rows: [
@@ -86,6 +88,16 @@ function run() {
   assert.ok(binding.openai_model);
   assert.strictEqual(__test.resolveBoundedInt(999999, 500, { min: 20, max: 1000 }), 1000);
   assert.strictEqual(__test.resolveBoundedInt(0, 500, { min: 20, max: 1000 }), 500);
+  const oldMlOpsMarkets = process.env.ML_OPS_PIPELINE_MARKETS;
+  const oldDiscoveryMarkets = process.env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS;
+  process.env.ML_OPS_PIPELINE_MARKETS = "";
+  process.env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS = "SOLUSDT|XRPUSDT";
+  assert.deepStrictEqual(__test.resolveMlOpsPipelineMarkets(null, "BINANCEFUT"), ["SOLUSDT", "XRPUSDT"]);
+  assert.deepStrictEqual(__test.resolveMlOpsPipelineMarkets("ETHUSDT", "BINANCEFUT"), ["ETHUSDT"]);
+  if (oldMlOpsMarkets == null) delete process.env.ML_OPS_PIPELINE_MARKETS;
+  else process.env.ML_OPS_PIPELINE_MARKETS = oldMlOpsMarkets;
+  if (oldDiscoveryMarkets == null) delete process.env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS;
+  else process.env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS = oldDiscoveryMarkets;
 
   console.log("ML_OPS_PIPELINE_TEST_OK");
 }

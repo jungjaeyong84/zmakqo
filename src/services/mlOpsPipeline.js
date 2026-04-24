@@ -140,12 +140,22 @@ function buildShadowPromotionAction({
 function parseMarkets(value, fallbackExchange = null) {
   const raw = Array.isArray(value)
     ? value
-    : String(value || "").split(",");
+    : String(value || "").split(/[,\|]/);
   const rows = raw
     .map((row) => upper(row))
     .filter(Boolean);
   if (rows.length) return rows;
   return defaultMarketsFromEnv(fallbackExchange || "BINANCEFUT");
+}
+
+function resolveMlOpsPipelineMarkets(markets = null, fallbackExchange = null) {
+  const explicit = parseMarkets(markets, fallbackExchange);
+  if (markets != null && explicit.length) return explicit;
+  const envMarkets = parseMarkets(
+    process.env.ML_OPS_PIPELINE_MARKETS || process.env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || "",
+    fallbackExchange
+  );
+  return envMarkets.length ? envMarkets : explicit;
 }
 
 function renderFeatureLabelDatasetMarkdown(payload = {}) {
@@ -768,12 +778,82 @@ async function runShadowInferenceCanaryJob({
 }
 
 async function runMlOpsPipelineJob(options = {}) {
-  const dataset = await runFeatureLabelDatasetJob(options);
-  const shadow = await runShadowEvaluationSummaryJob(options);
-  const shadowCanary = await runShadowInferenceCanaryJob(options);
-  const openclaw = await runOpenClawPolicyTuningReport(options);
+  const exchangeUpper = upper(options.exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER) || "BINANCEFUT";
+  const pipelineMarkets = resolveMlOpsPipelineMarkets(options.markets, exchangeUpper);
+  const datasetLimit = resolveBoundedInt(
+    options.limitN || process.env.ML_OPS_PIPELINE_FEATURE_LIMIT_N || process.env.FEATURE_LABEL_DATASET_LIMIT_N,
+    40,
+    {
+      min: 10,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_FEATURE_MAX_LIMIT_N, 100, { min: 20, max: 500 }),
+    }
+  );
+  const shadowLimit = resolveBoundedInt(
+    options.limit || process.env.ML_OPS_PIPELINE_SHADOW_LIMIT || process.env.SHADOW_EVAL_SUMMARY_LIMIT,
+    100,
+    {
+      min: 20,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_SHADOW_MAX_LIMIT, 200, { min: 50, max: 1000 }),
+    }
+  );
+  const openclawDecisionLimit = resolveBoundedInt(
+    options.limitDecisions || process.env.ML_OPS_PIPELINE_OPENCLAW_LIMIT_DECISIONS || process.env.OPENCLAW_POLICY_TUNING_LIMIT_DECISIONS,
+    200,
+    {
+      min: 50,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_OPENCLAW_MAX_DECISIONS, 500, { min: 100, max: 2000 }),
+    }
+  );
+  const openclawFillLimit = resolveBoundedInt(
+    options.limitFills || process.env.ML_OPS_PIPELINE_OPENCLAW_LIMIT_FILLS || process.env.OPENCLAW_POLICY_TUNING_LIMIT_FILLS,
+    200,
+    {
+      min: 50,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_OPENCLAW_MAX_FILLS, 500, { min: 100, max: 2000 }),
+    }
+  );
+  const openclawShadowLimit = resolveBoundedInt(
+    options.limitShadow || process.env.ML_OPS_PIPELINE_OPENCLAW_LIMIT_SHADOW || process.env.OPENCLAW_POLICY_TUNING_LIMIT_SHADOW,
+    100,
+    {
+      min: 50,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_OPENCLAW_MAX_SHADOW, 300, { min: 100, max: 2000 }),
+    }
+  );
+
+  const common = {
+    ...options,
+    exchange: exchangeUpper,
+  };
+  const dataset = await runFeatureLabelDatasetJob({
+    ...common,
+    markets: pipelineMarkets,
+    limitN: datasetLimit,
+  });
+  const shadow = await runShadowEvaluationSummaryJob({
+    ...common,
+    limit: shadowLimit,
+  });
+  const shadowCanary = await runShadowInferenceCanaryJob({
+    ...common,
+    limit: shadowLimit,
+  });
+  const openclaw = await runOpenClawPolicyTuningReport({
+    ...common,
+    limitDecisions: openclawDecisionLimit,
+    limitFills: openclawFillLimit,
+    limitShadow: openclawShadowLimit,
+  });
   return {
     ok: dataset.ok === true && shadow.ok === true && shadowCanary.ok === true && openclaw.ok === true,
+    caps: {
+      markets: pipelineMarkets,
+      dataset_limit_n: datasetLimit,
+      shadow_limit: shadowLimit,
+      openclaw_limit_decisions: openclawDecisionLimit,
+      openclaw_limit_fills: openclawFillLimit,
+      openclaw_limit_shadow: openclawShadowLimit,
+    },
     dataset,
     shadow,
     shadow_canary: shadowCanary,
@@ -802,5 +882,6 @@ module.exports = {
     buildServingBindingSnapshot,
     buildShadowPromotionAction,
     resolveBoundedInt,
+    resolveMlOpsPipelineMarkets,
   },
 };
