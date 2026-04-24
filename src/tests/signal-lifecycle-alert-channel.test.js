@@ -113,6 +113,21 @@ const { __test } = require("../services/signalLifecycleAlert");
   assert.ok(budgetBlocked.body.includes("드롭 위치: 예산/최소주문 가드"));
   assert.ok(budgetBlocked.body.includes("해석: 현재 예산과 배율로는 거래소 최소주문 수량을 만족할 수 없어 진입을 보류했습니다."));
 
+  const postFillCritical = __test.buildDroppedMessage({
+    symbol: "XRPUSDT",
+    event: "LONG",
+    side: "BUY",
+    tf: "15m",
+    qtyPct: 1,
+    executionMode: "LIVE",
+    reason: "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL",
+  });
+  assert.strictEqual(postFillCritical.title, "XRPUSDT 보호주문 복구 필요");
+  assert.strictEqual(postFillCritical.severity, "CRITICAL");
+  assert.ok(postFillCritical.body.includes("드롭 위치: 라이브 실행 설정"));
+  assert.ok(postFillCritical.body.includes("CRITICAL 상태"));
+  assert.ok(!postFillCritical.title.includes("드롭"));
+
   const received = __test.buildReceivedMessage({
     symbol: "BTCUSDT",
     event: "EARLY_LONG",

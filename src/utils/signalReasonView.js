@@ -85,6 +85,8 @@ function classifySignalReasonStage(reason) {
   }
 
   if (
+    code === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL" ||
+    code === "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL" ||
     code === "LIVE_DISABLED" ||
     code === "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE" ||
     code === "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE" ||
@@ -248,6 +250,8 @@ function explainSignalReason(reason) {
     DROP_MARKET_PHYSICS_DISORDER: "현재 시장 질서도가 낮고 잡음이 커 진입을 보류했습니다.",
     DROP_LIVE_POLICY_BLOCK: "라이브 운영 정책에서 진입을 차단했습니다.",
     LIVE_DISABLED: "서버 신호는 생성됐지만 기존 Binance live 실행 허가가 꺼져 있어 실제 주문을 보류했습니다.",
+    V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL: "진입 주문이 체결된 뒤 보호주문 확인 또는 복구가 실패했습니다. 이 상태는 신호 드롭이 아니라 실제 포지션 보호 복구가 필요한 CRITICAL 상태입니다.",
+    V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL: "진입 주문이 체결된 뒤 보호주문 확인 또는 복구가 실패했습니다. 이 상태는 신호 드롭이 아니라 실제 포지션 보호 복구가 필요한 CRITICAL 상태입니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED": "V2 discovery canary 허용 심볼 목록에 없는 심볼이라 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LIVE_ENDPOINT_REQUIRED": "V2 discovery live endpoint가 켜져 있지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:DISCOVERY_NOT_ENABLED": "V2 discovery canary가 켜져 있지 않아 실제 주문을 보류했습니다.",

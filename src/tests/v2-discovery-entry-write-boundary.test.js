@@ -52,4 +52,19 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   );
 })();
 
+(function postFillEndpointCriticalMustNotLookLikeNormalDrop() {
+  assert.ok(
+    source.includes("endpointPostFillCritical"),
+    "paper runner must detect endpoint post-fill protection critical state"
+  );
+  assert.ok(
+    source.includes('endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED"'),
+    "post-fill protection critical state must not be written as a normal canceled/drop intent"
+  );
+  assert.ok(
+    source.includes("Actual exchange entry may exist and requires protection repair verification."),
+    "post-fill protection critical note must tell operators that an exchange position may exist"
+  );
+})();
+
 console.log("V2_DISCOVERY_ENTRY_WRITE_BOUNDARY_TEST_OK");

@@ -199,6 +199,7 @@ function formatSignalSource(payload = {}) {
 function buildLifecycleTitle(payload = {}, kind = "RECEIVED") {
   const symbol = String(payload.symbol || "").toUpperCase();
   const source = String(payload.source || "").trim().toUpperCase();
+  const reason = String(payload.dropReasonCode || payload.reason || "").trim().toUpperCase();
   const authoritative = payload.authoritative === true || source === "SERVER";
   const isWebhook = source === "WEBHOOK";
   if (kind === "RECEIVED") {
@@ -210,6 +211,12 @@ function buildLifecycleTitle(payload = {}, kind = "RECEIVED") {
     if (authoritative) return `${symbol} 서버 신호 진행`;
     if (isWebhook) return `${symbol} 웹훅 신호 진행`;
     return `${symbol} 신호 진행`;
+  }
+  if (
+    reason === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL"
+    || reason === "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL"
+  ) {
+    return `${symbol} 보호주문 복구 필요`;
   }
   if (authoritative) return `${symbol} 서버 신호 드롭`;
   if (isWebhook) return `${symbol} 웹훅 신호 드롭`;
@@ -246,6 +253,9 @@ function buildDroppedMessage(payload = {}) {
   const dropReason = reasonCode || reason || "DROP_FILTER";
   const stage = classifySignalReasonStage(dropReason);
   const reasonKo = explainSignalReason(dropReason);
+  const postFillReason = String(dropReason || "").trim().toUpperCase();
+  const isPostFillCritical = postFillReason === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL"
+    || postFillReason === "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL";
   const isTimingDefer = stage && stage.key === "TIMING";
   const dropGroup = String(payload.dropGroup || payload.eventGroup || "").trim().toUpperCase() || null;
   const dropSubtype = String(payload.dropSubtype || payload.eventSubtype || "").trim().toUpperCase() || null;
@@ -268,7 +278,7 @@ function buildDroppedMessage(payload = {}) {
   ];
   appendDropQtyLines(lines, payload, { isTimingDefer });
   if (payload.signalId) lines.push(`signal_id: ${payload.signalId}`);
-  return { title, body: lines.join("\n"), severity: isTimingDefer ? "INFO" : "WARN" };
+  return { title, body: lines.join("\n"), severity: isPostFillCritical ? "CRITICAL" : (isTimingDefer ? "INFO" : "WARN") };
 }
 
 function buildProgressMessage(payload = {}) {

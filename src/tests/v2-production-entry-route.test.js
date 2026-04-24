@@ -354,6 +354,113 @@ async function kernelBlockDoesNotBecomeRouteSuccess() {
   assert.deepStrictEqual(calls, ["kernel"]);
 }
 
+async function postFillProtectionFailureIsClassifiedCritical() {
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const routed = resolveEntryIntentFromOpenClaw(bundle);
+  const executedEntry = buildV2ExecutedEntryFromIntent({
+    entryIntent: routed.entryIntent,
+    entryEventId: "ENTRY__ETH__POST_FILL",
+    entryOrderId: "ORDER__ETH__POST_FILL",
+    entryFillGroupId: "FILL_GROUP__ETH__POST_FILL",
+    entryPrice: 2500,
+    entryQtyAbs: 0.8,
+  });
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(),
+    runEntryKernel: async () => ({
+      ok: false,
+      reason: "V2_ENTRY_EXECUTION_KERNEL_BLOCKED",
+      submitterResult: {
+        ok: false,
+        reason: "ENTRY_PROTECTION_ACTIVATION_FAILED",
+        fill: {
+          status: "FILLED",
+          entry_order_id: "ORDER__ETH__POST_FILL",
+          entry_event_id: "ENTRY__ETH__POST_FILL",
+        },
+        executedEntry,
+        protectionEvidence: {
+          ok: false,
+          fail_n: 2,
+          failed_check_ids: ["ENTRY_KERNEL_SL_ORDER_PRESENT", "ENTRY_KERNEL_TP1_ORDER_PRESENT"],
+        },
+        recoveryResult: {
+          attempted: true,
+          ok: false,
+          reason: "ENTRY_PROTECTION_RECOVERY_THROWN",
+        },
+      },
+      kernelAudit: {
+        ok: false,
+        failed_check_ids: ["ENTRY_KERNEL_SL_ORDER_PRESENT", "ENTRY_KERNEL_TP1_ORDER_PRESENT"],
+      },
+    }),
+    persistExecutionAudit: async () => {
+      throw new Error("must not persist blocked critical post-fill route");
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED");
+  assert.strictEqual(result.post_fill_side_effect.exchange_write_performed, true);
+  assert.strictEqual(result.post_fill_side_effect.unprotected_position_possible, true);
+  assert.strictEqual(result.post_fill_side_effect.severity, "CRITICAL");
+  assert.strictEqual(result.post_fill_side_effect.entry_order_id, "ORDER__ETH__POST_FILL");
+  assert.strictEqual(result.post_fill_side_effect.protection_recovery_attempted, true);
+  assert.strictEqual(result.post_fill_side_effect.protection_recovery_ok, false);
+}
+
+async function inconsistentKernelOkWithUnprotectedFillIsBlocked() {
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const routed = resolveEntryIntentFromOpenClaw(bundle);
+  const executedEntry = buildV2ExecutedEntryFromIntent({
+    entryIntent: routed.entryIntent,
+    entryEventId: "ENTRY__ETH__INCONSISTENT",
+    entryOrderId: "ORDER__ETH__INCONSISTENT",
+    entryFillGroupId: "FILL_GROUP__ETH__INCONSISTENT",
+    entryPrice: 2500,
+    entryQtyAbs: 0.8,
+  });
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(),
+    runEntryKernel: async () => ({
+      ok: true,
+      reason: "V2_ENTRY_EXECUTION_KERNEL_PROTECTED",
+      submitterResult: {
+        fill: {
+          status: "FILLED",
+          entry_order_id: "ORDER__ETH__INCONSISTENT",
+        },
+        executedEntry,
+        protectionEvidence: {
+          ok: false,
+          fail_n: 1,
+          failed_check_ids: ["ENTRY_KERNEL_SL_ORDER_PRESENT"],
+        },
+      },
+      kernelAudit: {
+        ok: true,
+        failed_check_ids: [],
+      },
+    }),
+    persistExecutionAudit: async () => {
+      throw new Error("must not persist inconsistent protected success");
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL");
+  assert.strictEqual(result.post_fill_side_effect.unprotected_position_possible, true);
+}
+
 async function tamperedKernelExecutionLineageBlocksRouteSuccess() {
   const bundle = buildBundle();
   const permit = buildPermitForBundle(bundle);
@@ -404,6 +511,8 @@ async function main() {
   await executionPermitWithoutCurrentWorldStateBlocksBeforeKernel();
   await repeatedDecisionBundleBlocksBeforeKernel();
   await kernelBlockDoesNotBecomeRouteSuccess();
+  await postFillProtectionFailureIsClassifiedCritical();
+  await inconsistentKernelOkWithUnprotectedFillIsBlocked();
   await tamperedKernelExecutionLineageBlocksRouteSuccess();
   await auditLedgerFailureDoesNotLookSuccessful();
 }

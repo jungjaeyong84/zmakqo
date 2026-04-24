@@ -15783,6 +15783,7 @@ async function runPaperFuturesForBar({
         const signalCriteriaGate = routedDecision && routedDecision.signal_criteria_gate;
         const marketDataQualityGate = routedDecision && routedDecision.market_data_quality_gate;
         const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+        const endpointPostFillCritical = String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
         let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
         if (routedDecision && routedDecision.reason) {
           blockReason = String(routedDecision.reason).trim().toUpperCase();
@@ -15791,14 +15792,17 @@ async function runPaperFuturesForBar({
         } else if (handoff && handoff.reason) {
           blockReason = String(handoff.reason).trim().toUpperCase();
         }
-        await markIntentStatus(it.intent_id, "CANCELED", {
+        await markIntentStatus(it.intent_id, endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED", {
           cancel_reason: blockReason,
           status_reason: blockReason,
           cancel_note: JSON.stringify({
-            note: "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path.",
+            note: endpointPostFillCritical
+              ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
+              : "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path.",
             bridge_reason: handoff && handoff.reason ? handoff.reason : null,
             bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
             endpoint_reason: endpointReason,
+            endpoint_post_fill_critical: endpointPostFillCritical,
             router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
             router_detail: routedDecision && routedDecision.detail ? routedDecision.detail : null,
             signal_criteria_blockers: signalCriteriaGate && Array.isArray(signalCriteriaGate.blockers) ? signalCriteriaGate.blockers : [],
@@ -15813,7 +15817,9 @@ async function runPaperFuturesForBar({
           intent,
           executionMode: liveCfg.executionMode,
           reason: blockReason,
-          note: "V2 discovery entry blocked before legacy live order submit",
+          note: endpointPostFillCritical
+            ? "V2 production entry filled but protection was not confirmed; repair protection before any new entry."
+            : "V2 discovery entry blocked before legacy live order submit",
           qtyPct: qtyFraction,
           positionSideBefore: resolveFailureAlertPositionSide(pos),
           appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,

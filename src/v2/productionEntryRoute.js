@@ -54,6 +54,45 @@ function extractExecutedEntry(kernelResult) {
   return asObject(submitterResult && submitterResult.executedEntry);
 }
 
+function extractSubmitterResult(kernelResult) {
+  const result = asObject(kernelResult);
+  return asObject(result && result.submitterResult);
+}
+
+function summarizePostFillSideEffect(kernelResult) {
+  const submitterResult = extractSubmitterResult(kernelResult);
+  const fill = asObject(submitterResult && submitterResult.fill);
+  const executedEntry = asObject(submitterResult && submitterResult.executedEntry);
+  const positionCycle = asObject(executedEntry && executedEntry.positionCycle);
+  const protectionEvidence = asObject(submitterResult && submitterResult.protectionEvidence);
+  const recoveryResult = asObject(submitterResult && submitterResult.recoveryResult);
+  const fillStatus = upper(fill && fill.status);
+  const entryOrderId = trimOrNull(
+    (fill && fill.entry_order_id)
+      || (fill && fill.exchange_order_id)
+      || (fill && fill.submitted_order_id)
+      || (executedEntry && executedEntry.entry_order_id),
+  );
+  const exchangeWritePerformed = fillStatus === "FILLED" && !!entryOrderId;
+  const protectionOk = protectionEvidence && protectionEvidence.ok === true;
+  const unprotectedPositionPossible = exchangeWritePerformed && protectionOk !== true;
+  return Object.freeze({
+    exchange_write_performed: exchangeWritePerformed,
+    entry_order_id: entryOrderId,
+    entry_event_id: trimOrNull(fill && fill.entry_event_id),
+    position_cycle_id: trimOrNull(positionCycle && positionCycle.position_cycle_id),
+    protection_ok: protectionOk === true,
+    protection_recovery_attempted: recoveryResult ? recoveryResult.attempted === true : false,
+    protection_recovery_ok: recoveryResult ? recoveryResult.ok === true : null,
+    protection_recovery_reason: trimOrNull(recoveryResult && recoveryResult.reason),
+    unprotected_position_possible: unprotectedPositionPossible,
+    severity: unprotectedPositionPossible ? "CRITICAL" : "NONE",
+    reason: unprotectedPositionPossible
+      ? "POST_FILL_PROTECTION_NOT_CONFIRMED"
+      : "NO_UNPROTECTED_POST_FILL_SIDE_EFFECT",
+  });
+}
+
 function extractDecisionBundleHash(bundle) {
   const row = asObject(bundle);
   const decision = asObject(row && row.openclawDecision);
@@ -281,11 +320,25 @@ async function runV2ProductionEntryRoute({
     tp1TargetPct,
     tp1QtyRatio,
   });
+  const postFillSideEffect = summarizePostFillSideEffect(kernelResult);
   if (!kernelResult || kernelResult.ok !== true) {
     return buildRouteBlock("V2_PRODUCTION_ENTRY_KERNEL_BLOCKED", {
       runtime,
       routedDecision,
       kernelResult,
+      post_fill_side_effect: postFillSideEffect,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+  if (postFillSideEffect.unprotected_position_possible === true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL", {
+      runtime,
+      routedDecision,
+      kernelResult,
+      post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
       openclawExecutionAudit: preExecutionAudit,
@@ -316,6 +369,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult,
+      post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
       openclawExecutionAudit,
@@ -332,6 +386,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult,
+      post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
       openclawExecutionAudit,
@@ -344,6 +399,7 @@ async function runV2ProductionEntryRoute({
       runtime,
       routedDecision,
       kernelResult,
+      post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
       openclawExecutionAudit,
@@ -355,6 +411,7 @@ async function runV2ProductionEntryRoute({
     runtime,
     routedDecision,
     kernelResult,
+    post_fill_side_effect: postFillSideEffect,
     executionPermitValidation,
     decisionBundleReplayGuard,
     openclawExecutionAudit,
@@ -370,6 +427,8 @@ module.exports = {
     asObject,
     summarizeRuntimeConfig,
     extractExecutedEntry,
+    extractSubmitterResult,
+    summarizePostFillSideEffect,
     extractDecisionBundleHash,
     findExistingDecisionBundleExecution,
   },
