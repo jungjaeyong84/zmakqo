@@ -5598,6 +5598,10 @@ function isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg = null, intent = n
   );
 }
 
+function shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery({ liveCfg = null, intent = null } = {}) {
+  return isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent });
+}
+
 function resolveForceAllSignalsAdd(sysCfg = {}, exchange = "") {
   if (resolveLiveRescueAddConfig(sysCfg, exchange).enabled === true) return false;
   const envRaw = process.env.FORCE_ALL_SIGNALS_ADD;
@@ -14431,7 +14435,17 @@ async function runPaperBinanceForBar({
         s.features = { ...(s.features || {}), ...(waitOneBar.detail || {}), wait_one_bar_enabled: true };
         Object.assign(features, waitOneBar.detail || {});
       }
-      if (!waitOneBar.ok) {
+      const waitOneBarV2DiscoveryAdvisoryOnly = shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery({ liveCfg, intent });
+      if (!waitOneBar.ok && waitOneBarV2DiscoveryAdvisoryOnly) {
+        const advisoryDetail = {
+          wait_one_bar_v2_discovery_advisory_only: true,
+          wait_one_bar_legacy_hard_drop_bypassed: true,
+          wait_one_bar_legacy_reason: waitOneBar.reason || "DROP_WAIT_ONE_BAR_TIMING",
+          wait_one_bar_legacy_action: waitOneBar.action || null,
+        };
+        s.features = { ...(s.features || {}), ...advisoryDetail };
+        Object.assign(features, advisoryDetail);
+      } else if (!waitOneBar.ok) {
         signalDrops.push({
           ...s,
           bar_close_time_utc_ms: effectiveBarMs,
@@ -17818,7 +17832,17 @@ async function runPaperFuturesForBar({
         s.features = { ...(s.features || {}), ...(waitOneBar.detail || {}), wait_one_bar_enabled: true };
         Object.assign(features, waitOneBar.detail || {});
       }
-      if (!waitOneBar.ok) {
+      const waitOneBarV2DiscoveryAdvisoryOnly = shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery({ liveCfg, intent });
+      if (!waitOneBar.ok && waitOneBarV2DiscoveryAdvisoryOnly) {
+        const advisoryDetail = {
+          wait_one_bar_v2_discovery_advisory_only: true,
+          wait_one_bar_legacy_hard_drop_bypassed: true,
+          wait_one_bar_legacy_reason: waitOneBar.reason || "DROP_WAIT_ONE_BAR_TIMING",
+          wait_one_bar_legacy_action: waitOneBar.action || null,
+        };
+        s.features = { ...(s.features || {}), ...advisoryDetail };
+        Object.assign(features, advisoryDetail);
+      } else if (!waitOneBar.ok) {
         signalDrops.push({
           ...s,
           bar_close_time_utc_ms: effectiveBarMs,
@@ -18492,6 +18516,7 @@ module.exports = {
     evaluateV2DiscoveryCanaryLiveBridge,
     clampDiscoveryCanaryMaxOrderQuote,
     isV2DiscoveryCanaryLegacyEntryWriteBlocked,
+    shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery,
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,

@@ -40,6 +40,21 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   );
 })();
 
+(function discoveryCanaryBypassesLegacyWaitOneBarHardDrop() {
+  assert.ok(
+    source.includes("shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery({ liveCfg, intent })"),
+    "V2 discovery must classify legacy wait-one-bar as advisory before hard drop"
+  );
+  assert.ok(
+    source.includes("wait_one_bar_v2_discovery_advisory_only: true"),
+    "V2 discovery wait-one-bar advisory marker is missing"
+  );
+  assert.ok(
+    source.includes("wait_one_bar_legacy_hard_drop_bypassed: true"),
+    "V2 discovery wait-one-bar bypass marker is missing"
+  );
+})();
+
 (function postFillProtectionFailureMustRecoverNotClose() {
   const entrySubmitterSource = fs.readFileSync(path.resolve(__dirname, "../v2/entrySubmitter.js"), "utf8");
   assert.ok(
