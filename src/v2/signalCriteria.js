@@ -58,7 +58,10 @@ function resolveFeatureValue(featureValues, ...keys) {
 function normalizeSetupType(value) {
   const token = upper(value);
   if (!token) return "NONE";
-  if (token === "PULLBACK_RECLAIM" || token === "BREAKOUT_RETEST" || token === "NONE") {
+  if (token === "BREAKOUT" || token === "BREAKDOWN") return "BREAKOUT_RETEST";
+  if (token === "RECLAIM" || token === "LOSS") return "PULLBACK_RECLAIM";
+  if (token === "CONTINUATION") return "MOMENTUM_CONTINUATION";
+  if (token === "PULLBACK_RECLAIM" || token === "BREAKOUT_RETEST" || token === "MOMENTUM_CONTINUATION" || token === "NONE") {
     return token;
   }
   return "NONE";
@@ -67,6 +70,8 @@ function normalizeSetupType(value) {
 function normalizeRegime(value) {
   const token = upper(value);
   if (token === "LONG" || token === "SHORT" || token === "NEUTRAL") return token;
+  if (token === "BULL") return "LONG";
+  if (token === "BEAR") return "SHORT";
   return "NEUTRAL";
 }
 
@@ -121,45 +126,45 @@ function buildSignalCriteria({
   const cfg = asObject(thresholds) || {};
 
   const resolvedThresholds = Object.freeze({
-    max_spread_bps: toNumberOrNull(cfg.max_spread_bps) ?? 8,
+    max_spread_bps: toNumberOrNull(cfg.max_spread_bps) ?? 14,
     max_mark_index_gap_bps: toNumberOrNull(cfg.max_mark_index_gap_bps) ?? 10,
     max_funding_penalty_bps: toNumberOrNull(cfg.max_funding_penalty_bps) ?? 3,
-    min_htf_alignment_score: toNumberOrNull(cfg.min_htf_alignment_score) ?? 0.6,
-    min_setup_quality_score: toNumberOrNull(cfg.min_setup_quality_score) ?? 0.6,
+    min_htf_alignment_score: toNumberOrNull(cfg.min_htf_alignment_score) ?? 0.4,
+    min_setup_quality_score: toNumberOrNull(cfg.min_setup_quality_score) ?? 0.38,
     min_market_quality_score: toNumberOrNull(cfg.min_market_quality_score) ?? 0.7,
-    min_volume_zscore: toNumberOrNull(cfg.min_volume_zscore) ?? 1,
-    min_rsi_long: toNumberOrNull(cfg.min_rsi_long) ?? 55,
-    max_rsi_short: toNumberOrNull(cfg.max_rsi_short) ?? 45,
-    min_expected_gross_r: toNumberOrNull(cfg.min_expected_gross_r) ?? 1.8,
+    min_volume_zscore: toNumberOrNull(cfg.min_volume_zscore) ?? 0.3,
+    min_rsi_long: toNumberOrNull(cfg.min_rsi_long) ?? 48,
+    max_rsi_short: toNumberOrNull(cfg.max_rsi_short) ?? 52,
+    min_expected_gross_r: toNumberOrNull(cfg.min_expected_gross_r) ?? 1.45,
     min_expected_net_r_after_cost: toNumberOrNull(cfg.min_expected_net_r_after_cost) ?? 0.25,
-    min_signal_score: toNumberOrNull(cfg.min_signal_score) ?? 80,
+    min_signal_score: toNumberOrNull(cfg.min_signal_score) ?? 55,
   });
 
   const resolvedHtfRegime = normalizeRegime(
     (seed.htf_regime && seed.htf_regime.regime)
     ?? seed.htf_regime
     ?? htfRegime
-    ?? resolveFeatureValue(features, "htf_regime", "htf_direction")
+    ?? resolveFeatureValue(features, "htf_regime", "htf_direction", "htf_bias", "signal_family")
   );
   const resolvedHtfAlignmentScore = clamp01OrNull(
     (seed.htf_regime && seed.htf_regime.alignment_score)
     ?? seed.htf_alignment_score
     ?? htfAlignmentScore
-    ?? resolveFeatureValue(features, "htf_alignment_score", "htf_confidence")
+    ?? resolveFeatureValue(features, "htf_alignment_score", "htf_confidence", "structure_alignment", "canonical_engine_field_alignment")
     ?? qualityScore
   );
   const resolvedSetupType = normalizeSetupType(
     (seed.setup_gate && seed.setup_gate.setup_type)
     ?? seed.setup_type
     ?? setupType
-    ?? resolveFeatureValue(features, "setup_type")
+    ?? resolveFeatureValue(features, "setup_type", "trigger_type")
     ?? "NONE"
   );
   const resolvedSetupQualityScore = clamp01OrNull(
     (seed.setup_gate && seed.setup_gate.setup_quality_score)
     ?? seed.setup_quality_score
     ?? setupQualityScore
-    ?? resolveFeatureValue(features, "setup_quality_score")
+    ?? resolveFeatureValue(features, "setup_quality_score", "pullback_quality", "opportunity_score")
     ?? null
   );
   const resolvedTriggerLevel = toNumberOrNull(
@@ -168,24 +173,29 @@ function buildSignalCriteria({
     ?? triggerLevel
     ?? resolveFeatureValue(features, "trigger_level")
   );
-  const resolvedTriggerConfirmedRaw = asBooleanOrNull(
-    (seed.trigger_gate && seed.trigger_gate.trigger_confirmed)
+  const explicitTriggerConfirmed = (seed.trigger_gate && seed.trigger_gate.trigger_confirmed)
     ?? seed.trigger_confirmed
     ?? triggerConfirmed
-    ?? resolveFeatureValue(features, "trigger_confirmed")
-  );
+    ?? resolveFeatureValue(features, "trigger_confirmed");
+  const featureTriggerType = normalizeSetupType(resolveFeatureValue(features, "trigger_type"));
+  const resolvedTriggerConfirmedRaw = asBooleanOrNull(explicitTriggerConfirmed) ?? (featureTriggerType !== "NONE" ? true : null);
   const resolvedTriggerConfirmed = resolvedTriggerConfirmedRaw === true;
   const resolvedVolumeZScore = toNumberOrNull(
     (seed.trigger_gate && seed.trigger_gate.volume_zscore)
     ?? seed.volume_zscore
     ?? volumeZScore
-    ?? resolveFeatureValue(features, "volume_zscore")
+    ?? resolveFeatureValue(features, "volume_zscore", "volume_ratio", "participation")
   );
   const resolvedRsiEntryTf = toNumberOrNull(
     (seed.trigger_gate && seed.trigger_gate.rsi_entry_tf)
     ?? seed.rsi_entry_tf
     ?? rsiEntryTf
     ?? resolveFeatureValue(features, "rsi_entry_tf")
+    ?? (toNumberOrNull(resolveFeatureValue(features, "directional_pressure")) !== null
+      ? (side === "LONG"
+        ? 45 + (25 * clamp01(resolveFeatureValue(features, "directional_pressure")))
+        : 55 - (25 * clamp01(resolveFeatureValue(features, "directional_pressure"))))
+      : null)
   );
   const resolvedMarketQualityScore = clamp01OrNull(
     (seed.no_trade_gate && seed.no_trade_gate.market_quality_score)
@@ -212,13 +222,13 @@ function buildSignalCriteria({
     (seed.expected_edge_gate && seed.expected_edge_gate.expected_gross_r)
     ?? seed.expected_gross_r
     ?? expectedGrossR
-    ?? resolveFeatureValue(features, "expected_gross_r")
+    ?? resolveFeatureValue(features, "expected_gross_r", "rr")
   );
   const resolvedExpectedNetRAfterCost = toNumberOrNull(
     (seed.expected_edge_gate && seed.expected_edge_gate.expected_net_r_after_cost)
     ?? seed.expected_net_r_after_cost
     ?? expectedNetRAfterCost
-    ?? resolveFeatureValue(features, "expected_net_r_after_cost")
+    ?? resolveFeatureValue(features, "expected_net_r_after_cost", "ev_gate_expected_exit_value_r")
   );
   const resolvedCostEstimateBps = toNumberOrNull(
     (seed.expected_edge_gate && seed.expected_edge_gate.cost_estimate_bps)

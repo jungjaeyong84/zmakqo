@@ -86,7 +86,9 @@ function classifySignalReasonStage(reason) {
 
   if (
     code === "LIVE_DISABLED" ||
+    code === "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE" ||
     code === "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE" ||
+    code.startsWith("V2_DISCOVERY_BRIDGE_") ||
     code.startsWith("V2_DISCOVERY_CANARY_BRIDGE:")
   ) {
     return {
@@ -235,6 +237,10 @@ function explainSignalReason(reason) {
     "V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED": "V2 risk governor 필수 플래그가 확인되지 않아 discovery canary 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED": "legacy webhook 차단이 확인되지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_ALLOWED": "legacy webhook 허용 플래그가 켜져 있어 실제 주문을 보류했습니다.",
+    V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE: "서버 신호를 legacy live 주문 경로에서 실행하지 않고 V2 productionEntryLiveEndpoint/productionEntryRoute로 위임했습니다.",
+    V2_DISCOVERY_BRIDGE_MARKET_DATA_QUALITY_BLOCKED: "V2 discovery handoff 전 market data quality가 통과하지 못해 주문을 보류했습니다.",
+    V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED: "V2 production entry live endpoint가 discovery handoff 요청을 차단했습니다.",
+    V2_DISCOVERY_BRIDGE_THROWN: "V2 discovery handoff 처리 중 예외가 발생해 안전하게 주문을 보류했습니다.",
     V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE: "V2 discovery canary 진입은 productionEntryLiveEndpoint/productionEntryRoute 전용이라 legacy live 주문 경로에서 보류했습니다.",
     LIVE_POLICY_BLOCK: "라이브 운영 정책에서 진입을 차단했습니다.",
     LIVE_RESCUE_ADD_DISABLED: "현재 구조에서는 구조보강 ADD가 비활성이라 추가 진입을 보류했습니다.",

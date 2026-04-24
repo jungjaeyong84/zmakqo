@@ -8,12 +8,17 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
 
 (function discoveryCanaryCannotUseLegacyFuturesEntrySubmitPath() {
   const guardIndex = source.indexOf("isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })");
+  const handoffIndex = source.indexOf("runV2DiscoveryCanaryServerSignalHandoff({");
   const reasonIndex = source.indexOf("V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE");
+  const routedIndex = source.indexOf("V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE");
   const submitIndex = source.indexOf("liveResult = await executeLiveFuturesOrder({");
   assert.ok(guardIndex > -1, "legacy entry write guard call is missing");
+  assert.ok(handoffIndex > -1, "V2 discovery server signal handoff is missing");
   assert.ok(reasonIndex > -1, "V2 production route blocker reason is missing");
+  assert.ok(routedIndex > -1, "V2 production route handoff reason is missing");
   assert.ok(submitIndex > -1, "live futures submit call is missing from source audit fixture");
   assert.ok(guardIndex < submitIndex, "discovery entry guard must run before executeLiveFuturesOrder");
+  assert.ok(handoffIndex > guardIndex && handoffIndex < submitIndex, "handoff must run before legacy executeLiveFuturesOrder");
 })();
 
 (function discoveryCanaryBridgeRequiresRiskGovernorContract() {

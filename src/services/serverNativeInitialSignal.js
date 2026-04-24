@@ -403,6 +403,8 @@ function buildNativeSignal({
   htfMode,
   htfBiasParity,
   htfBiasFullHistory,
+  rsiEntryTf,
+  volumeRatio,
 }) {
   const dir = String(direction || "").toUpperCase();
   const opp = Number(opportunity);
@@ -433,10 +435,20 @@ function buildNativeSignal({
     regime: regimeForMarketState(marketState),
     market_regime: regimeForMarketState(marketState),
     htf_bias: htfBias,
+    htf_regime: dir,
+    htf_direction: dir,
     htf_mode: htfMode || currentHtfMode(),
     htf_bias_pine_parity: htfBiasParity || htfBias,
     htf_bias_full_history: htfBiasFullHistory || htfBias,
     trigger_type: triggerType,
+    trigger_confirmed: triggerType && triggerType !== "NONE",
+    setup_type: triggerType === "BREAKOUT" || triggerType === "BREAKDOWN"
+      ? "BREAKOUT_RETEST"
+      : (triggerType === "CONTINUATION" ? "MOMENTUM_CONTINUATION" : "PULLBACK_RECLAIM"),
+    setup_quality_score: pullbackQuality,
+    htf_alignment_score: structureAlignment,
+    volume_zscore: volumeRatio,
+    rsi_entry_tf: rsiEntryTf,
     risk_mode: riskMode,
     opportunity_score: opp,
     score,
@@ -452,6 +464,7 @@ function buildNativeSignal({
     post_prob_long: dir === "LONG" ? posterior : (1 - posterior),
     post_prob_short: dir === "SHORT" ? posterior : (1 - posterior),
     rr,
+    expected_gross_r: rr,
     stop_price: stopPrice,
     target_price: targetPrice,
     _event_intent: "ENTRY",
@@ -467,6 +480,7 @@ function buildNativeSignal({
     continuation_pressure: continuationPressure,
     pullback_quality: pullbackQuality,
     participation,
+    volume_ratio: volumeRatio,
     risk_efficiency: riskEfficiency,
     sp_transition_risk: transitionRisk,
     sp_field_alignment: fieldAlignment,
@@ -724,6 +738,8 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         domainWallDensity,
         freeEnergy,
         susceptibility,
+        rsiEntryTf: rsi[i],
+        volumeRatio: volRatio,
       }));
     } else if (longEarlyPulse) {
       emitted.push(buildNativeSignal({
@@ -756,6 +772,8 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         domainWallDensity,
         freeEnergy,
         susceptibility,
+        rsiEntryTf: rsi[i],
+        volumeRatio: volRatio,
       }));
     }
 
@@ -790,6 +808,8 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         domainWallDensity,
         freeEnergy,
         susceptibility,
+        rsiEntryTf: rsi[i],
+        volumeRatio: volRatio,
       }));
     } else if (shortEarlyPulse) {
       emitted.push(buildNativeSignal({
@@ -822,6 +842,8 @@ function evaluateSignalsForBars({ exchange, symbol, tf, bars, htfBars }) {
         domainWallDensity,
         freeEnergy,
         susceptibility,
+        rsiEntryTf: rsi[i],
+        volumeRatio: volRatio,
       }));
     }
 

@@ -78,6 +78,7 @@ const {
 const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../services/tradeExecutionAlert");
 const { sendSignalReceivedAlert, sendSignalProgressAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
+const { runV2DiscoveryCanaryServerSignalHandoff } = require("../v2/discoveryCanaryServerSignalBridge");
 const { estimateTp1ReachProbability } = require("../services/evTp1Probability");
 const { resolveWaitOneBarConfig, evaluateWaitOneBarTiming } = require("../services/waitOneBarPolicy");
 const {
@@ -15714,11 +15715,60 @@ async function runPaperFuturesForBar({
           : liveQtyFraction;
       }
       if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
-        const blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+        const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+          env: process.env,
+          intentRow: it,
+          liveCfg,
+          referencePrice: fillPrice || nextOpen || (it.features_json && it.features_json.signal_price) || it.signal_price,
+          requestId: it.request_id || it.intent_id || liveSignalId,
+        }).catch((error) => ({
+          ok: false,
+          reason: "V2_DISCOVERY_BRIDGE_THROWN",
+          error_message: error && error.message ? error.message : String(error),
+        }));
+        if (handoff && handoff.ok === true) {
+          const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+          const requestBundle = requestBody.bundle || {};
+          const requestPermit = requestBody.executionPermit || {};
+          const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+          await markIntentStatus(it.intent_id, "CANCELED", {
+            cancel_reason: routeReason,
+            status_reason: routeReason,
+            cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute.",
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          });
+          sendSignalProgressAlert({
+            exchange,
+            symbol,
+            event: it.event,
+            side: actionSide,
+            tf: signalTf,
+            qtyPct: qtyFraction,
+            executionMode: liveCfg.executionMode,
+            source: "SERVER",
+            authoritative: true,
+            progressReason: routeReason,
+            pendingReason: "IMMEDIATE_EXEC",
+            signalId: liveSignalId,
+          }).catch((e) => {
+            console.warn("[V2_DISCOVERY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
+          });
+          continue;
+        }
+        const blockReason = (handoff && handoff.reason)
+          ? String(handoff.reason).trim().toUpperCase()
+          : "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
         await markIntentStatus(it.intent_id, "CANCELED", {
           cancel_reason: blockReason,
           status_reason: blockReason,
-          cancel_note: "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path.",
+          cancel_note: JSON.stringify({
+            note: "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path.",
+            bridge_reason: handoff && handoff.reason ? handoff.reason : null,
+            bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
+            endpoint_reason: handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null,
+          }),
         });
         notifyTradeExitFailureAlert({
           exchange,
