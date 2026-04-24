@@ -179,6 +179,12 @@ function buildExpectedEnv(env = process.env) {
       "OPENCLAW_NARRATIVE_PROVIDER_MODE",
       "CODEX_CLI_ONLY",
     ),
+    OPENAI_CODEX_FALLBACK_ENABLED: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_OPENAI_CODEX_FALLBACK_ENABLED",
+      "OPENAI_CODEX_FALLBACK_ENABLED",
+      "0",
+    ),
     SIGNAL_AI_ENABLED: expectedValue(env, "DONBEOLJA_V2_EXPECTED_SIGNAL_AI_ENABLED", "SIGNAL_AI_ENABLED", "0"),
     AI_ALLOC_CLAUDE_ENABLED: expectedValue(
       env,
@@ -191,6 +197,14 @@ function buildExpectedEnv(env = process.env) {
       "DONBEOLJA_V2_EXPECTED_AI_ALLOC_ENSEMBLE_ENABLED",
       "AI_ALLOC_ENSEMBLE_ENABLED",
       "0",
+    ),
+    AI_ALLOC_GPT_ENABLED: expectedValue(env, "DONBEOLJA_V2_EXPECTED_AI_ALLOC_GPT_ENABLED", "AI_ALLOC_GPT_ENABLED", "0"),
+    NEWS_PROVIDER: expectedValue(env, "DONBEOLJA_V2_EXPECTED_NEWS_PROVIDER", "NEWS_PROVIDER", "disabled"),
+    SIGNAL_AI_NEWS_PROVIDER: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_SIGNAL_AI_NEWS_PROVIDER",
+      "SIGNAL_AI_NEWS_PROVIDER",
+      "disabled",
     ),
   });
 }
@@ -213,6 +227,14 @@ function buildForbiddenEnvNames(env = process.env) {
         "AI_ALLOC_CLAUDE_MODEL_CANARY",
         "AI_ALLOC_CLAUDE_CANARY_PCT",
         "AI_ALLOC_CLAUDE_TIMEOUT_MS",
+        "OPENAI_API_KEY",
+        "NEWS_API_KEY",
+        "OPENAI_MODEL",
+        "SIGNAL_AI_GPT_MODEL",
+        "SIGNAL_AI_OPENAI_MODEL",
+        "SIGNAL_AI_OPENAI_REASONING_EFFORT",
+        "NEWS_WEB_MODEL",
+        "SIGNAL_AI_NEWS_MODEL",
       ].join(","),
   );
 }

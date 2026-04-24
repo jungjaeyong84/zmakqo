@@ -827,7 +827,38 @@ async function getNewsMode({
   ensembleWClaude,
   ensembleNeutralThreshold,
 }) {
-  const newsProvider = String(process.env.NEWS_PROVIDER || "gdelt");
+  const newsProvider = String(process.env.NEWS_PROVIDER || "disabled").trim();
+  const newsProviderKey = newsProvider.toLowerCase();
+  if (!newsProviderKey || ["0", "off", "none", "disabled"].includes(newsProviderKey)) {
+    return {
+      mode: "neutral",
+      confidence: null,
+      direction: "neutral",
+      direction_confidence: null,
+      direction_score: 0,
+      reason: "NEWS_DISABLED",
+      news_ok: false,
+      news_count: 0,
+      gpt_ok: false,
+      gpt_attempted: false,
+      claude_ok: false,
+      claude_attempted: false,
+      claude_model: null,
+      claude_model_primary: null,
+      claude_model_canary: null,
+      claude_canary_pct: 0,
+      claude_canary_used: false,
+      ensemble_enabled: false,
+      ensemble_used: false,
+      ensemble_batch_enabled: false,
+      ensemble_batch_used: false,
+      ensemble_batch_timeout_ms: Number(process.env.AI_ALLOC_ENSEMBLE_BATCH_TIMEOUT_MS || 1_500_000),
+      ensemble_batch_reason: "NEWS_DISABLED",
+      news_provider: newsProvider || "disabled",
+      news_reason: "NEWS_DISABLED",
+      news_cached: false,
+    };
+  }
   const apiKey = (newsProvider.toLowerCase().startsWith("openai"))
     ? String(process.env.OPENAI_API_KEY || gptKey || "")
     : String(process.env.NEWS_API_KEY || "");
@@ -1373,7 +1404,9 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
     return { ok: false, error: "NO_ELIGIBLE_MARKETS", message: "eligible markets list is empty" };
   }
 
-  const gptKey = String(process.env.OPENAI_API_KEY || aiCfg.api_key || "");
+  const aiGptEnabled = (typeof aiCfg.gpt_enabled === "boolean") ? aiCfg.gpt_enabled : null;
+  const gptEnabled = boolEnv("AI_ALLOC_GPT_ENABLED", aiGptEnabled != null ? aiGptEnabled : false);
+  const gptKey = gptEnabled ? String(process.env.OPENAI_API_KEY || aiCfg.api_key || "") : "";
   let guardData = null;
   try {
     const guardRes = await getAiGuardSettingsCached(5000);
@@ -1449,7 +1482,7 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
     provider,
     keywords,
     windowDays: aiCfg.news_window_days,
-    gptEnabled: aiCfg.gpt_enabled && !!gptKey,
+    gptEnabled: gptEnabled && !!gptKey,
     gptModel: aiCfg.gpt_model,
     gptModelRouter: aiCfg.gpt_model_router || aiCfg.gpt_model,
     gptModelPro: aiCfg.gpt_model_pro || aiCfg.gpt_model,

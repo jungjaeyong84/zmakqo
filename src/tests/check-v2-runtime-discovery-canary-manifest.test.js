@@ -40,9 +40,13 @@ function serviceJson({
                 Object.freeze({ name: "ML_LIVE_SERVING_ARMED", value: "0" }),
                 Object.freeze({ name: "OPENCLAW_AGENT_APPLY_ENABLED", value: "0" }),
                 Object.freeze({ name: "OPENCLAW_NARRATIVE_PROVIDER_MODE", value: "CODEX_CLI_ONLY" }),
+                Object.freeze({ name: "OPENAI_CODEX_FALLBACK_ENABLED", value: "0" }),
                 Object.freeze({ name: "SIGNAL_AI_ENABLED", value: "0" }),
                 Object.freeze({ name: "AI_ALLOC_CLAUDE_ENABLED", value: "0" }),
                 Object.freeze({ name: "AI_ALLOC_ENSEMBLE_ENABLED", value: "0" }),
+                Object.freeze({ name: "AI_ALLOC_GPT_ENABLED", value: "0" }),
+                Object.freeze({ name: "NEWS_PROVIDER", value: "disabled" }),
+                Object.freeze({ name: "SIGNAL_AI_NEWS_PROVIDER", value: "disabled" }),
               ]),
             }),
           ]),
@@ -129,6 +133,22 @@ function traceOnlyServiceJson({
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
   assert.strictEqual(result.ok, true);
+}
+
+{
+  const unsafeService = JSON.parse(JSON.stringify(serviceJson()));
+  unsafeService.spec.template.spec.containers[0].env.push(Object.freeze({
+    name: "OPENAI_API_KEY",
+    valueFrom: { secretKeyRef: { name: "OPENAI_API_KEY", key: "latest" } },
+  }));
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(unsafeService),
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, false);
+  assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:FORBIDDEN_ENV_PRESENT:OPENAI_API_KEY"));
 }
 
 {
