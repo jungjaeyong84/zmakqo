@@ -89,6 +89,22 @@ function resolveMarketMetrics(marketDataQuality = null) {
   return metrics || {};
 }
 
+function resolveMarketMetric(marketDataQuality = null, ...keys) {
+  const row = asObject(marketDataQuality);
+  const metrics = resolveMarketMetrics(marketDataQuality);
+  for (const source of [metrics, row]) {
+    const obj = asObject(source);
+    if (!obj) continue;
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        const n = toNumberOrNull(obj[key]);
+        if (n !== null) return n;
+      }
+    }
+  }
+  return null;
+}
+
 function buildSignalCriteria({
   signalSide,
   signalCriteria = null,
@@ -209,14 +225,14 @@ function buildSignalCriteria({
     ?? seed.spread_bps
     ?? spreadBps
     ?? resolveFeatureValue(features, "spread_bps")
-    ?? metrics.spread_bps
+    ?? resolveMarketMetric(marketDataQuality, "spread_bps", "spreadBps")
   );
   const resolvedMarkIndexGapBps = toNumberOrNull(
     (seed.no_trade_gate && seed.no_trade_gate.mark_index_gap_bps)
     ?? seed.mark_index_gap_bps
     ?? markIndexGapBps
     ?? resolveFeatureValue(features, "mark_index_gap_bps")
-    ?? metrics.mark_index_gap_bps
+    ?? resolveMarketMetric(marketDataQuality, "mark_index_gap_bps", "mark_index_divergence_bps", "markIndexGapBps", "markIndexDivergenceBps")
   );
   const resolvedExpectedGrossR = toNumberOrNull(
     (seed.expected_edge_gate && seed.expected_edge_gate.expected_gross_r)

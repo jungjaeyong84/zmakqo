@@ -62,6 +62,36 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.ok(criteria.blockers.includes("EXPECTED_EDGE:NO_EVIDENCE:EXPECTED_NET_R_AFTER_COST"));
 })();
 
+(function marketDataQualityAliasesAreAcceptedAsEvidence() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.82,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.8,
+      trigger_confirmed: true,
+      volume_zscore: 1.4,
+      rsi_entry_tf: 58,
+      expected_gross_r: 1.6,
+      expected_net_r_after_cost: 1.5,
+      cost_estimate_bps: 10,
+      cost_r_equivalent: 0.1,
+      funding_penalty_bps: 0,
+      market_quality_score: 0.9,
+    },
+    marketDataQuality: {
+      ok: true,
+      spread_bps: 3,
+      mark_index_divergence_bps: 1.1,
+    },
+  });
+  assert.strictEqual(criteria.verdict, "PASS");
+  assert.strictEqual(criteria.no_trade_gate.spread_bps, 3);
+  assert.strictEqual(criteria.no_trade_gate.mark_index_gap_bps, 1.1);
+})();
+
 (function setupIsNotSynthesizedFromHtfAlignment() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",

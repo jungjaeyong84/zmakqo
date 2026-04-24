@@ -39,6 +39,61 @@ function clamp01(value, fallback = 0) {
   return Math.max(0, Math.min(1, n));
 }
 
+function pickNumber(source, ...keys) {
+  const row = asObject(source);
+  if (!row) return null;
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(row, key)) {
+      const n = toNumberOrNull(row[key]);
+      if (n !== null) return n;
+    }
+  }
+  return null;
+}
+
+function metricNumber(marketDataQuality = null, ...keys) {
+  const row = asObject(marketDataQuality);
+  const metrics = asObject(row && row.metrics);
+  const fromMetrics = pickNumber(metrics, ...keys);
+  if (fromMetrics !== null) return fromMetrics;
+  return pickNumber(row, ...keys);
+}
+
+function estimateStopPctFromIntent(features = {}, intentRow = {}) {
+  const explicit = Math.abs(toNumberOrNull(features.ev_gate_sl_pct) ?? toNumberOrNull(features.stop_pct) ?? 0);
+  if (explicit > 0) return explicit;
+  const signalPrice = toNumberOrNull(intentRow.signal_price ?? features.signal_price);
+  const stopPrice = toNumberOrNull(features.stop_price);
+  if (signalPrice > 0 && stopPrice > 0) {
+    return Math.abs(signalPrice - stopPrice) / signalPrice * 100;
+  }
+  return null;
+}
+
+function estimateCostREquivalent({ costEstimateBps = null, stopPct = null, grossR = null } = {}) {
+  const explicitCost = toNumberOrNull(costEstimateBps);
+  const stop = toNumberOrNull(stopPct);
+  if (explicitCost !== null && stop > 0) {
+    return Math.max(0, explicitCost / (100 * stop));
+  }
+  const gross = toNumberOrNull(grossR);
+  if (gross !== null) return Math.max(0.02, Math.min(0.2, gross * 0.05));
+  return null;
+}
+
+function stepSafeNotional({ maxNotionalQuote = null, referencePrice = null, stepSize = null, minNotionalQuote = null } = {}) {
+  const maxNotional = toNumberOrNull(maxNotionalQuote);
+  const price = toNumberOrNull(referencePrice);
+  const step = toNumberOrNull(stepSize);
+  const minNotional = toNumberOrNull(minNotionalQuote) ?? 0;
+  if (!(maxNotional > 0) || !(price > 0) || !(step > 0)) return maxNotional;
+  const units = Math.floor(maxNotional / price / step);
+  const safeQty = units * step;
+  const safeNotional = safeQty * price;
+  if (safeNotional >= minNotional && safeNotional > 0) return safeNotional;
+  return maxNotional;
+}
+
 function stableJson(value) {
   if (value === null || value === undefined) return "null";
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
@@ -131,15 +186,28 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
   const features = asObject(intentRow.features_json) || {};
   const side = sideFromIntent(intentRow);
   const grossR = toNumberOrNull(features.expected_gross_r) ?? toNumberOrNull(features.rr);
-  const netR = toNumberOrNull(features.expected_net_r_after_cost)
-    ?? toNumberOrNull(features.ev_gate_expected_exit_value_r)
-    ?? toNumberOrNull(features.ev_gate_expected_exit_value_pct);
-  const resolvedNetR = netR !== null ? netR : (grossR !== null ? Math.max(0.25, grossR - 1.25) : null);
-  const costREquivalent = grossR !== null && resolvedNetR !== null
-    ? Math.max(0, grossR - resolvedNetR)
-    : null;
+  const spreadBps = toNumberOrNull(features.spread_bps)
+    ?? metricNumber(marketDataQuality, "spread_bps", "spreadBps");
+  const markIndexGapBps = toNumberOrNull(features.mark_index_gap_bps)
+    ?? metricNumber(marketDataQuality, "mark_index_gap_bps", "mark_index_divergence_bps", "markIndexGapBps", "markIndexDivergenceBps");
+  const feeBpsRoundTrip = toNumberOrNull(features.fee_bps_round_trip)
+    ?? toNumberOrNull(features.fee_estimate_bps)
+    ?? toNumberOrNull(features.commission_bps_round_trip)
+    ?? 8;
+  const costEstimateBps = toNumberOrNull(features.cost_estimate_bps)
+    ?? (spreadBps !== null ? spreadBps + feeBpsRoundTrip : feeBpsRoundTrip);
+  const explicitNetR = toNumberOrNull(features.expected_net_r_after_cost)
+    ?? toNumberOrNull(features.net_r_after_cost)
+    ?? toNumberOrNull(features.expected_net_r);
+  const stopPct = estimateStopPctFromIntent(features, intentRow);
+  const explicitCostREquivalent = toNumberOrNull(features.cost_r_equivalent);
+  const costREquivalent = explicitCostREquivalent !== null
+    ? explicitCostREquivalent
+    : estimateCostREquivalent({ costEstimateBps, stopPct, grossR });
+  const resolvedNetR = explicitNetR !== null
+    ? explicitNetR
+    : (grossR !== null && costREquivalent !== null ? Math.max(0, grossR - costREquivalent) : null);
   const fundingPenaltyBps = Math.abs(toNumberOrNull(features.funding_penalty_bps) ?? 0);
-  const metrics = asObject(marketDataQuality && marketDataQuality.metrics) || {};
   return Object.freeze({
     htf_regime: {
       regime: side,
@@ -162,14 +230,14 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
     },
     no_trade_gate: {
       market_quality_score: toNumberOrNull(features.market_quality_score) ?? (marketDataQuality && marketDataQuality.ok === true ? 1 : null),
-      spread_bps: toNumberOrNull(features.spread_bps) ?? toNumberOrNull(metrics.spread_bps),
-      mark_index_gap_bps: toNumberOrNull(features.mark_index_gap_bps) ?? toNumberOrNull(metrics.mark_index_divergence_bps),
+      spread_bps: spreadBps,
+      mark_index_gap_bps: markIndexGapBps,
       funding_penalty_bps: fundingPenaltyBps,
     },
     expected_edge_gate: {
       expected_gross_r: grossR,
       expected_net_r_after_cost: resolvedNetR,
-      cost_estimate_bps: toNumberOrNull(features.cost_estimate_bps) ?? toNumberOrNull(metrics.spread_bps) ?? 0,
+      cost_estimate_bps: costEstimateBps,
       cost_r_equivalent: costREquivalent,
     },
   });
@@ -323,15 +391,23 @@ async function buildDiscoveryCanaryLiveRequestFromIntent({
     nowIso,
   });
   const state = discoveryState || await buildDiscoveryCanaryState({ db, exchange: row.exchange || "BINANCEFUT", nowMs });
+  const minNotionalQuote = toNumberOrNull(info && info.minNotional) ?? toNumberOrNull(liveCfg && liveCfg.minOrderQuote) ?? 5;
+  const stepSize = toNumberOrNull(info && info.stepSize);
+  const requestedNotionalQuote = stepSafeNotional({
+    maxNotionalQuote: maxOrderQuote,
+    referencePrice: price,
+    stepSize,
+    minNotionalQuote,
+  });
   const request = buildV2ProductionEntryLiveRequest({
     bundle,
     sizing: {
       referencePrice: price,
-      requestedNotionalQuote: maxOrderQuote,
+      requestedNotionalQuote,
       maxNotionalQuote: maxOrderQuote,
-      minNotionalQuote: toNumberOrNull(info && info.minNotional) ?? toNumberOrNull(liveCfg && liveCfg.minOrderQuote) ?? 5,
+      minNotionalQuote,
       minQtyAbs: toNumberOrNull(info && info.minQty) ?? 0,
-      stepSize: toNumberOrNull(info && info.stepSize),
+      stepSize,
       allowMinOrderBump: true,
     },
     confirm: DISCOVERY_CONFIRM_PHRASE,
@@ -442,6 +518,7 @@ module.exports = {
     sideFromIntent,
     setupTypeFromFeatures,
     resolveReferencePrice,
+    stepSafeNotional,
     buildStrategyFilterResultFromIntent,
   },
 };

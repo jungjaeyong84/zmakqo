@@ -15757,9 +15757,18 @@ async function runPaperFuturesForBar({
           });
           continue;
         }
-        const blockReason = (handoff && handoff.reason)
-          ? String(handoff.reason).trim().toUpperCase()
-          : "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+        const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+        const signalCriteriaGate = routedDecision && routedDecision.signal_criteria_gate;
+        const marketDataQualityGate = routedDecision && routedDecision.market_data_quality_gate;
+        const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+        let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+        if (routedDecision && routedDecision.reason) {
+          blockReason = String(routedDecision.reason).trim().toUpperCase();
+        } else if (endpointReason) {
+          blockReason = String(endpointReason).trim().toUpperCase();
+        } else if (handoff && handoff.reason) {
+          blockReason = String(handoff.reason).trim().toUpperCase();
+        }
         await markIntentStatus(it.intent_id, "CANCELED", {
           cancel_reason: blockReason,
           status_reason: blockReason,
@@ -15767,7 +15776,11 @@ async function runPaperFuturesForBar({
             note: "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path.",
             bridge_reason: handoff && handoff.reason ? handoff.reason : null,
             bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
-            endpoint_reason: handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null,
+            endpoint_reason: endpointReason,
+            router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
+            router_detail: routedDecision && routedDecision.detail ? routedDecision.detail : null,
+            signal_criteria_blockers: signalCriteriaGate && Array.isArray(signalCriteriaGate.blockers) ? signalCriteriaGate.blockers : [],
+            market_data_quality_blockers: marketDataQualityGate && Array.isArray(marketDataQualityGate.blockers) ? marketDataQualityGate.blockers : [],
           }),
         });
         notifyTradeExitFailureAlert({

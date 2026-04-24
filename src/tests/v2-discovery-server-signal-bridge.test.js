@@ -29,6 +29,7 @@ function buildEnv(overrides = {}) {
 }
 
 function buildIntent(overrides = {}) {
+  const { features_json: featureOverrides = {}, ...rowOverrides } = overrides || {};
   return {
     intent_id: "INTENT__BNB__TEST",
     request_id: "REQ__BNB__TEST",
@@ -58,9 +59,9 @@ function buildIntent(overrides = {}) {
       cost_r_equivalent: 1.25,
       funding_penalty_bps: 0,
       score_norm: 0.67,
-      ...overrides.features_json,
+      ...featureOverrides,
     },
-    ...overrides,
+    ...rowOverrides,
   };
 }
 
@@ -95,6 +96,88 @@ function marketDataQuality(overrides = {}) {
   assert.strictEqual(seed.expected_edge_gate.expected_net_r_after_cost, 0.35);
   assert.strictEqual(seed.expected_edge_gate.cost_r_equivalent, 1.25);
 })();
+
+(function serverSignalSeedAcceptsTopLevelMarketQualityMetrics() {
+  const seed = buildSignalCriteriaSeedFromIntent({
+    intentRow: buildIntent({
+      features_json: {
+        expected_net_r_after_cost: undefined,
+        cost_r_equivalent: undefined,
+        ev_gate_expected_exit_value_r: 0.2,
+        ev_gate_sl_pct: 1.65,
+      },
+    }),
+    marketDataQuality: {
+      ok: true,
+      spread_bps: 3,
+      mark_index_gap_bps: 1.4,
+    },
+  });
+  assert.strictEqual(seed.no_trade_gate.spread_bps, 3);
+  assert.strictEqual(seed.no_trade_gate.mark_index_gap_bps, 1.4);
+  assert.ok(seed.expected_edge_gate.expected_net_r_after_cost > 1.4);
+  assert.ok(seed.expected_edge_gate.cost_r_equivalent > 0);
+  assert.ok(seed.expected_edge_gate.cost_estimate_bps >= 11);
+})();
+
+async function dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop() {
+  const result = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env: buildEnv(),
+    intentRow: buildIntent({
+      intent_id: "INTENT__DOGE__TEST",
+      request_id: "REQ__DOGE__TEST",
+      symbol_or_pair_id: "DOGEUSDT",
+      signal_price: 0.09768,
+      signal_id: "SIG__BINANCEFUT__DOGEUSDT__15m__1777017600000__LONG",
+      features_json: {
+        signal_family: "LONG",
+        setup_type: "PULLBACK_RECLAIM",
+        trigger_type: "RECLAIM",
+        trigger_confirmed: true,
+        htf_regime: "LONG",
+        htf_alignment_score: 1,
+        setup_quality_score: 0.5861904761904727,
+        volume_ratio: 1.8119614036857628,
+        rsi_entry_tf: 58.819981858799345,
+        expected_gross_r: 1.555555555555534,
+        expected_net_r_after_cost: undefined,
+        cost_r_equivalent: undefined,
+        ev_gate_expected_exit_value_r: 0.20444919329096276,
+        ev_gate_report_only_would_drop: true,
+        ev_gate_sl_pct: 1.65,
+        funding_penalty_bps: 0,
+        score_norm: 0.7271203077663227,
+      },
+    }),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
+    referencePrice: 0.09768,
+    nowMs: Date.parse("2026-04-24T08:01:26.000Z"),
+    nowIso: "2026-04-24T08:01:26.000Z",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      spread_bps: 3,
+      mark_index_gap_bps: 1,
+    },
+    exchangeInfo: {
+      minNotional: 5,
+      minQty: 1,
+      stepSize: 1,
+    },
+    discoveryState: {
+      active_position_n: 0,
+      trade_count_24h: 0,
+      daily_realized_pnl_quote: 0,
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.request.routedDecision.ok, true);
+  assert.strictEqual(result.request.routedDecision.entryIntent.symbol, "DOGEUSDT");
+  const criteria = result.request.body.bundle.openclawDecision.canonical_evidence_summary.signal_criteria;
+  assert.strictEqual(criteria.verdict, "PASS");
+  assert.ok(criteria.expected_edge_gate.expected_net_r_after_cost > 1.4);
+}
 
 async function serverSignalRoutesToV2ProductionEntryLiveRequest() {
   const result = await buildDiscoveryCanaryLiveRequestFromIntent({
@@ -149,6 +232,7 @@ async function marketDataQualityBlockFailsClosed() {
 
 async function main() {
   await serverSignalRoutesToV2ProductionEntryLiveRequest();
+  await dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop();
   await marketDataQualityBlockFailsClosed();
   console.log("V2_DISCOVERY_SERVER_SIGNAL_BRIDGE_TEST_OK");
 }

@@ -88,6 +88,7 @@ function classifySignalReasonStage(reason) {
     code === "LIVE_DISABLED" ||
     code === "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE" ||
     code === "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE" ||
+    code === "V2_PRODUCTION_ENTRY_LIVE_ROUTER_NOT_EXECUTABLE" ||
     code.startsWith("V2_DISCOVERY_BRIDGE_") ||
     code.startsWith("V2_DISCOVERY_CANARY_BRIDGE:")
   ) {
@@ -96,6 +97,26 @@ function classifySignalReasonStage(reason) {
       key: "LIVE_CONFIG",
       label: "라이브 실행 설정",
       text: "라이브 실행 설정",
+      code,
+    };
+  }
+
+  if (code === "SIGNAL_CRITERIA_BLOCKED" || code === "SIGNAL_CRITERIA_REQUIRED") {
+    return {
+      step: 2,
+      key: "SIGNAL_CRITERIA",
+      label: "V2 신호 기준",
+      text: "V2 신호 기준",
+      code,
+    };
+  }
+
+  if (code === "MARKET_DATA_QUALITY_BLOCKED" || code === "MARKET_DATA_QUALITY_REQUIRED") {
+    return {
+      step: 1,
+      key: "MARKET_DATA",
+      label: "시장 데이터 품질",
+      text: "시장 데이터 품질",
       code,
     };
   }
@@ -242,6 +263,11 @@ function explainSignalReason(reason) {
     V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED: "V2 production entry live endpoint가 discovery handoff 요청을 차단했습니다.",
     V2_DISCOVERY_BRIDGE_THROWN: "V2 discovery handoff 처리 중 예외가 발생해 안전하게 주문을 보류했습니다.",
     V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE: "V2 discovery canary 진입은 productionEntryLiveEndpoint/productionEntryRoute 전용이라 legacy live 주문 경로에서 보류했습니다.",
+    V2_PRODUCTION_ENTRY_LIVE_ROUTER_NOT_EXECUTABLE: "V2 production entry router가 OpenClaw bundle을 실행 가능 신호로 승인하지 않아 주문을 보류했습니다.",
+    SIGNAL_CRITERIA_BLOCKED: "V2 신호 기준(signal criteria)을 통과하지 못해 discovery 주문을 보류했습니다.",
+    SIGNAL_CRITERIA_REQUIRED: "V2 신호 기준 증거가 없어 discovery 주문을 보류했습니다.",
+    MARKET_DATA_QUALITY_BLOCKED: "시장 데이터 품질 기준을 통과하지 못해 discovery 주문을 보류했습니다.",
+    MARKET_DATA_QUALITY_REQUIRED: "시장 데이터 품질 증거가 없어 discovery 주문을 보류했습니다.",
     LIVE_POLICY_BLOCK: "라이브 운영 정책에서 진입을 차단했습니다.",
     LIVE_RESCUE_ADD_DISABLED: "현재 구조에서는 구조보강 ADD가 비활성이라 추가 진입을 보류했습니다.",
     LIVE_RESCUE_ADD_TIER_BLOCKED: "이번 신호 티어는 구조보강 ADD 허용 구간이 아니라 추가 진입을 보류했습니다.",
