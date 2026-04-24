@@ -84,7 +84,11 @@ function classifySignalReasonStage(reason) {
     };
   }
 
-  if (code === "LIVE_DISABLED" || code.startsWith("V2_DISCOVERY_CANARY_BRIDGE:")) {
+  if (
+    code === "LIVE_DISABLED" ||
+    code === "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE" ||
+    code.startsWith("V2_DISCOVERY_CANARY_BRIDGE:")
+  ) {
     return {
       step: null,
       key: "LIVE_CONFIG",
@@ -228,8 +232,10 @@ function explainSignalReason(reason) {
     "V2_DISCOVERY_CANARY_BRIDGE:MAX_NOTIONAL_REQUIRED": "V2 discovery canary 최대 주문 금액 한도가 없어 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED": "ML live serving이 켜져 있어 discovery canary 안전 계약과 맞지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:AGENT_APPLY_ENABLED": "OpenClaw agent live apply가 켜져 있어 discovery canary 안전 계약과 맞지 않아 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED": "V2 risk governor 필수 플래그가 확인되지 않아 discovery canary 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED": "legacy webhook 차단이 확인되지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_ALLOWED": "legacy webhook 허용 플래그가 켜져 있어 실제 주문을 보류했습니다.",
+    V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE: "V2 discovery canary 진입은 productionEntryLiveEndpoint/productionEntryRoute 전용이라 legacy live 주문 경로에서 보류했습니다.",
     LIVE_POLICY_BLOCK: "라이브 운영 정책에서 진입을 차단했습니다.",
     LIVE_RESCUE_ADD_DISABLED: "현재 구조에서는 구조보강 ADD가 비활성이라 추가 진입을 보류했습니다.",
     LIVE_RESCUE_ADD_TIER_BLOCKED: "이번 신호 티어는 구조보강 ADD 허용 구간이 아니라 추가 진입을 보류했습니다.",

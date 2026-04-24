@@ -16,6 +16,7 @@ function buildEnv(overrides = {}) {
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
     DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
+    DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "1",
     ML_LIVE_SERVING_ARMED: "0",
     OPENCLAW_AGENT_APPLY_ENABLED: "0",
     DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "1",
@@ -47,6 +48,7 @@ function discoveryBridgeRequiresSafetyEnvelope() {
   const blocked = __test.evaluateV2DiscoveryCanaryLiveBridge({
     env: buildEnv({
       DONBEOLJA_V2_CANARY_ONLY: "0",
+      DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "0",
       ML_LIVE_SERVING_ARMED: "1",
       DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "0",
     }),
@@ -55,6 +57,7 @@ function discoveryBridgeRequiresSafetyEnvelope() {
   });
   assert.strictEqual(blocked.ok, false);
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:CANARY_ONLY_REQUIRED"));
+  assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED"));
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED"));
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED"));
 }
@@ -71,17 +74,46 @@ function discoveryBridgeClampsLegacyMaxOrder() {
   assert.strictEqual(__test.clampDiscoveryCanaryMaxOrderQuote(10, bridge), 10);
 }
 
+function discoveryBridgeBlocksLegacyEntryWritePath() {
+  const liveCfg = {
+    executionMode: "LIVE",
+    liveEnabled: true,
+    v2DiscoveryCanaryBridge: true,
+  };
+  assert.strictEqual(
+    __test.isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent: "ENTRY" }),
+    true
+  );
+  assert.strictEqual(
+    __test.isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent: "ADD" }),
+    true
+  );
+  assert.strictEqual(
+    __test.isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent: "EXIT" }),
+    false
+  );
+  assert.strictEqual(
+    __test.isV2DiscoveryCanaryLegacyEntryWriteBlocked({
+      liveCfg: { ...liveCfg, v2DiscoveryCanaryBridge: false },
+      intent: "ENTRY",
+    }),
+    false
+  );
+}
+
 function liveDisabledReasonIsOperatorReadable() {
   const classified = classifySignalReasonStage("LIVE_DISABLED");
   assert.strictEqual(classified.key, "LIVE_CONFIG");
   assert.match(explainSignalReason("LIVE_DISABLED"), /서버 신호는 생성/);
   assert.match(explainSignalReason("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED"), /허용 심볼/);
+  assert.match(explainSignalReason("V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE"), /productionEntryLiveEndpoint/);
 }
 
 function main() {
   discoveryBridgeAllowsOnlyApprovedSymbols();
   discoveryBridgeRequiresSafetyEnvelope();
   discoveryBridgeClampsLegacyMaxOrder();
+  discoveryBridgeBlocksLegacyEntryWritePath();
   liveDisabledReasonIsOperatorReadable();
   console.log("V2_DISCOVERY_LIVE_BRIDGE_TEST_OK");
 }

@@ -5528,6 +5528,7 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
     discovery_enabled: normalizeBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, false),
     ml_live_serving_armed: normalizeBool(env.ML_LIVE_SERVING_ARMED, false),
     agent_apply_enabled: normalizeBool(env.OPENCLAW_AGENT_APPLY_ENABLED, false),
+    risk_governor_required: normalizeBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, true),
     legacy_webhook_blocked: normalizeBool(env.DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, false),
     legacy_webhook_allowed: normalizeBool(env.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, false),
     allowed_symbols: Object.freeze(splitRuntimeList(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS)),
@@ -5555,6 +5556,7 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
   if (policy.daily_loss_halt_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DAILY_LOSS_HALT_REQUIRED");
   if (policy.ml_live_serving_armed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED");
   if (policy.agent_apply_enabled === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:AGENT_APPLY_ENABLED");
+  if (policy.risk_governor_required !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED");
   if (policy.legacy_webhook_blocked !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED");
   if (policy.legacy_webhook_allowed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_ALLOWED");
 
@@ -5576,6 +5578,15 @@ function clampDiscoveryCanaryMaxOrderQuote(currentMaxOrderQuote, bridge) {
   if (discoveryMax == null) return currentMaxOrderQuote;
   if (currentMax == null) return discoveryMax;
   return Math.min(currentMax, discoveryMax);
+}
+
+function isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg = null, intent = null } = {}) {
+  const entryIntent = String(intent || "").toUpperCase();
+  return !!(
+    liveCfg &&
+    liveCfg.v2DiscoveryCanaryBridge === true &&
+    (entryIntent === "ENTRY" || entryIntent === "ADD")
+  );
 }
 
 function resolveForceAllSignalsAdd(sysCfg = {}, exchange = "") {
@@ -7663,6 +7674,7 @@ async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } 
     v2DiscoveryCanaryBridge: discoveryBridge.ok === true,
     v2DiscoveryCanaryBridgeReason: discoveryBridge.reason,
     v2DiscoveryCanaryBridgeBlockers: discoveryBridge.blockers,
+    v2DiscoveryCanaryLegacyEntryWriteBlocked: discoveryBridge.ok === true,
   };
 }
 
@@ -15701,6 +15713,39 @@ async function runPaperFuturesForBar({
           ? Math.min(1, maxFractionAllowed / liveExitCurrentQtyPct)
           : liveQtyFraction;
       }
+      if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+        const blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+        await markIntentStatus(it.intent_id, "CANCELED", {
+          cancel_reason: blockReason,
+          status_reason: blockReason,
+          cancel_note: "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path.",
+        });
+        notifyTradeExitFailureAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: actionSide,
+          intent,
+          executionMode: liveCfg.executionMode,
+          reason: blockReason,
+          note: "V2 discovery entry blocked before legacy live order submit",
+          qtyPct: qtyFraction,
+          positionSideBefore: resolveFailureAlertPositionSide(pos),
+          appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
+          leverageReason: appliedLeverageReason,
+          exitRules: appliedExitRules || null,
+          ...buildFailureExitAlertPayload({
+            event: it.event,
+            pos,
+            posMeta,
+            exitRules: appliedExitRules || null,
+            qtyFraction,
+            prevSize,
+            useBudget,
+          }),
+        });
+        continue;
+      }
       let liveResult = null;
       const trackLiveSubmit = shouldTrackLiveSubmitEvidence({
         intent,
@@ -18347,6 +18392,7 @@ module.exports = {
     splitRuntimeList,
     evaluateV2DiscoveryCanaryLiveBridge,
     clampDiscoveryCanaryMaxOrderQuote,
+    isV2DiscoveryCanaryLegacyEntryWriteBlocked,
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,
