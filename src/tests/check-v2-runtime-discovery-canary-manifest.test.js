@@ -30,6 +30,7 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED", value: endpointEnabled }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", value: discoveryEnabled }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS", value: symbols }),
+                Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT", value: "2" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE", value: "25" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY", value: "1" }),
@@ -83,6 +84,23 @@ function traceOnlyServiceJson({
       }),
     }),
   });
+}
+
+{
+  const fullSymbols = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT";
+  const service = JSON.parse(JSON.stringify(serviceJson({ symbols: fullSymbols })));
+  const envRows = service.spec.template.spec.containers[0].env;
+  envRows.find((row) => row.name === "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT").value = "8";
+  envRows.find((row) => row.name === "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE").value = "6";
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(service),
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: fullSymbols,
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, true);
 }
 
 {

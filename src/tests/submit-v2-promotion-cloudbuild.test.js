@@ -1083,6 +1083,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
   assert.strictEqual(request.substitutions._V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "2");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "1");
   assert.strictEqual(

@@ -86,6 +86,7 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
     assert.strictEqual(result.substitutions._TAG, "v2-fixture");
     assert.strictEqual(result.substitutions._COMMIT_SHA, "0123456789abcdef0123456789abcdef01234567");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS, "ETHUSDT");
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "2");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
@@ -182,6 +183,36 @@ async function passingPreflightCanBuildTwoSymbolDiscoveryCommand() {
   });
 }
 
+async function passingPreflightCanBuildFullUniverseMinimumNotionalCommand() {
+  await withPatchedRunChecks({
+    entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
+    exit: async () => makeReport(true, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"),
+    repair: () => makeReport(true, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"),
+  }, async () => {
+    const perfFile = writePerfMetrics({
+      sample_n: 0,
+      win_rate_pct: 0,
+      profit_factor: 0,
+      expectancy: 0,
+      net_pnl_pct: 0,
+      mdd_pct: -1,
+    });
+    const symbols = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT";
+    const result = await runner.main({
+      TAG: "v2-fixture",
+      COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: symbols,
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
+      V2_PERFORMANCE_GATE_INPUT_FILE: perfFile,
+    }, { skipDeploy: true, softFail: true });
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS, symbols);
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "8");
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE, "6");
+  });
+}
+
 async function activePositionEvidencePendingAllowsDiscoveryBootstrapOnly() {
   await withPatchedRunChecks({
     entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
@@ -239,6 +270,7 @@ async function run() {
   await passingPreflightDoesNotDeployWithoutExplicitArm();
   await deployFlagRequiresConfirmPhrase();
   await passingPreflightCanBuildTwoSymbolDiscoveryCommand();
+  await passingPreflightCanBuildFullUniverseMinimumNotionalCommand();
   await activePositionEvidencePendingAllowsDiscoveryBootstrapOnly();
   await activePositionEvidenceDoesNotMaskRealExitDefects();
   console.log("run-v2-discovery-canary-preflight-deploy.test.js: OK");
