@@ -4,7 +4,9 @@ const assert = require("assert");
 const checker = require("../../scripts/check-v2-runtime-discovery-canary-manifest");
 
 function serviceJson({
-  symbols = "SOLUSDT|XRPUSDT",
+  symbols = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT",
+  maxSymbolCount = "8",
+  maxNotionalQuote = "6",
   image = "gcr.io/donbeolja-dev/donbeolja:v2-fixture",
   commit = "0123456789abcdef0123456789abcdef01234567",
   endpointEnabled = "1",
@@ -30,8 +32,8 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED", value: endpointEnabled }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", value: discoveryEnabled }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS", value: symbols }),
-                Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT", value: "2" }),
-                Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE", value: "25" }),
+                Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT", value: maxSymbolCount }),
+                Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE", value: maxNotionalQuote }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE", value: "10" }),
@@ -87,16 +89,8 @@ function traceOnlyServiceJson({
 }
 
 {
-  const fullSymbols = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT";
-  const service = JSON.parse(JSON.stringify(serviceJson({ symbols: fullSymbols })));
-  const envRows = service.spec.template.spec.containers[0].env;
-  envRows.find((row) => row.name === "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT").value = "8";
-  envRows.find((row) => row.name === "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE").value = "6";
   const result = checker.runCheck({
-    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(service),
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: fullSymbols,
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(serviceJson()),
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
@@ -105,8 +99,14 @@ function traceOnlyServiceJson({
 
 {
   const result = checker.runCheck({
-    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(serviceJson()),
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(serviceJson({
+      symbols: "SOLUSDT|XRPUSDT",
+      maxSymbolCount: "2",
+      maxNotionalQuote: "25",
+    })),
     DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "XRPUSDT|SOLUSDT",
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "2",
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "25",
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
@@ -117,7 +117,6 @@ function traceOnlyServiceJson({
 {
   const result = checker.runCheck({
     DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(serviceJson({ symbols: "BTCUSDT" })),
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
@@ -130,7 +129,6 @@ function traceOnlyServiceJson({
 {
   const result = checker.runCheck({
     DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(serviceJson({ image: "gcr.io/donbeolja-dev/donbeolja:v2-old" })),
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
@@ -161,7 +159,6 @@ function traceOnlyServiceJson({
   }));
   const result = checker.runCheck({
     DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(unsafeService),
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
@@ -175,7 +172,6 @@ function traceOnlyServiceJson({
       donbeolja: serviceJson(),
       "donbeolja-exit-worker": serviceJson({ symbols: "" }),
     }),
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
@@ -192,7 +188,6 @@ function traceOnlyServiceJson({
       "donbeolja-egress": traceOnlyServiceJson(),
       "donbeolja-egress-private": traceOnlyServiceJson(),
     }),
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
@@ -210,7 +205,6 @@ function traceOnlyServiceJson({
   }));
   const result = checker.runCheck({
     DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(unsafeService),
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });
@@ -225,7 +219,6 @@ function traceOnlyServiceJson({
       "donbeolja-exit-worker": serviceJson(),
       "donbeolja-egress": traceOnlyServiceJson({ image: "gcr.io/donbeolja-dev/donbeolja:v2-old" }),
     }),
-    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     TAG: "v2-fixture",
     COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
   });

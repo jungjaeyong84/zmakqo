@@ -4,6 +4,10 @@
 const fs = require("fs");
 const { execFileSync } = require("child_process");
 
+const DEFAULT_DISCOVERY_CANARY_SYMBOLS = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT";
+const DEFAULT_DISCOVERY_CANARY_MAX_SYMBOL_COUNT = "8";
+const DEFAULT_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE = "6";
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -122,19 +126,19 @@ function buildExpectedEnv(env = process.env) {
       env,
       "DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS",
       "DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS",
-      null,
+      DEFAULT_DISCOVERY_CANARY_SYMBOLS,
     ),
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: expectedValue(
       env,
       "DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_SYMBOL_COUNT",
       "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT",
-      "2",
+      DEFAULT_DISCOVERY_CANARY_MAX_SYMBOL_COUNT,
     ),
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: expectedValue(
       env,
       "DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE",
       "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE",
-      "25",
+      DEFAULT_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE,
     ),
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: expectedValue(
       env,
@@ -251,8 +255,8 @@ function compareExpectedEnv(actualEnv, expectedEnv) {
   const discoveryExpectedDisabled = String(expectedEnv.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED || "") === "0";
   for (const [key, expected] of Object.entries(expectedEnv)) {
     if (key === "DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS") {
+      if (discoveryExpectedDisabled) continue;
       if (!trimOrNull(expected)) {
-        if (discoveryExpectedDisabled) continue;
         blockers.push("RUNTIME_DISCOVERY_CANARY:EXPECTED_SYMBOLS_MISSING");
         mismatches[key] = Object.freeze({ expected, actual: actualEnv[key] || null });
         continue;

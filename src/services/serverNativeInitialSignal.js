@@ -1,8 +1,8 @@
 "use strict";
 
 const HTF_TF = "240m";
-const STRATEGY_ID = "donbeolja_v6.1.1.0";
-const ENGINE_MODE = "SERVER_NATIVE_V6110";
+const STRATEGY_ID = "donbeolja_v2_openclaw";
+const ENGINE_MODE = "SERVER_NATIVE_V2_OPENCLAW";
 const QTY_PROFILE = "FIXED";
 const STATE_TREND_MIN = 0.22;
 const DEAD_ATR_MAX = 0.0014;

@@ -29,8 +29,8 @@ const {
   assert.strictEqual(result.substitutions._V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "0");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS, "");
-  assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "2");
-  assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE, "25");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "8");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE, "6");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE, "10");

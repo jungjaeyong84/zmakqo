@@ -86,7 +86,8 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
     assert.strictEqual(result.substitutions._TAG, "v2-fixture");
     assert.strictEqual(result.substitutions._COMMIT_SHA, "0123456789abcdef0123456789abcdef01234567");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS, "ETHUSDT");
-    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "2");
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "8");
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE, "6");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
