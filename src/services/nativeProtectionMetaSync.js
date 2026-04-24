@@ -3,8 +3,8 @@
 // nativeProtectionMetaSync.js
 //
 // Admin/rescue utility: reads the live Binance futures open-order set for a
-// symbol, identifies the closePosition STOP_MARKET (the SL) and closePosition
-// TAKE_PROFIT_MARKET orders (TP1 runner exit and optional TP0 partial), and
+// symbol, identifies the closePosition STOP_MARKET (the SL) and
+// TAKE_PROFIT_MARKET orders (V2 TP1 is usually a reduceOnly partial order), and
 // writes their ids + trigger prices back into `meta.native_protection_*`.
 //
 // This closes a recurring meta-drift bug where real protective orders exist on
@@ -32,17 +32,24 @@ function normalizeOrderShape(order) {
   const side = String(order.side || "").toUpperCase();
   const triggerRaw = order.triggerPrice ?? order.stopPrice ?? order.activatePrice;
   const triggerPrice = Number(triggerRaw);
+  const qtyRaw = order.quantity ?? order.origQty ?? order.executedQty;
+  const quantity = Number(qtyRaw);
   const orderIdRaw = order.algoId ?? order.orderId;
   const orderId = orderIdRaw == null ? null : String(orderIdRaw).trim() || null;
   const closePosition =
     order.closePosition === true
     || String(order.closePosition || "").toLowerCase() === "true";
+  const reduceOnly =
+    order.reduceOnly === true
+    || String(order.reduceOnly || "").toLowerCase() === "true";
   return {
     type,
     side,
     triggerPrice: Number.isFinite(triggerPrice) ? triggerPrice : null,
+    quantity: Number.isFinite(quantity) ? quantity : null,
     orderId,
     closePosition,
+    reduceOnly,
   };
 }
 
@@ -78,6 +85,57 @@ function classifyOrders(orders, positionSide) {
   };
 }
 
+function isV2Tp1Partial(order) {
+  return !!(
+    order
+    && order.type === "TAKE_PROFIT_MARKET"
+    && !order.closePosition
+    && (
+      order.reduceOnly === true
+      || (Number.isFinite(order.quantity) && order.quantity > 0)
+    )
+  );
+}
+
+function buildMetaPatchFromClassifiedOrders({
+  sl,
+  tpClose,
+  tpPartial,
+  positionQtyBase,
+  nowMs = Date.now(),
+  regularOrderN = 0,
+  algoOrderN = 0,
+} = {}) {
+  const tp1 = isV2Tp1Partial(tpPartial) ? tpPartial : (tpClose || null);
+  const legacyTp0 = tp1 === tpPartial ? null : (tpPartial || null);
+  const qtyBase = Number(positionQtyBase);
+  const tp1QtyRatio = tp1 && Number.isFinite(tp1.quantity) && Number.isFinite(qtyBase) && qtyBase > 0
+    ? tp1.quantity / qtyBase
+    : null;
+  const tp0QtyRatio = legacyTp0 && Number.isFinite(legacyTp0.quantity) && Number.isFinite(qtyBase) && qtyBase > 0
+    ? legacyTp0.quantity / qtyBase
+    : null;
+
+  return {
+    native_protection_stop_order_id: sl ? sl.orderId : null,
+    native_protection_stop_price: sl ? sl.triggerPrice : null,
+    native_protection_tp_order_id: tp1 ? tp1.orderId : null,
+    native_protection_tp_price: tp1 ? tp1.triggerPrice : null,
+    native_protection_tp_qty_base: tp1 && Number.isFinite(tp1.quantity) ? tp1.quantity : null,
+    native_protection_tp_qty_ratio: Number.isFinite(tp1QtyRatio) ? tp1QtyRatio : null,
+    native_protection_tp_status: tp1 ? "OK" : null,
+    native_protection_tp0_order_id: legacyTp0 ? legacyTp0.orderId : null,
+    native_protection_tp0_price: legacyTp0 ? legacyTp0.triggerPrice : null,
+    native_protection_tp0_qty_base: legacyTp0 && Number.isFinite(legacyTp0.quantity) ? legacyTp0.quantity : null,
+    native_protection_tp0_qty_ratio: Number.isFinite(tp0QtyRatio) ? tp0QtyRatio : null,
+    native_protection_tp0_status: legacyTp0 ? "OK" : null,
+    native_protection_meta_synced_at_ms: nowMs,
+    native_protection_meta_synced_source: "BINANCE_ORDERS_SNAPSHOT",
+    native_protection_meta_synced_regular_order_n: regularOrderN,
+    native_protection_meta_synced_algo_order_n: algoOrderN,
+  };
+}
+
 function hasPositionSize(pos) {
   const qty = Number(pos && pos.qty_base);
   const sizePct = Number(pos && pos.size_pct);
@@ -105,6 +163,7 @@ async function syncNativeProtectionMetaFromBinance({
     return { ok: false, error: "NO_ACTIVE_POSITION" };
   }
   const prevMeta = (basePos && typeof basePos.meta === "object" && basePos.meta) || {};
+  const positionQtyBase = Number(basePos.qty_base || basePos.qty || basePos.size_base);
   const positionSide = String(
     basePos.position_side || prevMeta.position_side || prevMeta.external_side || ""
   ).toUpperCase();
@@ -141,18 +200,15 @@ async function syncNativeProtectionMetaFromBinance({
   const { sl, tpClose, tpPartial } = classifyOrders(allOrders, positionSide);
 
   const nowMs = Date.now();
-  const metaPatch = {
-    native_protection_stop_order_id: sl ? sl.orderId : null,
-    native_protection_stop_price: sl ? sl.triggerPrice : null,
-    native_protection_tp_order_id: tpClose ? tpClose.orderId : null,
-    native_protection_tp_price: tpClose ? tpClose.triggerPrice : null,
-    native_protection_tp0_order_id: tpPartial ? tpPartial.orderId : null,
-    native_protection_tp0_price: tpPartial ? tpPartial.triggerPrice : null,
-    native_protection_meta_synced_at_ms: nowMs,
-    native_protection_meta_synced_source: "BINANCE_ORDERS_SNAPSHOT",
-    native_protection_meta_synced_regular_order_n: regularOrders.length,
-    native_protection_meta_synced_algo_order_n: algoOrders.length,
-  };
+  const metaPatch = buildMetaPatchFromClassifiedOrders({
+    sl,
+    tpClose,
+    tpPartial,
+    positionQtyBase,
+    nowMs,
+    regularOrderN: regularOrders.length,
+    algoOrderN: algoOrders.length,
+  });
   const nextMeta = { ...prevMeta, ...metaPatch };
 
   const runId = `RUN__NATIVE_PROTECTION_META_SYNC__${exUpper}__${sym}__${nowMs}`;
@@ -196,5 +252,7 @@ module.exports = {
   _internal: {
     normalizeOrderShape,
     classifyOrders,
+    buildMetaPatchFromClassifiedOrders,
+    isV2Tp1Partial,
   },
 };

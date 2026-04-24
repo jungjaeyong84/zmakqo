@@ -8,7 +8,12 @@
 
 const assert = require("assert");
 const {
-  _internal: { normalizeOrderShape, classifyOrders },
+  _internal: {
+    normalizeOrderShape,
+    classifyOrders,
+    buildMetaPatchFromClassifiedOrders,
+    isV2Tp1Partial,
+  },
 } = require("../services/nativeProtectionMetaSync");
 
 (function normalizesRegularOrderShape() {
@@ -38,6 +43,25 @@ const {
   assert.strictEqual(n.orderId, "4000001112563983");
   assert.strictEqual(n.triggerPrice, 0.096);
   assert.strictEqual(n.closePosition, true);
+})();
+
+(function normalizesReduceOnlyPartialTpShape() {
+  const n = normalizeOrderShape({
+    algoId: "4000001160643929",
+    orderType: "TAKE_PROFIT_MARKET",
+    side: "SELL",
+    triggerPrice: "1.4436",
+    quantity: "2.0",
+    reduceOnly: "true",
+    closePosition: false,
+  });
+  assert.strictEqual(n.type, "TAKE_PROFIT_MARKET");
+  assert.strictEqual(n.orderId, "4000001160643929");
+  assert.strictEqual(n.triggerPrice, 1.4436);
+  assert.strictEqual(n.quantity, 2);
+  assert.strictEqual(n.reduceOnly, true);
+  assert.strictEqual(n.closePosition, false);
+  assert.strictEqual(isV2Tp1Partial(n), true);
 })();
 
 (function classifiesShortTightestSlAndSplitsTpCloseVsPartial() {
@@ -72,6 +96,52 @@ const {
   assert.ok(sl);
   assert.strictEqual(sl.orderId, "2");
   assert.strictEqual(sl.triggerPrice, 77_800);
+})();
+
+(function buildsV2MetaPatchWithReduceOnlyPartialAsTp1NotTp0() {
+  const orders = [
+    { orderId: "sl-1", type: "STOP_MARKET", side: "SELL", stopPrice: 1.4221, closePosition: true },
+    {
+      algoId: "tp1-1",
+      orderType: "TAKE_PROFIT_MARKET",
+      side: "SELL",
+      triggerPrice: 1.4436,
+      quantity: 2,
+      reduceOnly: true,
+      closePosition: false,
+    },
+  ];
+  const classified = classifyOrders(orders, "LONG");
+  const patch = buildMetaPatchFromClassifiedOrders({
+    ...classified,
+    positionQtyBase: 4,
+    nowMs: 123,
+    regularOrderN: 0,
+    algoOrderN: 2,
+  });
+  assert.strictEqual(patch.native_protection_stop_order_id, "sl-1");
+  assert.strictEqual(patch.native_protection_tp_order_id, "tp1-1");
+  assert.strictEqual(patch.native_protection_tp_price, 1.4436);
+  assert.strictEqual(patch.native_protection_tp_qty_base, 2);
+  assert.strictEqual(patch.native_protection_tp_qty_ratio, 0.5);
+  assert.strictEqual(patch.native_protection_tp_status, "OK");
+  assert.strictEqual(patch.native_protection_tp0_order_id, null);
+  assert.strictEqual(patch.native_protection_tp0_price, null);
+})();
+
+(function keepsLegacyPartialTpSeparateWhenItIsNotReduceOnlyAndHasNoQty() {
+  const orders = [
+    { orderId: "runner-1", type: "TAKE_PROFIT_MARKET", side: "BUY", stopPrice: 0.09, closePosition: true },
+    { orderId: "legacy-tp0-1", type: "TAKE_PROFIT_MARKET", side: "BUY", stopPrice: 0.093, closePosition: false },
+  ];
+  const classified = classifyOrders(orders, "SHORT");
+  const patch = buildMetaPatchFromClassifiedOrders({
+    ...classified,
+    positionQtyBase: 10,
+    nowMs: 456,
+  });
+  assert.strictEqual(patch.native_protection_tp_order_id, "runner-1");
+  assert.strictEqual(patch.native_protection_tp0_order_id, "legacy-tp0-1");
 })();
 
 (function ignoresOrdersWithoutTriggerOrOrderId() {
