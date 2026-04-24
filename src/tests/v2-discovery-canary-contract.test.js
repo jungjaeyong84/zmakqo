@@ -10,7 +10,8 @@ const {
 const env = {
   DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
   DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
-  DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "20",
+  DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
+  DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "ETHUSDT:40",
   DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
   DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
   DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "5",
@@ -22,6 +23,7 @@ const env = {
   assert.deepStrictEqual(policy.allowed_symbols, ["BTCUSDT"]);
   assert.strictEqual(policy.max_symbol_count, 2);
   assert.strictEqual(policy.max_notional_quote, 25);
+  assert.strictEqual(policy.symbol_notional_quote_map.BTCUSDT, 100);
   assert.strictEqual(policy.max_position_count, 1);
   assert.strictEqual(policy.max_trades_per_day, 1);
   assert.strictEqual(policy.daily_loss_halt_quote, 10);
@@ -32,6 +34,7 @@ const env = {
     env: {
       ...env,
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:10|XRPUSDT:10",
     },
     confirm: DISCOVERY_CONFIRM_PHRASE,
     runtime: { enabled: true, dry_run: false, canary_only: true },
@@ -47,7 +50,7 @@ const env = {
         status: "APPROVED",
         symbol: "XRPUSDT",
         side: "LONG",
-        notional_quote: 12,
+        notional_quote: 10,
         entry_qty_abs: 8,
       },
     },
@@ -95,6 +98,7 @@ const env = {
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: symbols,
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:100|ETHUSDT:40|LINKUSDT:40|BNBUSDT:10|XRPUSDT:10|SOLUSDT:10|AXSUSDT:10|DOGEUSDT:10",
     },
     confirm: DISCOVERY_CONFIRM_PHRASE,
     runtime: { enabled: true, dry_run: false, canary_only: true },
@@ -110,7 +114,7 @@ const env = {
         status: "APPROVED",
         symbol: "DOGEUSDT",
         side: "LONG",
-        notional_quote: 6,
+        notional_quote: 10,
         entry_qty_abs: 20,
       },
     },
@@ -119,6 +123,7 @@ const env = {
   assert.strictEqual(result.policy.allowed_symbols.length, 8);
   assert.strictEqual(result.policy.max_symbol_count, 8);
   assert.strictEqual(result.policy.max_notional_quote, 6);
+  assert.strictEqual(result.effective_symbol_notional_quote, 10);
   assert.strictEqual(result.policy.max_position_count, 1);
   assert.strictEqual(result.policy.max_trades_per_day, 1);
 })();
@@ -140,7 +145,7 @@ const env = {
         status: "APPROVED",
         symbol: "ETHUSDT",
         side: "LONG",
-        notional_quote: 12,
+        notional_quote: 40,
         entry_qty_abs: 0.005,
       },
     },
@@ -167,7 +172,7 @@ const env = {
         status: "APPROVED",
         symbol: "BTCUSDT",
         side: "LONG",
-        notional_quote: 30,
+        notional_quote: 130,
         entry_qty_abs: 0.001,
       },
     },
@@ -178,6 +183,36 @@ const env = {
   assert.ok(result.blockers.includes("DISCOVERY_CANARY:MAX_TRADES_PER_DAY_REACHED"));
   assert.ok(result.blockers.includes("DISCOVERY_CANARY:DAILY_LOSS_HALT_REACHED"));
   assert.ok(result.blockers.includes("DISCOVERY_CANARY:MAX_NOTIONAL_EXCEEDED"));
+})();
+
+(function blocksBelowPartialTp1MinimumNotional() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "DOGEUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "DOGEUSDT:10",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "DOGEUSDT",
+        side: "LONG",
+        notional_quote: 6,
+        entry_qty_abs: 60,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.blockers.includes("DISCOVERY_CANARY:PARTIAL_TP1_MIN_NOTIONAL_REQUIRED"));
 })();
 
 (function blocksWhenEvidenceMissingOrNotCanaryOnly() {

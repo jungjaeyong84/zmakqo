@@ -87,6 +87,10 @@ const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../
 const { sendSignalReceivedAlert, sendSignalProgressAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
 const { runV2DiscoveryCanaryServerSignalHandoff } = require("../v2/discoveryCanaryServerSignalBridge");
+const {
+  resolveDiscoverySymbolNotionalQuote,
+  resolveDiscoverySymbolNotionalQuoteMap,
+} = require("../v2/discoveryCanaryNotionalPolicy");
 const { estimateTp1ReachProbability } = require("../services/evTp1Probability");
 const { resolveWaitOneBarConfig, evaluateWaitOneBarTiming } = require("../services/waitOneBarPolicy");
 const {
@@ -5545,6 +5549,7 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
     legacy_wait_one_bar_hard_drop_disabled: normalizeBool(env.DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, false),
     allowed_symbols: Object.freeze(splitRuntimeList(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS)),
     max_notional_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE),
+    symbol_notional_quote_map: resolveDiscoverySymbolNotionalQuoteMap(env),
     max_position_count: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT),
     max_trades_per_day: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY),
     daily_loss_halt_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE),
@@ -5582,7 +5587,11 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
       : "V2_DISCOVERY_CANARY_LIVE_BRIDGE_BLOCKED",
     blockers: Object.freeze(blockers),
     symbol: sym || null,
-    max_notional_quote: policy.max_notional_quote,
+    max_notional_quote: resolveDiscoverySymbolNotionalQuote({
+      env,
+      symbol: sym,
+      fallback: policy.max_notional_quote,
+    }),
     policy,
   });
 }

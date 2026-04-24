@@ -1,6 +1,10 @@
 "use strict";
 
 const DISCOVERY_CONFIRM_PHRASE = "EXECUTE_V2_DISCOVERY_CANARY";
+const {
+  resolveDiscoverySymbolNotionalQuoteMap,
+  resolveDiscoverySymbolNotionalQuote,
+} = require("./discoveryCanaryNotionalPolicy");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -46,6 +50,7 @@ function resolveDiscoveryCanaryPolicy(env = process.env) {
     allowed_symbols: Object.freeze(ensureArray(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS).map(upper).filter(Boolean)),
     max_symbol_count: Number.isFinite(maxSymbols) && maxSymbols > 0 ? maxSymbols : 2,
     max_notional_quote: Number.isFinite(maxNotional) && maxNotional > 0 ? maxNotional : 25,
+    symbol_notional_quote_map: resolveDiscoverySymbolNotionalQuoteMap(env),
     max_position_count: Number.isFinite(maxPositions) && maxPositions >= 0 ? maxPositions : 1,
     max_trades_per_day: Number.isFinite(maxTrades) && maxTrades >= 0 ? maxTrades : 1,
     daily_loss_halt_quote: Number.isFinite(dailyLossHalt) && dailyLossHalt >= 0 ? dailyLossHalt : 10,
@@ -69,6 +74,15 @@ function extractSizingDecision({ body = null, bundle = null, sizingDecision = nu
 }
 
 function buildResult({ blockers, policy, state, sizingDecision, symbol, decisionMode, runtime, confirm }) {
+  const effectiveNotional = resolveDiscoverySymbolNotionalQuote({
+    symbol,
+    fallback: policy && policy.max_notional_quote,
+    env: {
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: Object.entries(policy && policy.symbol_notional_quote_map || {})
+        .map(([sym, quote]) => `${sym}:${quote}`)
+        .join("|"),
+    },
+  });
   return Object.freeze({
     ok: blockers.length === 0,
     reason: blockers.length === 0 ? "V2_DISCOVERY_CANARY_CONTRACT_PASS" : "V2_DISCOVERY_CANARY_CONTRACT_BLOCKED",
@@ -79,6 +93,7 @@ function buildResult({ blockers, policy, state, sizingDecision, symbol, decision
     decision_mode: upper(decisionMode),
     runtime: Object.freeze({ ...(runtime || {}) }),
     policy: Object.freeze({ ...policy }),
+    effective_symbol_notional_quote: effectiveNotional,
     state: state ? Object.freeze({ ...state }) : null,
     sizing: sizingDecision ? Object.freeze({
       entry_intent_id: trimOrNull(sizingDecision.entry_intent_id),
@@ -113,6 +128,11 @@ function evaluateDiscoveryCanaryContract({
   const dailyLossQuote = toNumberOrNull(resolvedState && (resolvedState.daily_loss_quote ?? resolvedState.dailyLossQuote));
   const dailyRealizedPnlQuote = toNumberOrNull(resolvedState && (resolvedState.daily_realized_pnl_quote ?? resolvedState.dailyRealizedPnlQuote));
   const notionalQuote = toNumberOrNull(resolvedSizing && resolvedSizing.notional_quote);
+  const effectiveMaxNotionalQuote = resolveDiscoverySymbolNotionalQuote({
+    env,
+    symbol: resolvedSymbol,
+    fallback: policy.max_notional_quote,
+  });
 
   if (policy.enabled !== true) blockers.push("DISCOVERY_CANARY:NOT_ENABLED");
   if (trimOrNull(confirm) !== DISCOVERY_CONFIRM_PHRASE) blockers.push("DISCOVERY_CANARY:CONFIRM_REQUIRED");
@@ -136,7 +156,13 @@ function evaluateDiscoveryCanaryContract({
     : (Number.isFinite(dailyRealizedPnlQuote) && dailyRealizedPnlQuote < 0 ? Math.abs(dailyRealizedPnlQuote) : 0);
   if (Number.isFinite(effectiveDailyLoss) && effectiveDailyLoss >= policy.daily_loss_halt_quote) blockers.push("DISCOVERY_CANARY:DAILY_LOSS_HALT_REACHED");
   if (!Number.isFinite(notionalQuote)) blockers.push("DISCOVERY_CANARY:NOTIONAL_REQUIRED");
-  if (Number.isFinite(notionalQuote) && notionalQuote > policy.max_notional_quote) blockers.push("DISCOVERY_CANARY:MAX_NOTIONAL_EXCEEDED");
+  if (!Number.isFinite(effectiveMaxNotionalQuote)) blockers.push("DISCOVERY_CANARY:SYMBOL_NOTIONAL_POLICY_REQUIRED");
+  if (Number.isFinite(notionalQuote) && Number.isFinite(effectiveMaxNotionalQuote) && notionalQuote > effectiveMaxNotionalQuote) {
+    blockers.push("DISCOVERY_CANARY:MAX_NOTIONAL_EXCEEDED");
+  }
+  if (Number.isFinite(notionalQuote) && Number.isFinite(effectiveMaxNotionalQuote) && notionalQuote < effectiveMaxNotionalQuote) {
+    blockers.push("DISCOVERY_CANARY:PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
+  }
 
   return buildResult({
     blockers: Array.from(new Set(blockers)),
@@ -153,6 +179,8 @@ function evaluateDiscoveryCanaryContract({
 module.exports = {
   DISCOVERY_CONFIRM_PHRASE,
   resolveDiscoveryCanaryPolicy,
+  resolveDiscoverySymbolNotionalQuote,
+  resolveDiscoverySymbolNotionalQuoteMap,
   extractDiscoveryCanaryState,
   extractSizingDecision,
   evaluateDiscoveryCanaryContract,

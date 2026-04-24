@@ -9,6 +9,9 @@ const submitContractCheck = require("./check-v2-promotion-submit-contract");
 const deployDecisionCheck = require("./check-v2-promotion-deploy-decision");
 const runbookCheck = require("./check-v2-canary-runbook");
 const productionRuntimeConfigAudit = require("../src/v2/productionRuntimeConfigAudit");
+const {
+  DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT,
+} = require("../src/v2/discoveryCanaryNotionalPolicy");
 const operatorAlertPreview = require("./lib/v2-promotion-submit-operator-alert");
 const operatorSummary = require("./lib/v2-promotion-operator-summary");
 const submitTrace = require("./lib/v2-promotion-submit-trace");
@@ -443,6 +446,8 @@ function buildSubstitutions(plan) {
     _DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS) || "",
     _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT) || "8",
     _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE) || "6",
+    _DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP)
+      || DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT,
     _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT) || "1",
     _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY) || "1",
     _DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE) || "10",

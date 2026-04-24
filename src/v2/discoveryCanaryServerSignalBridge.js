@@ -10,6 +10,7 @@ const {
 } = require("../exchanges/binanceFuturesPrivate");
 const { buildOpenClawDecisionBundle } = require("./openclawControlPlane");
 const { buildV2ProductionEntryLiveRequest } = require("./productionEntryLiveRequest");
+const { resolveDiscoverySymbolNotionalQuote } = require("./discoveryCanaryNotionalPolicy");
 const { runV2ProductionEntryLiveEndpoint } = require("./productionEntryLiveEndpoint");
 const { DISCOVERY_CONFIRM_PHRASE } = require("./discoveryCanaryContract");
 const { evaluateMarketDataQualityGate } = require("./marketDataQualityGate");
@@ -382,9 +383,13 @@ async function buildDiscoveryCanaryLiveRequestFromIntent({
   }
   const info = exchangeInfo || await fetchFuturesExchangeInfo(symbol);
   const price = resolveReferencePrice({ intentRow: row, book: marketPack.book, fallback: referencePrice });
-  const maxOrderQuote = toNumberOrNull(liveCfg && liveCfg.maxOrderQuote)
+  const maxOrderQuote = resolveDiscoverySymbolNotionalQuote({
+    env,
+    symbol,
+    fallback: toNumberOrNull(liveCfg && liveCfg.maxOrderQuote)
     ?? toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE)
-    ?? 6;
+    ?? 6,
+  });
   const bundle = buildDiscoveryCanaryBundleFromIntent({
     intentRow: row,
     marketDataQuality: marketPack.quality,

@@ -395,7 +395,7 @@ async function discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath() {
     decisionMode: "CANARY",
   });
   const sizingDecision = buildSizingDecision(bundle, {
-    requestedNotionalQuote: 12,
+    requestedNotionalQuote: 20,
     maxNotionalQuote: 20,
     maxSizeRatio: 1,
   });
@@ -405,6 +405,7 @@ async function discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath() {
       DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "20",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "ETHUSDT:20",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
       DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "5",
@@ -419,7 +420,7 @@ async function discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath() {
         daily_loss_quote: 0,
       },
       riskGovernor: buildRiskGovernorInput({
-        candidate: { symbol: "ETHUSDT", notional_quote: 12 },
+        candidate: { symbol: "ETHUSDT", notional_quote: 20 },
       }),
     },
     buildLiveTransports: async () => ({
@@ -463,6 +464,7 @@ async function discoveryCanaryBlocksUnsafeContractBeforeRoute() {
       DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "20",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "ETHUSDT:20",
     }),
     body: {
       confirm: DISCOVERY_CONFIRM_PHRASE,
