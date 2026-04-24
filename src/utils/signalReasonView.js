@@ -84,6 +84,16 @@ function classifySignalReasonStage(reason) {
     };
   }
 
+  if (code === "LIVE_DISABLED" || code.startsWith("V2_DISCOVERY_CANARY_BRIDGE:")) {
+    return {
+      step: null,
+      key: "LIVE_CONFIG",
+      label: "라이브 실행 설정",
+      text: "라이브 실행 설정",
+      code,
+    };
+  }
+
   if (
     code.startsWith("DROP_ENTRY_QUALITY_") ||
     code === "DROP_LOW_SCORE" ||
@@ -210,6 +220,16 @@ function explainSignalReason(reason) {
     DROP_COMMISSION_GATE_ZERO_QTY: "수수료를 반영하니 기대값이 부족해 최종 수량이 0이 되어 진입을 보류했습니다.",
     DROP_MARKET_PHYSICS_DISORDER: "현재 시장 질서도가 낮고 잡음이 커 진입을 보류했습니다.",
     DROP_LIVE_POLICY_BLOCK: "라이브 운영 정책에서 진입을 차단했습니다.",
+    LIVE_DISABLED: "서버 신호는 생성됐지만 기존 Binance live 실행 허가가 꺼져 있어 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED": "V2 discovery canary 허용 심볼 목록에 없는 심볼이라 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:LIVE_ENDPOINT_REQUIRED": "V2 discovery live endpoint가 켜져 있지 않아 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:DISCOVERY_NOT_ENABLED": "V2 discovery canary가 켜져 있지 않아 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:CANARY_ONLY_REQUIRED": "정식 LIVE가 아니라 discovery canary-only 상태여야 하므로 현재 설정에서는 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:MAX_NOTIONAL_REQUIRED": "V2 discovery canary 최대 주문 금액 한도가 없어 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED": "ML live serving이 켜져 있어 discovery canary 안전 계약과 맞지 않아 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:AGENT_APPLY_ENABLED": "OpenClaw agent live apply가 켜져 있어 discovery canary 안전 계약과 맞지 않아 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED": "legacy webhook 차단이 확인되지 않아 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_ALLOWED": "legacy webhook 허용 플래그가 켜져 있어 실제 주문을 보류했습니다.",
     LIVE_POLICY_BLOCK: "라이브 운영 정책에서 진입을 차단했습니다.",
     LIVE_RESCUE_ADD_DISABLED: "현재 구조에서는 구조보강 ADD가 비활성이라 추가 진입을 보류했습니다.",
     LIVE_RESCUE_ADD_TIER_BLOCKED: "이번 신호 티어는 구조보강 ADD 허용 구간이 아니라 추가 진입을 보류했습니다.",

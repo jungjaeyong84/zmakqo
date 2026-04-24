@@ -5500,9 +5500,82 @@ function normalizeBool(value, fallback) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === "boolean") return value;
   const raw = String(value).trim().toLowerCase();
-  if (raw === "1" || raw === "true" || raw === "yes") return true;
-  if (raw === "0" || raw === "false" || raw === "no") return false;
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") return true;
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return false;
   return fallback;
+}
+
+function splitRuntimeList(raw) {
+  return String(raw || "")
+    .split(/[,\|\s]+/)
+    .map((item) => String(item || "").trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function positiveNumberOrNull(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null, executionMode = null } = {}) {
+  const mode = String(executionMode || "").trim().toUpperCase();
+  const sym = String(symbol || "").trim().toUpperCase();
+  const policy = Object.freeze({
+    v2_enabled: normalizeBool(env.DONBEOLJA_V2_ENABLED, false),
+    dry_run: normalizeBool(env.DONBEOLJA_V2_DRY_RUN, true),
+    canary_only: normalizeBool(env.DONBEOLJA_V2_CANARY_ONLY, false),
+    live_endpoint_enabled: normalizeBool(env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, false),
+    discovery_enabled: normalizeBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, false),
+    ml_live_serving_armed: normalizeBool(env.ML_LIVE_SERVING_ARMED, false),
+    agent_apply_enabled: normalizeBool(env.OPENCLAW_AGENT_APPLY_ENABLED, false),
+    legacy_webhook_blocked: normalizeBool(env.DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, false),
+    legacy_webhook_allowed: normalizeBool(env.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, false),
+    allowed_symbols: Object.freeze(splitRuntimeList(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS)),
+    max_notional_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE),
+    max_position_count: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT),
+    max_trades_per_day: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY),
+    daily_loss_halt_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE),
+  });
+
+  const blockers = [];
+  if (mode !== "LIVE") blockers.push("V2_DISCOVERY_CANARY_BRIDGE:EXECUTION_MODE_NOT_LIVE");
+  if (!sym) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_REQUIRED");
+  if (policy.v2_enabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:V2_NOT_ENABLED");
+  if (policy.dry_run === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DRY_RUN_BLOCKED");
+  if (policy.canary_only !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:CANARY_ONLY_REQUIRED");
+  if (policy.live_endpoint_enabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LIVE_ENDPOINT_REQUIRED");
+  if (policy.discovery_enabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DISCOVERY_NOT_ENABLED");
+  if (policy.allowed_symbols.length < 1) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_ALLOWLIST_REQUIRED");
+  if (sym && policy.allowed_symbols.length > 0 && !policy.allowed_symbols.includes(sym)) {
+    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED");
+  }
+  if (policy.max_notional_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_NOTIONAL_REQUIRED");
+  if (policy.max_position_count !== 1) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_MUST_BE_1");
+  if (policy.max_trades_per_day !== 1) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_MUST_BE_1");
+  if (policy.daily_loss_halt_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DAILY_LOSS_HALT_REQUIRED");
+  if (policy.ml_live_serving_armed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED");
+  if (policy.agent_apply_enabled === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:AGENT_APPLY_ENABLED");
+  if (policy.legacy_webhook_blocked !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED");
+  if (policy.legacy_webhook_allowed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_ALLOWED");
+
+  return Object.freeze({
+    ok: blockers.length === 0,
+    reason: blockers.length === 0
+      ? "V2_DISCOVERY_CANARY_LIVE_BRIDGE_ENABLED"
+      : "V2_DISCOVERY_CANARY_LIVE_BRIDGE_BLOCKED",
+    blockers: Object.freeze(blockers),
+    symbol: sym || null,
+    max_notional_quote: policy.max_notional_quote,
+    policy,
+  });
+}
+
+function clampDiscoveryCanaryMaxOrderQuote(currentMaxOrderQuote, bridge) {
+  const discoveryMax = positiveNumberOrNull(bridge && bridge.max_notional_quote);
+  const currentMax = positiveNumberOrNull(currentMaxOrderQuote);
+  if (discoveryMax == null) return currentMaxOrderQuote;
+  if (currentMax == null) return discoveryMax;
+  return Math.min(currentMax, discoveryMax);
 }
 
 function resolveForceAllSignalsAdd(sysCfg = {}, exchange = "") {
@@ -7531,7 +7604,7 @@ async function resolveLiveKiwoomConfig({ exchange, symbol } = {}) {
   return resolveUnsupportedLiveConfig({ exchange, symbol, provider: "REMOVED_STOCK" });
 }
 
-async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
+async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } = {}) {
   const sys = await getSystemSettingsForProvider(exchange || "BINANCEFUT", 5000);
   const cfg = (sys && sys.data) ? sys.data : {};
   const execMode = normalizeExecutionMode(cfg.execution_mode);
@@ -7540,7 +7613,8 @@ async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
   const maxOrderQuote = Number(cfg.live_max_order_krw ?? 0);
   const executionMode = execMode;
   const liveDryRun = Boolean(cfg.live_dry_run) || execMode === "LIVE_DRY_RUN";
-  let liveEnabled = executionMode === "LIVE" && cfg.live_enabled === true;
+  const discoveryBridge = evaluateV2DiscoveryCanaryLiveBridge({ env, symbol, executionMode });
+  let liveEnabled = executionMode === "LIVE" && (cfg.live_enabled === true || discoveryBridge.ok === true);
   let reason = null;
 
   const ex = String(exchange || "").toUpperCase();
@@ -7549,9 +7623,13 @@ async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
     reason = "EXCHANGE_NOT_BINANCE";
   }
 
-  if (allowList.length && !allowList.includes(String(symbol || ""))) {
+  if (allowList.length && !allowList.includes(String(symbol || "")) && discoveryBridge.ok !== true) {
     liveEnabled = false;
     reason = "MARKET_NOT_ALLOWED";
+  }
+
+  if (executionMode === "LIVE" && cfg.live_enabled !== true && discoveryBridge.ok !== true && discoveryBridge.policy.discovery_enabled === true && !reason) {
+    reason = discoveryBridge.blockers[0] || "V2_DISCOVERY_CANARY_LIVE_BRIDGE_BLOCKED";
   }
 
   const keys = await resolveBinanceKeys();
@@ -7573,13 +7651,18 @@ async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
     liveEnabled,
     liveDryRun,
     minOrderQuote: Number.isFinite(minOrderQuote) ? minOrderQuote : 5,
-    maxOrderQuote: Number.isFinite(maxOrderQuote) ? maxOrderQuote : 0,
+    maxOrderQuote: discoveryBridge.ok === true
+      ? clampDiscoveryCanaryMaxOrderQuote(Number.isFinite(maxOrderQuote) ? maxOrderQuote : 0, discoveryBridge)
+      : (Number.isFinite(maxOrderQuote) ? maxOrderQuote : 0),
     apiKey: keys.apiKey,
     apiSecret: keys.apiSecret,
     leverage,
     marginType,
     exitProfileMode,
     reason,
+    v2DiscoveryCanaryBridge: discoveryBridge.ok === true,
+    v2DiscoveryCanaryBridgeReason: discoveryBridge.reason,
+    v2DiscoveryCanaryBridgeBlockers: discoveryBridge.blockers,
   };
 }
 
@@ -18261,6 +18344,9 @@ module.exports = {
     sendRescueAddRepriceAlert,
     notifyNativeProtectionResult,
     normalizeSignalStateToken,
+    splitRuntimeList,
+    evaluateV2DiscoveryCanaryLiveBridge,
+    clampDiscoveryCanaryMaxOrderQuote,
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,
