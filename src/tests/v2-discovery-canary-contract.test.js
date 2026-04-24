@@ -20,10 +20,71 @@ const env = {
   const policy = resolveDiscoveryCanaryPolicy({ DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1", DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "BTCUSDT" });
   assert.strictEqual(policy.enabled, true);
   assert.deepStrictEqual(policy.allowed_symbols, ["BTCUSDT"]);
+  assert.strictEqual(policy.max_symbol_count, 2);
   assert.strictEqual(policy.max_notional_quote, 25);
   assert.strictEqual(policy.max_position_count, 1);
   assert.strictEqual(policy.max_trades_per_day, 1);
   assert.strictEqual(policy.daily_loss_halt_quote, 10);
+})();
+
+(function policyCanAllowTwoDiscoverySymbolsWithGlobalCaps() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "XRPUSDT",
+        side: "LONG",
+        notional_quote: 12,
+        entry_qty_abs: 8,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(result.policy.allowed_symbols, ["SOLUSDT", "XRPUSDT"]);
+  assert.strictEqual(result.policy.max_position_count, 1);
+  assert.strictEqual(result.policy.max_trades_per_day, 1);
+})();
+
+(function blocksTooManyDiscoverySymbols() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "BTCUSDT,ETHUSDT,SOLUSDT",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "BTCUSDT",
+        side: "LONG",
+        notional_quote: 12,
+        entry_qty_abs: 0.001,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.blockers.includes("DISCOVERY_CANARY:MAX_SYMBOL_COUNT_EXCEEDED"));
 })();
 
 (function passRequiresOneSymbolOnePositionOneTradeAndHardNotional() {

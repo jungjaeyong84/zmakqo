@@ -18,7 +18,7 @@ function asObject(value) {
 function ensureArray(value) {
   if (Array.isArray(value)) return value;
   const text = trimOrNull(value);
-  return text ? text.split(",").map((x) => x.trim()).filter(Boolean) : [];
+  return text ? text.split(/[|,]/).map((x) => x.trim()).filter(Boolean) : [];
 }
 
 function toNumberOrNull(value) {
@@ -40,9 +40,11 @@ function resolveDiscoveryCanaryPolicy(env = process.env) {
   const maxPositions = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT);
   const maxTrades = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY);
   const dailyLossHalt = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE);
+  const maxSymbols = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT);
   return Object.freeze({
     enabled: parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, false),
     allowed_symbols: Object.freeze(ensureArray(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS).map(upper).filter(Boolean)),
+    max_symbol_count: Number.isFinite(maxSymbols) && maxSymbols > 0 ? maxSymbols : 2,
     max_notional_quote: Number.isFinite(maxNotional) && maxNotional > 0 ? maxNotional : 25,
     max_position_count: Number.isFinite(maxPositions) && maxPositions >= 0 ? maxPositions : 1,
     max_trades_per_day: Number.isFinite(maxTrades) && maxTrades >= 0 ? maxTrades : 1,
@@ -121,8 +123,9 @@ function evaluateDiscoveryCanaryContract({
   if (!resolvedState) blockers.push("DISCOVERY_CANARY:STATE_REQUIRED");
   if (!resolvedSizing) blockers.push("DISCOVERY_CANARY:SIZING_DECISION_REQUIRED");
   if (!resolvedSymbol) blockers.push("DISCOVERY_CANARY:SYMBOL_REQUIRED");
-  if (policy.allowed_symbols.length !== 1) blockers.push("DISCOVERY_CANARY:EXACTLY_ONE_SYMBOL_REQUIRED");
-  if (policy.allowed_symbols.length === 1 && resolvedSymbol && resolvedSymbol !== policy.allowed_symbols[0]) blockers.push("DISCOVERY_CANARY:SYMBOL_NOT_ALLOWED");
+  if (policy.allowed_symbols.length < 1) blockers.push("DISCOVERY_CANARY:SYMBOL_ALLOWLIST_REQUIRED");
+  if (policy.allowed_symbols.length > policy.max_symbol_count) blockers.push("DISCOVERY_CANARY:MAX_SYMBOL_COUNT_EXCEEDED");
+  if (resolvedSymbol && !policy.allowed_symbols.includes(resolvedSymbol)) blockers.push("DISCOVERY_CANARY:SYMBOL_NOT_ALLOWED");
   if (!Number.isFinite(activePositionN)) blockers.push("DISCOVERY_CANARY:ACTIVE_POSITION_COUNT_REQUIRED");
   if (Number.isFinite(activePositionN) && activePositionN >= policy.max_position_count) blockers.push("DISCOVERY_CANARY:MAX_POSITION_COUNT_REACHED");
   if (!Number.isFinite(tradeCount24h)) blockers.push("DISCOVERY_CANARY:TRADE_COUNT_24H_REQUIRED");

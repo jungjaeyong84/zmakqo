@@ -21,7 +21,9 @@ function parseBool(value, fallback = false) {
 }
 
 function resolveSymbol(env = process.env) {
-  return trimOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL) || "BTCUSDT";
+  return trimOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS)
+    || trimOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL)
+    || "BTCUSDT";
 }
 
 function resolveTag(env = process.env) {

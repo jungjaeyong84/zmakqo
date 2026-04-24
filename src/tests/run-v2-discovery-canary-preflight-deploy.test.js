@@ -98,6 +98,31 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
   });
 }
 
+async function passingPreflightCanBuildTwoSymbolDiscoveryCommand() {
+  await withPatchedRunChecks({
+    entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
+    exit: async () => makeReport(true, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"),
+    repair: () => makeReport(true, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"),
+  }, async () => {
+    const perfFile = writePerfMetrics({
+      sample_n: 0,
+      win_rate_pct: 0,
+      profit_factor: 0,
+      expectancy: 0,
+      net_pnl_pct: 0,
+      mdd_pct: -1,
+    });
+    const result = await runner.main({
+      TAG: "v2-fixture",
+      COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+      V2_PERFORMANCE_GATE_INPUT_FILE: perfFile,
+    }, { skipDeploy: true, softFail: true });
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS, "SOLUSDT|XRPUSDT");
+  });
+}
+
 async function activePositionEvidencePendingAllowsDiscoveryBootstrapOnly() {
   await withPatchedRunChecks({
     entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
@@ -152,6 +177,7 @@ async function activePositionEvidenceDoesNotMaskRealExitDefects() {
 async function run() {
   await blockedPreflightReturnsStructuredFailure();
   await passingPreflightBuildsDiscoveryDeployCommand();
+  await passingPreflightCanBuildTwoSymbolDiscoveryCommand();
   await activePositionEvidencePendingAllowsDiscoveryBootstrapOnly();
   await activePositionEvidenceDoesNotMaskRealExitDefects();
   console.log("run-v2-discovery-canary-preflight-deploy.test.js: OK");
