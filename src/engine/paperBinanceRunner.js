@@ -5540,6 +5540,9 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
     risk_governor_required: normalizeBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, true),
     legacy_webhook_blocked: normalizeBool(env.DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, false),
     legacy_webhook_allowed: normalizeBool(env.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, false),
+    legacy_runtime_disabled: normalizeBool(env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, false),
+    legacy_entry_filters_disabled: normalizeBool(env.DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, false),
+    legacy_wait_one_bar_hard_drop_disabled: normalizeBool(env.DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, false),
     allowed_symbols: Object.freeze(splitRuntimeList(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS)),
     max_notional_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE),
     max_position_count: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT),
@@ -5568,6 +5571,9 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
   if (policy.risk_governor_required !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED");
   if (policy.legacy_webhook_blocked !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED");
   if (policy.legacy_webhook_allowed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_ALLOWED");
+  if (policy.legacy_runtime_disabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_RUNTIME_NOT_RETIRED");
+  if (policy.legacy_entry_filters_disabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_ENTRY_FILTERS_NOT_RETIRED");
+  if (policy.legacy_wait_one_bar_hard_drop_disabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WAIT_ONE_BAR_HARD_DROP_NOT_RETIRED");
 
   return Object.freeze({
     ok: blockers.length === 0,

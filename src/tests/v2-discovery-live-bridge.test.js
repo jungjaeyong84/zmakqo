@@ -21,6 +21,9 @@ function buildEnv(overrides = {}) {
     OPENCLAW_AGENT_APPLY_ENABLED: "0",
     DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "1",
     DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "0",
+    DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "1",
+    DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED: "1",
+    DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED: "1",
     ...overrides,
   };
 }
@@ -51,6 +54,9 @@ function discoveryBridgeRequiresSafetyEnvelope() {
       DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "0",
       ML_LIVE_SERVING_ARMED: "1",
       DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "0",
+      DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "0",
+      DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED: "0",
+      DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED: "0",
     }),
     symbol: "XRPUSDT",
     executionMode: "LIVE",
@@ -60,6 +66,9 @@ function discoveryBridgeRequiresSafetyEnvelope() {
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED"));
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED"));
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED"));
+  assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_RUNTIME_NOT_RETIRED"));
+  assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_ENTRY_FILTERS_NOT_RETIRED"));
+  assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WAIT_ONE_BAR_HARD_DROP_NOT_RETIRED"));
 }
 
 function discoveryBridgeClampsLegacyMaxOrder() {
@@ -161,6 +170,7 @@ function liveDisabledReasonIsOperatorReadable() {
   assert.match(explainSignalReason("LIVE_DISABLED"), /서버 신호는 생성/);
   assert.match(explainSignalReason("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED"), /허용 심볼/);
   assert.match(explainSignalReason("V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE"), /productionEntryLiveEndpoint/);
+  assert.match(explainSignalReason("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_ENTRY_FILTERS_NOT_RETIRED"), /legacy entry filter/);
 }
 
 function main() {

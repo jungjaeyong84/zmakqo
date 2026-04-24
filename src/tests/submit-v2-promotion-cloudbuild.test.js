@@ -800,6 +800,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_COLLECTION_PREFIX, "v2__");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
@@ -860,6 +863,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
@@ -1069,6 +1075,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_COLLECTION_PREFIX, "v2__");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
@@ -1161,6 +1170,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");

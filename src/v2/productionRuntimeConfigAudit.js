@@ -13,6 +13,9 @@ const REQUIRED_CUTOVER_SUBSTITUTIONS = Object.freeze([
   "_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED",
   "_DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL",
   "_DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL",
+  "_DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED",
+  "_DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED",
+  "_DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED",
   "_DONBEOLJA_V2_COLLECTION_PREFIX",
   "_DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED",
   "_DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED",
@@ -44,6 +47,9 @@ const REQUIRED_CUTOVER_ENV = Object.freeze({
   DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED",
   DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "$_DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL",
   DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "$_DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL",
+  DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "$_DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED",
+  DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED: "$_DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED",
+  DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED: "$_DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED",
   DONBEOLJA_V2_COLLECTION_PREFIX: "$_DONBEOLJA_V2_COLLECTION_PREFIX",
   DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "$_DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED",
   DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "$_DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED",
@@ -175,6 +181,9 @@ function hasV2CutoverEnvForwardedToPromotionRuntime(cloudbuildSource = "") {
     "DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED=$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED",
     "DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL=$_DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL",
     "DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL=$_DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL",
+    "DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=$_DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED",
+    "DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED=$_DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED",
+    "DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED=$_DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED",
     "DONBEOLJA_V2_COLLECTION_PREFIX=$_DONBEOLJA_V2_COLLECTION_PREFIX",
     "DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE=$_DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE",
     "DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED=$_DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED",
@@ -223,6 +232,18 @@ function buildRequiredLabelMappingChecks(serviceLabel, labels) {
     ));
   });
   return rows;
+}
+
+function hasRetiredLegacyStrategySurface(envVars, { requireWebhookAllowlist = false } = {}) {
+  const env = envVars || {};
+  const strategyId = String(env.DONBEOLJA_STRATEGY_ID || "");
+  const allowedIds = String(env.WEBHOOK_ALLOWED_STRATEGY_IDS || "");
+  const engineVersion = String(env.ENGINE_VERSION || "");
+  const combined = `${strategyId}\n${allowedIds}\n${engineVersion}`;
+  return !/(donbeolja_v[0-6]\.|STRAT_v\d+|^6\.)/im.test(combined)
+    && strategyId === "donbeolja_v2_openclaw"
+    && (requireWebhookAllowlist ? allowedIds === "V2_SERVER_NATIVE_ONLY" : (allowedIds === "" || allowedIds === "V2_SERVER_NATIVE_ONLY"))
+    && engineVersion === "2.0.0";
 }
 
 function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) {
@@ -317,6 +338,26 @@ function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) 
     ),
     ...buildRequiredEnvMappingChecks("MAIN_SERVICE", mainEnv),
     ...buildRequiredEnvMappingChecks("EXIT_SERVICE", exitEnv),
+    buildCheck(
+      "MAIN_SERVICE_LEGACY_STRATEGY_SURFACE_RETIRED",
+      hasRetiredLegacyStrategySurface(mainEnv, { requireWebhookAllowlist: true }),
+      "main Cloud Run env must not advertise V1/V6 strategy ids or legacy webhook allowlists",
+      {
+        DONBEOLJA_STRATEGY_ID: mainEnv && mainEnv.DONBEOLJA_STRATEGY_ID || null,
+        WEBHOOK_ALLOWED_STRATEGY_IDS: mainEnv && mainEnv.WEBHOOK_ALLOWED_STRATEGY_IDS || null,
+        ENGINE_VERSION: mainEnv && mainEnv.ENGINE_VERSION || null,
+      }
+    ),
+    buildCheck(
+      "EXIT_SERVICE_LEGACY_STRATEGY_SURFACE_RETIRED",
+      hasRetiredLegacyStrategySurface(exitEnv),
+      "exit-worker Cloud Run env must not advertise V1/V6 strategy ids",
+      {
+        DONBEOLJA_STRATEGY_ID: exitEnv && exitEnv.DONBEOLJA_STRATEGY_ID || null,
+        WEBHOOK_ALLOWED_STRATEGY_IDS: exitEnv && exitEnv.WEBHOOK_ALLOWED_STRATEGY_IDS || null,
+        ENGINE_VERSION: exitEnv && exitEnv.ENGINE_VERSION || null,
+      }
+    ),
     ...buildRequiredLabelMappingChecks("MAIN_SERVICE", mainLabels),
     ...buildRequiredLabelMappingChecks("EGRESS_SERVICE", egressLabels),
     ...buildRequiredLabelMappingChecks("EGRESS_PRIVATE_SERVICE", egressPrivateLabels),
