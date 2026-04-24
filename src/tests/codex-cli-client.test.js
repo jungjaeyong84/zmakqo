@@ -175,17 +175,21 @@ const cli = require("../services/codexCliClient");
   }
 
   // ---- Narrative reasoner wiring ----------------------------------------
-  // The reasoner must default to Codex-first with Claude-CLI fallback.
+  // The reasoner must default to Codex CLI only; Claude fallback is explicit.
   const narrative = require("../services/openclawNarrativeReasoner");
   const prevMode = process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
   try {
     delete process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
-    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST",
-      "default mode must be CODEX_CLI_FIRST so openclaw burns Codex quota before Claude");
-    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI", "CLI"],
-      "default sequence must attempt Codex CLI first, Claude CLI on fallback");
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_ONLY",
+      "default mode must be CODEX_CLI_ONLY so V2 never falls through to Claude");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"],
+      "default sequence must attempt Codex CLI only");
 
-    // Explicit CODEX_CLI_FIRST alias.
+    process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_CLI_ONLY";
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"],
+      "explicit CODEX_CLI_ONLY must skip Claude fallback");
+
+    // Explicit fallback alias.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_CLAUDE";
     assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST",
       "CODEX_CLAUDE alias must resolve to CODEX_CLI_FIRST");

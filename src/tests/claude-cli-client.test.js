@@ -98,27 +98,29 @@ const cli = require("../services/claudeCliClient");
   const prevMode = process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
   try {
     delete process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
-    // As of 2026-04-20 the default is CODEX_CLI_FIRST: Codex CLI → Claude CLI
-    // fallback. The Claude CLI is the fallback provider, not the primary.
-    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST",
-      "narrative reasoner defaults to CODEX_CLI_FIRST (Codex CLI then Claude CLI)");
-    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI", "CLI"],
-      "default sequence runs Codex CLI first, Claude CLI on fallback");
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_ONLY",
+      "narrative reasoner defaults to CODEX_CLI_ONLY so V2 does not create Claude spend");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"],
+      "default sequence runs Codex CLI only");
 
     // Explicit Claude-only mode for operators who need to avoid Codex.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CLI";
     assert.strictEqual(narrative.providerMode(), "CLI");
     assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CLI"]);
 
-    // Legacy OpenAI-HTTP Codex path still reachable.
+    process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_CLI_FIRST";
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI", "CLI"],
+      "explicit fallback mode may still run Claude CLI");
+
+    // Legacy OpenAI-HTTP Codex path still reachable only when explicit.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_FIRST";
     assert.strictEqual(narrative.providerMode(), "CODEX_FIRST");
     assert.deepStrictEqual(narrative.resolveProviderSequence(), ["OPENAI_CODEX", "CLI"]);
 
-    // AUTO → CODEX_CLI_FIRST (new default) so auto-tune operators get the
-    // CLI-only stack without plaintext keys.
+    // AUTO → CODEX_CLI_ONLY so auto-tune operators get no Claude fallback.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "AUTO";
-    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST");
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_ONLY");
   } finally {
     if (prevMode === undefined) delete process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
     else process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = prevMode;

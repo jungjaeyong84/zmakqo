@@ -39,6 +39,10 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_COLLECTION_PREFIX", value: "v2__" }),
                 Object.freeze({ name: "ML_LIVE_SERVING_ARMED", value: "0" }),
                 Object.freeze({ name: "OPENCLAW_AGENT_APPLY_ENABLED", value: "0" }),
+                Object.freeze({ name: "OPENCLAW_NARRATIVE_PROVIDER_MODE", value: "CODEX_CLI_ONLY" }),
+                Object.freeze({ name: "SIGNAL_AI_ENABLED", value: "0" }),
+                Object.freeze({ name: "AI_ALLOC_CLAUDE_ENABLED", value: "0" }),
+                Object.freeze({ name: "AI_ALLOC_ENSEMBLE_ENABLED", value: "0" }),
               ]),
             }),
           ]),
@@ -158,6 +162,22 @@ function traceOnlyServiceJson({
   assert.strictEqual(result.service_results.length, 4);
   assert.strictEqual(result.service_results.find((row) => row.service_name === "donbeolja-egress").env_contract_checked, false);
   assert.strictEqual(result.service_results.find((row) => row.service_name === "donbeolja").env_contract_checked, true);
+}
+
+{
+  const unsafeService = JSON.parse(JSON.stringify(serviceJson()));
+  unsafeService.spec.template.spec.containers[0].env.push(Object.freeze({
+    name: "ANTHROPIC_API_KEY",
+    valueFrom: { secretKeyRef: { name: "CLAUDE_API_KEY", key: "latest" } },
+  }));
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(unsafeService),
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, false);
+  assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:FORBIDDEN_ENV_PRESENT:ANTHROPIC_API_KEY"));
 }
 
 {

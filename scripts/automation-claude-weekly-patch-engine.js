@@ -35,7 +35,7 @@ const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "claude_weekly_patch_engine_
 const CLAUDE_MODEL = String(process.env.CLAUDE_PATCH_ENGINE_MODEL || process.env.CLAUDE_MODEL || "claude-opus-4-5-20251101").trim();
 const CLAUDE_TIMEOUT_MS = Math.max(1_000, Number(process.env.CLAUDE_PATCH_ENGINE_TIMEOUT_MS || 90_000));
 const CLAUDE_API_KEY = String(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || "").trim();
-const CLAUDE_ENABLED = String(process.env.CLAUDE_PATCH_ENGINE_ENABLED || (CLAUDE_API_KEY ? "1" : "0")).trim() !== "0";
+const CLAUDE_ENABLED = String(process.env.CLAUDE_PATCH_ENGINE_ENABLED || "0").trim() === "1";
 
 function unwrapRawReport(value) {
   if (!value || typeof value !== "object") return value || null;

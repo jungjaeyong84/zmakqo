@@ -167,7 +167,7 @@ function buildDashboardPayload({ tailLimit } = {}) {
       // The operator flips the phase via apply_openclaw_phase.sh — the
       // dashboard just reflects whatever env the live runtime is using.
       narrative_enabled: String(process.env.OPENCLAW_NARRATIVE_ENABLED || "").trim() === "1",
-      narrative_provider_mode: process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "CLI",
+      narrative_provider_mode: process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "CODEX_CLI_ONLY",
       conductor_enabled: String(process.env.OPENCLAW_CONDUCTOR_ENABLED || "").trim() === "1",
       conductor_shadow_only: String(process.env.OPENCLAW_CONDUCTOR_SHADOW_ONLY || "1").trim() !== "0",
       retrospect_apply_enabled: String(process.env.OPENCLAW_RETROSPECT_APPLY_ENABLED || "").trim() === "1",

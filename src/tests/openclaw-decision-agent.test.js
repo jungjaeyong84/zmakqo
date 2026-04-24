@@ -405,12 +405,9 @@ async function run() {
     assert.strictEqual(agent.clampScale(NaN), 1);
   }
 
-  // -------- Narrative reasoner: Codex CLI → Claude CLI fallback ----
-  // As of 2026-04-20, the default narrative provider mode is
-  // CODEX_CLI_FIRST. This test pins the happy-path AND the fallback
-  // path, because the whole point of the new default is: when Codex
-  // CLI is exhausted, openclaw must keep reasoning via Claude CLI
-  // without the operator intervening.
+  // -------- Narrative reasoner: Codex CLI only by default ----
+  // V2 production must not silently fall through to Claude when Codex is
+  // exhausted; Claude fallback is an explicit operator mode only.
   {
     const prev = envSnapshot([
       ...FLAG_KEYS,
@@ -473,9 +470,9 @@ async function run() {
 
       const fresh = require("../services/openclawNarrativeReasoner");
 
-      // Sanity: default sequence is Codex CLI → Claude CLI.
-      assert.strictEqual(fresh.providerMode(), "CODEX_CLI_FIRST");
-      assert.deepStrictEqual(fresh.resolveProviderSequence(), ["CODEX_CLI", "CLI"]);
+      // Sanity: default sequence is Codex CLI only.
+      assert.strictEqual(fresh.providerMode(), "CODEX_CLI_ONLY");
+      assert.deepStrictEqual(fresh.resolveProviderSequence(), ["CODEX_CLI"]);
 
       const result = await fresh.reasonAboutSignal({
         exchange: "BINANCEFUT",
@@ -484,13 +481,11 @@ async function run() {
         qtyPct: 0.5,
       });
 
-      assert.strictEqual(codexCalls, 1, "Codex CLI must be invoked first");
-      assert.strictEqual(claudeCalls, 1, "Claude CLI must run as fallback when Codex is exhausted");
+      assert.strictEqual(codexCalls, 1, "Codex CLI must be invoked");
+      assert.strictEqual(claudeCalls, 0, "Claude CLI must not run by default when Codex is exhausted");
       assert.strictEqual(result.disabled, false);
-      assert.strictEqual(result.live_failed, false, "fallback success must mark live_failed=false");
-      assert.strictEqual(result.response.accept, true);
-      assert.strictEqual(result.response.reason, "FALLBACK_FROM_CODEX",
-        "clampResponse must forward the Claude-CLI-produced reason verbatim");
+      assert.strictEqual(result.live_failed, true, "Codex failure without fallback must surface as live_failed");
+      assert.ok(String(result.live_reason || "").includes("CODEX_CLI_USAGE_EXHAUSTED"));
     } finally {
       if (savedCodex === undefined) delete require.cache[codexPath];
       else require.cache[codexPath] = savedCodex;

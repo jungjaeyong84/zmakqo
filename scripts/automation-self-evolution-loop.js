@@ -240,6 +240,7 @@ function buildStepPlan(context = {}, capabilityDefs = null) {
       id: "claude_patch_engine",
       script: "automation-claude-weekly-patch-engine.js",
       env: {
+        CLAUDE_PATCH_ENGINE_ENABLED: "0",
         CLAUDE_PATCH_ENGINE_SKIP_TELEGRAM: "1",
       },
     },

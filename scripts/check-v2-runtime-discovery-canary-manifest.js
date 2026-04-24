@@ -173,7 +173,48 @@ function buildExpectedEnv(env = process.env) {
       "OPENCLAW_AGENT_APPLY_ENABLED",
       "0",
     ),
+    OPENCLAW_NARRATIVE_PROVIDER_MODE: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_OPENCLAW_NARRATIVE_PROVIDER_MODE",
+      "OPENCLAW_NARRATIVE_PROVIDER_MODE",
+      "CODEX_CLI_ONLY",
+    ),
+    SIGNAL_AI_ENABLED: expectedValue(env, "DONBEOLJA_V2_EXPECTED_SIGNAL_AI_ENABLED", "SIGNAL_AI_ENABLED", "0"),
+    AI_ALLOC_CLAUDE_ENABLED: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_AI_ALLOC_CLAUDE_ENABLED",
+      "AI_ALLOC_CLAUDE_ENABLED",
+      "0",
+    ),
+    AI_ALLOC_ENSEMBLE_ENABLED: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_AI_ALLOC_ENSEMBLE_ENABLED",
+      "AI_ALLOC_ENSEMBLE_ENABLED",
+      "0",
+    ),
   });
+}
+
+function buildForbiddenEnvNames(env = process.env) {
+  return splitServices(
+    env.DONBEOLJA_V2_FORBIDDEN_RUNTIME_ENV_NAMES ||
+      [
+        "ANTHROPIC_API_KEY",
+        "CLAUDE_API_KEY",
+        "OPENCLAW_NARRATIVE_CLAUDE_API_KEY",
+        "CLAUDE_MODEL",
+        "CLAUDE_MODEL_CANARY",
+        "CLAUDE_CANARY_PCT",
+        "SIGNAL_AI_CLAUDE_MODEL",
+        "SIGNAL_AI_CLAUDE_MODEL_CANARY",
+        "SIGNAL_AI_CLAUDE_CANARY_PCT",
+        "SIGNAL_AI_CLAUDE_TIMEOUT_MS",
+        "AI_ALLOC_CLAUDE_MODEL",
+        "AI_ALLOC_CLAUDE_MODEL_CANARY",
+        "AI_ALLOC_CLAUDE_CANARY_PCT",
+        "AI_ALLOC_CLAUDE_TIMEOUT_MS",
+      ].join(","),
+  );
 }
 
 function compareExpectedEnv(actualEnv, expectedEnv) {
@@ -197,6 +238,18 @@ function compareExpectedEnv(actualEnv, expectedEnv) {
     if (String(actualEnv[key] == null ? "" : actualEnv[key]) !== String(expected == null ? "" : expected)) {
       blockers.push(`RUNTIME_DISCOVERY_CANARY:${key}_MISMATCH`);
       mismatches[key] = Object.freeze({ expected, actual: actualEnv[key] || null });
+    }
+  }
+  return Object.freeze({ blockers: Object.freeze(blockers), mismatches: Object.freeze(mismatches) });
+}
+
+function compareForbiddenEnv(actualEnv, forbiddenNames) {
+  const blockers = [];
+  const mismatches = {};
+  for (const name of forbiddenNames || []) {
+    if (Object.prototype.hasOwnProperty.call(actualEnv, name)) {
+      blockers.push(`RUNTIME_DISCOVERY_CANARY:FORBIDDEN_ENV_PRESENT:${name}`);
+      mismatches[`forbidden:${name}`] = Object.freeze({ expected: "ABSENT", actual: "PRESENT" });
     }
   }
   return Object.freeze({ blockers: Object.freeze(blockers), mismatches: Object.freeze(mismatches) });
@@ -243,16 +296,20 @@ function buildEnvServiceSet(env = process.env) {
   return new Set(splitServices(env.DONBEOLJA_V2_RUNTIME_ENV_SERVICES || "donbeolja,donbeolja-exit-worker"));
 }
 
-function evaluateServiceManifest(serviceName, serviceJson, expectedEnv, env, serviceCount, envRequired = true) {
+function evaluateServiceManifest(serviceName, serviceJson, expectedEnv, forbiddenEnvNames, env, serviceCount, envRequired = true) {
   const actualEnv = extractEnvMap(serviceJson);
   const envComparison = envRequired
     ? compareExpectedEnv(actualEnv, expectedEnv)
     : Object.freeze({ blockers: Object.freeze([]), mismatches: Object.freeze({}) });
+  const forbiddenComparison = envRequired
+    ? compareForbiddenEnv(actualEnv, forbiddenEnvNames)
+    : Object.freeze({ blockers: Object.freeze([]), mismatches: Object.freeze({}) });
   const imageComparison = compareImageAndLabels(serviceJson, env);
-  const blockers = Object.freeze([...envComparison.blockers, ...imageComparison.blockers]
+  const blockers = Object.freeze([...envComparison.blockers, ...forbiddenComparison.blockers, ...imageComparison.blockers]
     .map((blocker) => prefixServiceBlocker(serviceName, blocker, serviceCount)));
   const mismatches = Object.freeze({
     ...prefixServiceMismatches(serviceName, envComparison.mismatches, serviceCount),
+    ...prefixServiceMismatches(serviceName, forbiddenComparison.mismatches, serviceCount),
     ...prefixServiceMismatches(serviceName, imageComparison.mismatches, serviceCount),
   });
   return Object.freeze({
@@ -271,12 +328,14 @@ function runCheck(env = process.env) {
   try {
     const serviceManifests = readServiceManifests(env);
     const expectedEnv = buildExpectedEnv(env);
+    const forbiddenEnvNames = buildForbiddenEnvNames(env);
     const envServiceSet = buildEnvServiceSet(env);
     const serviceResults = serviceManifests.map((item) =>
       evaluateServiceManifest(
         item.service_name,
         item.service_json,
         expectedEnv,
+        forbiddenEnvNames,
         env,
         serviceManifests.length,
         envServiceSet.has(item.service_name),
@@ -293,6 +352,7 @@ function runCheck(env = process.env) {
       blockers,
       mismatches,
       expected_env: expectedEnv,
+      forbidden_env_names: Object.freeze(forbiddenEnvNames),
       actual_env: primary.actual_env || {},
       image: primary.image || "",
       labels: primary.labels || {},
@@ -334,6 +394,8 @@ if (require.main === module) {
       extractLabels,
       readServiceManifests,
       buildEnvServiceSet,
+      buildForbiddenEnvNames,
+      compareForbiddenEnv,
     },
   };
 }

@@ -1390,12 +1390,11 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
     ? guardData.claude_enabled
     : null;
   const aiClaudeEnabled = (typeof aiCfg.claude_enabled === "boolean") ? aiCfg.claude_enabled : null;
-  const keyPresent = !!claudeKey;
   const claudeEnabled = boolEnv(
     "AI_ALLOC_CLAUDE_ENABLED",
     aiClaudeEnabled != null
       ? aiClaudeEnabled
-      : (guardClaudeEnabled != null ? guardClaudeEnabled : keyPresent)
+      : (guardClaudeEnabled != null ? guardClaudeEnabled : false)
   );
   const guardEnsembleEnabled = (guardData && typeof guardData.ensemble_enabled === "boolean")
     ? guardData.ensemble_enabled
@@ -1405,7 +1404,7 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
     "AI_ALLOC_ENSEMBLE_ENABLED",
     aiEnsembleEnabled != null
       ? aiEnsembleEnabled
-      : (guardEnsembleEnabled != null ? guardEnsembleEnabled : true)
+      : (guardEnsembleEnabled != null ? guardEnsembleEnabled : false)
   );
   const defaultClaudeModel = String(AI_ALLOCATION_DEFAULTS.claude_model || "claude-3-7-sonnet-20250219");
   const claudeModel = String(
