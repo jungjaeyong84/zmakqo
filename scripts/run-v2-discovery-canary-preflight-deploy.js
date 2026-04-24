@@ -126,6 +126,24 @@ function samePlainObject(left, right) {
   return JSON.stringify(left || null) === JSON.stringify(right || null);
 }
 
+function isActivePositionBootstrapOnly(report) {
+  const blockers = Array.isArray(report && report.blockers) ? report.blockers : [];
+  return blockers.length === 1 && blockers[0] === "EXIT_RUNTIME_CANARY_STREAK:ACTIVE_POSITION_EVIDENCE_REQUIRED";
+}
+
+function buildPreflightBlockers({ entry, exit, repair } = {}) {
+  const blockers = [];
+  for (const report of [entry, exit, repair]) {
+    if (report === exit && isActivePositionBootstrapOnly(report)) continue;
+    if (Array.isArray(report && report.blockers) && report.blockers.length > 0) {
+      blockers.push(...report.blockers);
+    } else if (report && report.ok !== true && report.reason) {
+      blockers.push(report.reason);
+    }
+  }
+  return Object.freeze(blockers);
+}
+
 async function collectPreflight(env = process.env) {
   const streakEnv = Object.freeze({
     ...env,
@@ -144,21 +162,19 @@ async function collectPreflight(env = process.env) {
   ]);
   const repair = repairStreak.runCheck(streakEnv);
   const performance = collectPerformanceStageMatrix(env);
-  const blockers = [];
-  for (const report of [entry, exit, repair]) {
-    if (Array.isArray(report && report.blockers) && report.blockers.length > 0) {
-      blockers.push(...report.blockers);
-    } else if (report && report.ok !== true && report.reason) {
-      blockers.push(report.reason);
-    }
-  }
+  const activePositionBootstrapAllowed = isActivePositionBootstrapOnly(exit);
+  const blockers = buildPreflightBlockers({ entry, exit, repair });
   return Object.freeze({
-    ok: entry.ok === true && exit.ok === true && repair.ok === true,
+    ok: entry.ok === true && (exit.ok === true || activePositionBootstrapAllowed) && repair.ok === true && blockers.length === 0,
     entry,
     exit,
     repair,
     performance,
-    blockers: Object.freeze(blockers),
+    active_position_bootstrap_allowed: activePositionBootstrapAllowed,
+    warnings: activePositionBootstrapAllowed
+      ? Object.freeze(["DISCOVERY_CANARY_BOOTSTRAP:EXIT_ACTIVE_POSITION_EVIDENCE_PENDING"])
+      : Object.freeze([]),
+    blockers,
   });
 }
 
@@ -238,6 +254,8 @@ async function main(env = process.env, options = {}) {
       command_preview: commandPreview,
       substitutions,
       performance: preflight.performance,
+      warnings: preflight.warnings,
+      active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
       state_file: stateFile,
     });
     writeJson(stateFile, payload);
@@ -252,6 +270,8 @@ async function main(env = process.env, options = {}) {
     command_preview: commandPreview,
     substitutions,
     performance: preflight.performance,
+    warnings: preflight.warnings,
+    active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
     state_file: stateFile,
   });
   writeJson(stateFile, payload);
@@ -274,6 +294,8 @@ if (require.main === module) {
     collectPreflight,
     buildDiscoverySubstitutions,
     buildDeployArgs,
+    isActivePositionBootstrapOnly,
+    buildPreflightBlockers,
     __test: {
       trimOrNull,
       parseBool,
