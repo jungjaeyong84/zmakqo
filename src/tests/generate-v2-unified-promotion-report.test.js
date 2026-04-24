@@ -382,4 +382,25 @@ const REQUIRED_RUNTIME_CHAIN_CHECK_IDS = deployDecisionCheck.__test.REQUIRED_RUN
   assert.ok(!payload.critical_watchdog_issue_codes.includes("TRAIL_STOP_MISSING"));
 })();
 
+(async function unifiedReportWritesStructuredBlockerWhenReplayInputMissing() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-unified-report-missing-"));
+  try {
+    const payload = await unifiedReport.main({
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+    });
+    const outputFile = path.join(dir, unifiedReport.__test.OUTPUT_FILENAME);
+    assert.ok(fs.existsSync(outputFile));
+    const stored = JSON.parse(fs.readFileSync(outputFile, "utf8"));
+    assert.strictEqual(payload.pass, false);
+    assert.strictEqual(payload.failClosed, true);
+    assert.deepStrictEqual(payload.report.blockers, ["PROMOTION_INPUT:REPLAY_REPORT_REQUIRED"]);
+    assert.strictEqual(payload.report.error.code, "V2_PROMOTION_REPLAY_FILE_OR_V2_PROMOTION_REPLAY_JSON_REQUIRED");
+    assert.strictEqual(stored.pass, false);
+    assert.deepStrictEqual(stored.report.blockers, ["PROMOTION_INPUT:REPLAY_REPORT_REQUIRED"]);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 console.log("GENERATE_V2_UNIFIED_PROMOTION_REPORT_TEST_OK");

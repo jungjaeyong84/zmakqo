@@ -724,8 +724,47 @@ function buildUnifiedArtifactPayload(result, {
   });
 }
 
+function normalizeGateInputBlocker(error) {
+  const message = error && error.message ? String(error.message) : String(error || "");
+  if (message === "V2_PROMOTION_REPLAY_FILE_OR_V2_PROMOTION_REPLAY_JSON_REQUIRED") {
+    return "PROMOTION_INPUT:REPLAY_REPORT_REQUIRED";
+  }
+  if (message === "V2_PROMOTION_SHADOW_LIVE_FILE_OR_V2_PROMOTION_SHADOW_LIVE_JSON_REQUIRED") {
+    return "PROMOTION_INPUT:SHADOW_LIVE_COMPARISON_REQUIRED";
+  }
+  if (message === "V2_PROMOTION_SOURCE_MODE_FILE_OR_V2_PROMOTION_SOURCE_MODE_JSON_REQUIRED") {
+    return "PROMOTION_INPUT:SOURCE_MODE_COMPARISON_REQUIRED";
+  }
+  return "PROMOTION_INPUT:GATE_INPUT_READ_FAILED";
+}
+
+function buildGateInputThrownResult(env = process.env, error = null) {
+  const blocker = normalizeGateInputBlocker(error);
+  const message = error && error.message ? String(error.message) : String(error || "unknown gate input error");
+  return Object.freeze({
+    inputs: Object.freeze({}),
+    report: Object.freeze({
+      pass: false,
+      failClosed: true,
+      mode: trimOrNull(env.V2_PROMOTION_MODE) || "CANARY",
+      block_n: 1,
+      blockers: Object.freeze([blocker]),
+      warnings: Object.freeze([]),
+      error: Object.freeze({
+        code: message,
+        message,
+      }),
+    }),
+  });
+}
+
 function generateUnifiedPromotionReport(env = process.env) {
-  const result = gate.__test.evaluateGateFromEnv(env);
+  let result = null;
+  try {
+    result = gate.__test.evaluateGateFromEnv(env);
+  } catch (error) {
+    result = buildGateInputThrownResult(env, error);
+  }
   const artifactDir = resolveArtifactDir(env);
   const candidateSelection = readCandidateSelectionArtifact(artifactDir);
   const repairFirestoreCanaryStreak = readRepairFirestoreCanaryStreakArtifact(env, artifactDir);
@@ -752,22 +791,35 @@ async function main(env = process.env) {
   const outputFile = path.join(artifactDir, OUTPUT_FILENAME);
   writeJson(outputFile, payload);
   console.log(JSON.stringify({
-    ok: true,
-    reason: "V2_UNIFIED_PROMOTION_REPORT_GENERATED",
+    ok: payload.pass === true,
+    reason: payload.pass === true
+      ? "V2_UNIFIED_PROMOTION_REPORT_GENERATED"
+      : "V2_UNIFIED_PROMOTION_REPORT_BLOCKED",
     artifact_dir: artifactDir,
     output_file: outputFile,
     pass: payload.pass === true,
     mode: payload.mode,
     position_cycle_id: payload.position_cycle_id,
+    blockers: payload.report && Array.isArray(payload.report.blockers) ? payload.report.blockers : [],
   }));
   return payload;
 }
 
 if (require.main === module) {
-  main().catch((error) => {
-    console.error("GENERATE_V2_UNIFIED_PROMOTION_REPORT_FAIL", error && error.stack ? error.stack : String(error));
-    process.exit(1);
-  });
+  main()
+    .then((payload) => {
+      if (!payload || payload.pass !== true) process.exit(1);
+    })
+    .catch((error) => {
+      console.error(JSON.stringify({
+        ok: false,
+        reason: "V2_UNIFIED_PROMOTION_REPORT_THROWN",
+        error: {
+          message: error && error.message ? error.message : String(error),
+        },
+      }));
+      process.exit(1);
+    });
 } else {
   module.exports = {
     main,
@@ -815,6 +867,8 @@ if (require.main === module) {
       buildFirestoreCostGuardSummary,
       buildBoundedRuntimeSummary,
       buildCandidateSelectionSummary,
+      normalizeGateInputBlocker,
+      buildGateInputThrownResult,
       buildUnifiedArtifactPayload,
     },
   };

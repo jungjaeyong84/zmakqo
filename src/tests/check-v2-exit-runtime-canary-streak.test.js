@@ -307,6 +307,14 @@ function buildFakeDb(rows) {
   assert.strictEqual(checker.__test.resolveStreakConfig({ DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE: "1" }).requireFirestoreSource, true);
   assert.strictEqual(checker.__test.resolveHistorySource({}), "JSONL");
   assert.strictEqual(checker.__test.resolveHistorySource({ DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_READ_ENABLED: "1" }), "FIRESTORE");
+  assert.strictEqual(
+    checker.__test.normalizeFirestoreEnv({}, "FIRESTORE").DONBEOLJA_V2_COLLECTION_PREFIX,
+    "v2__"
+  );
+  assert.strictEqual(
+    checker.__test.normalizeFirestoreEnv({ DONBEOLJA_V2_COLLECTION_PREFIX: "custom__" }, "FIRESTORE").DONBEOLJA_V2_COLLECTION_PREFIX,
+    "custom__"
+  );
 })();
 
 async function streakCanReadFirestoreHistorySource() {

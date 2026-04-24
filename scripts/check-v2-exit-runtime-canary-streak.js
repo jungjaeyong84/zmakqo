@@ -68,6 +68,14 @@ function resolveHistorySource(env = process.env) {
   return isExitRuntimeCanaryFirestoreReadEnabled(env) ? "FIRESTORE" : "JSONL";
 }
 
+function normalizeFirestoreEnv(env = process.env, source = resolveHistorySource(env)) {
+  if (source !== "FIRESTORE" || trimOrNull(env.DONBEOLJA_V2_COLLECTION_PREFIX)) return env;
+  return Object.freeze({
+    ...env,
+    DONBEOLJA_V2_COLLECTION_PREFIX: "v2__",
+  });
+}
+
 function parseHistoryFile(filePath) {
   const raw = fs.readFileSync(path.resolve(filePath), "utf8");
   const rows = [];
@@ -366,12 +374,13 @@ function evaluateExitRuntimeCanaryStreak({
 
 async function loadHistory(env = process.env, { nowMs = Date.now(), db = null, config = resolveStreakConfig(env) } = {}) {
   const source = resolveHistorySource(env);
+  const storageEnv = normalizeFirestoreEnv(env, source);
   if (source === "FIRESTORE") {
     const lookbackMs = Number(config.lookbackHours) * 60 * 60 * 1000;
     const sinceMs = Number(nowMs) - lookbackMs;
     const loaded = await loadExitRuntimeCanaryHistoryRows({
       db,
-      env,
+      env: storageEnv,
       sinceMs,
       limit: config.firestoreReadLimit,
     });
@@ -464,6 +473,7 @@ if (require.main === module) {
       resolveOutputFile,
       resolveStreakConfig,
       resolveHistorySource,
+      normalizeFirestoreEnv,
       toMs,
       numberField,
       isHealthyExitRuntimeCanaryRow,
