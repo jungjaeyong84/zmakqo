@@ -128,6 +128,33 @@ function discoveryBridgeMakesLegacyWaitOneBarAdvisoryOnly() {
   );
 }
 
+function discoveryBridgeBypassesLegacyEntryFiltersBeforeHandoff() {
+  const liveCfg = {
+    executionMode: "LIVE",
+    liveEnabled: true,
+    v2DiscoveryCanaryBridge: true,
+  };
+  assert.strictEqual(
+    __test.shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent: "ENTRY" }),
+    true
+  );
+  assert.strictEqual(
+    __test.shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent: "ADD" }),
+    true
+  );
+  assert.strictEqual(
+    __test.shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent: "EXIT" }),
+    false
+  );
+  assert.strictEqual(
+    __test.shouldBypassLegacyEntryFiltersForV2Discovery({
+      liveCfg: { ...liveCfg, v2DiscoveryCanaryBridge: false },
+      intent: "ENTRY",
+    }),
+    false
+  );
+}
+
 function liveDisabledReasonIsOperatorReadable() {
   const classified = classifySignalReasonStage("LIVE_DISABLED");
   assert.strictEqual(classified.key, "LIVE_CONFIG");
@@ -142,6 +169,7 @@ function main() {
   discoveryBridgeClampsLegacyMaxOrder();
   discoveryBridgeBlocksLegacyEntryWritePath();
   discoveryBridgeMakesLegacyWaitOneBarAdvisoryOnly();
+  discoveryBridgeBypassesLegacyEntryFiltersBeforeHandoff();
   liveDisabledReasonIsOperatorReadable();
   console.log("V2_DISCOVERY_LIVE_BRIDGE_TEST_OK");
 }

@@ -55,6 +55,26 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   );
 })();
 
+(function discoveryCanaryBypassesLegacyEntryFiltersBeforeHandoff() {
+  const bypassIndex = source.indexOf("v2_discovery_legacy_entry_filters_bypassed: true");
+  const handoffIndex = source.indexOf("runV2DiscoveryCanaryServerSignalHandoff({");
+  assert.ok(bypassIndex > -1, "V2 discovery legacy entry filter bypass marker is missing");
+  assert.ok(handoffIndex > -1, "V2 discovery handoff is missing");
+  assert.ok(bypassIndex < handoffIndex, "V2 discovery legacy entry filters must be bypassed before route handoff");
+  assert.ok(
+    source.includes("intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && aiBiasGateCfg"),
+    "legacy AI bias gate must not hard-drop V2 discovery before route handoff"
+  );
+  assert.ok(
+    source.includes("intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg"),
+    "legacy EV gate must not hard-drop V2 discovery before route handoff"
+  );
+  assert.ok(
+    source.includes("intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !manualRetryIntent"),
+    "legacy canonical/quality gate must not hard-drop V2 discovery before route handoff"
+  );
+})();
+
 (function postFillProtectionFailureMustRecoverNotClose() {
   const entrySubmitterSource = fs.readFileSync(path.resolve(__dirname, "../v2/entrySubmitter.js"), "utf8");
   assert.ok(

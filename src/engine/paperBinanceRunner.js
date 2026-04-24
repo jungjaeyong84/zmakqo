@@ -5602,6 +5602,10 @@ function shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery({ liveCfg = null, i
   return isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent });
 }
 
+function shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg = null, intent = null } = {}) {
+  return isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent });
+}
+
 function resolveForceAllSignalsAdd(sysCfg = {}, exchange = "") {
   if (resolveLiveRescueAddConfig(sysCfg, exchange).enabled === true) return false;
   const envRaw = process.env.FORCE_ALL_SIGNALS_ADD;
@@ -12435,6 +12439,93 @@ async function runPaperBinanceForBar({
     it.features_json = buildSignalStageFeatures({ ...(it || {}), features: it.features_json }, intent);
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
     const manualRetryIntent = intentIsEntry && isManualRetryFeatures(it.features_json);
+    const v2DiscoveryLegacyEntryFilterBypass = shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent });
+    if (v2DiscoveryLegacyEntryFilterBypass) {
+      it.features_json = {
+        ...(it.features_json || {}),
+        v2_discovery_legacy_entry_filters_bypassed: true,
+        v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+      };
+      await patchIntent(it.intent_id, { features_json: it.features_json }).catch(() => {});
+      const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+        env: process.env,
+        intentRow: it,
+        liveCfg,
+        referencePrice: Number(bar && (bar.open ?? bar.o)) || Number(it.signal_price) || Number(bar && (bar.close ?? bar.c)),
+        requestId: it.request_id || it.intent_id || it.signal_id || (it.features_json && it.features_json.signal_id),
+      }).catch((error) => ({
+        ok: false,
+        reason: "V2_DISCOVERY_BRIDGE_THROWN",
+        error_message: error && error.message ? String(error.message) : String(error),
+      }));
+      if (handoff && handoff.ok === true) {
+        const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+        const requestBundle = requestBody.bundle || {};
+        const requestPermit = requestBody.executionPermit || {};
+        const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        await markIntentStatus(it.intent_id, "CANCELED", {
+          cancel_reason: routeReason,
+          status_reason: routeReason,
+          cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters.",
+          v2_discovery_bridge_reason: handoff.reason || null,
+          v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+          v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+        });
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: normalizeSideValue(it.side),
+          tf: signalTf,
+          qtyPct: Number(it.qty_pct),
+          executionMode: liveCfg.executionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: routeReason,
+          pendingReason: "IMMEDIATE_EXEC",
+          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
+        }).catch((e) => {
+          console.warn("[V2_DISCOVERY_EARLY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
+        });
+        continue;
+      }
+      const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+      const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+      const endpointPostFillCritical = String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
+      let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+      if (routedDecision && routedDecision.reason) {
+        blockReason = String(routedDecision.reason).trim().toUpperCase();
+      } else if (endpointReason) {
+        blockReason = String(endpointReason).trim().toUpperCase();
+      } else if (handoff && handoff.reason) {
+        blockReason = String(handoff.reason).trim().toUpperCase();
+      }
+      await markIntentStatus(it.intent_id, endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED", {
+        cancel_reason: blockReason,
+        status_reason: blockReason,
+        cancel_note: JSON.stringify({
+          note: endpointPostFillCritical
+            ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
+            : "V2 discovery entry was handed to productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters.",
+          bridge_reason: handoff && handoff.reason ? handoff.reason : null,
+          bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
+          endpoint_reason: endpointReason,
+          router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
+        }),
+      });
+      notifyTradeExitFailureAlert({
+        exchange,
+        symbol,
+        event: it.event,
+        side: normalizeSideValue(it.side),
+        intent,
+        executionMode: liveCfg.executionMode,
+        reason: blockReason,
+        qtyPct: Number(it.qty_pct),
+        positionSideBefore: resolveFailureAlertPositionSide(pos),
+      });
+      continue;
+    }
     const manualRetryQtyBase = manualRetryIntent ? resolveManualRetryQtyBase(it.features_json) : null;
     let preQtyScale = 1;
     if (backfillExitOnly && intentIsEntry) {
@@ -13750,6 +13841,14 @@ async function runPaperBinanceForBar({
     const signalBarCloseUtcForIntent = Number.isFinite(signalBarCloseMsForIntent)
       ? msToUtcZ(signalBarCloseMsForIntent)
       : (s.signal_bar_close_time_utc || barCloseUtc);
+    const v2DiscoveryLegacyEntryFilterBypass = shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent });
+    if (v2DiscoveryLegacyEntryFilterBypass) {
+      s.features = {
+        ...(s.features || {}),
+        v2_discovery_legacy_entry_filters_bypassed: true,
+        v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+      };
+    }
     if (backfillExitOnly && intentIsEntry && backfillAllowEntry !== true) {
       if (String(trading_mode || "").toUpperCase() === "EXIT_ONLY") {
         // EXIT_ONLY pass should not consume live entry signals.
@@ -13780,13 +13879,12 @@ async function runPaperBinanceForBar({
       if (riskBudget.onExceed === "SKIP") continue;
       qtyFraction = 1;
     }
-
     const normalizedEvent = normalizeTpP1EventForExchange(s.event, exchange);
     if (normalizedEvent && normalizedEvent !== s.event) s.event = normalizedEvent;
     const eventUpper = String(normalizedEvent || s.event || "").toUpperCase();
     const actionTag = normalizeActionValue(s.features && s.features.action);
     const allowTrailEntry = forceAllSignalsAdd || allowEntryDuringTrail({ event: s.event, features: s.features, posMeta });
-    if (intentIsEntry && (posMeta && (posMeta.trail_active === true || posMeta.tp_p1_done === true)) && !allowTrailEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && (posMeta && (posMeta.trail_active === true || posMeta.tp_p1_done === true)) && !allowTrailEntry) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: Number(barCloseMs),
@@ -13798,7 +13896,7 @@ async function runPaperBinanceForBar({
       });
       continue;
     }
-    if (intentIsEntry && !actionAllowsEntry(actionTag)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !actionAllowsEntry(actionTag)) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: Number(barCloseMs),
@@ -13810,7 +13908,7 @@ async function runPaperBinanceForBar({
       });
       continue;
     }
-    if (intentIsEntry && !isTradeableEventAllowed({ eventUpper, intentDir, allowlist: tradeableSignalTypes })) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !isTradeableEventAllowed({ eventUpper, intentDir, allowlist: tradeableSignalTypes })) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: Number(barCloseMs),
@@ -13824,7 +13922,7 @@ async function runPaperBinanceForBar({
     }
     const bypassOppositeEntryCooldown = intentIsEntry
       && shouldBypassOppositeEntryCooldown({ features: s.features, intentDir, posMeta });
-    if (intentIsEntry && oppositeCooldownBars > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && oppositeCooldownBars > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
       const lastExitMs = Number(posMeta && posMeta.last_exit_bar_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitMs) && lastExitDir && Number.isFinite(signalTfMs)) {
@@ -13852,7 +13950,7 @@ async function runPaperBinanceForBar({
       }
     }
     // ── 시간 기반 절대 쿨다운: 방향 반전 시 최소 대기 시간 (타임프레임 무관) ──
-    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && oppositeTimeCooldownMs > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
       const lastExitWallMs = Number(posMeta && posMeta.last_exit_wall_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitWallMs) && lastExitDir && intentDir && lastExitDir !== intentDir) {
@@ -13878,7 +13976,7 @@ async function runPaperBinanceForBar({
         }
       }
     }
-    if (intentIsEntry && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionSize(pos.size_pct)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionSize(pos.size_pct)) {
       const sameDirectionCooldown = resolveSameDirectionTrailProfitCooldownBlock({
         cfg: sameDirectionTrailProfitCooldownCfg,
         posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
@@ -13934,7 +14032,7 @@ async function runPaperBinanceForBar({
       continue;
     }
 
-    if (spikeLock && spikeLock.active && (intent === "ENTRY" || intent === "ADD")) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && spikeLock && spikeLock.active && (intent === "ENTRY" || intent === "ADD")) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -13947,7 +14045,7 @@ async function runPaperBinanceForBar({
       continue;
     }
 
-    if (signalOverlapEnabled && (intent === "ENTRY" || intent === "ADD") && intentDir && Number.isFinite(signalTfMs) && signalOverlapBars > 0) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && signalOverlapEnabled && (intent === "ENTRY" || intent === "ADD") && intentDir && Number.isFinite(signalTfMs) && signalOverlapBars > 0) {
       const lastKey = `last_entry_bar_ms_${String(intentDir).toLowerCase()}`;
       const lastBarMs = Number(posMeta && posMeta[lastKey]);
       const currentTier = resolveSignalTierFromEvent(s.event, s.features);
@@ -13972,7 +14070,7 @@ async function runPaperBinanceForBar({
       }
     }
 
-    if (autoScore && autoScore.enabled && Number.isFinite(autoScore.scoreMin) && (intent === "ENTRY" || intent === "ADD")) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && autoScore && autoScore.enabled && Number.isFinite(autoScore.scoreMin) && (intent === "ENTRY" || intent === "ADD")) {
       const score = pickSignalScore(s.features);
       if (Number.isFinite(score) && score < autoScore.scoreMin) {
         signalDrops.push({
@@ -13988,7 +14086,7 @@ async function runPaperBinanceForBar({
       }
     }
 
-    if (intentIsEntry && shortGateCfg && shortGateCfg.enabled) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && shortGateCfg && shortGateCfg.enabled) {
       const shortGate = evaluateShortEntryGate({
         intent,
         intentDir,
@@ -14014,7 +14112,7 @@ async function runPaperBinanceForBar({
     }
 
     const features = (s.features && typeof s.features === "object") ? { ...s.features } : {};
-    if (intentIsEntry && !manualRetryIntent) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !manualRetryIntent) {
       const canonical = evaluateCanonicalEntryGate({
         intent,
         intentDir,
@@ -14062,7 +14160,7 @@ async function runPaperBinanceForBar({
     }
 
     // Commission Gate v2 soft mode + MDD reduction gate — signal processing
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       try {
         const perfGate = await loadPerformanceGate(exchange);
         const gateEvidence = logCommissionGateEvidence({ phase: "signal_proc", exchange, symbol, event: s.event, perfGate, intentId: s.signal_id || s.id });
@@ -14178,7 +14276,7 @@ async function runPaperBinanceForBar({
     const isPreRealEvent = signalTimingTier === "PRE_REAL";
     const isCoreEvent = signalTimingTier === "CORE";
     const isEarlyEvent = signalTimingTier === "EARLY";
-    if (intentIsEntry && isAiRequired(exchange) && !hasAiSignal(s.features)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && isAiRequired(exchange) && !hasAiSignal(s.features)) {
       const aiMissing = resolveAiMissingPolicy({ qtyFraction, features: s.features, sysCfg });
       if (aiMissing.drop) {
         const reason = aiMissing.reason || "DROP_AI_MISSING";
@@ -14203,7 +14301,7 @@ async function runPaperBinanceForBar({
       }
     }
 
-    if (intentIsEntry && aiBiasGateCfg && aiBiasGateCfg.enabled) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && aiBiasGateCfg && aiBiasGateCfg.enabled) {
       const aiBiasGate = evaluateAiBiasEntryGate({
         intent,
         intentDir,
@@ -14246,7 +14344,7 @@ async function runPaperBinanceForBar({
       }
     }
 
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       const signalFloor = await applyEntryBudgetSignalFloor({
         exchange,
         symbol,
@@ -14303,7 +14401,7 @@ async function runPaperBinanceForBar({
     }
 
     const evGateBypass = shouldBypassEvEntryGate({ intent, features: s.features });
-    if (intentIsEntry && evGateCfg && evGateCfg.enabled && evGateBypass) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg && evGateCfg.enabled && evGateBypass) {
       const evGateDetail = {
         ev_gate_enabled: true,
         ev_gate_skipped: true,
@@ -14314,7 +14412,7 @@ async function runPaperBinanceForBar({
       s.features = { ...(s.features || {}), ...evGateDetail };
       Object.assign(features, evGateDetail);
     }
-    if (intentIsEntry && evGateCfg && evGateCfg.enabled && !evGateBypass) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg && evGateCfg.enabled && !evGateBypass) {
       let evExitProfile = null;
       try {
         evExitProfile = await resolveAdaptiveFuturesExitProfile({
@@ -15057,6 +15155,93 @@ async function runPaperFuturesForBar({
 
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
     const manualRetryIntent = intentIsEntry && isManualRetryFeatures(it.features_json);
+    const v2DiscoveryLegacyEntryFilterBypass = shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent });
+    if (v2DiscoveryLegacyEntryFilterBypass) {
+      it.features_json = {
+        ...(it.features_json || {}),
+        v2_discovery_legacy_entry_filters_bypassed: true,
+        v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+      };
+      await patchIntent(it.intent_id, { features_json: it.features_json }).catch(() => {});
+      const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+        env: process.env,
+        intentRow: it,
+        liveCfg,
+        referencePrice: Number(bar && (bar.open ?? bar.o)) || Number(it.signal_price) || Number(bar && (bar.close ?? bar.c)),
+        requestId: it.request_id || it.intent_id || it.signal_id || (it.features_json && it.features_json.signal_id),
+      }).catch((error) => ({
+        ok: false,
+        reason: "V2_DISCOVERY_BRIDGE_THROWN",
+        error_message: error && error.message ? String(error.message) : String(error),
+      }));
+      if (handoff && handoff.ok === true) {
+        const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+        const requestBundle = requestBody.bundle || {};
+        const requestPermit = requestBody.executionPermit || {};
+        const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        await markIntentStatus(it.intent_id, "CANCELED", {
+          cancel_reason: routeReason,
+          status_reason: routeReason,
+          cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters.",
+          v2_discovery_bridge_reason: handoff.reason || null,
+          v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+          v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+        });
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: normalizeSideValue(it.side),
+          tf: signalTf,
+          qtyPct: Number(it.qty_pct),
+          executionMode: liveCfg.executionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: routeReason,
+          pendingReason: "IMMEDIATE_EXEC",
+          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
+        }).catch((e) => {
+          console.warn("[V2_DISCOVERY_EARLY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
+        });
+        continue;
+      }
+      const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+      const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+      const endpointPostFillCritical = String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
+      let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+      if (routedDecision && routedDecision.reason) {
+        blockReason = String(routedDecision.reason).trim().toUpperCase();
+      } else if (endpointReason) {
+        blockReason = String(endpointReason).trim().toUpperCase();
+      } else if (handoff && handoff.reason) {
+        blockReason = String(handoff.reason).trim().toUpperCase();
+      }
+      await markIntentStatus(it.intent_id, endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED", {
+        cancel_reason: blockReason,
+        status_reason: blockReason,
+        cancel_note: JSON.stringify({
+          note: endpointPostFillCritical
+            ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
+            : "V2 discovery entry was handed to productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters.",
+          bridge_reason: handoff && handoff.reason ? handoff.reason : null,
+          bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
+          endpoint_reason: endpointReason,
+          router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
+        }),
+      });
+      notifyTradeExitFailureAlert({
+        exchange,
+        symbol,
+        event: it.event,
+        side: normalizeSideValue(it.side),
+        intent,
+        executionMode: liveCfg.executionMode,
+        reason: blockReason,
+        qtyPct: Number(it.qty_pct),
+        positionSideBefore: resolveFailureAlertPositionSide(pos),
+      });
+      continue;
+    }
     const manualRetryQtyBase = manualRetryIntent ? resolveManualRetryQtyBase(it.features_json) : null;
     let preQtyScale = 1;
     if (backfillExitOnly && intentIsEntry) {
@@ -15077,7 +15262,7 @@ async function runPaperFuturesForBar({
       continue;
     }
     // Commission Gate v2 soft mode — 시그널 품질 필터 이전에 평가 (intent execution)
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       try {
         const signalScaleFlags = resolveSignalScaledFlags(it.features_json);
         const perfGate = await loadPerformanceGate(exchange);
@@ -17201,6 +17386,14 @@ async function runPaperFuturesForBar({
     const signalBarCloseUtcForIntent = Number.isFinite(signalBarCloseMsForIntent)
       ? msToUtcZ(signalBarCloseMsForIntent)
       : (s.signal_bar_close_time_utc || barCloseUtc);
+    const v2DiscoveryLegacyEntryFilterBypass = shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent });
+    if (v2DiscoveryLegacyEntryFilterBypass) {
+      s.features = {
+        ...(s.features || {}),
+        v2_discovery_legacy_entry_filters_bypassed: true,
+        v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+      };
+    }
     if (backfillExitOnly && intentIsEntry && backfillAllowEntry !== true) {
       if (String(trading_mode || "").toUpperCase() === "EXIT_ONLY") {
         // EXIT_ONLY pass should not consume live entry signals.
@@ -17221,7 +17414,7 @@ async function runPaperFuturesForBar({
 
     // Commission Gate v2 soft mode — 시그널 품질 필터 이전에 평가하여 모든 진입 시그널에 대해 증빙 생성
     let _commGateResult = null;
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       try {
         const perfGate = await loadPerformanceGate(exchange);
         const gateEvidence = logCommissionGateEvidence({ phase: "signal_proc_fut", exchange, symbol, event: s.event, perfGate, intentId: s.signal_id || s.id });
@@ -17258,7 +17451,7 @@ async function runPaperFuturesForBar({
       continue;
     }
 
-    if (spikeLock && spikeLock.active && (intent === "ENTRY" || intent === "ADD")) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && spikeLock && spikeLock.active && (intent === "ENTRY" || intent === "ADD")) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -17271,7 +17464,7 @@ async function runPaperFuturesForBar({
       continue;
     }
 
-    if (signalOverlapEnabled && (intent === "ENTRY" || intent === "ADD") && intentDir && Number.isFinite(signalTfMs) && signalOverlapBars > 0) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && signalOverlapEnabled && (intent === "ENTRY" || intent === "ADD") && intentDir && Number.isFinite(signalTfMs) && signalOverlapBars > 0) {
       const lastKey = `last_entry_bar_ms_${String(intentDir).toLowerCase()}`;
       const lastBarMs = Number(posMeta && posMeta[lastKey]);
       const currentTier = resolveSignalTierFromEvent(s.event, s.features);
@@ -17310,7 +17503,7 @@ async function runPaperFuturesForBar({
     const eventUpper = String(normalizedEvent || s.event || "").toUpperCase();
     const actionTag = normalizeActionValue(s.features && s.features.action);
     const allowTrailEntry = forceAllSignalsAdd || allowEntryDuringTrail({ event: s.event, features: s.features, posMeta });
-    if (intentIsEntry && (posMeta && (posMeta.trail_active === true || posMeta.tp_p1_done === true)) && !allowTrailEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && (posMeta && (posMeta.trail_active === true || posMeta.tp_p1_done === true)) && !allowTrailEntry) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -17322,7 +17515,7 @@ async function runPaperFuturesForBar({
       });
       continue;
     }
-    if (intentIsEntry && !actionAllowsEntry(actionTag)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !actionAllowsEntry(actionTag)) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -17334,7 +17527,7 @@ async function runPaperFuturesForBar({
       });
       continue;
     }
-    if (intentIsEntry && !isTradeableEventAllowed({ eventUpper, intentDir, allowlist: tradeableSignalTypes })) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !isTradeableEventAllowed({ eventUpper, intentDir, allowlist: tradeableSignalTypes })) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -17348,7 +17541,7 @@ async function runPaperFuturesForBar({
     }
     const bypassOppositeEntryCooldown = intentIsEntry
       && shouldBypassOppositeEntryCooldown({ features: s.features, intentDir, posMeta });
-    if (intentIsEntry && oppositeCooldownBars > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && oppositeCooldownBars > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
       const lastExitMs = Number(posMeta && posMeta.last_exit_bar_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitMs) && lastExitDir && Number.isFinite(signalTfMs)) {
@@ -17376,7 +17569,7 @@ async function runPaperFuturesForBar({
       }
     }
     // ── 시간 기반 절대 쿨다운: 방향 반전 시 최소 대기 시간 (타임프레임 무관) ──
-    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && oppositeTimeCooldownMs > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
       const lastExitWallMs = Number(posMeta && posMeta.last_exit_wall_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitWallMs) && lastExitDir && intentDir && lastExitDir !== intentDir) {
@@ -17402,7 +17595,7 @@ async function runPaperFuturesForBar({
         }
       }
     }
-    if (intentIsEntry && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionNow) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionNow) {
       const sameDirectionCooldown = resolveSameDirectionTrailProfitCooldownBlock({
         cfg: sameDirectionTrailProfitCooldownCfg,
         posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
@@ -17481,7 +17674,7 @@ async function runPaperFuturesForBar({
       metaUpdates.tp_p1_pending_event = null;
     }
 
-    if (autoScore && autoScore.enabled && Number.isFinite(autoScore.scoreMin) && (intent === "ENTRY" || intent === "ADD")) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && autoScore && autoScore.enabled && Number.isFinite(autoScore.scoreMin) && (intent === "ENTRY" || intent === "ADD")) {
       const score = pickSignalScore(s.features);
       if (Number.isFinite(score) && score < autoScore.scoreMin) {
         signalDrops.push({
@@ -17497,7 +17690,7 @@ async function runPaperFuturesForBar({
       }
     }
 
-    if (intentIsEntry && shortGateCfg && shortGateCfg.enabled) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && shortGateCfg && shortGateCfg.enabled) {
       const shortGate = evaluateShortEntryGate({
         intent,
         intentDir,
@@ -17523,7 +17716,7 @@ async function runPaperFuturesForBar({
     }
 
     const features = (s.features && typeof s.features === "object") ? { ...s.features } : {};
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       const canonical = evaluateCanonicalEntryGate({
         intent,
         intentDir,
@@ -17571,7 +17764,7 @@ async function runPaperFuturesForBar({
     }
 
     // Commission/MDD soft reduction gate — 커미션 게이트 캐시 결과 사용
-    if (intentIsEntry && _commGateResult) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && _commGateResult) {
       const { perfGate, commScale, gateId } = _commGateResult;
       if (commScale && commScale.blocked && commScale.scale < 0.9999) {
         const before = qtyFraction;
@@ -17631,7 +17824,7 @@ async function runPaperFuturesForBar({
     const isPreRealEvent = signalTimingTier === "PRE_REAL";
     const isCoreEvent = signalTimingTier === "CORE";
     const isEarlyEvent = signalTimingTier === "EARLY";
-    if (intentIsEntry && isAiRequired(exchange) && !hasAiSignal(s.features)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && isAiRequired(exchange) && !hasAiSignal(s.features)) {
       const aiMissing = resolveAiMissingPolicy({ qtyFraction, features: s.features, sysCfg });
       if (aiMissing.drop) {
         const reason = aiMissing.reason || "DROP_AI_MISSING";
@@ -17656,7 +17849,7 @@ async function runPaperFuturesForBar({
       }
     }
 
-    if (intentIsEntry && aiBiasGateCfg && aiBiasGateCfg.enabled) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && aiBiasGateCfg && aiBiasGateCfg.enabled) {
       const aiBiasGate = evaluateAiBiasEntryGate({
         intent,
         intentDir,
@@ -17700,7 +17893,7 @@ async function runPaperFuturesForBar({
     }
 
     const evGateBypass = shouldBypassEvEntryGate({ intent, features: s.features });
-    if (intentIsEntry && evGateCfg && evGateCfg.enabled && evGateBypass) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg && evGateCfg.enabled && evGateBypass) {
       const evGateDetail = {
         ev_gate_enabled: true,
         ev_gate_skipped: true,
@@ -17711,7 +17904,7 @@ async function runPaperFuturesForBar({
       s.features = { ...(s.features || {}), ...evGateDetail };
       Object.assign(features, evGateDetail);
     }
-    if (intentIsEntry && evGateCfg && evGateCfg.enabled && !evGateBypass) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg && evGateCfg.enabled && !evGateBypass) {
       let evExitProfile = null;
       try {
         evExitProfile = await resolveAdaptiveFuturesExitProfile({
@@ -17856,7 +18049,7 @@ async function runPaperFuturesForBar({
       }
     }
 
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       const signalFloor = await applyEntryBudgetSignalFloor({
         exchange,
         symbol,
@@ -18517,6 +18710,7 @@ module.exports = {
     clampDiscoveryCanaryMaxOrderQuote,
     isV2DiscoveryCanaryLegacyEntryWriteBlocked,
     shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery,
+    shouldBypassLegacyEntryFiltersForV2Discovery,
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,
