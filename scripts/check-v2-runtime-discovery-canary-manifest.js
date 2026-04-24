@@ -16,6 +16,13 @@ function splitSymbols(value) {
     .filter(Boolean);
 }
 
+function splitServices(value) {
+  return String(value || "")
+    .split(/[|,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function normalizeSymbolList(value) {
   return splitSymbols(value).sort().join("|");
 }
@@ -42,6 +49,27 @@ function readServiceJson(env = process.env) {
     "--format=json",
   ], { encoding: "utf8" });
   return JSON.parse(raw);
+}
+
+function readServiceManifests(env = process.env) {
+  if (trimOrNull(env.DONBEOLJA_V2_RUNTIME_SERVICE_JSON_MAP)) {
+    const parsed = JSON.parse(env.DONBEOLJA_V2_RUNTIME_SERVICE_JSON_MAP);
+    return Object.freeze(Object.entries(parsed || {}).map(([serviceName, serviceJson]) => Object.freeze({
+      service_name: serviceName,
+      service_json: serviceJson,
+    })));
+  }
+  if (trimOrNull(env.DONBEOLJA_V2_RUNTIME_SERVICE_JSON) || trimOrNull(env.DONBEOLJA_V2_RUNTIME_SERVICE_JSON_FILE)) {
+    return Object.freeze([Object.freeze({
+      service_name: trimOrNull(env.DONBEOLJA_V2_RUNTIME_SERVICE) || "donbeolja",
+      service_json: readServiceJson(env),
+    })]);
+  }
+  const services = splitServices(env.DONBEOLJA_V2_RUNTIME_SERVICES || "donbeolja,donbeolja-exit-worker");
+  return Object.freeze(services.map((service) => {
+    const serviceEnv = Object.assign({}, env, { DONBEOLJA_V2_RUNTIME_SERVICE: service });
+    return Object.freeze({ service_name: service, service_json: readServiceJson(serviceEnv) });
+  }));
 }
 
 function extractEnvMap(serviceJson) {
@@ -193,18 +221,52 @@ function compareImageAndLabels(serviceJson, env = process.env) {
   return Object.freeze({ blockers: Object.freeze(blockers), mismatches: Object.freeze(mismatches), image, labels });
 }
 
+function prefixServiceBlocker(serviceName, blocker, serviceCount) {
+  if (serviceCount <= 1) return blocker;
+  const suffix = String(blocker || "").replace(/^RUNTIME_DISCOVERY_CANARY:/, "");
+  return `RUNTIME_DISCOVERY_CANARY:${serviceName}:${suffix}`;
+}
+
+function prefixServiceMismatches(serviceName, mismatches, serviceCount) {
+  if (serviceCount <= 1) return Object.freeze({ ...mismatches });
+  const rows = {};
+  Object.entries(mismatches || {}).forEach(([key, value]) => {
+    rows[`${serviceName}:${key}`] = value;
+  });
+  return Object.freeze(rows);
+}
+
+function evaluateServiceManifest(serviceName, serviceJson, expectedEnv, env, serviceCount) {
+  const actualEnv = extractEnvMap(serviceJson);
+  const envComparison = compareExpectedEnv(actualEnv, expectedEnv);
+  const imageComparison = compareImageAndLabels(serviceJson, env);
+  const blockers = Object.freeze([...envComparison.blockers, ...imageComparison.blockers]
+    .map((blocker) => prefixServiceBlocker(serviceName, blocker, serviceCount)));
+  const mismatches = Object.freeze({
+    ...prefixServiceMismatches(serviceName, envComparison.mismatches, serviceCount),
+    ...prefixServiceMismatches(serviceName, imageComparison.mismatches, serviceCount),
+  });
+  return Object.freeze({
+    service_name: serviceName,
+    ok: blockers.length === 0,
+    blockers,
+    mismatches,
+    actual_env: actualEnv,
+    image: imageComparison.image,
+    labels: imageComparison.labels,
+  });
+}
+
 function runCheck(env = process.env) {
   try {
-    const serviceJson = readServiceJson(env);
-    const actualEnv = extractEnvMap(serviceJson);
+    const serviceManifests = readServiceManifests(env);
     const expectedEnv = buildExpectedEnv(env);
-    const envComparison = compareExpectedEnv(actualEnv, expectedEnv);
-    const imageComparison = compareImageAndLabels(serviceJson, env);
-    const blockers = Object.freeze([...envComparison.blockers, ...imageComparison.blockers]);
-    const mismatches = Object.freeze({
-      ...envComparison.mismatches,
-      ...imageComparison.mismatches,
-    });
+    const serviceResults = serviceManifests.map((item) =>
+      evaluateServiceManifest(item.service_name, item.service_json, expectedEnv, env, serviceManifests.length)
+    );
+    const blockers = Object.freeze(serviceResults.flatMap((row) => row.blockers));
+    const mismatches = Object.freeze(serviceResults.reduce((acc, row) => Object.assign(acc, row.mismatches), {}));
+    const primary = serviceResults[0] || {};
     return Object.freeze({
       ok: blockers.length === 0,
       reason: blockers.length === 0
@@ -213,9 +275,10 @@ function runCheck(env = process.env) {
       blockers,
       mismatches,
       expected_env: expectedEnv,
-      actual_env: actualEnv,
-      image: imageComparison.image,
-      labels: imageComparison.labels,
+      actual_env: primary.actual_env || {},
+      image: primary.image || "",
+      labels: primary.labels || {},
+      service_results: Object.freeze(serviceResults),
     });
   } catch (error) {
     return Object.freeze({
@@ -245,10 +308,12 @@ if (require.main === module) {
     __test: {
       trimOrNull,
       splitSymbols,
+      splitServices,
       normalizeSymbolList,
       extractEnvMap,
       extractImage,
       extractLabels,
+      readServiceManifests,
     },
   };
 }

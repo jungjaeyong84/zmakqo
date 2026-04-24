@@ -98,4 +98,19 @@ function serviceJson({
   assert.strictEqual(result.ok, true);
 }
 
+{
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON_MAP: JSON.stringify({
+      donbeolja: serviceJson(),
+      "donbeolja-exit-worker": serviceJson({ symbols: "" }),
+    }),
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, false);
+  assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:donbeolja-exit-worker:SYMBOLS_MISMATCH"));
+  assert.strictEqual(result.mismatches["donbeolja-exit-worker:DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS"].actual, null);
+}
+
 console.log("check-v2-runtime-discovery-canary-manifest.test.js: OK");

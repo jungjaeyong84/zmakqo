@@ -112,6 +112,9 @@ const handlers = {
     fetchFuturesAlgoOrder: (payload) => binance.fetchFuturesAlgoOrder(payload || {}),
     fetchFuturesUserTrades: (payload) => binance.fetchFuturesUserTrades(payload || {}),
     fetchFuturesIncomeHistory: (payload) => binance.fetchFuturesIncomeHistory(payload || {}),
+    createFuturesListenKey: (payload) => binance.createFuturesListenKey(payload || {}),
+    keepaliveFuturesListenKey: (payload) => binance.keepaliveFuturesListenKey(payload || {}),
+    deleteFuturesListenKey: (payload) => binance.deleteFuturesListenKey(payload || {}),
     fetchBinanceWalletDeposits: (payload) => binance.fetchBinanceWalletDeposits(payload || {}),
     fetchBinanceWalletWithdrawals: (payload) => binance.fetchBinanceWalletWithdrawals(payload || {}),
     fetchBinanceWalletTransfers: (payload) => binance.fetchBinanceWalletTransfers(payload || {}),
@@ -184,3 +187,4 @@ router.post("/egress/:provider", ensureEgressAuth, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.__test = { handlers };
