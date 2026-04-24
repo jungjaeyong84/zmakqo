@@ -24,6 +24,12 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function boundedPositiveInt(value, fallback, { min = 100, max = 5000 } = {}) {
+  const n = Math.trunc(Number(value));
+  const base = Number.isFinite(n) && n > 0 ? n : fallback;
+  return Math.max(min, Math.min(max, Math.trunc(Number(base) || fallback || min)));
+}
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -131,7 +137,10 @@ function buildPeriods(nowMs = Date.now()) {
 async function listRecentFills({ exchange = null, fromMs = null, limit = 20000 } = {}) {
   const db = getFirestore();
   const ex = upper(exchange);
-  const resolvedLimit = Math.max(100, Math.trunc(Number(limit) || 20000));
+  const resolvedLimit = boundedPositiveInt(limit, 2000, {
+    min: 100,
+    max: boundedPositiveInt(process.env.OPENCLAW_POLICY_TUNING_MAX_FILLS, 5000, { min: 500, max: 20000 }),
+  });
   const snap = await db.collection("fills_paper")
     .orderBy("created_at", "desc")
     .limit(resolvedLimit)
@@ -149,7 +158,10 @@ async function listRecentFills({ exchange = null, fromMs = null, limit = 20000 }
 async function listRecentOpenClawShadowEvaluations({ exchange = null, fromMs = null, limit = 5000 } = {}) {
   const db = getFirestore();
   const ex = upper(exchange);
-  const resolvedLimit = Math.max(100, Math.trunc(Number(limit) || 5000));
+  const resolvedLimit = boundedPositiveInt(limit, 1000, {
+    min: 100,
+    max: boundedPositiveInt(process.env.OPENCLAW_POLICY_TUNING_MAX_SHADOW, 3000, { min: 500, max: 10000 }),
+  });
   const snap = await db.collection("shadow_evaluations")
     .orderBy("created_at", "desc")
     .limit(resolvedLimit)
@@ -459,17 +471,21 @@ function renderMarkdown(payload = {}) {
 
 async function runOpenClawPolicyTuningReport({
   exchange = null,
-  limitDecisions = 10000,
-  limitFills = 20000,
-  limitShadow = 10000,
+  limitDecisions = process.env.OPENCLAW_POLICY_TUNING_LIMIT_DECISIONS || 2000,
+  limitFills = process.env.OPENCLAW_POLICY_TUNING_LIMIT_FILLS || 2000,
+  limitShadow = process.env.OPENCLAW_POLICY_TUNING_LIMIT_SHADOW || 1000,
   force = false,
 } = {}) {
   const nowMeta = nowKstMeta();
   const exchangeUpper = upper(exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER || "BINANCEFUT") || "BINANCEFUT";
   const periods = buildPeriods(nowMeta.nowMs);
   const earliestFromMs = Math.min(...Object.values(periods).map((row) => Number(row.from_ms || nowMeta.nowMs)));
+  const resolvedLimitDecisions = boundedPositiveInt(limitDecisions, 2000, {
+    min: 100,
+    max: boundedPositiveInt(process.env.OPENCLAW_POLICY_TUNING_MAX_DECISIONS, 5000, { min: 500, max: 20000 }),
+  });
   const [decisionRows, fillRows, shadowRows] = await Promise.all([
-    listRecentOpenClawPolicyDecisions({ exchange: exchangeUpper, fromMs: earliestFromMs, limit: limitDecisions }),
+    listRecentOpenClawPolicyDecisions({ exchange: exchangeUpper, fromMs: earliestFromMs, limit: resolvedLimitDecisions }),
     listRecentFills({ exchange: exchangeUpper, fromMs: earliestFromMs, limit: limitFills }),
     listRecentOpenClawShadowEvaluations({ exchange: exchangeUpper, fromMs: earliestFromMs, limit: limitShadow }),
   ]);
@@ -518,6 +534,7 @@ async function runOpenClawPolicyTuningReport({
 module.exports = {
   runOpenClawPolicyTuningReport,
   __test: {
+    boundedPositiveInt,
     buildPeriods,
     summarizeDecisionRows,
     summarizeFillRows,

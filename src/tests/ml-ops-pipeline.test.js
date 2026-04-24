@@ -84,6 +84,8 @@ function run() {
   assert.ok(binding.provider_mode);
   assert.ok(binding.claude_model);
   assert.ok(binding.openai_model);
+  assert.strictEqual(__test.resolveBoundedInt(999999, 500, { min: 20, max: 1000 }), 1000);
+  assert.strictEqual(__test.resolveBoundedInt(0, 500, { min: 20, max: 1000 }), 500);
 
   console.log("ML_OPS_PIPELINE_TEST_OK");
 }

@@ -85,6 +85,12 @@ function boolSetting(raw, fallback = true) {
   return !["0", "false", "off", "no"].includes(text);
 }
 
+function resolveBoundedInt(value, fallback, { min = 1, max = 1000 } = {}) {
+  const n = Math.trunc(Number(value));
+  const base = Number.isFinite(n) && n > 0 ? n : fallback;
+  return Math.max(min, Math.min(max, Math.trunc(Number(base) || fallback || min)));
+}
+
 function buildServingBindingSnapshot({ aiGuard = null } = {}) {
   const guard = aiGuard && typeof aiGuard === "object" ? aiGuard : {};
   return {
@@ -190,7 +196,14 @@ async function runFeatureLabelDatasetJob({
   const exchangeUpper = upper(exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER) || "BINANCEFUT";
   const marketList = parseMarkets(markets, exchangeUpper);
   const tfValue = String(tf || defaultExecTfFromEnv() || "15m").trim() || "15m";
-  const limitValue = Math.max(100, Number(limitN || process.env.FEATURE_LABEL_DATASET_LIMIT_N || 2000));
+  const featureMaxLimit = resolveBoundedInt(process.env.FEATURE_LABEL_DATASET_MAX_LIMIT_N, 1000, {
+    min: 100,
+    max: 5000,
+  });
+  const limitValue = resolveBoundedInt(limitN || process.env.FEATURE_LABEL_DATASET_LIMIT_N, 500, {
+    min: 20,
+    max: featureMaxLimit,
+  });
   const windowDaysValue = Math.max(1, Number(windowDays || process.env.FEATURE_LABEL_DATASET_WINDOW_DAYS || 14));
   const minIntervalMs = Math.max(5 * 60 * 1000, Number(process.env.FEATURE_LABEL_DATASET_MIN_INTERVAL_MS || (6 * 60 * 60 * 1000)));
   const latestJson = path.join(OPS_DAILY_DIR, "feature_label_dataset_latest.json");
@@ -260,12 +273,16 @@ async function runFeatureLabelDatasetJob({
 async function fetchRecentShadowEvaluations({
   exchange = null,
   fromMs = null,
-  limit = Math.max(100, Number(process.env.SHADOW_EVAL_SUMMARY_LIMIT || 2000)),
+  limit = null,
 } = {}) {
   const db = getFirestore();
+  const limitValue = resolveBoundedInt(limit || process.env.SHADOW_EVAL_SUMMARY_LIMIT, 500, {
+    min: 20,
+    max: resolveBoundedInt(process.env.SHADOW_EVAL_SUMMARY_MAX_LIMIT, 1000, { min: 100, max: 5000 }),
+  });
   const snap = await db.collection("shadow_evaluations")
     .orderBy("created_at", "desc")
-    .limit(Math.max(1, Math.trunc(Number(limit) || 2000)))
+    .limit(limitValue)
     .get();
   const ex = upper(exchange);
   return snap.docs
@@ -489,7 +506,10 @@ async function runShadowEvaluationSummaryJob({
   const nowMeta = nowKstMeta();
   const exchangeUpper = upper(exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER || null);
   const windowHoursValue = Math.max(1, Number(windowHours || process.env.SHADOW_EVAL_SUMMARY_WINDOW_HOURS || 24));
-  const limitValue = Math.max(100, Number(limit || process.env.SHADOW_EVAL_SUMMARY_LIMIT || 2000));
+  const limitValue = resolveBoundedInt(limit || process.env.SHADOW_EVAL_SUMMARY_LIMIT, 500, {
+    min: 20,
+    max: resolveBoundedInt(process.env.SHADOW_EVAL_SUMMARY_MAX_LIMIT, 1000, { min: 100, max: 5000 }),
+  });
   const minIntervalMs = Math.max(5 * 60 * 1000, Number(process.env.SHADOW_EVAL_SUMMARY_MIN_INTERVAL_MS || (60 * 60 * 1000)));
   const latestJson = path.join(OPS_DAILY_DIR, "shadow_evaluation_summary_latest.json");
   const latestMd = path.join(OPS_DAILY_DIR, "shadow_evaluation_summary_latest.md");
@@ -551,7 +571,10 @@ async function runShadowInferenceCanaryJob({
   const nowMeta = nowKstMeta();
   const exchangeUpper = upper(exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER || null);
   const windowHoursValue = Math.max(1, Number(windowHours || process.env.SHADOW_INFERENCE_CANARY_WINDOW_HOURS || 24));
-  const limitValue = Math.max(100, Number(limit || process.env.SHADOW_INFERENCE_CANARY_LIMIT || 2000));
+  const limitValue = resolveBoundedInt(limit || process.env.SHADOW_INFERENCE_CANARY_LIMIT, 500, {
+    min: 20,
+    max: resolveBoundedInt(process.env.SHADOW_INFERENCE_CANARY_MAX_LIMIT, 1000, { min: 100, max: 5000 }),
+  });
   const minIntervalMs = Math.max(5 * 60 * 1000, Number(process.env.SHADOW_INFERENCE_CANARY_MIN_INTERVAL_MS || (60 * 60 * 1000)));
   const latestJson = path.join(OPS_DAILY_DIR, "shadow_inference_canary_latest.json");
   const latestMd = path.join(OPS_DAILY_DIR, "shadow_inference_canary_latest.md");
@@ -778,5 +801,6 @@ module.exports = {
     renderMlServingStateMarkdown,
     buildServingBindingSnapshot,
     buildShadowPromotionAction,
+    resolveBoundedInt,
   },
 };

@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const { __test: timelineTest } = require("../storage/unifiedEventTimeline");
+const { fetchUnifiedEventTimeline, __test: timelineTest } = require("../storage/unifiedEventTimeline");
 const { __test: replayTest } = require("../services/decisionReplayV2");
 const { __test: positionsTest } = require("../storage/positionsPaper");
 const { __test: mlOpsTest } = require("../services/mlOpsPipeline");
@@ -75,9 +75,109 @@ function testSummarizeShadowInferenceCanary() {
   assert.strictEqual(summary.by_symbol[0].key, "XRPUSDT");
 }
 
-testBuildUnifiedEventIdStableShape();
-testNormalizeUnifiedTimelineRow();
-testPositionWriteTokenHelpers();
-testSummarizeShadowInferenceCanary();
+async function testFetchUnifiedEventTimelineFallbackIsBounded() {
+  const calls = {
+    collectionGet: 0,
+    fallbackLimit: null,
+    primaryGet: 0,
+    fallbackGet: 0,
+  };
+  function makeQuery(state = {}) {
+    return {
+      where() {
+        return makeQuery({ ...state, primary: true });
+      },
+      orderBy(_field, dir) {
+        return makeQuery({ ...state, dir });
+      },
+      limit(n) {
+        if (state.primary !== true) calls.fallbackLimit = n;
+        return makeQuery({ ...state, limit: n });
+      },
+      async get() {
+        if (state.primary === true) {
+          calls.primaryGet += 1;
+          throw new Error("MISSING_INDEX");
+        }
+        calls.fallbackGet += 1;
+        return {
+          docs: [
+            { data: () => ({ exchange: "BINANCEFUT", symbol: "SOLUSDT", ts_ms: 3 }) },
+            { data: () => ({ exchange: "BINANCEFUT", symbol: "XRPUSDT", ts_ms: 2 }) },
+            { data: () => ({ exchange: "BINANCEFUT", symbol: "SOLUSDT", ts_ms: 1 }) },
+          ],
+        };
+      },
+    };
+  }
+  const db = {
+    collection() {
+      return {
+        ...makeQuery(),
+        async get() {
+          calls.collectionGet += 1;
+          throw new Error("UNBOUNDED_COLLECTION_GET_FORBIDDEN");
+        },
+      };
+    },
+  };
+  const rows = await fetchUnifiedEventTimeline({
+    db,
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    limit: 10000,
+  });
+  assert.strictEqual(calls.primaryGet, 1);
+  assert.strictEqual(calls.fallbackGet, 1);
+  assert.strictEqual(calls.collectionGet, 0);
+  assert.ok(calls.fallbackLimit > 0);
+  assert.ok(calls.fallbackLimit <= timelineTest.resolveTimelineFallbackScanLimit(timelineTest.resolveTimelineFetchLimit(10000)));
+  assert.deepStrictEqual(rows.map((row) => row.ts_ms), [1, 3]);
+}
 
-console.log("UNIFIED_EVENT_TIMELINE_TEST_OK");
+async function testFetchUnifiedEventTimelinePrimaryEmptyDoesNotFallback() {
+  const calls = { fallbackGet: 0 };
+  function makeQuery(state = {}) {
+    return {
+      where() {
+        return makeQuery({ ...state, primary: true });
+      },
+      orderBy() {
+        return makeQuery(state);
+      },
+      limit() {
+        return makeQuery(state);
+      },
+      async get() {
+        if (state.primary === true) return { docs: [] };
+        calls.fallbackGet += 1;
+        return { docs: [{ data: () => ({ exchange: "BINANCEFUT", symbol: "SOLUSDT", ts_ms: 1 }) }] };
+      },
+    };
+  }
+  const db = { collection: () => makeQuery() };
+  const rows = await fetchUnifiedEventTimeline({
+    db,
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    limit: 20,
+  });
+  assert.deepStrictEqual(rows, []);
+  assert.strictEqual(calls.fallbackGet, 0);
+}
+
+async function run() {
+  testBuildUnifiedEventIdStableShape();
+  testNormalizeUnifiedTimelineRow();
+  testPositionWriteTokenHelpers();
+  testSummarizeShadowInferenceCanary();
+  await testFetchUnifiedEventTimelineFallbackIsBounded();
+  await testFetchUnifiedEventTimelinePrimaryEmptyDoesNotFallback();
+}
+
+run().then(() => {
+  console.log("UNIFIED_EVENT_TIMELINE_TEST_OK");
+}).catch((err) => {
+  console.error("UNIFIED_EVENT_TIMELINE_TEST_FAIL", err && err.stack ? err.stack : err);
+  process.exit(1);
+});

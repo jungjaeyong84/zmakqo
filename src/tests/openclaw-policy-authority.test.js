@@ -200,6 +200,8 @@ function run() {
   assert.ok(markdown.includes("월간"));
   assert.ok(markdown.includes("연간"));
   assert.ok(markdown.includes("REVIEW_TOP_COST_SYMBOL"));
+  assert.strictEqual(tuningTest.boundedPositiveInt(999999, 2000, { min: 100, max: 5000 }), 5000);
+  assert.strictEqual(tuningTest.boundedPositiveInt(0, 2000, { min: 100, max: 5000 }), 2000);
 
   console.log("OPENCLAW_POLICY_AUTHORITY_TEST_OK");
 }
