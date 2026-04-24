@@ -98,6 +98,65 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
   });
 }
 
+async function passingPreflightDoesNotDeployWithoutExplicitArm() {
+  await withPatchedRunChecks({
+    entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
+    exit: async () => makeReport(true, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"),
+    repair: () => makeReport(true, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"),
+  }, async () => {
+    const perfFile = writePerfMetrics({
+      sample_n: 55,
+      win_rate_pct: 49,
+      profit_factor: 1.11,
+      expectancy: 0.01,
+      net_pnl_pct: 0.7,
+      mdd_pct: -4.5,
+      cost_ratio_pct: 0.12,
+      latest_error_count_24h: 0,
+    });
+    const result = await runner.main({
+      TAG: "v2-fixture",
+      COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+      V2_PERFORMANCE_GATE_INPUT_FILE: perfFile,
+    }, { softFail: true });
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_PREFLIGHT_PASS_DEPLOY_NOT_ARMED");
+    assert.strictEqual(result.deploy_intent.deploy_requested, false);
+    assert.strictEqual(result.deploy_intent.confirm_phrase_required, "DEPLOY_V2_DISCOVERY_CANARY");
+  });
+}
+
+async function deployFlagRequiresConfirmPhrase() {
+  await withPatchedRunChecks({
+    entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
+    exit: async () => makeReport(true, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"),
+    repair: () => makeReport(true, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"),
+  }, async () => {
+    const perfFile = writePerfMetrics({
+      sample_n: 55,
+      win_rate_pct: 49,
+      profit_factor: 1.11,
+      expectancy: 0.01,
+      net_pnl_pct: 0.7,
+      mdd_pct: -4.5,
+      cost_ratio_pct: 0.12,
+      latest_error_count_24h: 0,
+    });
+    const result = await runner.main({
+      TAG: "v2-fixture",
+      COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+      DONBEOLJA_V2_DISCOVERY_CANARY_DEPLOY: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_DEPLOY_CONFIRM: "WRONG",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+      V2_PERFORMANCE_GATE_INPUT_FILE: perfFile,
+    }, { softFail: true });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_DEPLOY_CONFIRM_REQUIRED");
+    assert(result.blockers.includes("DISCOVERY_CANARY_DEPLOY:CONFIRM_PHRASE_REQUIRED"));
+  });
+}
+
 async function passingPreflightCanBuildTwoSymbolDiscoveryCommand() {
   await withPatchedRunChecks({
     entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
@@ -177,6 +236,8 @@ async function activePositionEvidenceDoesNotMaskRealExitDefects() {
 async function run() {
   await blockedPreflightReturnsStructuredFailure();
   await passingPreflightBuildsDiscoveryDeployCommand();
+  await passingPreflightDoesNotDeployWithoutExplicitArm();
+  await deployFlagRequiresConfirmPhrase();
   await passingPreflightCanBuildTwoSymbolDiscoveryCommand();
   await activePositionEvidencePendingAllowsDiscoveryBootstrapOnly();
   await activePositionEvidenceDoesNotMaskRealExitDefects();

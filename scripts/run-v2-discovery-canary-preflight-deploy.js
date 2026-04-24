@@ -7,7 +7,10 @@ const { execFileSync } = require("child_process");
 const entryStreak = require("./check-v2-production-entry-route-canary-streak");
 const exitStreak = require("./check-v2-exit-runtime-canary-streak");
 const repairStreak = require("./check-v2-repair-queue-firestore-canary-streak");
+const runtimeManifest = require("./check-v2-runtime-discovery-canary-manifest");
 const { evaluateV2PerformanceStageMatrix } = require("../src/v2/performanceGate");
+
+const DEPLOY_CONFIRM_PHRASE = "DEPLOY_V2_DISCOVERY_CANARY";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -124,6 +127,31 @@ function buildSubstitutionArg(map) {
   return Object.entries(map).map(([key, value]) => `${key}=${value}`).join(",");
 }
 
+function resolveDeployIntent(env = process.env, options = {}) {
+  const deploy_requested = options.deploy === true || parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_DEPLOY, false);
+  const confirm = trimOrNull(options.confirm) || trimOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_DEPLOY_CONFIRM);
+  return Object.freeze({
+    deploy_requested,
+    deploy_confirmed: deploy_requested === true && confirm === DEPLOY_CONFIRM_PHRASE,
+    confirm_phrase_required: DEPLOY_CONFIRM_PHRASE,
+  });
+}
+
+function buildRuntimeManifestEnv(env = process.env, substitutions = {}) {
+  return Object.freeze({
+    ...env,
+    TAG: substitutions._TAG || env.TAG,
+    COMMIT_SHA: substitutions._COMMIT_SHA || env.COMMIT_SHA,
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS,
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_ENABLED: substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED,
+    DONBEOLJA_V2_EXPECTED_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED,
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE,
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_POSITION_COUNT: substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT,
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY,
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE,
+  });
+}
+
 function samePlainObject(left, right) {
   return JSON.stringify(left || null) === JSON.stringify(right || null);
 }
@@ -228,26 +256,7 @@ async function main(env = process.env, options = {}) {
   const args = buildDeployArgs(env);
   const commandPreview = ["gcloud", ...args].join(" ");
   const previous = readJsonIfExists(stateFile);
-
-  if (
-    parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_ALLOW_REPEAT_DEPLOY, false) !== true
-    && previous
-    && previous.ok === true
-    && previous.reason === "V2_DISCOVERY_CANARY_DEPLOY_TRIGGERED"
-    && samePlainObject(previous.substitutions, substitutions)
-  ) {
-    const payload = Object.freeze({
-      ok: true,
-      reason: "V2_DISCOVERY_CANARY_DEPLOY_ALREADY_TRIGGERED",
-      command_preview: commandPreview,
-      substitutions,
-      performance: preflight.performance,
-      state_file: stateFile,
-    });
-    writeJson(stateFile, payload);
-    console.log(JSON.stringify(payload));
-    return payload;
-  }
+  const deployIntent = resolveDeployIntent(env, options);
 
   if (skipDeploy) {
     const payload = Object.freeze({
@@ -265,15 +274,92 @@ async function main(env = process.env, options = {}) {
     return payload;
   }
 
+  if (!deployIntent.deploy_requested) {
+    const payload = Object.freeze({
+      ok: true,
+      reason: "V2_DISCOVERY_CANARY_PREFLIGHT_PASS_DEPLOY_NOT_ARMED",
+      command_preview: commandPreview,
+      substitutions,
+      performance: preflight.performance,
+      warnings: preflight.warnings,
+      active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
+      deploy_intent: deployIntent,
+      state_file: stateFile,
+    });
+    writeJson(stateFile, payload);
+    console.log(JSON.stringify(payload));
+    return payload;
+  }
+
+  if (!deployIntent.deploy_confirmed) {
+    const payload = Object.freeze({
+      ok: false,
+      reason: "V2_DISCOVERY_CANARY_DEPLOY_CONFIRM_REQUIRED",
+      blockers: Object.freeze(["DISCOVERY_CANARY_DEPLOY:CONFIRM_PHRASE_REQUIRED"]),
+      command_preview: commandPreview,
+      substitutions,
+      performance: preflight.performance,
+      deploy_intent: deployIntent,
+      state_file: stateFile,
+    });
+    writeJson(stateFile, payload);
+    console.error(JSON.stringify(payload));
+    if (!options.softFail) process.exitCode = 1;
+    return payload;
+  }
+
+  if (
+    parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_ALLOW_REPEAT_DEPLOY, false) !== true
+    && previous
+    && previous.ok === true
+    && previous.reason === "V2_DISCOVERY_CANARY_DEPLOY_TRIGGERED"
+    && samePlainObject(previous.substitutions, substitutions)
+  ) {
+    const payload = Object.freeze({
+      ok: true,
+      reason: "V2_DISCOVERY_CANARY_DEPLOY_ALREADY_TRIGGERED",
+      command_preview: commandPreview,
+      substitutions,
+      performance: preflight.performance,
+      deploy_intent: deployIntent,
+      state_file: stateFile,
+    });
+    writeJson(stateFile, payload);
+    console.log(JSON.stringify(payload));
+    return payload;
+  }
+
   execFileSync("gcloud", args, { cwd: process.cwd(), stdio: "inherit" });
+  const runtimeManifestCheck = runtimeManifest.runCheck(buildRuntimeManifestEnv(env, substitutions));
+  if (runtimeManifestCheck.ok !== true) {
+    const payload = Object.freeze({
+      ok: false,
+      reason: "V2_DISCOVERY_CANARY_DEPLOY_RUNTIME_MISMATCH",
+      blockers: runtimeManifestCheck.blockers || [],
+      command_preview: commandPreview,
+      substitutions,
+      runtime_manifest: runtimeManifestCheck,
+      performance: preflight.performance,
+      warnings: preflight.warnings,
+      active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
+      deploy_intent: deployIntent,
+      state_file: stateFile,
+    });
+    writeJson(stateFile, payload);
+    console.error(JSON.stringify(payload));
+    if (!options.softFail) process.exitCode = 1;
+    return payload;
+  }
   const payload = Object.freeze({
     ok: true,
     reason: "V2_DISCOVERY_CANARY_DEPLOY_TRIGGERED",
     command_preview: commandPreview,
     substitutions,
+    runtime_manifest: runtimeManifestCheck,
     performance: preflight.performance,
     warnings: preflight.warnings,
     active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
+    deploy_intent: deployIntent,
     state_file: stateFile,
   });
   writeJson(stateFile, payload);
@@ -305,9 +391,12 @@ if (require.main === module) {
       resolveTag,
       resolveCommitSha,
       resolveStateFile,
+      resolveDeployIntent,
+      buildRuntimeManifestEnv,
       readJsonIfExists,
       samePlainObject,
       buildSubstitutionArg,
+      DEPLOY_CONFIRM_PHRASE,
     },
   };
 }

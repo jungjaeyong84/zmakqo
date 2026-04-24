@@ -173,6 +173,34 @@ async function runV2ProductionEntryRoute({
     });
   }
 
+  const currentWorldState = asObject(worldState);
+  if (executionPermit && (!currentWorldState || !trimOrNull(currentWorldState.world_state_hash))) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_PERMIT_BLOCKED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation: Object.freeze({
+        ok: false,
+        reason: "OPENCLAW_EXECUTION_PERMIT_CURRENT_WORLD_STATE_REQUIRED",
+        check_n: 1,
+        fail_n: 1,
+        failed_check_ids: Object.freeze(["PERMIT_CURRENT_WORLD_STATE_REQUIRED"]),
+        checks: Object.freeze([
+          Object.freeze({
+            id: "PERMIT_CURRENT_WORLD_STATE_REQUIRED",
+            ok: false,
+            detail: Object.freeze({
+              world_state_hash: null,
+            }),
+          }),
+        ]),
+      }),
+      openclawExecutionAudit: preExecutionAudit,
+      decisionBundleReplayGuard: null,
+      auditLedgerResult: null,
+    });
+  }
+
   const executionPermitValidation = validateExecutionPermit({
     permit: executionPermit,
     bundle,

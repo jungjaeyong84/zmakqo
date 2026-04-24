@@ -122,9 +122,8 @@ function buildProtectionWriterLeaseConcurrencyKey(validated) {
   const row = validated && typeof validated === "object" ? validated : {};
   const lease = row.writerLease && typeof row.writerLease === "object" ? row.writerLease : null;
   const cycleId = trimOrNull(lease && lease.position_cycle_id);
-  const commandType = upper(lease && lease.command_type);
-  if (!cycleId || !commandType) throw new Error("PROTECTION_WRITER_LEASE_CONCURRENCY_KEY_INVALID");
-  return `${cycleId}:${commandType}`;
+  if (!cycleId) throw new Error("PROTECTION_WRITER_LEASE_CONCURRENCY_KEY_INVALID");
+  return cycleId;
 }
 
 function acquireProtectionWriterLeaseSlot({ registry, key }) {

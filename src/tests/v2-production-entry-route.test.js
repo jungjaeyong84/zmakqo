@@ -257,6 +257,32 @@ async function expiredExecutionPermitBlocksRetryBeforeKernel() {
   assert.deepStrictEqual(calls, []);
 }
 
+async function executionPermitWithoutCurrentWorldStateBlocksBeforeKernel() {
+  const calls = [];
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    executionPermit: permit.executionPermit,
+    findExistingBundleExecution: noReplayGuard(),
+    runEntryKernel: async () => {
+      calls.push("kernel");
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push("persist");
+      return { ok: true };
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_OPENCLAW_EXECUTION_PERMIT_BLOCKED");
+  assert.strictEqual(result.executionPermitValidation.reason, "OPENCLAW_EXECUTION_PERMIT_CURRENT_WORLD_STATE_REQUIRED");
+  assert.ok(result.executionPermitValidation.failed_check_ids.includes("PERMIT_CURRENT_WORLD_STATE_REQUIRED"));
+  assert.deepStrictEqual(calls, []);
+}
+
 async function repeatedDecisionBundleBlocksBeforeKernel() {
   const calls = [];
   const bundle = buildBundle();
@@ -375,6 +401,7 @@ async function main() {
   await liveDecisionIsBlockedWhenRuntimeIsCanaryOnly();
   await missingExecutionPermitBlocksBeforeKernel();
   await expiredExecutionPermitBlocksRetryBeforeKernel();
+  await executionPermitWithoutCurrentWorldStateBlocksBeforeKernel();
   await repeatedDecisionBundleBlocksBeforeKernel();
   await kernelBlockDoesNotBecomeRouteSuccess();
   await tamperedKernelExecutionLineageBlocksRouteSuccess();
