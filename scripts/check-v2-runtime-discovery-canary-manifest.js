@@ -65,7 +65,10 @@ function readServiceManifests(env = process.env) {
       service_json: readServiceJson(env),
     })]);
   }
-  const services = splitServices(env.DONBEOLJA_V2_RUNTIME_SERVICES || "donbeolja,donbeolja-exit-worker");
+  const services = splitServices(
+    env.DONBEOLJA_V2_RUNTIME_SERVICES
+      || "donbeolja,donbeolja-exit-worker,donbeolja-egress,donbeolja-egress-private",
+  );
   return Object.freeze(services.map((service) => {
     const serviceEnv = Object.assign({}, env, { DONBEOLJA_V2_RUNTIME_SERVICE: service });
     return Object.freeze({ service_name: service, service_json: readServiceJson(serviceEnv) });
@@ -236,9 +239,15 @@ function prefixServiceMismatches(serviceName, mismatches, serviceCount) {
   return Object.freeze(rows);
 }
 
-function evaluateServiceManifest(serviceName, serviceJson, expectedEnv, env, serviceCount) {
+function buildEnvServiceSet(env = process.env) {
+  return new Set(splitServices(env.DONBEOLJA_V2_RUNTIME_ENV_SERVICES || "donbeolja,donbeolja-exit-worker"));
+}
+
+function evaluateServiceManifest(serviceName, serviceJson, expectedEnv, env, serviceCount, envRequired = true) {
   const actualEnv = extractEnvMap(serviceJson);
-  const envComparison = compareExpectedEnv(actualEnv, expectedEnv);
+  const envComparison = envRequired
+    ? compareExpectedEnv(actualEnv, expectedEnv)
+    : Object.freeze({ blockers: Object.freeze([]), mismatches: Object.freeze({}) });
   const imageComparison = compareImageAndLabels(serviceJson, env);
   const blockers = Object.freeze([...envComparison.blockers, ...imageComparison.blockers]
     .map((blocker) => prefixServiceBlocker(serviceName, blocker, serviceCount)));
@@ -252,6 +261,7 @@ function evaluateServiceManifest(serviceName, serviceJson, expectedEnv, env, ser
     blockers,
     mismatches,
     actual_env: actualEnv,
+    env_contract_checked: envRequired === true,
     image: imageComparison.image,
     labels: imageComparison.labels,
   });
@@ -261,8 +271,16 @@ function runCheck(env = process.env) {
   try {
     const serviceManifests = readServiceManifests(env);
     const expectedEnv = buildExpectedEnv(env);
+    const envServiceSet = buildEnvServiceSet(env);
     const serviceResults = serviceManifests.map((item) =>
-      evaluateServiceManifest(item.service_name, item.service_json, expectedEnv, env, serviceManifests.length)
+      evaluateServiceManifest(
+        item.service_name,
+        item.service_json,
+        expectedEnv,
+        env,
+        serviceManifests.length,
+        envServiceSet.has(item.service_name),
+      )
     );
     const blockers = Object.freeze(serviceResults.flatMap((row) => row.blockers));
     const mismatches = Object.freeze(serviceResults.reduce((acc, row) => Object.assign(acc, row.mismatches), {}));
@@ -278,6 +296,7 @@ function runCheck(env = process.env) {
       actual_env: primary.actual_env || {},
       image: primary.image || "",
       labels: primary.labels || {},
+      env_contract_services: Object.freeze(Array.from(envServiceSet)),
       service_results: Object.freeze(serviceResults),
     });
   } catch (error) {
@@ -314,6 +333,7 @@ if (require.main === module) {
       extractImage,
       extractLabels,
       readServiceManifests,
+      buildEnvServiceSet,
     },
   };
 }

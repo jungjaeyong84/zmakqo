@@ -48,6 +48,35 @@ function serviceJson({
   });
 }
 
+function traceOnlyServiceJson({
+  image = "gcr.io/donbeolja-dev/donbeolja:v2-fixture",
+  commit = "0123456789abcdef0123456789abcdef01234567",
+} = {}) {
+  return Object.freeze({
+    metadata: Object.freeze({
+      labels: Object.freeze({
+        "image-tag": "v2-fixture",
+        "commit-sha": commit,
+      }),
+    }),
+    spec: Object.freeze({
+      template: Object.freeze({
+        spec: Object.freeze({
+          containers: Object.freeze([
+            Object.freeze({
+              image,
+              env: Object.freeze([
+                Object.freeze({ name: "RUNTIME_MODE", value: "production" }),
+                Object.freeze({ name: "EGRESS_PROXY_ONLY", value: "1" }),
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    }),
+  });
+}
+
 {
   const result = checker.runCheck({
     DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(serviceJson()),
@@ -111,6 +140,39 @@ function serviceJson({
   assert.strictEqual(result.ok, false);
   assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:donbeolja-exit-worker:SYMBOLS_MISMATCH"));
   assert.strictEqual(result.mismatches["donbeolja-exit-worker:DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS"].actual, null);
+}
+
+{
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON_MAP: JSON.stringify({
+      donbeolja: serviceJson(),
+      "donbeolja-exit-worker": serviceJson(),
+      "donbeolja-egress": traceOnlyServiceJson(),
+      "donbeolja-egress-private": traceOnlyServiceJson(),
+    }),
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.service_results.length, 4);
+  assert.strictEqual(result.service_results.find((row) => row.service_name === "donbeolja-egress").env_contract_checked, false);
+  assert.strictEqual(result.service_results.find((row) => row.service_name === "donbeolja").env_contract_checked, true);
+}
+
+{
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON_MAP: JSON.stringify({
+      donbeolja: serviceJson(),
+      "donbeolja-exit-worker": serviceJson(),
+      "donbeolja-egress": traceOnlyServiceJson({ image: "gcr.io/donbeolja-dev/donbeolja:v2-old" }),
+    }),
+    DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, false);
+  assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:donbeolja-egress:IMAGE_TAG_MISMATCH"));
 }
 
 console.log("check-v2-runtime-discovery-canary-manifest.test.js: OK");
