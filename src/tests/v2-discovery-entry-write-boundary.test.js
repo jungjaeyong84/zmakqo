@@ -21,6 +21,14 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   assert.ok(handoffIndex > guardIndex && handoffIndex < submitIndex, "handoff must run before legacy executeLiveFuturesOrder");
 })();
 
+(function liveFuturesSubmitRequiresAtomicPendingIntentClaim() {
+  const claimIndex = source.lastIndexOf("claimPendingIntentForExecution(it.intent_id", source.indexOf("liveResult = await executeLiveFuturesOrder({"));
+  const submitIndex = source.indexOf("liveResult = await executeLiveFuturesOrder({");
+  assert.ok(source.includes("claimPendingIntentForExecution"), "pending intent claim import/call is missing");
+  assert.ok(claimIndex > -1, "live futures submit must claim pending intent before exchange write");
+  assert.ok(claimIndex < submitIndex, "pending intent claim must run before executeLiveFuturesOrder");
+})();
+
 (function discoveryCanaryBridgeRequiresRiskGovernorContract() {
   assert.ok(
     source.includes("risk_governor_required: normalizeBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, true)"),
@@ -29,6 +37,18 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   assert.ok(
     source.includes("V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED"),
     "discovery bridge must block when risk governor is not required"
+  );
+})();
+
+(function postFillProtectionFailureMustRecoverNotClose() {
+  const entrySubmitterSource = fs.readFileSync(path.resolve(__dirname, "../v2/entrySubmitter.js"), "utf8");
+  assert.ok(
+    entrySubmitterSource.includes("recoverUnprotectedEntryProtection"),
+    "post-fill protection failure must retry protection recovery"
+  );
+  assert.ok(
+    !entrySubmitterSource.includes("emergencyCloseEntry"),
+    "entry submitter must not auto-close a filled discovery position instead of repairing protection"
   );
 })();
 

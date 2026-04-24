@@ -11,7 +11,15 @@ const {
 } = require("./signalEngine");
 const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 
-const { listPendingIntentsForExec, listPendingIntentsOverdue, cancelExpiredPendingIntents, markIntentStatus, upsertIntent, patchIntent } = require("../storage/orderIntentsPaper");
+const {
+  listPendingIntentsForExec,
+  listPendingIntentsOverdue,
+  claimPendingIntentForExecution,
+  cancelExpiredPendingIntents,
+  markIntentStatus,
+  upsertIntent,
+  patchIntent,
+} = require("../storage/orderIntentsPaper");
 const { upsertFill } = require("../storage/fillsPaper");
 const { upsertPosition, upsertPositionMetaOnly, getPosition } = require("../storage/positionsPaper");
 const { upsertExitOrderContract } = require("../storage/exitOrderContracts");
@@ -12407,14 +12415,17 @@ async function runPaperBinanceForBar({
   const attemptAt = new Date().toISOString();
   const executeIntentList = async (intentsList) => {
     for (const it of intentsList) {
-    const schedMs = Number(it.scheduled_exec_bar_close_time_utc_ms);
-    const isOverdue = Number.isFinite(schedMs) && Number.isFinite(execBarCloseMs) && schedMs < execBarCloseMs;
-    await patchIntent(it.intent_id, {
-      last_attempt_at: attemptAt,
-      last_attempt_bar_close_time_utc: execBarCloseUtc,
-      last_attempt_bar_close_time_utc_ms: execBarCloseMs,
-      ...(isOverdue ? { pending_reason: "LATE_EXEC", pending_note: `late_exec_from=${msToUtcZ(schedMs)}` } : {}),
-    });
+      const schedMs = Number(it.scheduled_exec_bar_close_time_utc_ms);
+      const isOverdue = Number.isFinite(schedMs) && Number.isFinite(execBarCloseMs) && schedMs < execBarCloseMs;
+      await patchIntent(it.intent_id, {
+        last_attempt_at: attemptAt,
+        last_attempt_bar_close_time_utc: execBarCloseUtc,
+        last_attempt_bar_close_time_utc_ms: execBarCloseMs,
+        ...(isOverdue ? {
+          pending_reason: "LATE_EXEC",
+          pending_note: `late_exec_from=${msToUtcZ(schedMs)}`,
+        } : {}),
+      });
 
     const intent = intentFromSignal({ event: it.event, side: it.side, features: it.features_json });
     it.features_json = buildSignalStageFeatures({ ...(it || {}), features: it.features_json }, intent);
@@ -12864,6 +12875,14 @@ async function runPaperBinanceForBar({
         });
         continue;
       }
+      const claim = await claimPendingIntentForExecution(it.intent_id, {
+        runId,
+        attemptAt,
+        execBarCloseUtc,
+        execBarCloseMs,
+      });
+      if (!claim || claim.ok !== true) continue;
+      Object.assign(it, claim.doc || {});
       const liveResult = await executeLiveOrder({
         liveCfg,
         symbol,
@@ -15004,14 +15023,17 @@ async function runPaperFuturesForBar({
 
   const executeIntentList = async (intentsList) => {
     for (const it of intentsList) {
-    const schedMs = Number(it.scheduled_exec_bar_close_time_utc_ms);
-    const isOverdue = Number.isFinite(schedMs) && Number.isFinite(execBarCloseMs) && schedMs < execBarCloseMs;
-    await patchIntent(it.intent_id, {
-      last_attempt_at: attemptAt,
-      last_attempt_bar_close_time_utc: execBarCloseUtc,
-      last_attempt_bar_close_time_utc_ms: execBarCloseMs,
-      ...(isOverdue ? { pending_reason: "LATE_EXEC", pending_note: `late_exec_from=${msToUtcZ(schedMs)}` } : {}),
-    });
+      const schedMs = Number(it.scheduled_exec_bar_close_time_utc_ms);
+      const isOverdue = Number.isFinite(schedMs) && Number.isFinite(execBarCloseMs) && schedMs < execBarCloseMs;
+      await patchIntent(it.intent_id, {
+        last_attempt_at: attemptAt,
+        last_attempt_bar_close_time_utc: execBarCloseUtc,
+        last_attempt_bar_close_time_utc_ms: execBarCloseMs,
+        ...(isOverdue ? {
+          pending_reason: "LATE_EXEC",
+          pending_note: `late_exec_from=${msToUtcZ(schedMs)}`,
+        } : {}),
+      });
 
     const intent = intentFromSignal({ event: it.event, side: it.side, features: it.features_json });
     if (!intent) {
@@ -15810,6 +15832,14 @@ async function runPaperFuturesForBar({
         continue;
       }
       let liveResult = null;
+      const claim = await claimPendingIntentForExecution(it.intent_id, {
+        runId,
+        attemptAt,
+        execBarCloseUtc,
+        execBarCloseMs,
+      });
+      if (!claim || claim.ok !== true) continue;
+      Object.assign(it, claim.doc || {});
       const trackLiveSubmit = shouldTrackLiveSubmitEvidence({
         intent,
         event: it.event,

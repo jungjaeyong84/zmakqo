@@ -117,6 +117,78 @@ function validateProtectionActivationResult(result) {
   });
 }
 
+function protectionAckStatus(result, leg) {
+  const row = result && typeof result === "object" ? result : {};
+  const ack = row[leg] && typeof row[leg] === "object" ? row[leg] : null;
+  return upper(ack && ack.status);
+}
+
+function shouldRetryFullProtectionPlacement(protectionResult) {
+  const slStatus = protectionAckStatus(protectionResult, "slAck");
+  const tp1Status = protectionAckStatus(protectionResult, "tp1Ack");
+  return slStatus !== "PLACED" && tp1Status !== "PLACED";
+}
+
+async function recoverUnprotectedEntryProtection({
+  db = null,
+  env = process.env,
+  executedEntry,
+  protectionTransports,
+  protectionEvidence,
+  protectionResult,
+  now = () => new Date().toISOString(),
+  placementRetryId = "R0",
+  runProtectionActivation = runV2EntryProtectionActivation,
+} = {}) {
+  if (typeof runProtectionActivation !== "function") throw new Error("RUN_PROTECTION_ACTIVATION_REQUIRED");
+  const retryId = `${trimOrNull(placementRetryId) || "R0"}_RECOVERY`;
+  if (!shouldRetryFullProtectionPlacement(protectionResult)) {
+    return Object.freeze({
+      ok: false,
+      attempted: false,
+      reason: "ENTRY_PROTECTION_RECOVERY_DEFERRED_TO_REPAIR_QUEUE",
+      placement_retry_id: retryId,
+      protectionEvidence: protectionEvidence || null,
+      protectionResult: protectionResult || null,
+      repairQueueCommit: protectionResult && protectionResult.repairQueueCommit ? protectionResult.repairQueueCommit : null,
+    });
+  }
+  try {
+    const retryResult = await runProtectionActivation({
+      db,
+      env,
+      executedEntry,
+      transports: protectionTransports,
+      now,
+      placementRetryId: retryId,
+    });
+    const retryEvidence = validateProtectionActivationResult(retryResult);
+    return Object.freeze({
+      ok: retryEvidence.ok === true,
+      attempted: true,
+      reason: retryEvidence.ok === true
+        ? "ENTRY_PROTECTION_RECOVERY_ACTIVE"
+        : "ENTRY_PROTECTION_RECOVERY_BLOCKED",
+      placement_retry_id: retryId,
+      protectionEvidence: retryEvidence,
+      protectionResult: retryResult,
+      initialProtectionEvidence: protectionEvidence || null,
+      initialProtectionResult: protectionResult || null,
+    });
+  } catch (error) {
+    return Object.freeze({
+      ok: false,
+      attempted: true,
+      reason: "ENTRY_PROTECTION_RECOVERY_THROWN",
+      placement_retry_id: retryId,
+      error_code: stableCode(error && error.message) || "ENTRY_PROTECTION_RECOVERY_THROWN",
+      error_message: trimOrNull(error && error.message) || String(error),
+      initialProtectionEvidence: protectionEvidence || null,
+      initialProtectionResult: protectionResult || null,
+    });
+  }
+}
+
 async function runV2EntrySubmitter({
   db = null,
   env = process.env,
@@ -176,7 +248,24 @@ async function runV2EntrySubmitter({
       error_message: trimOrNull(error && error.message) || String(error),
     });
   }
-  const protectionEvidence = validateProtectionActivationResult(protectionResult);
+  let protectionEvidence = validateProtectionActivationResult(protectionResult);
+  const recoveryResult = protectionEvidence.ok === true
+    ? null
+    : await recoverUnprotectedEntryProtection({
+      db,
+      env,
+      executedEntry,
+      protectionTransports: protectionBag,
+      protectionEvidence,
+      protectionResult,
+      now,
+      placementRetryId,
+      runProtectionActivation,
+    });
+  if (recoveryResult && recoveryResult.ok === true) {
+    protectionEvidence = recoveryResult.protectionEvidence;
+    protectionResult = recoveryResult.protectionResult;
+  }
 
   return Object.freeze({
     ok: protectionEvidence.ok === true,
@@ -187,6 +276,7 @@ async function runV2EntrySubmitter({
     executedEntry,
     protectionEvidence,
     protectionResult,
+    recoveryResult,
   });
 }
 
@@ -194,6 +284,7 @@ module.exports = {
   runV2EntrySubmitter,
   normalizeEntryFillReceipt,
   validateProtectionActivationResult,
+  recoverUnprotectedEntryProtection,
   __test: {
     trimOrNull,
     upper,
@@ -203,5 +294,8 @@ module.exports = {
     validateTransportFn,
     validateProtectionTransports,
     validateProtectionActivationResult,
+    protectionAckStatus,
+    shouldRetryFullProtectionPlacement,
+    recoverUnprotectedEntryProtection,
   },
 };

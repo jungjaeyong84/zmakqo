@@ -613,6 +613,79 @@ async function listPendingIntentsOverdue({ exchange, symbol, tf, execBarCloseMs,
   return out.slice(0, Number(limitN) || 50);
 }
 
+async function claimPendingIntentForExecution(intentIdValue, {
+  runId = null,
+  attemptAt = null,
+  execBarCloseUtc = null,
+  execBarCloseMs = null,
+  reason = "INTENT_EXECUTION_CLAIMED",
+} = {}) {
+  const intentIdText = String(intentIdValue || "").trim();
+  if (!intentIdText) return { ok: false, reason: "INTENT_ID_REQUIRED", doc: null };
+  const db = getFirestore();
+  const ref = db.collection("order_intents_paper").doc(intentIdText);
+  const claimedAt = attemptAt || nowIso();
+  const claimId = [
+    "CLAIM",
+    runId || "NO_RUN",
+    intentIdText,
+    claimedAt,
+  ].join("__").replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 180);
+  let result = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists ? (snap.data() || {}) : null;
+    if (!current) {
+      result = { ok: false, reason: "INTENT_NOT_FOUND", doc: null };
+      return;
+    }
+    const status = String(current.status || "PENDING").trim().toUpperCase();
+    if (status !== "PENDING") {
+      result = { ok: false, reason: "INTENT_NOT_PENDING", status, doc: current };
+      return;
+    }
+    const patch = {
+      status: "EXECUTING",
+      status_reason: reason,
+      decision_reason: reason,
+      execution_claim_id: claimId,
+      execution_claimed_at: claimedAt,
+      execution_claim_run_id: runId || current.run_id || null,
+      last_attempt_at: claimedAt,
+      last_attempt_bar_close_time_utc: execBarCloseUtc || null,
+      last_attempt_bar_close_time_utc_ms: Number.isFinite(Number(execBarCloseMs)) ? Number(execBarCloseMs) : null,
+      updated_at: claimedAt,
+    };
+    const nextDoc = { ...current, ...patch };
+    const unifiedDoc = buildIntentSnapshotUnifiedEventDoc(nextDoc, "INTENT_EXECUTION_CLAIM");
+    const intentEventDoc = orderIntentEventsTest.buildOrderIntentEventDoc({
+      intentId: intentIdText,
+      mutationType: "EXECUTION_CLAIM",
+      exchange: nextDoc.exchange,
+      symbol: nextDoc.symbol_or_pair_id || nextDoc.symbol || null,
+      traceId: nextDoc.trace_id || null,
+      requestId: nextDoc.request_id || null,
+      runId: nextDoc.run_id || runId || null,
+      createdAt: nextDoc.updated_at || nextDoc.created_at || null,
+      before: current,
+      after: nextDoc,
+      extra: {
+        status_from: status,
+        status_to: "EXECUTING",
+        claim_id: claimId,
+      },
+      deterministicKey: `${intentIdText}|EXECUTION_CLAIM|${claimedAt}`,
+    });
+    const intentEventUnifiedDoc = orderIntentEventsTest.buildOrderIntentEventUnifiedDoc(intentEventDoc);
+    tx.set(ref, patch, { merge: true });
+    if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
+    tx.set(db.collection("order_intent_events").doc(intentEventDoc.intent_event_id), intentEventDoc, { merge: false });
+    tx.set(db.collection("unified_event_timeline").doc(intentEventUnifiedDoc.unified_event_id), intentEventUnifiedDoc, { merge: false });
+    result = { ok: true, reason, claim_id: claimId, doc: nextDoc };
+  });
+  return result || { ok: false, reason: "INTENT_CLAIM_UNKNOWN", doc: null };
+}
+
 async function cancelExpiredPendingIntents({ exchange, symbol, tf, lookbackLimit = 600 } = {}) {
   const db = getFirestore();
   const nowMs = Date.now();
@@ -913,6 +986,7 @@ module.exports = {
   upsertIntent,
   listPendingIntentsForExec,
   listPendingIntentsOverdue,
+  claimPendingIntentForExecution,
   cancelExpiredPendingIntents,
   markIntentStatus,
   patchIntent,
