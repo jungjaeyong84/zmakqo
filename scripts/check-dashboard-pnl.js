@@ -107,7 +107,9 @@ async function loadCloseByMarket(db, exchange) {
 }
 
 async function loadPositionsByMarket(db, exchange) {
-  const snap = await db.collection("positions_paper").get();
+  const snap = await db.collection("positions_paper")
+    .limit(1000)
+    .get();
   const posByMarket = {};
   snap.forEach((d) => {
     const x = d.data() || {};

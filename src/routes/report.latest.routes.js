@@ -109,7 +109,9 @@ async function computeOverallSnapshotNow(db, { exchange }) {
     closeByMarket[m] = close;
   });
 
-  const kpiSnap = await db.collection("kpi_latest").get();
+  const kpiSnap = await db.collection("kpi_latest")
+    .limit(500)
+    .get();
   const kpiLatestByMarket = buildKpiLatestByMarket({ snap: kpiSnap, exchange, execTf });
   const markets = marketsExpected.map((market) => {
     const pos = posByMarket[market] || null;

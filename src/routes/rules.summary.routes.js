@@ -6,7 +6,9 @@ const { getFirestore } = require("../storage/firestore");
 router.get("/api/rules/summary", async (req, res) => {
   try {
     const db = getFirestore();
-    const snap = await db.collection("rule_candidates").get();
+    const snap = await db.collection("rule_candidates")
+      .limit(1000)
+      .get();
 
     let watch = 0, cand = 0, active = 0, other = 0;
     snap.forEach(d => {

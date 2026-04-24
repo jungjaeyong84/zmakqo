@@ -987,7 +987,9 @@ return res.json({ ok: true, found });
       const { getFirestore } = require("../storage/firestore");
       const db = getFirestore();
 
-      const snap = await db.collection("kpi_latest").get();
+      const snap = await db.collection("kpi_latest")
+        .limit(500)
+        .get();
 
       let found = 0;
       snap.forEach(d => {

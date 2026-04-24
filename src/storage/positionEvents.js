@@ -249,7 +249,10 @@ async function fetchPositionEvents({
     const rows = snap.docs.map((doc) => doc.data() || {});
     if (rows.length > 0) return rows;
   } catch (_) {}
-  const fallbackSnap = await db.collection("position_events").get();
+  const fallbackLimit = Math.min(2000, Math.max(resolvedLimit * 10, resolvedLimit));
+  const fallbackSnap = await db.collection("position_events")
+    .limit(fallbackLimit)
+    .get();
   return fallbackSnap.docs
     .map((doc) => doc.data() || {})
     .filter((row) => row.exchange === resolvedExchange && row.symbol === resolvedSymbol)

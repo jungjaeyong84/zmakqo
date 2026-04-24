@@ -112,7 +112,9 @@ router.get("/api/briefing/latest", async (req, res) => {
     const marketsExpected = await resolveRuntimeMarketsForExchange(exchange, 2000);
     const want = new Set(marketsExpected);
 
-    const snap = await db.collection("kpi_latest").get();
+    const snap = await db.collection("kpi_latest")
+      .limit(500)
+      .get();
     const rows = selectKpiLatestRows({ snap, exchange, execTf }).filter((row) => want.has(row.market));
     let maxComputedAt = null;
     for (const row of rows) {

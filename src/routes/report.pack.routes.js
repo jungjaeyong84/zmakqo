@@ -528,7 +528,9 @@ router.get("/api/report/pack", async (req, res) => {
     }
 
     // kpi_latest snapshot (raw)
-    const kpiLatestSnap = await db.collection("kpi_latest").get();
+    const kpiLatestSnap = await db.collection("kpi_latest")
+      .limit(500)
+      .get();
     const kpi_latest_snapshot = [];
     kpiLatestSnap.forEach((d) => {
       const x = d.data() || {};
