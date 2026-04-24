@@ -414,6 +414,49 @@ async function postFillProtectionFailureIsClassifiedCritical() {
   assert.strictEqual(result.post_fill_side_effect.protection_recovery_ok, false);
 }
 
+async function acceptedEntryOrderWithoutFilledReceiptIsClassifiedCritical() {
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(),
+    runEntryKernel: async () => ({
+      ok: false,
+      reason: "V2_ENTRY_EXECUTION_KERNEL_BLOCKED",
+      submitterResult: {
+        ok: false,
+        reason: "ENTRY_SUBMITTED_FILL_RECEIPT_INVALID",
+        fill: {
+          status: "NEW",
+          entry_order_id: "ORDER__ETH__ACK_ONLY",
+          submitted_order_id: "CLIENT__ETH__ACK_ONLY",
+        },
+        protectionEvidence: {
+          ok: false,
+          failed_check_ids: ["ENTRY_FILL_RECEIPT_VALID"],
+        },
+        protectionResult: null,
+        recoveryResult: null,
+      },
+      kernelAudit: {
+        ok: false,
+        failed_check_ids: ["ENTRY_KERNEL_FILL_FILLED"],
+      },
+    }),
+    persistExecutionAudit: async () => {
+      throw new Error("must not persist ack-only post-submit critical route");
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED");
+  assert.strictEqual(result.post_fill_side_effect.exchange_write_performed, true);
+  assert.strictEqual(result.post_fill_side_effect.unprotected_position_possible, true);
+  assert.strictEqual(result.post_fill_side_effect.entry_order_id, "ORDER__ETH__ACK_ONLY");
+}
+
 async function inconsistentKernelOkWithUnprotectedFillIsBlocked() {
   const bundle = buildBundle();
   const permit = buildPermitForBundle(bundle);
@@ -512,6 +555,7 @@ async function main() {
   await repeatedDecisionBundleBlocksBeforeKernel();
   await kernelBlockDoesNotBecomeRouteSuccess();
   await postFillProtectionFailureIsClassifiedCritical();
+  await acceptedEntryOrderWithoutFilledReceiptIsClassifiedCritical();
   await inconsistentKernelOkWithUnprotectedFillIsBlocked();
   await tamperedKernelExecutionLineageBlocksRouteSuccess();
   await auditLedgerFailureDoesNotLookSuccessful();

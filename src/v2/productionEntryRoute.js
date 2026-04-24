@@ -73,7 +73,11 @@ function summarizePostFillSideEffect(kernelResult) {
       || (fill && fill.submitted_order_id)
       || (executedEntry && executedEntry.entry_order_id),
   );
-  const exchangeWritePerformed = fillStatus === "FILLED" && !!entryOrderId;
+  const exchangeWritePerformed = !!entryOrderId && (
+    fillStatus === "FILLED"
+    || fillStatus === "NEW"
+    || fillStatus === "PARTIALLY_FILLED"
+  );
   const protectionOk = protectionEvidence && protectionEvidence.ok === true;
   const unprotectedPositionPossible = exchangeWritePerformed && protectionOk !== true;
   return Object.freeze({

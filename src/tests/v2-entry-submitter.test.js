@@ -123,6 +123,38 @@ async function submitterRunsProtectionOnlyAfterFilledEntryReceipt() {
   assert.strictEqual(result.executedEntry.protectionPlan.tp1_qty_abs, 0.4);
 }
 
+async function acceptedButUnfilledEntryReceiptReturnsStructuredPostSubmitFailure() {
+  const calls = [];
+  const result = await runV2EntrySubmitter({
+    entryIntent: buildEntryIntent(),
+    entryTransport: {
+      submitEntryOrder: async () => {
+        calls.push("entry-submit");
+        return {
+          status: "NEW",
+          symbol: "ETHUSDT",
+          side: "LONG",
+          entry_order_id: "ORDER__ETH__ACK_ONLY",
+          submitted_order_id: "CLIENT__ETH__ACK_ONLY",
+          exchange_order_id: "ORDER__ETH__ACK_ONLY",
+          error_code: "BINANCE_ENTRY_NEW",
+        };
+      },
+    },
+    protectionTransports: buildProtectionTransports(),
+    runProtectionActivation: async () => {
+      calls.push("protection");
+      return buildProtectionActivationFixture({});
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "ENTRY_SUBMITTED_FILL_RECEIPT_INVALID");
+  assert.strictEqual(result.fill.status, "NEW");
+  assert.strictEqual(result.fill.entry_order_id, "ORDER__ETH__ACK_ONLY");
+  assert.strictEqual(result.protectionResult, null);
+  assert.deepStrictEqual(calls, ["entry-submit"]);
+}
+
 async function fakeProtectionOkWithoutEvidenceIsBlockedAfterEntrySubmit() {
   const calls = [];
   const result = await runV2EntrySubmitter({
@@ -386,6 +418,7 @@ async function partialProtectionAckDefersToRepairQueueWithoutBlindRetry() {
 
 async function main() {
   await submitterRunsProtectionOnlyAfterFilledEntryReceipt();
+  await acceptedButUnfilledEntryReceiptReturnsStructuredPostSubmitFailure();
   await fakeProtectionOkWithoutEvidenceIsBlockedAfterEntrySubmit();
   await missingProtectionTransportBlocksBeforeEntrySubmit();
   await shadowIntentBlocksBeforeEntrySubmit();

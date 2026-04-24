@@ -214,7 +214,37 @@ async function runV2EntrySubmitter({
     db,
     submittedAt,
   });
-  const fill = normalizeEntryFillReceipt({ receipt, entryContract });
+  let fill = null;
+  try {
+    fill = normalizeEntryFillReceipt({ receipt, entryContract });
+  } catch (error) {
+    const receiptStatus = upper(receipt && (receipt.status || receipt.execution_status || receipt.orderStatus || receipt.order_status));
+    const receiptOrderId = trimOrNull(receipt && (receipt.entry_order_id || receipt.entryOrderId || receipt.order_id || receipt.orderId || receipt.exchange_order_id || receipt.exchangeOrderId));
+    if (receiptStatus === "FILLED" || !receiptOrderId) {
+      throw error;
+    }
+    return Object.freeze({
+      ok: false,
+      reason: "ENTRY_SUBMITTED_FILL_RECEIPT_INVALID",
+      submitted_at: submittedAt,
+      entryContract,
+      fill: receipt && typeof receipt === "object"
+        ? Object.freeze({
+          ...receipt,
+          receipt_validation_error_code: stableCode(error && error.message) || "ENTRY_FILL_RECEIPT_INVALID",
+          receipt_validation_error_message: trimOrNull(error && error.message) || String(error),
+        })
+        : null,
+      executedEntry: null,
+      protectionEvidence: Object.freeze({
+        ok: false,
+        reason: "ENTRY_PROTECTION_NOT_ATTEMPTED_AFTER_INVALID_FILL_RECEIPT",
+        failed_check_ids: Object.freeze(["ENTRY_FILL_RECEIPT_VALID"]),
+      }),
+      protectionResult: null,
+      recoveryResult: null,
+    });
+  }
   const executedEntry = buildV2ExecutedEntryFromIntent({
     entryIntent: {
       ...entryIntent,

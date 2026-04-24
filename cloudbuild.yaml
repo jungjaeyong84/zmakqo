@@ -92,6 +92,9 @@ substitutions:
   _ML_OPS_PIPELINE_OPENCLAW_MAX_FILLS: "500"
   _ML_OPS_PIPELINE_OPENCLAW_MAX_SHADOW: "300"
 
+options:
+  substitutionOption: ALLOW_LOOSE
+
 steps:
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: "bash"
