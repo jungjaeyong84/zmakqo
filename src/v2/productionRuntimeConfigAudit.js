@@ -246,7 +246,13 @@ function hasRetiredLegacyStrategySurface(envVars, { requireWebhookAllowlist = fa
     && engineVersion === "2.0.0";
 }
 
-function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) {
+function hasCodexOnlyRuntimeImageSurface(dockerfileSource = "") {
+  const source = String(dockerfileSource || "");
+  if (!source.trim()) return true;
+  return !/(@anthropic-ai\/claude-code|OPENCLAW_CLAUDE_|ANTHROPIC_API_KEY|OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI|claude --version)/i.test(source);
+}
+
+function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "", dockerfileSource = "" } = {}) {
   const substitutions = parseSubstitutionDefaults(cloudbuildSource);
   const mainEnv = extractDeploySetEnvVars(cloudbuildSource, "$_SERVICE");
   const mainLabels = extractDeployUpdateLabels(cloudbuildSource, "$_SERVICE");
@@ -305,6 +311,11 @@ function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) 
       "CLOUDBUILD_PROMOTION_RUNTIME_HAS_GCLOUD_AND_NODE",
       hasPromotionRuntimeGcloudAvailable(cloudbuildSource),
       "Cloud Build promotion runtime must run in a cloud-sdk image with node/npm available so scheduler traffic collector can execute"
+    ),
+    buildCheck(
+      "DOCKERFILE_CODEX_ONLY_RUNTIME_SURFACE",
+      hasCodexOnlyRuntimeImageSurface(dockerfileSource),
+      "runtime image must not install or default to alternate LLM providers"
     ),
     buildCheck(
       "CLOUDBUILD_MAIN_SERVICE_ENV_FOUND",
@@ -391,6 +402,7 @@ function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "" } = {}) 
 function auditWorkspaceV2ProductionRuntimeConfigContract({ rootDir = path.resolve(__dirname, "../..") } = {}) {
   return auditV2ProductionRuntimeConfigContract({
     cloudbuildSource: readTextSafe(path.join(rootDir, "cloudbuild.yaml")),
+    dockerfileSource: readTextSafe(path.join(rootDir, "Dockerfile")),
   });
 }
 
@@ -412,5 +424,6 @@ module.exports = {
     hasSchedulerTrafficStateForwardedToPromotionRuntime,
     hasV2CutoverEnvForwardedToPromotionRuntime,
     hasPromotionRuntimeGcloudAvailable,
+    hasCodexOnlyRuntimeImageSurface,
   },
 };

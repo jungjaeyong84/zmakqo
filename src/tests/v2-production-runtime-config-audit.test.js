@@ -109,6 +109,21 @@ const {
   assert.strictEqual(result.exit_service_env.SCHEDULER_AUTOSTART, "0");
   assert.strictEqual(result.exit_service_labels["commit-sha"], "$_COMMIT_SHA");
   assert.strictEqual(result.exit_service_labels["image-tag"], "$_TAG");
+  assert.strictEqual(
+    result.checks.find((row) => row.id === "DOCKERFILE_CODEX_ONLY_RUNTIME_SURFACE").ok,
+    true
+  );
+})();
+
+(function dockerfileMustNotInstallAlternateLlmProvider() {
+  assert.strictEqual(__test.hasCodexOnlyRuntimeImageSurface([
+    "RUN npm install -g @anthropic-ai/claude-code@latest",
+    "ENV OPENCLAW_CLAUDE_CLI_BIN=/usr/local/bin/claude",
+  ].join("\n")), false);
+  assert.strictEqual(__test.hasCodexOnlyRuntimeImageSurface([
+    "RUN apk add --no-cache git ca-certificates",
+    "ENV OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_CLI_ONLY",
+  ].join("\n")), true);
 })();
 
 (function missingCloudbuildMappingFailsClosedWithTraceableIds() {
