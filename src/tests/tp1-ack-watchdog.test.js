@@ -66,7 +66,7 @@ function run() {
       graceMs: 45000,
     },
   });
-  assert.strictEqual(payload.title, "[P0] ETHUSDT TP1 submit ACK timeout");
+  assert.strictEqual(payload.title, "[V2 긴급] ETHUSDT TP1 submit ACK timeout");
   assert.strictEqual(payload.severity, "ERROR");
   assert.ok(payload.body.includes("reason: TP1_ACK_TIMEOUT"));
   assert.ok(payload.body.includes("elapsed_ms: 61000"));

@@ -38,7 +38,7 @@ function run() {
       last_error: "signalId is not defined",
     },
   });
-  assert.strictEqual(payload.title, "[P0] ETHUSDT TP1 pending terminal failure");
+  assert.strictEqual(payload.title, "[V2 긴급] ETHUSDT TP1 pending terminal failure");
   assert.strictEqual(payload.severity, "ERROR");
   assert.ok(payload.body.includes("reason: TP1_PENDING_TERMINAL_LIVE_FAILURE"));
   assert.ok(payload.body.includes("status_reason: LIVE_EXCEPTION"));

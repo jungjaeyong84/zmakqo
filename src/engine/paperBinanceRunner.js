@@ -9425,7 +9425,7 @@ async function sendNativeProtectionWarningAlert({
   try {
     const channel = await resolveNativeProtectionAlertChannel(exchange);
     if (!channel) return { ok: false, skipped: true, reason: "NO_ALERT_CHANNEL" };
-    const title = `${String(symbol || "").toUpperCase() || "UNKNOWN"} native protection 경고`;
+    const title = `[V2 Native Protection] ${String(symbol || "").toUpperCase() || "UNKNOWN"} native protection 경고`;
     const lines = [
       `reason: ${String(reason || "UNKNOWN")}`,
       `attempts: ${Number.isFinite(Number(attempts)) ? Number(attempts) : 1}`,
@@ -9566,7 +9566,7 @@ function buildLiveExitExceptionIntegrityAlertPayload({
   ];
   if (error) lines.push(`error: ${String(error).slice(0, 240)}`);
   return {
-    title: `[P0] ${normalizedSymbol} live exit exception`,
+    title: `[V2 긴급] ${normalizedSymbol} live exit exception`,
     body: lines.join("\n"),
     severity: "ERROR",
   };

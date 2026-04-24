@@ -903,7 +903,7 @@ async function sendTickExitFailureAlert({
     if (Number.isFinite(Number(price))) lines.push(`price: ${Number(price)}`);
     return sendAlert({
       channel,
-      title: `${String(symbol || "BINANCEFUT").toUpperCase()} tick-exit 실패`,
+      title: `[V2 Exit Worker] ${String(symbol || "BINANCEFUT").toUpperCase()} tick-exit 실패`,
       body: lines.join("\n"),
       severity: "WARN",
     });
@@ -976,7 +976,7 @@ function buildTpP1PendingTerminalAlertPayload({
   if (Number.isFinite(Number(pendingUntilMs))) lines.push(`pending_until_utc: ${new Date(Number(pendingUntilMs)).toISOString()}`);
   if (intent.last_error) lines.push(`error: ${String(intent.last_error).slice(0, 240)}`);
   return {
-    title: `[P0] ${normalizedSymbol} TP1 pending terminal failure`,
+    title: `[V2 긴급] ${normalizedSymbol} TP1 pending terminal failure`,
     body: lines.join("\n"),
     severity: "ERROR",
   };
@@ -1076,7 +1076,7 @@ function buildTpP1AckTimeoutAlertPayload({
   if (intent.live_submit_error) lines.push(`submit_error: ${String(intent.live_submit_error).slice(0, 240)}`);
   if (intent.last_error) lines.push(`last_error: ${String(intent.last_error).slice(0, 240)}`);
   return {
-    title: `[P0] ${normalizedSymbol} TP1 submit ACK timeout`,
+    title: `[V2 긴급] ${normalizedSymbol} TP1 submit ACK timeout`,
     body: lines.join("\n"),
     severity: "ERROR",
   };
@@ -1792,7 +1792,7 @@ function buildTp1NativeProtectionGapAlertPayload({
     `issue_codes: ${issueCodes.length ? issueCodes.join(",") : "NONE"}`,
   ];
   return {
-    title: `[P0] ${normalizedSymbol} TP1 native protection gap`,
+    title: `[V2 긴급] ${normalizedSymbol} TP1 native protection gap`,
     body: lines.join("\n"),
     severity: "ERROR",
   };
@@ -1928,7 +1928,7 @@ function buildTp1MetaSyncGapAlertPayload({
     `issue_codes: ${issueCodes.length ? issueCodes.join(",") : "NONE"}`,
   ];
   return {
-    title: `[P0] ${normalizedSymbol} TP1 meta sync gap`,
+    title: `[V2 긴급] ${normalizedSymbol} TP1 meta sync gap`,
     body: lines.join("\n"),
     severity: "ERROR",
   };

@@ -39,6 +39,7 @@ const TELEGRAM_TOKEN_MAP = new Map([
   ["HOLD", "유지"],
   ["KEEP", "유지"],
   ["READY", "준비 완료"],
+  ["BLOCKED", "차단됨"],
   ["BLOCK", "차단"],
   ["APPLIED", "적용"],
   ["DRY", "참고용"],
@@ -134,8 +135,56 @@ function normalizeTelegramSeverity(severity) {
   return "알림";
 }
 
+function parseBool(value, fallback = false) {
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "y", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "n", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+function resolveV2TelegramRuntimeContext(env = process.env) {
+  const source = env && typeof env === "object" ? env : {};
+  if (!parseBool(source.DONBEOLJA_V2_ENABLED, false)) return null;
+  if (parseBool(source.DONBEOLJA_V2_TELEGRAM_CONTEXT_ENABLED, true) !== true) return null;
+
+  const discovery = parseBool(source.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, false);
+  const canaryOnly = parseBool(source.DONBEOLJA_V2_CANARY_ONLY, false);
+  const liveEndpoint = parseBool(source.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, false);
+  const dryRun = parseBool(source.DONBEOLJA_V2_DRY_RUN, false);
+  const mlLive = parseBool(source.ML_LIVE_SERVING_ARMED, false);
+  const agentApply = parseBool(source.OPENCLAW_AGENT_APPLY_ENABLED, false);
+  const blockLegacy = parseBool(source.DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, false);
+  const allowLegacy = parseBool(source.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, false);
+  const symbols = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || "").trim();
+  const maxNotional = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE || "").trim();
+
+  const mode = discovery
+    ? "DISCOVERY_CANARY"
+    : (canaryOnly ? "CANARY_ONLY" : "LIVE");
+  const risk = [
+    `dry_run=${dryRun ? "1" : "0"}`,
+    `live_endpoint=${liveEndpoint ? "1" : "0"}`,
+    `ml_live=${mlLive ? "1" : "0"}`,
+    `agent_apply=${agentApply ? "1" : "0"}`,
+    `legacy_webhook=${blockLegacy && !allowLegacy ? "BLOCKED" : "OPEN"}`,
+  ];
+  if (symbols) risk.push(`symbols=${symbols}`);
+  if (maxNotional) risk.push(`max_notional=${maxNotional}`);
+  return Object.freeze({
+    label: `V2 ${mode}`,
+    line: `runtime=V2 ${mode} | ${risk.join(" | ")}`,
+  });
+}
+
+function normalizeLegacyPriorityTokens(text) {
+  return String(text || "")
+    .replace(/\[P0\]/gi, "[V2 긴급]")
+    .replace(/\bP0\b/g, "V2_CRITICAL");
+}
+
 function normalizeTelegramLine(line) {
-  let out = String(line || "");
+  let out = normalizeLegacyPriorityTokens(line);
   for (const [from, to] of TELEGRAM_LABEL_MAP.entries()) {
     const re = new RegExp(`(^|\\s)${from.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}`, "i");
     out = out.replace(re, (m, lead = "") => `${lead}${to}`);
@@ -162,9 +211,17 @@ function normalizeTelegramBody(body) {
     .join("\n");
 }
 
-function buildTelegramText({ title, body, severity }) {
-  const normalizedTitle = normalizeTelegramTitle(title, severity);
+function buildTelegramText({ title, body, severity, env = process.env }) {
+  const context = resolveV2TelegramRuntimeContext(env);
+  const titleWithContext = context && !String(title || "").toUpperCase().includes("V2")
+    ? `[${context.label}] ${String(title || "").trim()}`
+    : title;
+  const normalizedTitle = normalizeTelegramTitle(titleWithContext, severity);
   const normalizedBody = normalizeTelegramBody(body);
+  const contextLine = context ? normalizeTelegramLine(context.line) : "";
+  if (contextLine) {
+    return `${normalizedTitle}\n${contextLine}${normalizedBody ? `\n${normalizedBody}` : ""}`.trim();
+  }
   return `${normalizedTitle}\n${normalizedBody}`.trim();
 }
 
@@ -317,6 +374,8 @@ module.exports = {
     normalizeTelegramTitle,
     normalizeTelegramBody,
     normalizeTelegramLine,
+    normalizeLegacyPriorityTokens,
+    resolveV2TelegramRuntimeContext,
     buildTelegramText,
     resolveTelegramTransport,
     buildOpenClawSendArgs,

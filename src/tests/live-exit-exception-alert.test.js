@@ -18,7 +18,7 @@ function run() {
     executionMode: "LIVE",
   });
 
-  assert.strictEqual(payload.title, "[P0] ETHUSDT live exit exception");
+  assert.strictEqual(payload.title, "[V2 긴급] ETHUSDT live exit exception");
   assert.strictEqual(payload.severity, "ERROR");
   assert.ok(payload.body.includes("reason: LIVE_EXCEPTION"));
   assert.ok(payload.body.includes("phase: LIVE_EXIT_EXECUTION"));

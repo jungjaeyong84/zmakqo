@@ -88,7 +88,7 @@ async function sendSelfHealFailureAlert({
   if (!sym) return { ok: false, skipped: true, reason: "SYMBOL_REQUIRED" };
   return sendAlert({
     channel,
-    title: `${sym} self-heal 경고`,
+    title: `[V2 Self-Heal] ${sym} self-heal 경고`,
     body: [
       `exchange: ${String(exchange || "BINANCEFUT").toUpperCase()}`,
       `reason: ${String(reason || "UNKNOWN").trim().toUpperCase() || "UNKNOWN"}`,
