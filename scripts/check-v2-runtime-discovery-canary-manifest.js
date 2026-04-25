@@ -177,7 +177,7 @@ function buildExpectedEnv(env = process.env) {
       env,
       "DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_TRADES_PER_DAY",
       "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY",
-      "1",
+      "5",
     ),
     DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: expectedValue(
       env,

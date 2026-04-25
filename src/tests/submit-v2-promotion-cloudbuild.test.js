@@ -1099,7 +1099,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
     "BTCUSDT:230|ETHUSDT:50|LINKUSDT:50|BNBUSDT:15|XRPUSDT:15|SOLUSDT:15|AXSUSDT:15|DOGEUSDT:15"
   );
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "1");
-  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "5");
   assert.strictEqual(
     request.approval_evidence_sources.repair_firestore_canary_streak.field,
     "bounded_runtime_summary.repair_firestore_canary_streak"

@@ -60,7 +60,7 @@ function resolveDiscoveryCanaryPolicy(env = process.env) {
     max_notional_quote: Number.isFinite(maxNotional) && maxNotional > 0 ? maxNotional : 25,
     symbol_notional_quote_map: resolveDiscoverySymbolNotionalQuoteMap(env),
     max_position_count: Number.isFinite(maxPositions) && maxPositions >= 0 ? maxPositions : 1,
-    max_trades_per_day: Number.isFinite(maxTrades) && maxTrades >= 0 ? maxTrades : 1,
+    max_trades_per_day: Number.isFinite(maxTrades) && maxTrades >= 0 ? maxTrades : 5,
     daily_loss_halt_quote: Number.isFinite(dailyLossHalt) && dailyLossHalt >= 0 ? dailyLossHalt : 10,
     require_canary_only: true,
     required_decision_mode: "CANARY",

@@ -108,12 +108,12 @@ function summarizeDiscoveryCanaryPolicy() {
   return {
     enabled: runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", "0") === "1",
     allowed_symbols: String(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS", "") || "")
-      .split(",")
+      .split(/[|,]/)
       .map((x) => x.trim().toUpperCase())
       .filter(Boolean),
     max_notional_quote: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE", "6")),
     max_position_count: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT", "1")),
-    max_trades_per_day: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY", "1")),
+    max_trades_per_day: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY", "5")),
     daily_loss_halt_quote: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE", "10")),
     confirm_phrase: "EXECUTE_V2_DISCOVERY_CANARY",
   };

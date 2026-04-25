@@ -5569,7 +5569,11 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
   }
   if (policy.max_notional_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_NOTIONAL_REQUIRED");
   if (policy.max_position_count !== 1) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_MUST_BE_1");
-  if (policy.max_trades_per_day !== 1) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_MUST_BE_1");
+  if (policy.max_trades_per_day == null) {
+    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_REQUIRED");
+  } else if (policy.max_trades_per_day > 5) {
+    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_EXCEEDS_5");
+  }
   if (policy.daily_loss_halt_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DAILY_LOSS_HALT_REQUIRED");
   if (policy.ml_live_serving_armed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED");
   if (policy.agent_apply_enabled === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:AGENT_APPLY_ENABLED");
