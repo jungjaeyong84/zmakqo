@@ -65,6 +65,22 @@ const { __test: accountSummaryTest } = require("../services/binanceFuturesAccoun
 }
 
 {
+  const policy = resolveRiskGovernorPolicy({
+    DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY: "UNLIMITED",
+  });
+  assert.strictEqual(policy.max_trades_per_day, "UNLIMITED");
+  assert.strictEqual(policy.max_trades_per_day_unlimited, true);
+  const result = evaluateV2RiskGovernor({
+    policy,
+    account: { equity_quote: 500, daily_loss_quote: 0, consecutive_loss_n: 0, trade_count_24h: 999 },
+    candidate: { symbol: "XRPUSDT", notional_quote: 15 },
+    market: { volatility_bps: 1 },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.ok(!result.blockers.includes("RISK_GOVERNOR:MAX_TRADES_PER_DAY"));
+}
+
+{
   const positions = accountSummaryTest.normalizeActivePositions([
     { symbol: "SOLUSDT", positionAmt: "0.12", markPrice: "86.36", notional: "10.3632" },
     { symbol: "XRPUSDT", positionAmt: "0", markPrice: "1.4" },

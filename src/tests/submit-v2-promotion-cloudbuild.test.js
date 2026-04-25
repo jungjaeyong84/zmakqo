@@ -1100,6 +1100,7 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   );
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "5");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "UNLIMITED");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY, "UNLIMITED");
   assert.strictEqual(
     request.approval_evidence_sources.repair_firestore_canary_streak.field,
     "bounded_runtime_summary.repair_firestore_canary_streak"

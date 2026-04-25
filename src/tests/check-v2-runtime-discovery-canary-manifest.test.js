@@ -45,6 +45,7 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE", value: "250" }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE", value: "230" }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE", value: "250" }),
+                Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY", value: "UNLIMITED" }),
                 Object.freeze({ name: "DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL", value: "0" }),
                 Object.freeze({ name: "DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES", value: "0" }),

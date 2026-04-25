@@ -443,6 +443,7 @@ function buildSubstitutions(plan) {
     _DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "1",
     _DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_ENABLED) || "1",
     _DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_BARS: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_BARS) || "8",
+    _DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY) || "UNLIMITED",
     _V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC: row.promotionMode === "LIVE" ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC) || "0"),
     _DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED) || "0",
     _DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS) || "",
