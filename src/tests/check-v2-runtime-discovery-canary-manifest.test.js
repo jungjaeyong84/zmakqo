@@ -27,6 +27,13 @@ function serviceJson({
             Object.freeze({
               image,
               env: Object.freeze([
+                Object.freeze({ name: "GOOGLE_CLIENT_ID", value: "350958953672-a4434l780u05o2a1ppa29p4fpa2s6l8r.apps.googleusercontent.com" }),
+                Object.freeze({ name: "GOOGLE_OAUTH_BASE_URL", value: "https://donbeolja-350958953672.asia-northeast3.run.app" }),
+                Object.freeze({ name: "ALLOWLIST_EMAIL", value: "jungjaeyong@gmail.com" }),
+                Object.freeze({ name: "SESSION_STORE", value: "firestore" }),
+                Object.freeze({ name: "SESSION_TTL_MS", value: "604800000" }),
+                Object.freeze({ name: "SESSION_COOKIE_SAMESITE", value: "none" }),
+                Object.freeze({ name: "SESSION_COOKIE_SECURE", value: "true" }),
                 Object.freeze({ name: "DONBEOLJA_V2_ENABLED", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DRY_RUN", value: "0" }),
                 Object.freeze({ name: "DONBEOLJA_V2_CANARY_ONLY", value: "1" }),
@@ -210,6 +217,19 @@ function traceOnlyServiceJson({
   assert.strictEqual(result.service_results.length, 4);
   assert.strictEqual(result.service_results.find((row) => row.service_name === "donbeolja-egress").env_contract_checked, false);
   assert.strictEqual(result.service_results.find((row) => row.service_name === "donbeolja").env_contract_checked, true);
+}
+
+{
+  const unsafeService = JSON.parse(JSON.stringify(serviceJson()));
+  unsafeService.spec.template.spec.containers[0].env = unsafeService.spec.template.spec.containers[0].env
+    .filter((item) => item.name !== "GOOGLE_CLIENT_ID");
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(unsafeService),
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, false);
+  assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:GOOGLE_CLIENT_ID_MISMATCH"));
 }
 
 {

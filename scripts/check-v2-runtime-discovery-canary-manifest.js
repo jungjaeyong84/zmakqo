@@ -10,6 +10,9 @@ const {
 const DEFAULT_DISCOVERY_CANARY_SYMBOLS = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT";
 const DEFAULT_DISCOVERY_CANARY_MAX_SYMBOL_COUNT = "8";
 const DEFAULT_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE = "6";
+const DEFAULT_GOOGLE_CLIENT_ID = "350958953672-a4434l780u05o2a1ppa29p4fpa2s6l8r.apps.googleusercontent.com";
+const DEFAULT_GOOGLE_OAUTH_BASE_URL = "https://donbeolja-350958953672.asia-northeast3.run.app";
+const DEFAULT_ALLOWLIST_EMAIL = "jungjaeyong@gmail.com";
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -294,6 +297,33 @@ function buildExpectedEnv(env = process.env) {
   });
 }
 
+function buildPrimaryExpectedEnv(env = process.env) {
+  return Object.freeze({
+    GOOGLE_CLIENT_ID: expectedValue(env, "DONBEOLJA_V2_EXPECTED_GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID", DEFAULT_GOOGLE_CLIENT_ID),
+    GOOGLE_OAUTH_BASE_URL: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_GOOGLE_OAUTH_BASE_URL",
+      "GOOGLE_OAUTH_BASE_URL",
+      DEFAULT_GOOGLE_OAUTH_BASE_URL,
+    ),
+    ALLOWLIST_EMAIL: expectedValue(env, "DONBEOLJA_V2_EXPECTED_ALLOWLIST_EMAIL", "ALLOWLIST_EMAIL", DEFAULT_ALLOWLIST_EMAIL),
+    SESSION_STORE: expectedValue(env, "DONBEOLJA_V2_EXPECTED_SESSION_STORE", "SESSION_STORE", "firestore"),
+    SESSION_TTL_MS: expectedValue(env, "DONBEOLJA_V2_EXPECTED_SESSION_TTL_MS", "SESSION_TTL_MS", "604800000"),
+    SESSION_COOKIE_SAMESITE: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_SESSION_COOKIE_SAMESITE",
+      "SESSION_COOKIE_SAMESITE",
+      "none",
+    ),
+    SESSION_COOKIE_SECURE: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_SESSION_COOKIE_SECURE",
+      "SESSION_COOKIE_SECURE",
+      "true",
+    ),
+  });
+}
+
 function buildForbiddenEnvNames(env = process.env) {
   return splitServices(
     env.DONBEOLJA_V2_FORBIDDEN_RUNTIME_ENV_NAMES ||
@@ -403,19 +433,37 @@ function buildEnvServiceSet(env = process.env) {
   return new Set(splitServices(env.DONBEOLJA_V2_RUNTIME_ENV_SERVICES || "donbeolja,donbeolja-exit-worker"));
 }
 
-function evaluateServiceManifest(serviceName, serviceJson, expectedEnv, forbiddenEnvNames, env, serviceCount, envRequired = true) {
+function evaluateServiceManifest(
+  serviceName,
+  serviceJson,
+  expectedEnv,
+  primaryExpectedEnv,
+  forbiddenEnvNames,
+  env,
+  serviceCount,
+  envRequired = true,
+) {
   const actualEnv = extractEnvMap(serviceJson);
   const envComparison = envRequired
     ? compareExpectedEnv(actualEnv, expectedEnv)
+    : Object.freeze({ blockers: Object.freeze([]), mismatches: Object.freeze({}) });
+  const primaryEnvComparison = envRequired && serviceName === "donbeolja"
+    ? compareExpectedEnv(actualEnv, primaryExpectedEnv)
     : Object.freeze({ blockers: Object.freeze([]), mismatches: Object.freeze({}) });
   const forbiddenComparison = envRequired
     ? compareForbiddenEnv(actualEnv, forbiddenEnvNames)
     : Object.freeze({ blockers: Object.freeze([]), mismatches: Object.freeze({}) });
   const imageComparison = compareImageAndLabels(serviceJson, env);
-  const blockers = Object.freeze([...envComparison.blockers, ...forbiddenComparison.blockers, ...imageComparison.blockers]
+  const blockers = Object.freeze([
+    ...envComparison.blockers,
+    ...primaryEnvComparison.blockers,
+    ...forbiddenComparison.blockers,
+    ...imageComparison.blockers,
+  ]
     .map((blocker) => prefixServiceBlocker(serviceName, blocker, serviceCount)));
   const mismatches = Object.freeze({
     ...prefixServiceMismatches(serviceName, envComparison.mismatches, serviceCount),
+    ...prefixServiceMismatches(serviceName, primaryEnvComparison.mismatches, serviceCount),
     ...prefixServiceMismatches(serviceName, forbiddenComparison.mismatches, serviceCount),
     ...prefixServiceMismatches(serviceName, imageComparison.mismatches, serviceCount),
   });
@@ -435,6 +483,7 @@ function runCheck(env = process.env) {
   try {
     const serviceManifests = readServiceManifests(env);
     const expectedEnv = buildExpectedEnv(env);
+    const primaryExpectedEnv = buildPrimaryExpectedEnv(env);
     const forbiddenEnvNames = buildForbiddenEnvNames(env);
     const envServiceSet = buildEnvServiceSet(env);
     const serviceResults = serviceManifests.map((item) =>
@@ -442,6 +491,7 @@ function runCheck(env = process.env) {
         item.service_name,
         item.service_json,
         expectedEnv,
+        primaryExpectedEnv,
         forbiddenEnvNames,
         env,
         serviceManifests.length,
@@ -459,6 +509,7 @@ function runCheck(env = process.env) {
       blockers,
       mismatches,
       expected_env: expectedEnv,
+      expected_primary_env: primaryExpectedEnv,
       forbidden_env_names: Object.freeze(forbiddenEnvNames),
       actual_env: primary.actual_env || {},
       image: primary.image || "",
@@ -489,6 +540,7 @@ if (require.main === module) {
   module.exports = {
     runCheck,
     buildExpectedEnv,
+    buildPrimaryExpectedEnv,
     compareExpectedEnv,
     compareImageAndLabels,
     __test: {
