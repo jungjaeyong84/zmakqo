@@ -11231,6 +11231,14 @@ async function executeLiveFuturesOrder({
 
   const isExit = String(intent || "").toUpperCase() === "EXIT";
   const isTpP1Exit = isExit && isTpP1EventLocal(event);
+  if (!isExit && isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+    return {
+      ok: false,
+      mode: "LIVE",
+      reason: "V2_DISCOVERY_CANARY_LEGACY_ENTRY_WRITE_DENIED",
+      note: "Discovery canary entries must be executed only by productionEntryLiveEndpoint/productionEntryRoute.",
+    };
+  }
   const manualRetryEntry = !isExit && (manualRetry === true || isManualRetryFeatures(features));
   const orderIntentId = String(intentId || "").trim() || null;
   const manualQtyBase = manualRetryEntry
@@ -12551,10 +12559,10 @@ async function runPaperBinanceForBar({
         const requestBundle = requestBody.bundle || {};
         const requestPermit = requestBody.executionPermit || {};
         const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
-        await markIntentStatus(it.intent_id, "CANCELED", {
+        await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
           cancel_reason: routeReason,
           status_reason: routeReason,
-          cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters.",
+          cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters; not a drop/cancel.",
           v2_discovery_bridge_reason: handoff.reason || null,
           v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
           v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
@@ -15369,10 +15377,10 @@ async function runPaperFuturesForBar({
         const requestBundle = requestBody.bundle || {};
         const requestPermit = requestBody.executionPermit || {};
         const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
-        await markIntentStatus(it.intent_id, "CANCELED", {
+        await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
           cancel_reason: routeReason,
           status_reason: routeReason,
-          cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters.",
+          cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters; not a drop/cancel.",
           v2_discovery_bridge_reason: handoff.reason || null,
           v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
           v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
@@ -16142,10 +16150,10 @@ async function runPaperFuturesForBar({
           const requestBundle = requestBody.bundle || {};
           const requestPermit = requestBody.executionPermit || {};
           const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
-          await markIntentStatus(it.intent_id, "CANCELED", {
+          await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
             cancel_reason: routeReason,
             status_reason: routeReason,
-            cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute.",
+            cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute; not a drop/cancel.",
             v2_discovery_bridge_reason: handoff.reason || null,
             v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
             v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,

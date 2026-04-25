@@ -269,7 +269,7 @@ function explainSignalReason(reason) {
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_RUNTIME_NOT_RETIRED": "V2 discovery canary에서 legacy runtime retired 플래그가 확인되지 않아 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_ENTRY_FILTERS_NOT_RETIRED": "V2 discovery canary에서 legacy entry filter 비활성 계약이 확인되지 않아 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WAIT_ONE_BAR_HARD_DROP_NOT_RETIRED": "V2 discovery canary에서 legacy wait-one-bar hard drop 비활성 계약이 확인되지 않아 주문을 보류했습니다.",
-    V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE: "서버 신호를 legacy live 주문 경로에서 실행하지 않고 V2 productionEntryLiveEndpoint/productionEntryRoute로 위임했습니다.",
+    V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE: "서버 신호를 legacy live 주문 경로에서 실행하지 않고 V2 productionEntryLiveEndpoint/productionEntryRoute로 위임했습니다. 이는 드롭/취소가 아니라 V2 보호 진입 경로로 넘긴 상태입니다.",
     V2_DISCOVERY_BRIDGE_MARKET_DATA_QUALITY_BLOCKED: "V2 discovery handoff 전 market data quality가 통과하지 못해 주문을 보류했습니다.",
     V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED: "V2 production entry live endpoint가 discovery handoff 요청을 차단했습니다.",
     V2_DISCOVERY_BRIDGE_THROWN: "V2 discovery handoff 처리 중 예외가 발생해 안전하게 주문을 보류했습니다.",

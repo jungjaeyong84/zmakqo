@@ -174,7 +174,7 @@ function resolveV2TelegramRuntimeContext(env = process.env) {
     `legacy_webhook=${blockLegacy && !allowLegacy ? "BLOCKED" : "OPEN"}`,
   ];
   if (symbols) risk.push(`symbols=${symbols}`);
-  if (maxNotional) risk.push(`max_notional=${maxNotional}`);
+  if (maxNotional) risk.push(`fallback_notional=${maxNotional}`);
   if (symbolNotionalMap) risk.push(`symbol_notional=${symbolNotionalMap}`);
   return Object.freeze({
     label: `V2 ${mode}`,

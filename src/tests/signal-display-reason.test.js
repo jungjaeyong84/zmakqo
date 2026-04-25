@@ -168,5 +168,18 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   assert.strictEqual(tp1FailClosedBlocked.stage_text, 'TP1 보호 격리');
   assert.strictEqual(tp1FailClosedBlocked.reason_ko, 'TP1 보호주문 또는 메타 동기화 실패가 반복되어 해당 시장을 일시 격리하고 신규 진입을 보류했습니다.');
 
+  const v2Routed = buildSignalDisplayReason(
+    { reason: 'SERVER_NATIVE_SIGNAL' },
+    {
+      status: 'SUPERSEDED_BY_V2_PROTECTED_ENTRY',
+      status_reason: 'V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE',
+      cancel_reason: 'V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE',
+      cancel_note: 'not a drop/cancel',
+    }
+  );
+  assert.strictEqual(v2Routed.stage_key, 'LIVE_CONFIG');
+  assert.match(v2Routed.reason_ko, /드롭\/취소가 아니라/);
+  assert.strictEqual(v2Routed.detail, 'not a drop/cancel');
+
   console.log('SIGNAL_DISPLAY_REASON_TEST_OK');
 })();

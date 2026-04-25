@@ -62,6 +62,8 @@ function run() {
   assert.ok(v2Text.includes("formal_live=0"));
   assert.ok(v2Text.includes("legacy_webhook=차단됨"));
   assert.ok(v2Text.includes("symbols=SOLUSDT|XRPUSDT"));
+  assert.ok(v2Text.includes("fallback_notional=25"));
+  assert.ok(!v2Text.includes("max_notional=25"));
   assert.ok(v2Text.includes("symbol_notional=SOLUSDT:15|XRPUSDT:15"));
   assert.ok(!v2Text.includes("[P0]"));
 

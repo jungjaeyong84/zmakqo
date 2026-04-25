@@ -12,13 +12,31 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   const reasonIndex = source.indexOf("V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE");
   const routedIndex = source.indexOf("V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE");
   const submitIndex = source.indexOf("liveResult = await executeLiveFuturesOrder({");
+  const finalGuardIndex = source.indexOf("V2_DISCOVERY_CANARY_LEGACY_ENTRY_WRITE_DENIED");
   assert.ok(guardIndex > -1, "legacy entry write guard call is missing");
   assert.ok(handoffIndex > -1, "V2 discovery server signal handoff is missing");
   assert.ok(reasonIndex > -1, "V2 production route blocker reason is missing");
   assert.ok(routedIndex > -1, "V2 production route handoff reason is missing");
+  assert.ok(finalGuardIndex > -1, "executeLiveFuturesOrder must have a final V2 discovery legacy entry hard-deny");
   assert.ok(submitIndex > -1, "live futures submit call is missing from source audit fixture");
   assert.ok(guardIndex < submitIndex, "discovery entry guard must run before executeLiveFuturesOrder");
+  assert.ok(finalGuardIndex < submitIndex, "final V2 discovery hard-deny must run before executeLiveFuturesOrder");
   assert.ok(handoffIndex > guardIndex && handoffIndex < submitIndex, "handoff must run before legacy executeLiveFuturesOrder");
+})();
+
+(function discoveryCanarySuccessfulHandoffMustNotBeCanceledDrop() {
+  assert.ok(
+    source.includes('markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY"'),
+    "successful V2 discovery handoff must use a superseded/executed status, not CANCELED"
+  );
+  assert.ok(
+    source.includes("not a drop/cancel"),
+    "successful V2 discovery handoff note must explicitly tell operators it is not a drop/cancel"
+  );
+  assert.ok(
+    !source.includes('markIntentStatus(it.intent_id, "CANCELED", {\n          cancel_reason: routeReason'),
+    "successful V2 discovery handoff must not emit a canceled/drop intent"
+  );
 })();
 
 (function liveFuturesSubmitRequiresAtomicPendingIntentClaim() {
