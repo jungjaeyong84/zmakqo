@@ -4,7 +4,10 @@ const assert = require("assert");
 const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
 const { resolveEntryIntentFromOpenClaw } = require("../v2/signalAuthorityRouter");
 const { buildV2ExecutedEntryFromIntent } = require("../v2/entryExecutor");
-const { runV2ProductionEntryRoute } = require("../v2/productionEntryRoute");
+const {
+  runV2ProductionEntryRoute: runV2ProductionEntryRouteImpl,
+  __test: productionEntryRouteTest,
+} = require("../v2/productionEntryRoute");
 const { buildOpenClawWorldState } = require("../v2/openclawWorldState");
 const { issueOpenClawExecutionPermit } = require("../v2/openclawExecutionPermit");
 const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSeed");
@@ -121,6 +124,43 @@ function noSameDirectionCooldown(rows = []) {
     ok: true,
     reason: "SAME_DIRECTION_COOLDOWN_RECENT_EXECUTIONS_LOADED",
     rows,
+  });
+}
+
+function noExecutionClaim(calls = null) {
+  return async ({ bundle, executionPermit }) => {
+    if (calls) calls.push({ type: "execution_claim" });
+    return {
+      ok: true,
+      claimed: true,
+      replay: false,
+      reason: "OPENCLAW_EXECUTION_CLAIM_ACQUIRED",
+      openclaw_execution_claim_id: productionEntryRouteTest.buildExecutionClaimId({
+        bundleHash: bundle.openclawDecisionBundleHash,
+        permitId: executionPermit.openclaw_execution_permit_id,
+      }),
+      openclaw_decision_bundle_hash: bundle.openclawDecisionBundleHash,
+      openclaw_execution_permit_id: executionPermit.openclaw_execution_permit_id,
+    };
+  };
+}
+
+function noClaimFinalize(calls = null) {
+  return async ({ status, reason }) => {
+    if (calls) calls.push({ type: "claim_finalize", status, reason });
+    return {
+      ok: true,
+      reason: "OPENCLAW_EXECUTION_CLAIM_FINALIZED",
+      claim_status: String(status || "").toUpperCase(),
+    };
+  };
+}
+
+function runV2ProductionEntryRoute(args = {}) {
+  return runV2ProductionEntryRouteImpl({
+    claimExecution: noExecutionClaim(),
+    finalizeExecutionClaim: noClaimFinalize(),
+    ...args,
   });
 }
 
@@ -331,6 +371,116 @@ async function repeatedDecisionBundleBlocksBeforeKernel() {
   assert.deepStrictEqual(calls, ["replay_guard"]);
 }
 
+async function executionClaimReplayBlocksBeforeKernel() {
+  const calls = [];
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(calls),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
+    claimExecution: async () => {
+      calls.push({ type: "execution_claim" });
+      return {
+        ok: true,
+        claimed: false,
+        replay: true,
+        reason: "OPENCLAW_EXECUTION_CLAIM_ALREADY_EXISTS",
+        openclaw_decision_bundle_hash: bundle.openclawDecisionBundleHash,
+        openclaw_execution_permit_id: permit.executionPermit.openclaw_execution_permit_id,
+      };
+    },
+    runEntryKernel: async () => {
+      calls.push({ type: "kernel" });
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push({ type: "persist" });
+      return { ok: true };
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_REPLAY_BLOCKED");
+  assert.strictEqual(result.executionClaim.reason, "OPENCLAW_EXECUTION_CLAIM_ALREADY_EXISTS");
+  assert.deepStrictEqual(calls.map((row) => row.type), ["replay_guard", "execution_claim"]);
+}
+
+async function alreadyClaimedPermitBlocksBeforeKernel() {
+  const calls = [];
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(calls),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
+    claimExecution: async () => {
+      calls.push({ type: "execution_claim" });
+      return {
+        ok: false,
+        claimed: false,
+        replay: true,
+        reason: "OPENCLAW_EXECUTION_PERMIT_ALREADY_CLAIMED",
+        openclaw_decision_bundle_hash: bundle.openclawDecisionBundleHash,
+        openclaw_execution_permit_id: permit.executionPermit.openclaw_execution_permit_id,
+        permit_status: "CLAIMED",
+      };
+    },
+    runEntryKernel: async () => {
+      calls.push({ type: "kernel" });
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push({ type: "persist" });
+      return { ok: true };
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_BLOCKED");
+  assert.strictEqual(result.executionClaim.reason, "OPENCLAW_EXECUTION_PERMIT_ALREADY_CLAIMED");
+  assert.deepStrictEqual(calls.map((row) => row.type), ["replay_guard", "execution_claim"]);
+}
+
+async function executionClaimIsFinalizedAroundAuditLedger() {
+  const calls = [];
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(calls),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
+    claimExecution: noExecutionClaim(calls),
+    finalizeExecutionClaim: noClaimFinalize(calls),
+    runEntryKernel: async () => {
+      calls.push({ type: "kernel" });
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push({ type: "persist" });
+      return { ok: true, skipped: false, reason: "OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITTEN" };
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(calls.map((row) => row.type), [
+    "replay_guard",
+    "execution_claim",
+    "kernel",
+    "claim_finalize",
+    "persist",
+    "claim_finalize",
+  ]);
+  assert.strictEqual(calls[3].status, "EXECUTED_PROTECTED_AUDIT_PENDING");
+  assert.strictEqual(calls[5].status, "EXECUTED_PROTECTED");
+}
+
 async function sameDirectionCooldownBlocksDuplicateTriggerBeforeKernel() {
   const calls = [];
   const currentBarMs = Date.parse("2026-04-21T06:15:00.000Z");
@@ -493,6 +643,13 @@ async function postFillProtectionFailureIsClassifiedCritical() {
           attempted: true,
           ok: false,
           reason: "ENTRY_PROTECTION_RECOVERY_THROWN",
+          initialProtectionResult: {
+            repairQueueCommit: {
+              ok: true,
+              reason: "ENTRY_PROTECTION_REPAIR_QUEUED",
+              exit_repair_request_id: "RQRV2__ETH__POST_FILL",
+            },
+          },
         },
       },
       kernelAudit: {
@@ -513,6 +670,9 @@ async function postFillProtectionFailureIsClassifiedCritical() {
   assert.strictEqual(result.post_fill_side_effect.entry_order_id, "ORDER__ETH__POST_FILL");
   assert.strictEqual(result.post_fill_side_effect.protection_recovery_attempted, true);
   assert.strictEqual(result.post_fill_side_effect.protection_recovery_ok, false);
+  assert.strictEqual(result.post_fill_side_effect.protection_repair_queued, true);
+  assert.strictEqual(result.post_fill_side_effect.protection_repair_queue_ok, true);
+  assert.strictEqual(result.post_fill_side_effect.protection_repair_request_id, "RQRV2__ETH__POST_FILL");
 }
 
 async function acceptedEntryOrderWithoutFilledReceiptIsClassifiedCritical() {
@@ -658,6 +818,9 @@ async function main() {
   await expiredExecutionPermitBlocksRetryBeforeKernel();
   await executionPermitWithoutCurrentWorldStateBlocksBeforeKernel();
   await repeatedDecisionBundleBlocksBeforeKernel();
+  await executionClaimReplayBlocksBeforeKernel();
+  await alreadyClaimedPermitBlocksBeforeKernel();
+  await executionClaimIsFinalizedAroundAuditLedger();
   await sameDirectionCooldownBlocksDuplicateTriggerBeforeKernel();
   await sameDirectionCooldownAllowsChangedTrigger();
   await kernelBlockDoesNotBecomeRouteSuccess();

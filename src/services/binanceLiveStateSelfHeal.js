@@ -67,8 +67,22 @@ async function listExternalActiveBinanceSymbols({ exchange = "BINANCEFUT" } = {}
   const account = await fetchBinanceFuturesAccount({
     apiKey: liveCfg.apiKey,
     apiSecret: liveCfg.apiSecret,
-  }).catch(() => null);
+  });
   return extractExternalActiveSymbolsFromAccount(account || {});
+}
+
+function buildExternalActiveScanFailureSummary({
+  exchange = "BINANCEFUT",
+  error = null,
+  atMs = Date.now(),
+} = {}) {
+  return Object.freeze({
+    ok: false,
+    reason: "EXTERNAL_ACTIVE_SCAN_FAILED",
+    exchange: String(exchange || "BINANCEFUT").toUpperCase(),
+    error: error && error.message ? error.message : String(error || "UNKNOWN"),
+    at_ms: Number.isFinite(Number(atMs)) ? Number(atMs) : Date.now(),
+  });
 }
 
 function isActivePaperPosition(pos = {}) {
@@ -371,20 +385,58 @@ async function runBinanceLiveStateSelfHeal({
     ? symbols.map((row) => normalizeSymbol(row)).filter(Boolean)
     : [];
   let targets = explicitSymbols;
+  let externalActiveScan = Object.freeze({
+    ok: true,
+    reason: "EXTERNAL_ACTIVE_SCAN_NOT_REQUIRED",
+    exchange: String(exchange || "BINANCEFUT").toUpperCase(),
+  });
 
   if (!targets.length) {
-    const [rows, externalSymbols] = await Promise.all([
-      listExchangePositionReadViews({
+    const rows = await listExchangePositionReadViews({
+      exchange,
+      limit: Math.max(50, Number(maxPositions) * 4 || 80),
+    }).catch(() => []);
+    let externalSymbols = [];
+    externalActiveScan = Object.freeze({
+      ok: true,
+      reason: "EXTERNAL_ACTIVE_SCAN_PASS",
+      exchange: String(exchange || "BINANCEFUT").toUpperCase(),
+    });
+    try {
+      externalSymbols = await listExternalActiveBinanceSymbols({ exchange });
+    } catch (error) {
+      externalActiveScan = buildExternalActiveScanFailureSummary({ exchange, error });
+      await upsertSelfHealFailureObservation({
         exchange,
-        limit: Math.max(50, Number(maxPositions) * 4 || 80),
-      }).catch(() => []),
-      listExternalActiveBinanceSymbols({ exchange }).catch(() => []),
-    ]);
+        symbol: "EXTERNAL_ACTIVE_SCAN",
+        reason: externalActiveScan.reason,
+        error: externalActiveScan.error,
+        atMs: externalActiveScan.at_ms,
+      }).catch(() => {});
+      await sendSelfHealFailureAlert({
+        exchange,
+        symbol: "EXTERNAL_ACTIVE_SCAN",
+        reason: externalActiveScan.reason,
+        error: externalActiveScan.error,
+      }).catch(() => {});
+    }
     targets = buildSelfHealTargetSymbols({
       internalRows: rows,
       externalSymbols,
       maxPositions,
     });
+    if (externalActiveScan.ok === false && targets.length === 0) {
+      return {
+        ok: false,
+        reason: "BINANCE_LIVE_STATE_SELF_HEAL_EXTERNAL_SCAN_FAILED",
+        exchange: String(exchange || "").toUpperCase(),
+        scanned: 0,
+        healed_n: 0,
+        skipped_n: 0,
+        external_active_scan: externalActiveScan,
+        results: [],
+      };
+    }
   }
 
   const results = [];
@@ -407,11 +459,15 @@ async function runBinanceLiveStateSelfHeal({
   }
 
   return {
-    ok: true,
+    ok: externalActiveScan.ok !== false,
+    reason: externalActiveScan.ok === false
+      ? "BINANCE_LIVE_STATE_SELF_HEAL_EXTERNAL_SCAN_FAILED"
+      : "BINANCE_LIVE_STATE_SELF_HEAL_PASS",
     exchange: String(exchange || "").toUpperCase(),
     scanned: targets.length,
     healed_n: results.filter((row) => row && row.repaired === true).length,
     skipped_n: results.filter((row) => row && row.skipped === true).length,
+    external_active_scan: externalActiveScan,
     results,
   };
 }
@@ -424,7 +480,9 @@ module.exports = {
     shouldRepairBinanceLivePosition,
     shouldForceImmediateSelfHealNativeProtection,
     buildSelfHealFailureMetaPatch,
+    buildExternalActiveScanFailureSummary,
     extractExternalActiveSymbolsFromAccount,
     buildSelfHealTargetSymbols,
+    listExternalActiveBinanceSymbols,
   },
 };

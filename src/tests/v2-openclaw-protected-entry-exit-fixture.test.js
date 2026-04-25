@@ -4,6 +4,7 @@ const assert = require("assert");
 const { buildReferenceNativeMlEvidencePack } = require("../v2/replayFixtureFactory");
 const { buildV2ProductionEntryLiveRequest } = require("../v2/productionEntryLiveRequest");
 const { runV2ProductionEntryRoute } = require("../v2/productionEntryRoute");
+const { resolveV2CollectionName } = require("../v2/storage");
 const protectedCanary = require("../v2/productionEntryProtectedCanary");
 const { buildProtectedActivePositionCycleDoc } = require("../v2/entryBootstrap");
 const { reduceCanonicalExit } = require("../v2/canonicalExitReducer");
@@ -28,6 +29,17 @@ async function buildOpenClawSizingProtectedEntryExitFixture() {
   assert.strictEqual(request.entrySizingDecision.status, "APPROVED");
 
   const firestore = protectedCanary.__test.createMemoryFirestore();
+  const routeEnv = {
+    DONBEOLJA_V2_ENABLED: "1",
+    DONBEOLJA_V2_DRY_RUN: "0",
+    DONBEOLJA_V2_CANARY_ONLY: "1",
+    DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "0",
+  };
+  firestore.__seedDoc(
+    resolveV2CollectionName("OPENCLAW_EXECUTION_PERMITS", routeEnv),
+    request.executionPermit.openclaw_execution_permit_id,
+    request.executionPermit,
+  );
   const exchangeWriteLedger = {
     exchange_write_performed: false,
     entry_submit_called: false,
@@ -36,12 +48,7 @@ async function buildOpenClawSizingProtectedEntryExitFixture() {
   };
   const routeResult = await runV2ProductionEntryRoute({
     db: firestore,
-    env: {
-      DONBEOLJA_V2_ENABLED: "1",
-      DONBEOLJA_V2_DRY_RUN: "0",
-      DONBEOLJA_V2_CANARY_ONLY: "1",
-      DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED: "0",
-    },
+    env: routeEnv,
     bundle: request.body.bundle,
     worldState: request.worldState,
     executionPermit: request.executionPermit,

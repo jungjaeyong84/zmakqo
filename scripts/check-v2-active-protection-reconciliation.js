@@ -70,13 +70,18 @@ function buildAlertBody(summary = {}) {
   return lines.join("\n");
 }
 
-async function maybeSendAlert(summary = {}, env = process.env) {
-  if (boolEnv(env.V2_ACTIVE_PROTECTION_RECONCILIATION_SEND_ALERT, false) !== true) {
+function shouldSendActiveProtectionAlert(summary = {}, env = process.env) {
+  if (Number(summary.critical_issue_n || 0) > 0 || summary.ok !== true) return true;
+  return boolEnv(env.V2_ACTIVE_PROTECTION_RECONCILIATION_SEND_ALERT, false) === true;
+}
+
+async function maybeSendAlert(summary = {}, env = process.env, sendAlertFn = sendAlert) {
+  if (shouldSendActiveProtectionAlert(summary, env) !== true) {
     return { skipped: true, reason: "ALERT_DISABLED" };
   }
   const channel = trimOrNull(env.ALERT_CHANNEL || env.TRADE_ALERT_CHANNEL || env.TELEGRAM_ALERT_CHANNEL);
   if (!channel) return { skipped: true, reason: "ALERT_CHANNEL_MISSING" };
-  return sendAlert({
+  return sendAlertFn({
     channel,
     title: summary.ok ? "V2 active protection reconciliation PASS" : "V2 active protection reconciliation BLOCKED",
     body: buildAlertBody(summary),
@@ -84,7 +89,7 @@ async function maybeSendAlert(summary = {}, env = process.env) {
   });
 }
 
-async function run({ auditFn = auditBinanceExitIntegrity, env = process.env } = {}) {
+async function run({ auditFn = auditBinanceExitIntegrity, env = process.env, sendAlertFn = sendAlert } = {}) {
   const integrity = await auditFn({ includeFlat: false });
   const summary = summarizeActiveProtection(integrity);
   fs.mkdirSync(OPS_DAILY_DIR, { recursive: true });
@@ -92,7 +97,7 @@ async function run({ auditFn = auditBinanceExitIntegrity, env = process.env } = 
   const datedPath = path.join(OPS_DAILY_DIR, `${isoDate()}_v2_active_protection_reconciliation.json`);
   fs.writeFileSync(latestPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   fs.writeFileSync(datedPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
-  const alert = await maybeSendAlert(summary, env).catch((error) => ({
+  const alert = await maybeSendAlert(summary, env, sendAlertFn).catch((error) => ({
     ok: false,
     reason: "ALERT_SEND_FAILED",
     error: error && error.message ? error.message : String(error),
@@ -128,6 +133,8 @@ if (require.main === module) {
     __test: {
       summarizeActiveProtection,
       buildAlertBody,
+      shouldSendActiveProtectionAlert,
+      maybeSendAlert,
       boolEnv,
       trimOrNull,
     },

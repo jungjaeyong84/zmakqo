@@ -51,6 +51,9 @@ const { __test } = require("../../scripts/check-v2-active-protection-reconciliat
   assert.strictEqual(blocked.unprotected_position_n, 1);
   assert.deepStrictEqual(blocked.unprotected_symbols, ["XRPUSDT"]);
   assert.ok(__test.buildAlertBody(blocked).includes("protected=1/2"));
+  assert.strictEqual(__test.shouldSendActiveProtectionAlert(pass, {}), false);
+  assert.strictEqual(__test.shouldSendActiveProtectionAlert(pass, { V2_ACTIVE_PROTECTION_RECONCILIATION_SEND_ALERT: "1" }), true);
+  assert.strictEqual(__test.shouldSendActiveProtectionAlert(blocked, {}), true);
   assert.strictEqual(__test.boolEnv("1"), true);
   assert.strictEqual(__test.boolEnv("0", true), false);
 

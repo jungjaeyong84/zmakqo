@@ -290,7 +290,12 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
         && openclawControlPlane.includes("buildOpenClawDecisionBundleLedgerDoc")
         && openclawControlPlane.includes("OPENCLAW_DECISION_BUNDLE_LEDGER_WRITTEN")
         && productionEntryRoute.includes("findExistingDecisionBundleExecution")
+        && productionEntryRoute.includes("claimOpenClawExecution")
+        && productionEntryRoute.includes("finalizeOpenClawExecutionClaim")
+        && productionEntryRoute.includes("OPENCLAW_EXECUTION_CLAIMS")
+        && productionEntryRoute.includes("OPENCLAW_EXECUTION_PERMIT_ALREADY_CLAIMED")
         && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_BLOCKED")
+        && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_REPLAY_BLOCKED")
         && productionEntryRoute.includes("openclaw_decision_bundle_hash")
         && openclawShadowWriter.includes("OPENCLAW_DECISION_BUNDLES"),
       "OpenClaw ML proposal verdict must gate entry, ML size ratio must cap sizing, and decision bundles must be ledgered and replay-guarded",
@@ -301,6 +306,13 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
         decision_bundle_hash: openclawControlPlane.includes("openclawDecisionBundleHash") && openclawControlPlane.includes("openclaw_decision_bundle_hash"),
         decision_bundle_ledger: openclawControlPlane.includes("buildOpenClawDecisionBundleLedgerDoc") && openclawShadowWriter.includes("OPENCLAW_DECISION_BUNDLES"),
         decision_bundle_replay_guard: productionEntryRoute.includes("findExistingDecisionBundleExecution") && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_BLOCKED"),
+        atomic_execution_claim_guard: productionEntryRoute.includes("claimOpenClawExecution")
+          && productionEntryRoute.includes("OPENCLAW_EXECUTION_CLAIMS")
+          && productionEntryRoute.includes("OPENCLAW_EXECUTION_PERMIT_ALREADY_CLAIMED")
+          && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_REPLAY_BLOCKED"),
+        execution_claim_finalization: productionEntryRoute.includes("finalizeOpenClawExecutionClaim")
+          && productionEntryRoute.includes("EXECUTED_PROTECTED_AUDIT_PENDING")
+          && productionEntryRoute.includes("EXECUTED_PROTECTED"),
       }
     ),
     buildCheck(

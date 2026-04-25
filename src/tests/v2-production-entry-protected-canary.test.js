@@ -17,7 +17,7 @@ async function protectedCanaryUsesRealRouteKernelAndProtectionActivation() {
   assert.strictEqual(artifact.initial_sl_transport_called, true);
   assert.strictEqual(artifact.initial_tp1_transport_called, true);
   assert.strictEqual(artifact.memory_firestore_batch_commit_n, 2);
-  assert.strictEqual(artifact.memory_firestore_write_n, 4);
+  assert.strictEqual(artifact.memory_firestore_write_n, 10);
   assert.deepStrictEqual(artifact.failed_check_ids, []);
   assert.ok(artifact.check_ids.includes("V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT"));
   assert.ok(artifact.check_ids.includes("V2_PROTECTED_ENTRY_CANARY_SL_ORDER_PRESENT"));

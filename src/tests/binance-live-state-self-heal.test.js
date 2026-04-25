@@ -6,8 +6,10 @@ async function run() {
   assert.strictEqual(typeof __test.shouldRepairBinanceLivePosition, "function", "shouldRepairBinanceLivePosition export missing");
   assert.strictEqual(typeof __test.shouldForceImmediateSelfHealNativeProtection, "function", "shouldForceImmediateSelfHealNativeProtection export missing");
   assert.strictEqual(typeof __test.buildSelfHealFailureMetaPatch, "function", "buildSelfHealFailureMetaPatch export missing");
+  assert.strictEqual(typeof __test.buildExternalActiveScanFailureSummary, "function", "buildExternalActiveScanFailureSummary export missing");
   assert.strictEqual(typeof __test.extractExternalActiveSymbolsFromAccount, "function", "extractExternalActiveSymbolsFromAccount export missing");
   assert.strictEqual(typeof __test.buildSelfHealTargetSymbols, "function", "buildSelfHealTargetSymbols export missing");
+  assert.strictEqual(typeof __test.listExternalActiveBinanceSymbols, "function", "listExternalActiveBinanceSymbols export missing");
 
   assert.strictEqual(__test.isActivePaperPosition({
     position_state: "COMMIT",
@@ -91,6 +93,18 @@ async function run() {
     native_protection_refresh_reason: "REPAIR_EXCEPTION",
     last_self_heal_error: "boom",
     last_self_heal_at_ms: 123,
+  });
+
+  assert.deepStrictEqual(__test.buildExternalActiveScanFailureSummary({
+    exchange: "binancefut",
+    error: new Error("account fetch failed"),
+    atMs: 456,
+  }), {
+    ok: false,
+    reason: "EXTERNAL_ACTIVE_SCAN_FAILED",
+    exchange: "BINANCEFUT",
+    error: "account fetch failed",
+    at_ms: 456,
   });
 
   assert.deepStrictEqual(__test.extractExternalActiveSymbolsFromAccount({

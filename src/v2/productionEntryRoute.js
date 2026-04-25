@@ -6,7 +6,7 @@ const { runV2EntryExecutionKernel } = require("./entryExecutionKernel");
 const { evaluateOpenClawExecutionSeparation } = require("./openclawExecutionSeparationAudit");
 const { persistOpenClawExecutionAudit } = require("./openclawExecutionAuditLedger");
 const { validateOpenClawExecutionPermit } = require("./openclawExecutionPermit");
-const { queryV2DocsByField } = require("./storage");
+const { queryV2DocsByField, resolveV2CollectionRef } = require("./storage");
 const { evaluateV2SameDirectionCooldown, extractCurrentSignalContext } = require("./sameDirectionCooldown");
 
 function trimOrNull(value) {
@@ -66,7 +66,15 @@ function summarizePostFillSideEffect(kernelResult) {
   const executedEntry = asObject(submitterResult && submitterResult.executedEntry);
   const positionCycle = asObject(executedEntry && executedEntry.positionCycle);
   const protectionEvidence = asObject(submitterResult && submitterResult.protectionEvidence);
+  const protectionResult = asObject(submitterResult && submitterResult.protectionResult);
   const recoveryResult = asObject(submitterResult && submitterResult.recoveryResult);
+  const initialRepairQueue = asObject(protectionResult && protectionResult.repairQueueCommit);
+  const recoveryProtectionResult = asObject(recoveryResult && recoveryResult.protectionResult);
+  const recoveryInitialProtectionResult = asObject(recoveryResult && recoveryResult.initialProtectionResult);
+  const recoveryRepairQueue = asObject(recoveryProtectionResult && recoveryProtectionResult.repairQueueCommit)
+    || asObject(recoveryInitialProtectionResult && recoveryInitialProtectionResult.repairQueueCommit)
+    || asObject(recoveryResult && recoveryResult.repairQueueCommit);
+  const repairQueueCommit = recoveryRepairQueue || initialRepairQueue;
   const fillStatus = upper(fill && fill.status);
   const entryOrderId = trimOrNull(
     (fill && fill.entry_order_id)
@@ -90,6 +98,16 @@ function summarizePostFillSideEffect(kernelResult) {
     protection_recovery_attempted: recoveryResult ? recoveryResult.attempted === true : false,
     protection_recovery_ok: recoveryResult ? recoveryResult.ok === true : null,
     protection_recovery_reason: trimOrNull(recoveryResult && recoveryResult.reason),
+    protection_repair_queued: !!repairQueueCommit,
+    protection_repair_queue_ok: repairQueueCommit ? repairQueueCommit.ok === true : null,
+    protection_repair_queue_reason: trimOrNull(repairQueueCommit && repairQueueCommit.reason),
+    protection_repair_request_id: trimOrNull(
+      repairQueueCommit && (
+        repairQueueCommit.exit_repair_request_id
+        || repairQueueCommit.repair_request_id
+        || repairQueueCommit.request_id
+      ),
+    ),
     unprotected_position_possible: unprotectedPositionPossible,
     severity: unprotectedPositionPossible ? "CRITICAL" : "NONE",
     reason: unprotectedPositionPossible
@@ -103,6 +121,26 @@ function extractDecisionBundleHash(bundle) {
   const decision = asObject(row && row.openclawDecision);
   return trimOrNull(row && row.openclawDecisionBundleHash)
     || trimOrNull(decision && decision.openclaw_decision_bundle_hash);
+}
+
+function extractExecutionPermitId(permit) {
+  const row = asObject(permit);
+  return trimOrNull(row && row.openclaw_execution_permit_id);
+}
+
+function stableIdPart(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 160);
+}
+
+function buildExecutionClaimId({ bundleHash, permitId } = {}) {
+  const hashPart = stableIdPart(bundleHash);
+  const permitPart = stableIdPart(permitId);
+  if (!hashPart || !permitPart) return null;
+  return `OCEXCLAIMV2__${hashPart}__${permitPart}`;
 }
 
 async function findExistingDecisionBundleExecution({
@@ -137,6 +175,161 @@ async function findExistingDecisionBundleExecution({
       : "OPENCLAW_DECISION_BUNDLE_EXECUTION_NOT_FOUND",
     openclaw_decision_bundle_hash: bundleHash,
     existing_execution_audit: existing ? Object.freeze({ ...existing }) : null,
+  });
+}
+
+async function claimOpenClawExecution({
+  db = null,
+  env = process.env,
+  bundle,
+  executionPermit,
+  routedDecision = null,
+  now = () => new Date().toISOString(),
+} = {}) {
+  const bundleHash = extractDecisionBundleHash(bundle);
+  const permitId = extractExecutionPermitId(executionPermit);
+  const claimId = buildExecutionClaimId({ bundleHash, permitId });
+  if (!bundleHash) {
+    return Object.freeze({ ok: false, claimed: false, replay: false, reason: "OPENCLAW_EXECUTION_CLAIM_BUNDLE_HASH_REQUIRED" });
+  }
+  if (!permitId || !claimId) {
+    return Object.freeze({ ok: false, claimed: false, replay: false, reason: "OPENCLAW_EXECUTION_CLAIM_PERMIT_ID_REQUIRED" });
+  }
+
+  const claims = resolveV2CollectionRef({ db, env, collectionKey: "OPENCLAW_EXECUTION_CLAIMS" });
+  const permits = resolveV2CollectionRef({ db: claims.db, env, collectionKey: "OPENCLAW_EXECUTION_PERMITS" });
+  const firestore = claims.db;
+  if (!firestore || typeof firestore.runTransaction !== "function") {
+    return Object.freeze({ ok: false, claimed: false, replay: false, reason: "OPENCLAW_EXECUTION_CLAIM_TRANSACTION_REQUIRED" });
+  }
+
+  const claimedAt = trimOrNull(now()) || new Date().toISOString();
+  const claimRef = claims.ref.doc(claimId);
+  const permitRef = permits.ref.doc(permitId);
+  return firestore.runTransaction(async (tx) => {
+    const claimSnap = await tx.get(claimRef);
+    const permitSnap = await tx.get(permitRef);
+    if (claimSnap && claimSnap.exists === true) {
+      const existing = claimSnap.data ? (claimSnap.data() || {}) : {};
+      return Object.freeze({
+        ok: true,
+        claimed: false,
+        replay: true,
+        reason: "OPENCLAW_EXECUTION_CLAIM_ALREADY_EXISTS",
+        openclaw_execution_claim_id: claimId,
+        openclaw_decision_bundle_hash: bundleHash,
+        openclaw_execution_permit_id: permitId,
+        existing_claim: Object.freeze({ ...existing }),
+      });
+    }
+    if (!permitSnap || permitSnap.exists !== true) {
+      return Object.freeze({
+        ok: false,
+        claimed: false,
+        replay: false,
+        reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_DOC_REQUIRED",
+        openclaw_execution_claim_id: claimId,
+        openclaw_decision_bundle_hash: bundleHash,
+        openclaw_execution_permit_id: permitId,
+      });
+    }
+    const permitDoc = permitSnap.data ? (permitSnap.data() || {}) : {};
+    const permitStatus = upper(permitDoc.permit_status);
+    if (permitStatus !== "ISSUED") {
+      return Object.freeze({
+        ok: false,
+        claimed: false,
+        replay: true,
+        reason: "OPENCLAW_EXECUTION_PERMIT_ALREADY_CLAIMED",
+        openclaw_execution_claim_id: claimId,
+        openclaw_decision_bundle_hash: bundleHash,
+        openclaw_execution_permit_id: permitId,
+        permit_status: permitStatus,
+      });
+    }
+    const entryIntent = asObject(routedDecision && routedDecision.entryIntent);
+    const claimDoc = {
+      openclaw_execution_claim_id: claimId,
+      openclaw_decision_bundle_hash: bundleHash,
+      openclaw_execution_permit_id: permitId,
+      claim_status: "CLAIMED",
+      claimed_at: claimedAt,
+      symbol: upper(entryIntent && entryIntent.symbol) || upper(executionPermit && executionPermit.symbol),
+      side: upper(entryIntent && entryIntent.side) || upper(executionPermit && executionPermit.side),
+      decision_mode: upper(entryIntent && entryIntent.decision_mode) || upper(executionPermit && executionPermit.decision_mode),
+      source: "PRODUCTION_ENTRY_ROUTE",
+      schema_version: 1,
+    };
+    tx.set(claimRef, claimDoc, { merge: false });
+    tx.set(permitRef, {
+      permit_status: "CLAIMED",
+      execution_claim_id: claimId,
+      claimed_at: claimedAt,
+      claim_source: "PRODUCTION_ENTRY_ROUTE",
+    }, { merge: true });
+    return Object.freeze({
+      ok: true,
+      claimed: true,
+      replay: false,
+      reason: "OPENCLAW_EXECUTION_CLAIM_ACQUIRED",
+      openclaw_execution_claim_id: claimId,
+      openclaw_decision_bundle_hash: bundleHash,
+      openclaw_execution_permit_id: permitId,
+      claim_doc: Object.freeze({ ...claimDoc }),
+    });
+  });
+}
+
+async function finalizeOpenClawExecutionClaim({
+  db = null,
+  env = process.env,
+  executionClaim,
+  executionPermit,
+  status,
+  reason,
+  positionCycleId = null,
+  auditLedgerResult = null,
+  postFillSideEffect = null,
+  now = () => new Date().toISOString(),
+} = {}) {
+  const claimId = trimOrNull(executionClaim && executionClaim.openclaw_execution_claim_id);
+  const permitId = trimOrNull(executionClaim && executionClaim.openclaw_execution_permit_id) || extractExecutionPermitId(executionPermit);
+  if (!claimId || !permitId) {
+    return Object.freeze({
+      ok: false,
+      reason: "OPENCLAW_EXECUTION_CLAIM_FINALIZE_ID_REQUIRED",
+      openclaw_execution_claim_id: claimId,
+      openclaw_execution_permit_id: permitId,
+    });
+  }
+  const finalizedAt = trimOrNull(now()) || new Date().toISOString();
+  const claimStatus = upper(status) || "FINALIZED";
+  const claims = resolveV2CollectionRef({ db, env, collectionKey: "OPENCLAW_EXECUTION_CLAIMS" });
+  const permits = resolveV2CollectionRef({ db: claims.db, env, collectionKey: "OPENCLAW_EXECUTION_PERMITS" });
+  const claimRef = claims.ref.doc(claimId);
+  const permitRef = permits.ref.doc(permitId);
+  await claimRef.set({
+    claim_status: claimStatus,
+    finalized_at: finalizedAt,
+    finalize_reason: upper(reason) || claimStatus,
+    position_cycle_id: trimOrNull(positionCycleId),
+    audit_ledger_reason: trimOrNull(auditLedgerResult && auditLedgerResult.reason),
+    audit_ledger_ok: auditLedgerResult ? auditLedgerResult.ok === true : null,
+    audit_ledger_doc_id: trimOrNull(auditLedgerResult && auditLedgerResult.persisted && auditLedgerResult.persisted.docId),
+    post_fill_side_effect: asObject(postFillSideEffect) ? { ...postFillSideEffect } : null,
+  }, { merge: true });
+  await permitRef.set({
+    permit_status: claimStatus === "ABORTED_NO_EXCHANGE_WRITE" ? "VOIDED" : "USED",
+    execution_claim_id: claimId,
+    finalized_at: finalizedAt,
+    finalize_reason: upper(reason) || claimStatus,
+  }, { merge: true });
+  return Object.freeze({
+    ok: true,
+    reason: "OPENCLAW_EXECUTION_CLAIM_FINALIZED",
+    openclaw_execution_claim_id: claimId,
+    openclaw_execution_permit_id: permitId,
+    claim_status: claimStatus,
   });
 }
 
@@ -183,6 +376,8 @@ async function runV2ProductionEntryRoute({
   persistExecutionAudit = persistOpenClawExecutionAudit,
   validateExecutionPermit = validateOpenClawExecutionPermit,
   findExistingBundleExecution = findExistingDecisionBundleExecution,
+  claimExecution = claimOpenClawExecution,
+  finalizeExecutionClaim = finalizeOpenClawExecutionClaim,
   findRecentSameDirectionExecutionsFn = findRecentSameDirectionExecutions,
   evaluateSameDirectionCooldown = evaluateV2SameDirectionCooldown,
   now = () => new Date().toISOString(),
@@ -195,6 +390,8 @@ async function runV2ProductionEntryRoute({
   if (typeof persistExecutionAudit !== "function") throw new Error("PERSIST_EXECUTION_AUDIT_REQUIRED");
   if (typeof validateExecutionPermit !== "function") throw new Error("VALIDATE_EXECUTION_PERMIT_REQUIRED");
   if (typeof findExistingBundleExecution !== "function") throw new Error("FIND_EXISTING_BUNDLE_EXECUTION_REQUIRED");
+  if (typeof claimExecution !== "function") throw new Error("CLAIM_EXECUTION_REQUIRED");
+  if (typeof finalizeExecutionClaim !== "function") throw new Error("FINALIZE_EXECUTION_CLAIM_REQUIRED");
   if (typeof findRecentSameDirectionExecutionsFn !== "function") throw new Error("FIND_RECENT_SAME_DIRECTION_EXECUTIONS_REQUIRED");
   if (typeof evaluateSameDirectionCooldown !== "function") throw new Error("EVALUATE_SAME_DIRECTION_COOLDOWN_REQUIRED");
 
@@ -394,6 +591,63 @@ async function runV2ProductionEntryRoute({
     });
   }
 
+  let executionClaim = null;
+  try {
+    executionClaim = await claimExecution({
+      db,
+      env,
+      bundle,
+      executionPermit,
+      worldState,
+      routedDecision,
+      now,
+    });
+  } catch (error) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_FAILED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
+      executionClaim: Object.freeze({
+        ok: false,
+        claimed: false,
+        replay: false,
+        reason: "OPENCLAW_EXECUTION_CLAIM_THROWN",
+        error_message: trimOrNull(error && error.message) || String(error),
+      }),
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+  if (!executionClaim || executionClaim.ok !== true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_BLOCKED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
+      executionClaim,
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+  if (executionClaim.replay === true || executionClaim.claimed !== true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_REPLAY_BLOCKED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
+      executionClaim,
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+
   const kernelResult = await runEntryKernel({
     db,
     env,
@@ -408,6 +662,24 @@ async function runV2ProductionEntryRoute({
   });
   const postFillSideEffect = summarizePostFillSideEffect(kernelResult);
   if (!kernelResult || kernelResult.ok !== true) {
+    const finalStatus = postFillSideEffect.exchange_write_performed === true
+      ? (postFillSideEffect.unprotected_position_possible === true ? "POST_FILL_PROTECTION_CRITICAL" : "POST_FILL_ROUTE_FAILURE_PROTECTED")
+      : "ABORTED_NO_EXCHANGE_WRITE";
+    const claimFinalizeResult = await finalizeExecutionClaim({
+      db,
+      env,
+      executionClaim,
+      executionPermit,
+      status: finalStatus,
+      reason: kernelResult && kernelResult.reason ? kernelResult.reason : "V2_ENTRY_EXECUTION_KERNEL_BLOCKED",
+      positionCycleId: postFillSideEffect.position_cycle_id,
+      postFillSideEffect,
+      now,
+    }).catch((error) => Object.freeze({
+      ok: false,
+      reason: "OPENCLAW_EXECUTION_CLAIM_FINALIZE_THROWN",
+      error_message: trimOrNull(error && error.message) || String(error),
+    }));
     return buildRouteBlock("V2_PRODUCTION_ENTRY_KERNEL_BLOCKED", {
       runtime,
       routedDecision,
@@ -416,11 +688,28 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      executionClaim,
+      claimFinalizeResult,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
   }
   if (postFillSideEffect.unprotected_position_possible === true) {
+    const claimFinalizeResult = await finalizeExecutionClaim({
+      db,
+      env,
+      executionClaim,
+      executionPermit,
+      status: "POST_FILL_PROTECTION_CRITICAL",
+      reason: "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL",
+      positionCycleId: postFillSideEffect.position_cycle_id,
+      postFillSideEffect,
+      now,
+    }).catch((error) => Object.freeze({
+      ok: false,
+      reason: "OPENCLAW_EXECUTION_CLAIM_FINALIZE_THROWN",
+      error_message: trimOrNull(error && error.message) || String(error),
+    }));
     return buildRouteBlock("V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL", {
       runtime,
       routedDecision,
@@ -429,6 +718,8 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      executionClaim,
+      claimFinalizeResult,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
@@ -441,6 +732,27 @@ async function runV2ProductionEntryRoute({
     executedEntry,
     now,
   });
+
+  let claimFinalizeResult = null;
+  try {
+    claimFinalizeResult = await finalizeExecutionClaim({
+      db,
+      env,
+      executionClaim,
+      executionPermit,
+      status: openclawExecutionAudit.ok ? "EXECUTED_PROTECTED_AUDIT_PENDING" : "EXECUTED_PROTECTED_SEPARATION_FAILED",
+      reason: openclawExecutionAudit.reason,
+      positionCycleId: trimOrNull(executedEntry && executedEntry.positionCycle && executedEntry.positionCycle.position_cycle_id),
+      postFillSideEffect,
+      now,
+    });
+  } catch (error) {
+    claimFinalizeResult = Object.freeze({
+      ok: false,
+      reason: "OPENCLAW_EXECUTION_CLAIM_FINALIZE_THROWN",
+      error_message: trimOrNull(error && error.message) || String(error),
+    });
+  }
 
   let auditLedgerResult = null;
   try {
@@ -461,6 +773,8 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      executionClaim,
+      claimFinalizeResult,
       openclawExecutionAudit,
       auditLedgerResult: Object.freeze({
         ok: false,
@@ -468,6 +782,25 @@ async function runV2ProductionEntryRoute({
         error_message: trimOrNull(error && error.message) || String(error),
       }),
     });
+  }
+
+  if (openclawExecutionAudit.ok && auditLedgerResult && auditLedgerResult.ok === true) {
+    claimFinalizeResult = await finalizeExecutionClaim({
+      db,
+      env,
+      executionClaim,
+      executionPermit,
+      status: "EXECUTED_PROTECTED",
+      reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED",
+      positionCycleId: trimOrNull(executedEntry && executedEntry.positionCycle && executedEntry.positionCycle.position_cycle_id),
+      auditLedgerResult,
+      postFillSideEffect,
+      now,
+    }).catch((error) => Object.freeze({
+      ok: false,
+      reason: "OPENCLAW_EXECUTION_CLAIM_FINALIZE_THROWN",
+      error_message: trimOrNull(error && error.message) || String(error),
+    }));
   }
 
   if (!openclawExecutionAudit.ok) {
@@ -479,6 +812,8 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      executionClaim,
+      claimFinalizeResult,
       openclawExecutionAudit,
       auditLedgerResult,
     });
@@ -493,6 +828,8 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      executionClaim,
+      claimFinalizeResult,
       openclawExecutionAudit,
       auditLedgerResult,
     });
@@ -506,6 +843,8 @@ async function runV2ProductionEntryRoute({
     executionPermitValidation,
     decisionBundleReplayGuard,
     sameDirectionCooldownGuard,
+    executionClaim,
+    claimFinalizeResult,
     openclawExecutionAudit,
     auditLedgerResult,
   });
@@ -522,7 +861,12 @@ module.exports = {
     extractSubmitterResult,
     summarizePostFillSideEffect,
     extractDecisionBundleHash,
+    extractExecutionPermitId,
+    stableIdPart,
+    buildExecutionClaimId,
     findExistingDecisionBundleExecution,
+    claimOpenClawExecution,
+    finalizeOpenClawExecutionClaim,
     findRecentSameDirectionExecutions,
   },
 };

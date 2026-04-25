@@ -250,6 +250,23 @@ function buildFakeDb(calls) {
   assert.deepStrictEqual(calls[0], { type: "collection", name: "dbjv2__openclaw_execution_audits_v2" });
 })();
 
+(async function putOpenClawExecutionClaimUsesDedicatedCollection() {
+  const calls = [];
+  const db = buildFakeDb(calls);
+  const result = await putV2Doc({
+    db,
+    env: { DONBEOLJA_V2_COLLECTION_PREFIX: "dbjv2__" },
+    collectionKey: "OPENCLAW_EXECUTION_CLAIMS",
+    doc: {
+      openclaw_execution_claim_id: "OCEXCLAIMV2__hash__permit",
+      openclaw_decision_bundle_hash: "hash",
+      openclaw_execution_permit_id: "permit",
+    },
+  });
+  assert.strictEqual(result.collectionName, "dbjv2__openclaw_execution_claims_v2");
+  assert.deepStrictEqual(calls[0], { type: "collection", name: "dbjv2__openclaw_execution_claims_v2" });
+})();
+
 (async function getDocUsesDedicatedCollection() {
   const calls = [];
   const db = buildFakeDb(calls);
