@@ -5530,6 +5530,16 @@ function positiveNumberOrNull(value) {
   return Number.isFinite(num) && num > 0 ? num : null;
 }
 
+function isUnlimitedRuntimeLimit(value) {
+  const raw = String(value == null ? "" : value).trim().toUpperCase();
+  return raw === "UNLIMITED" || raw === "INF" || raw === "INFINITY" || raw === "*";
+}
+
+function positiveNumberOrUnlimited(value) {
+  if (isUnlimitedRuntimeLimit(value)) return "UNLIMITED";
+  return positiveNumberOrNull(value);
+}
+
 function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null, executionMode = null } = {}) {
   const mode = String(executionMode || "").trim().toUpperCase();
   const sym = String(symbol || "").trim().toUpperCase();
@@ -5551,7 +5561,8 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
     max_notional_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE),
     symbol_notional_quote_map: resolveDiscoverySymbolNotionalQuoteMap(env),
     max_position_count: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT),
-    max_trades_per_day: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY),
+    max_trades_per_day: positiveNumberOrUnlimited(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY),
+    max_trades_per_day_unlimited: isUnlimitedRuntimeLimit(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY),
     daily_loss_halt_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE),
   });
 
@@ -5568,11 +5579,12 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
     blockers.push("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED");
   }
   if (policy.max_notional_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_NOTIONAL_REQUIRED");
-  if (policy.max_position_count !== 1) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_MUST_BE_1");
+  if (policy.max_position_count == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_REQUIRED");
+  if (policy.max_position_count != null && policy.max_position_count > 5) {
+    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_5");
+  }
   if (policy.max_trades_per_day == null) {
     blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_REQUIRED");
-  } else if (policy.max_trades_per_day > 5) {
-    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_EXCEEDS_5");
   }
   if (policy.daily_loss_halt_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DAILY_LOSS_HALT_REQUIRED");
   if (policy.ml_live_serving_armed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED");
@@ -5628,7 +5640,19 @@ function shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg = null, intent =
 function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE") {
   const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
   const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+  const discoveryContract = handoff && handoff.endpoint_result && handoff.endpoint_result.discovery_canary_contract
+    ? handoff.endpoint_result.discovery_canary_contract
+    : null;
+  const discoveryContractBlockers = Array.isArray(discoveryContract && discoveryContract.blockers)
+    ? discoveryContract.blockers.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
+    : [];
   if (routedDecision && routedDecision.reason) return String(routedDecision.reason).trim().toUpperCase();
+  if (
+    String(endpointReason || "").trim().toUpperCase() === "V2_DISCOVERY_CANARY_CONTRACT_BLOCKED"
+    && discoveryContractBlockers.length
+  ) {
+    return discoveryContractBlockers[0];
+  }
   if (endpointReason) return String(endpointReason).trim().toUpperCase();
   if (handoff && handoff.reason) return String(handoff.reason).trim().toUpperCase();
   return fallback;
@@ -14970,6 +14994,9 @@ async function runPaperBinanceForBar({
         continue;
       }
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+      const discoveryContract = handoff && handoff.endpoint_result && handoff.endpoint_result.discovery_canary_contract
+        ? handoff.endpoint_result.discovery_canary_contract
+        : null;
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -14982,6 +15009,10 @@ async function runPaperBinanceForBar({
           v2_discovery_bridge_reason: handoff && handoff.reason ? handoff.reason : null,
           v2_discovery_bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
           v2_discovery_endpoint_reason: handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null,
+          v2_discovery_canary_contract_reason: discoveryContract ? discoveryContract.reason || null : null,
+          v2_discovery_canary_contract_blockers: discoveryContract && Array.isArray(discoveryContract.blockers)
+            ? discoveryContract.blockers
+            : [],
           v2_discovery_router_reason: handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision))
             ? (handoff.routedDecision || (handoff.request && handoff.request.routedDecision)).reason || null
             : null,
@@ -18632,6 +18663,9 @@ async function runPaperFuturesForBar({
         continue;
       }
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+      const discoveryContract = handoff && handoff.endpoint_result && handoff.endpoint_result.discovery_canary_contract
+        ? handoff.endpoint_result.discovery_canary_contract
+        : null;
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -18644,6 +18678,10 @@ async function runPaperFuturesForBar({
           v2_discovery_bridge_reason: handoff && handoff.reason ? handoff.reason : null,
           v2_discovery_bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
           v2_discovery_endpoint_reason: handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null,
+          v2_discovery_canary_contract_reason: discoveryContract ? discoveryContract.reason || null : null,
+          v2_discovery_canary_contract_blockers: discoveryContract && Array.isArray(discoveryContract.blockers)
+            ? discoveryContract.blockers
+            : [],
           v2_discovery_router_reason: handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision))
             ? (handoff.routedDecision || (handoff.request && handoff.request.routedDecision)).reason || null
             : null,

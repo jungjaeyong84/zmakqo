@@ -92,6 +92,8 @@ function classifySignalReasonStage(reason) {
     code === "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE" ||
     code === "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE" ||
     code === "V2_PRODUCTION_ENTRY_LIVE_ROUTER_NOT_EXECUTABLE" ||
+    code === "V2_DISCOVERY_CANARY_CONTRACT_BLOCKED" ||
+    code.startsWith("DISCOVERY_CANARY:") ||
     code.startsWith("V2_DISCOVERY_BRIDGE_") ||
     code.startsWith("V2_DISCOVERY_CANARY_BRIDGE:")
   ) {
@@ -261,6 +263,8 @@ function explainSignalReason(reason) {
     "V2_DISCOVERY_CANARY_BRIDGE:MAX_NOTIONAL_REQUIRED": "V2 discovery canary 최대 주문 금액 한도가 없어 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_REQUIRED": "V2 discovery canary 하루 최대 진입 횟수 한도가 없어 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_EXCEEDS_5": "V2 discovery canary 하루 최대 진입 횟수 한도가 5회를 초과해 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_REQUIRED": "V2 discovery canary 동시 포지션 한도가 없어 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_5": "V2 discovery canary 동시 포지션 한도가 5개를 초과해 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED": "ML live serving이 켜져 있어 discovery canary 안전 계약과 맞지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:AGENT_APPLY_ENABLED": "OpenClaw agent live apply가 켜져 있어 discovery canary 안전 계약과 맞지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED": "V2 risk governor 필수 플래그가 확인되지 않아 discovery canary 주문을 보류했습니다.",
@@ -273,6 +277,12 @@ function explainSignalReason(reason) {
     V2_DISCOVERY_BRIDGE_MARKET_DATA_QUALITY_BLOCKED: "V2 discovery handoff 전 market data quality가 통과하지 못해 주문을 보류했습니다.",
     V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED: "V2 production entry live endpoint가 discovery handoff 요청을 차단했습니다.",
     V2_DISCOVERY_BRIDGE_THROWN: "V2 discovery handoff 처리 중 예외가 발생해 안전하게 주문을 보류했습니다.",
+    V2_DISCOVERY_CANARY_CONTRACT_BLOCKED: "V2 discovery canary 안전 계약을 통과하지 못해 실제 주문을 보류했습니다.",
+    "DISCOVERY_CANARY:MAX_POSITION_COUNT_REACHED": "V2 discovery canary 동시 포지션 한도에 도달해 신규 진입을 보류했습니다.",
+    "DISCOVERY_CANARY:MAX_TRADES_PER_DAY_REACHED": "V2 discovery canary 하루 최대 진입 횟수에 도달해 신규 진입을 보류했습니다.",
+    "DISCOVERY_CANARY:DAILY_LOSS_HALT_REACHED": "V2 discovery canary 일 손실 중단 한도에 도달해 신규 진입을 보류했습니다.",
+    "DISCOVERY_CANARY:MAX_NOTIONAL_EXCEEDED": "V2 discovery canary 심볼별 주문 금액 한도를 초과해 신규 진입을 보류했습니다.",
+    "DISCOVERY_CANARY:PARTIAL_TP1_MIN_NOTIONAL_REQUIRED": "TP1 50% 보호주문의 거래소 최소 주문금액을 만족하지 못해 신규 진입을 보류했습니다.",
     V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE: "V2 discovery canary 진입은 productionEntryLiveEndpoint/productionEntryRoute 전용이라 legacy live 주문 경로에서 보류했습니다.",
     V2_PRODUCTION_ENTRY_LIVE_ROUTER_NOT_EXECUTABLE: "V2 production entry router가 OpenClaw bundle을 실행 가능 신호로 승인하지 않아 주문을 보류했습니다.",
     SIGNAL_CRITERIA_BLOCKED: "V2 신호 기준(signal criteria)을 통과하지 못해 discovery 주문을 보류했습니다.",

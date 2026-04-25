@@ -47,10 +47,20 @@ function parseBool(value, fallback = false) {
   return fallback;
 }
 
+function isUnlimitedLimit(value) {
+  const raw = String(value == null ? "" : value).trim().toUpperCase();
+  return raw === "UNLIMITED" || raw === "INF" || raw === "INFINITY" || raw === "*";
+}
+
+function isUnlimitedTradeLimit(value) {
+  return String(value == null ? "" : value).trim().toUpperCase() === "UNLIMITED";
+}
+
 function resolveDiscoveryCanaryPolicy(env = process.env) {
   const maxNotional = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE);
   const maxPositions = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT);
-  const maxTrades = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY);
+  const maxTradesUnlimited = isUnlimitedLimit(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY);
+  const maxTrades = maxTradesUnlimited ? null : toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY);
   const dailyLossHalt = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE);
   const maxSymbols = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT);
   return Object.freeze({
@@ -59,8 +69,11 @@ function resolveDiscoveryCanaryPolicy(env = process.env) {
     max_symbol_count: Number.isFinite(maxSymbols) && maxSymbols > 0 ? maxSymbols : 2,
     max_notional_quote: Number.isFinite(maxNotional) && maxNotional > 0 ? maxNotional : 25,
     symbol_notional_quote_map: resolveDiscoverySymbolNotionalQuoteMap(env),
-    max_position_count: Number.isFinite(maxPositions) && maxPositions >= 0 ? maxPositions : 1,
-    max_trades_per_day: Number.isFinite(maxTrades) && maxTrades >= 0 ? maxTrades : 5,
+    max_position_count: Number.isFinite(maxPositions) && maxPositions >= 0 ? maxPositions : 5,
+    max_trades_per_day: maxTradesUnlimited
+      ? "UNLIMITED"
+      : (Number.isFinite(maxTrades) && maxTrades >= 0 ? maxTrades : "UNLIMITED"),
+    max_trades_per_day_unlimited: maxTradesUnlimited || !Number.isFinite(maxTrades),
     daily_loss_halt_quote: Number.isFinite(dailyLossHalt) && dailyLossHalt >= 0 ? dailyLossHalt : 10,
     require_canary_only: true,
     required_decision_mode: "CANARY",
@@ -168,7 +181,14 @@ function evaluateDiscoveryCanaryContract({
   if (!Number.isFinite(activePositionN)) blockers.push("DISCOVERY_CANARY:ACTIVE_POSITION_COUNT_REQUIRED");
   if (Number.isFinite(activePositionN) && activePositionN >= policy.max_position_count) blockers.push("DISCOVERY_CANARY:MAX_POSITION_COUNT_REACHED");
   if (!Number.isFinite(tradeCount24h)) blockers.push("DISCOVERY_CANARY:TRADE_COUNT_24H_REQUIRED");
-  if (Number.isFinite(tradeCount24h) && tradeCount24h >= policy.max_trades_per_day) blockers.push("DISCOVERY_CANARY:MAX_TRADES_PER_DAY_REACHED");
+  if (
+    Number.isFinite(tradeCount24h)
+    && !isUnlimitedTradeLimit(policy.max_trades_per_day)
+    && Number.isFinite(policy.max_trades_per_day)
+    && tradeCount24h >= policy.max_trades_per_day
+  ) {
+    blockers.push("DISCOVERY_CANARY:MAX_TRADES_PER_DAY_REACHED");
+  }
   if (!Number.isFinite(dailyLossQuote) && !Number.isFinite(dailyRealizedPnlQuote)) blockers.push("DISCOVERY_CANARY:DAILY_LOSS_EVIDENCE_REQUIRED");
   const effectiveDailyLoss = Number.isFinite(dailyLossQuote)
     ? dailyLossQuote
@@ -217,6 +237,8 @@ module.exports = {
     ensureArray,
     toNumberOrNull,
     parseBool,
+    isUnlimitedLimit,
+    isUnlimitedTradeLimit,
     floorToStep,
   },
 };

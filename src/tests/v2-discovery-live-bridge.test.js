@@ -14,8 +14,8 @@ function buildEnv(overrides = {}) {
     DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "25",
     DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
-    DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
-    DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "5",
+    DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "5",
+    DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
     DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
     DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "1",
     ML_LIVE_SERVING_ARMED: "0",
@@ -71,13 +71,13 @@ function discoveryBridgeRequiresSafetyEnvelope() {
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_ENTRY_FILTERS_NOT_RETIRED"));
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WAIT_ONE_BAR_HARD_DROP_NOT_RETIRED"));
 
-  const tooManyTrades = __test.evaluateV2DiscoveryCanaryLiveBridge({
-    env: buildEnv({ DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "6" }),
+  const tooManyPositions = __test.evaluateV2DiscoveryCanaryLiveBridge({
+    env: buildEnv({ DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "6" }),
     symbol: "XRPUSDT",
     executionMode: "LIVE",
   });
-  assert.strictEqual(tooManyTrades.ok, false);
-  assert.ok(tooManyTrades.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_EXCEEDS_5"));
+  assert.strictEqual(tooManyPositions.ok, false);
+  assert.ok(tooManyPositions.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_5"));
 }
 
 function discoveryBridgeClampsLegacyMaxOrder() {
