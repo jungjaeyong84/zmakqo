@@ -361,6 +361,7 @@ function buildMarkdown(report = {}) {
   lines.push(`- trade_execution_alert_missing_fill_n: ${summary.trade_execution_alert_missing_fill_n ?? "N/A"}`);
   lines.push(`- trade_execution_alert_missing_fill_total_n: ${summary.trade_execution_alert_missing_fill_total_n ?? "N/A"}`);
   lines.push(`- trade_execution_alert_missing_fill_non_actionable_n: ${summary.trade_execution_alert_missing_fill_non_actionable_n ?? "N/A"}`);
+  lines.push(`- trade_execution_alert_missing_entry_fill_n: ${summary.trade_execution_alert_missing_entry_fill_n ?? "N/A"}`);
   lines.push(`- trade_execution_alert_missing_fill_raw_total_n: ${summary.trade_execution_alert_missing_fill_raw_total_n ?? "N/A"}`);
   lines.push(`- duplication_live_group_n: ${summary.duplication_live_group_n ?? "N/A"}`);
   lines.push(`- authority_live_issue_position_n: ${summary.authority_live_issue_position_n ?? "N/A"}`);
@@ -440,6 +441,14 @@ function buildSummary(report = {}) {
         report.trade_execution_alert_cross_audit.parsed.missing_non_actionable_alert_fill_n
         ?? (tradeExecutionAlertMissingFillRawTotalN - tradeExecutionAlertMissingFillN)
       )
+      || 0
+    )
+    : 0;
+  const tradeExecutionAlertMissingEntryFillN = tradeExecutionAlertCoverageReady
+    ? Number(
+      report.trade_execution_alert_cross_audit
+      && report.trade_execution_alert_cross_audit.parsed
+      && report.trade_execution_alert_cross_audit.parsed.missing_entry_alert_fill_n
       || 0
     )
     : 0;
@@ -542,6 +551,7 @@ function buildSummary(report = {}) {
     trade_execution_alert_missing_fill_n: tradeExecutionAlertMissingFillN,
     trade_execution_alert_missing_fill_total_n: tradeExecutionAlertMissingFillTotalN,
     trade_execution_alert_missing_fill_non_actionable_n: tradeExecutionAlertMissingFillNonActionableN,
+    trade_execution_alert_missing_entry_fill_n: tradeExecutionAlertMissingEntryFillN,
     trade_execution_alert_missing_fill_raw_total_n: tradeExecutionAlertMissingFillRawTotalN,
     trade_execution_alert_coverage_ready: tradeExecutionAlertCoverageReady,
     duplication_live_group_n: duplicationLiveGroupN,
@@ -643,6 +653,7 @@ function buildSkippedSummary(reason, extra = {}) {
     trade_execution_alert_missing_fill_n: 0,
     trade_execution_alert_missing_fill_total_n: 0,
     trade_execution_alert_missing_fill_non_actionable_n: 0,
+    trade_execution_alert_missing_entry_fill_n: 0,
     trade_execution_alert_missing_fill_raw_total_n: 0,
     trade_execution_alert_coverage_ready: false,
     duplication_live_group_n: 0,

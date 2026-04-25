@@ -75,7 +75,14 @@ const { __test } = require("../../scripts/automation-hourly-guard");
     recentSignals: [{ id: 1 }, { id: 2 }],
     recentDropped: [{ id: 3 }],
     gatePass: 4,
-    integrity: { issue_count: 1 },
+    integrity: {
+      issue_count: 1,
+      markets: [
+        { symbol: "BNBUSDT", internal_active: true, external_active: true },
+        { symbol: "XRPUSDT", internal_active: false, external_active: true },
+      ],
+      issues: [{ symbol: "XRPUSDT", severity: "CRIT" }],
+    },
     report: { system_error_count_24h: 2 },
     signalPhysics,
     dropPhysics,
@@ -87,6 +94,7 @@ const { __test } = require("../../scripts/automation-hourly-guard");
   });
 
   assert.strictEqual(Array.isArray(sections), true);
+  assert.ok(sections[0].lines.some((line) => line.includes("실포지션 보호 1/2")));
   assert.strictEqual(sections[1].header, "상태층(시장 물리)");
   assert.ok(sections[1].lines[0].includes("action DROP"));
   assert.ok(sections[1].lines[0].includes("wait HARD"));

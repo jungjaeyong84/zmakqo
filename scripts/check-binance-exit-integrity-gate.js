@@ -84,6 +84,7 @@ function buildFailureReasons(summary = {}, { cycleResult = null, env = process.e
   if (toCount(summary.fill_sync_duplicate_group_n) > 0) reasons.push("FILL_SYNC_DUPLICATE_GROUP");
   if (toCount(summary.fill_sync_alert_event_issue_n) > 0) reasons.push("FILL_SYNC_ALERT_EVENT_ISSUE");
   if (toCount(summary.trade_execution_alert_missing_fill_n) > 0) reasons.push("TRADE_EXECUTION_ALERT_MISSING_FILL");
+  if (toCount(summary.trade_execution_alert_missing_entry_fill_n) > 0) reasons.push("TRADE_EXECUTION_ENTRY_ALERT_MISSING_FILL");
   if (toCount(summary.duplication_live_group_n) > 0) reasons.push("DUPLICATION_LIVE_GROUP");
   if (toCount(summary.authority_actionable_live_issue_position_n) > 0) reasons.push("AUTHORITY_ACTIONABLE_LIVE_ISSUE_POSITION");
   if (toCount(summary.canonical_exit_stage_fail_n) > 0) reasons.push("CANONICAL_EXIT_STAGE_FAIL");

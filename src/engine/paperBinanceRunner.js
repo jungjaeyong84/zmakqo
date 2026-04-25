@@ -7730,7 +7730,12 @@ async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } 
   const executionMode = execMode;
   const liveDryRun = Boolean(cfg.live_dry_run) || execMode === "LIVE_DRY_RUN";
   const discoveryBridge = evaluateV2DiscoveryCanaryLiveBridge({ env, symbol, executionMode });
-  let liveEnabled = executionMode === "LIVE" && (cfg.live_enabled === true || discoveryBridge.ok === true);
+  const discoveryCanaryConfigured = discoveryBridge.policy.discovery_enabled === true;
+  let liveEnabled = executionMode === "LIVE" && (
+    discoveryCanaryConfigured
+      ? discoveryBridge.ok === true
+      : cfg.live_enabled === true
+  );
   let reason = null;
 
   const ex = String(exchange || "").toUpperCase();
@@ -7744,7 +7749,7 @@ async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } 
     reason = "MARKET_NOT_ALLOWED";
   }
 
-  if (executionMode === "LIVE" && cfg.live_enabled !== true && discoveryBridge.ok !== true && discoveryBridge.policy.discovery_enabled === true && !reason) {
+  if (executionMode === "LIVE" && discoveryBridge.ok !== true && discoveryCanaryConfigured && !reason) {
     reason = discoveryBridge.blockers[0] || "V2_DISCOVERY_CANARY_LIVE_BRIDGE_BLOCKED";
   }
 
@@ -7779,6 +7784,7 @@ async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } 
     v2DiscoveryCanaryBridge: discoveryBridge.ok === true,
     v2DiscoveryCanaryBridgeReason: discoveryBridge.reason,
     v2DiscoveryCanaryBridgeBlockers: discoveryBridge.blockers,
+    v2DiscoveryCanaryConfigured: discoveryCanaryConfigured,
     v2DiscoveryCanaryLegacyEntryWriteBlocked: discoveryBridge.ok === true,
   };
 }

@@ -39,6 +39,21 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   );
 })();
 
+(function discoveryCanaryMustNotFallbackToFirestoreLiveEnabled() {
+  assert.ok(
+    source.includes("const discoveryCanaryConfigured = discoveryBridge.policy.discovery_enabled === true"),
+    "V2 discovery live config must explicitly detect discovery canary mode"
+  );
+  assert.ok(
+    source.includes("discoveryCanaryConfigured\n      ? discoveryBridge.ok === true\n      : cfg.live_enabled === true"),
+    "V2 discovery canary must require bridge.ok and must not OR with Firestore live_enabled"
+  );
+  assert.ok(
+    !source.includes("cfg.live_enabled === true || discoveryBridge.ok === true"),
+    "Firestore live_enabled must not revive legacy live entry when discovery bridge is blocked"
+  );
+})();
+
 (function liveFuturesSubmitRequiresAtomicPendingIntentClaim() {
   const claimIndex = source.lastIndexOf("claimPendingIntentForExecution(it.intent_id", source.indexOf("liveResult = await executeLiveFuturesOrder({"));
   const submitIndex = source.indexOf("liveResult = await executeLiveFuturesOrder({");
