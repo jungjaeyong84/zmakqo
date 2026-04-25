@@ -158,6 +158,7 @@ function resolveV2TelegramRuntimeContext(env = process.env) {
   const allowLegacy = parseBool(source.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, false);
   const symbols = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || "").trim();
   const maxNotional = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE || "").trim();
+  const symbolNotionalMap = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP || "").trim();
 
   const mode = discovery
     ? "DISCOVERY_CANARY"
@@ -171,6 +172,7 @@ function resolveV2TelegramRuntimeContext(env = process.env) {
   ];
   if (symbols) risk.push(`symbols=${symbols}`);
   if (maxNotional) risk.push(`max_notional=${maxNotional}`);
+  if (symbolNotionalMap) risk.push(`symbol_notional=${symbolNotionalMap}`);
   return Object.freeze({
     label: `V2 ${mode}`,
     line: `runtime=V2 ${mode} | ${risk.join(" | ")}`,

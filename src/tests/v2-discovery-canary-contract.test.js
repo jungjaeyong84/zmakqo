@@ -11,7 +11,7 @@ const env = {
   DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
   DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
   DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
-  DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "ETHUSDT:40",
+  DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "ETHUSDT:50",
   DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
   DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
   DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "5",
@@ -23,7 +23,7 @@ const env = {
   assert.deepStrictEqual(policy.allowed_symbols, ["BTCUSDT"]);
   assert.strictEqual(policy.max_symbol_count, 2);
   assert.strictEqual(policy.max_notional_quote, 25);
-  assert.strictEqual(policy.symbol_notional_quote_map.BTCUSDT, 200);
+  assert.strictEqual(policy.symbol_notional_quote_map.BTCUSDT, 230);
   assert.strictEqual(policy.max_position_count, 1);
   assert.strictEqual(policy.max_trades_per_day, 1);
   assert.strictEqual(policy.daily_loss_halt_quote, 10);
@@ -34,7 +34,7 @@ const env = {
     env: {
       ...env,
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
-      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:10|XRPUSDT:10",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
     },
     confirm: DISCOVERY_CONFIRM_PHRASE,
     runtime: { enabled: true, dry_run: false, canary_only: true },
@@ -50,7 +50,7 @@ const env = {
         status: "APPROVED",
         symbol: "XRPUSDT",
         side: "LONG",
-        notional_quote: 10,
+        notional_quote: 15,
         entry_qty_abs: 8,
       },
     },
@@ -98,7 +98,7 @@ const env = {
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: symbols,
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
-      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:200|ETHUSDT:40|LINKUSDT:40|BNBUSDT:10|XRPUSDT:10|SOLUSDT:10|AXSUSDT:10|DOGEUSDT:10",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:230|ETHUSDT:50|LINKUSDT:50|BNBUSDT:15|XRPUSDT:15|SOLUSDT:15|AXSUSDT:15|DOGEUSDT:15",
     },
     confirm: DISCOVERY_CONFIRM_PHRASE,
     runtime: { enabled: true, dry_run: false, canary_only: true },
@@ -114,7 +114,7 @@ const env = {
         status: "APPROVED",
         symbol: "DOGEUSDT",
         side: "LONG",
-        notional_quote: 10,
+        notional_quote: 15,
         entry_qty_abs: 20,
       },
     },
@@ -123,7 +123,7 @@ const env = {
   assert.strictEqual(result.policy.allowed_symbols.length, 8);
   assert.strictEqual(result.policy.max_symbol_count, 8);
   assert.strictEqual(result.policy.max_notional_quote, 6);
-  assert.strictEqual(result.effective_symbol_notional_quote, 10);
+  assert.strictEqual(result.effective_symbol_notional_quote, 15);
   assert.strictEqual(result.policy.max_position_count, 1);
   assert.strictEqual(result.policy.max_trades_per_day, 1);
 })();
@@ -145,7 +145,7 @@ const env = {
         status: "APPROVED",
         symbol: "ETHUSDT",
         side: "LONG",
-        notional_quote: 40,
+        notional_quote: 50,
         entry_qty_abs: 0.005,
       },
     },

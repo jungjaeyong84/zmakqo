@@ -49,6 +49,7 @@ function run() {
       DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "25",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
       DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "1",
       DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "0",
       ML_LIVE_SERVING_ARMED: "0",
@@ -59,6 +60,7 @@ function run() {
   assert.ok(v2Text.includes("runtime=V2 DISCOVERY_CANARY"));
   assert.ok(v2Text.includes("legacy_webhook=차단됨"));
   assert.ok(v2Text.includes("symbols=SOLUSDT|XRPUSDT"));
+  assert.ok(v2Text.includes("symbol_notional=SOLUSDT:15|XRPUSDT:15"));
   assert.ok(!v2Text.includes("[P0]"));
 
   delete process.env.TELEGRAM_ALERT_TRANSPORT;

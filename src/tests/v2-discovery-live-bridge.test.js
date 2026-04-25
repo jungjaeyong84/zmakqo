@@ -13,7 +13,7 @@ function buildEnv(overrides = {}) {
     DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
     DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "25",
-    DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:10|XRPUSDT:10",
+    DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
     DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
@@ -37,7 +37,7 @@ function discoveryBridgeAllowsOnlyApprovedSymbols() {
   });
   assert.strictEqual(pass.ok, true);
   assert.strictEqual(pass.reason, "V2_DISCOVERY_CANARY_LIVE_BRIDGE_ENABLED");
-  assert.strictEqual(pass.max_notional_quote, 10);
+  assert.strictEqual(pass.max_notional_quote, 15);
 
   const blocked = __test.evaluateV2DiscoveryCanaryLiveBridge({
     env: buildEnv(),
@@ -79,8 +79,8 @@ function discoveryBridgeClampsLegacyMaxOrder() {
     executionMode: "LIVE",
   });
   assert.strictEqual(bridge.ok, true);
-  assert.strictEqual(__test.clampDiscoveryCanaryMaxOrderQuote(0, bridge), 10);
-  assert.strictEqual(__test.clampDiscoveryCanaryMaxOrderQuote(100, bridge), 10);
+  assert.strictEqual(__test.clampDiscoveryCanaryMaxOrderQuote(0, bridge), 15);
+  assert.strictEqual(__test.clampDiscoveryCanaryMaxOrderQuote(100, bridge), 15);
   assert.strictEqual(__test.clampDiscoveryCanaryMaxOrderQuote(8, bridge), 8);
 }
 

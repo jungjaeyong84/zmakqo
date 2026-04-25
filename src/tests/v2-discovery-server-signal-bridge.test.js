@@ -17,7 +17,7 @@ function buildEnv(overrides = {}) {
     DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
-    DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:200|ETHUSDT:40|LINKUSDT:40|BNBUSDT:10|XRPUSDT:10|SOLUSDT:10|AXSUSDT:10|DOGEUSDT:10",
+    DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:230|ETHUSDT:50|LINKUSDT:50|BNBUSDT:15|XRPUSDT:15|SOLUSDT:15|AXSUSDT:15|DOGEUSDT:15",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
     DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
@@ -239,7 +239,7 @@ async function serverSignalRoutesToV2ProductionEntryLiveRequest() {
   assert.strictEqual(result.request.body.bundle.signalIntent.side, "LONG");
   assert.strictEqual(result.request.routedDecision.ok, true);
   assert.strictEqual(result.request.routedDecision.entryIntent.signal_criteria_verdict, "PASS");
-  assert.ok(result.request.entrySizingDecision.notional_quote <= 10);
+  assert.ok(result.request.entrySizingDecision.notional_quote <= 15);
 }
 
 async function marketDataQualityBlockFailsClosed() {
