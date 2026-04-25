@@ -75,6 +75,25 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   );
 })();
 
+(function discoveryCanarySignalFanInCannotCreateLegacyImmediateIntent() {
+  const fanInMarker = "v2_discovery_signal_fan_in_handoff = true";
+  const firstFanInIndex = source.indexOf(fanInMarker);
+  const secondFanInIndex = source.indexOf(fanInMarker, firstFanInIndex + 1);
+  assert.ok(firstFanInIndex > -1, "first signal fan-in V2 discovery handoff guard is missing");
+  assert.ok(secondFanInIndex > -1, "second signal fan-in V2 discovery handoff guard is missing");
+
+  for (const fanInIndex of [firstFanInIndex, secondFanInIndex]) {
+    const immediateIndex = source.indexOf("[immediate_entry]", fanInIndex);
+    const upsertIndex = source.indexOf("await upsertIntent({", fanInIndex);
+    const handoffIndex = source.indexOf("runV2DiscoveryCanaryServerSignalHandoff({", fanInIndex);
+    const blockedIndex = source.indexOf("v2_discovery_signal_fan_in_blocked: true", fanInIndex);
+    assert.ok(handoffIndex > fanInIndex, "signal fan-in guard must call production entry handoff");
+    assert.ok(blockedIndex > handoffIndex, "signal fan-in blocked handoff must be recorded as a drop");
+    assert.ok(immediateIndex > handoffIndex, "signal fan-in handoff must run before immediate_entry logging");
+    assert.ok(upsertIndex > handoffIndex, "signal fan-in handoff must run before legacy upsertIntent");
+  }
+})();
+
 (function postFillProtectionFailureMustRecoverNotClose() {
   const entrySubmitterSource = fs.readFileSync(path.resolve(__dirname, "../v2/entrySubmitter.js"), "utf8");
   assert.ok(

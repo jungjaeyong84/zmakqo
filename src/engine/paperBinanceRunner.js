@@ -5621,6 +5621,75 @@ function shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg = null, intent =
   return isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent });
 }
 
+function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE") {
+  const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+  const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+  if (routedDecision && routedDecision.reason) return String(routedDecision.reason).trim().toUpperCase();
+  if (endpointReason) return String(endpointReason).trim().toUpperCase();
+  if (handoff && handoff.reason) return String(handoff.reason).trim().toUpperCase();
+  return fallback;
+}
+
+function buildV2DiscoverySignalFanInIntentRow({
+  exchange = null,
+  symbol = null,
+  tf = null,
+  signal = null,
+  features = null,
+  qtyFraction = null,
+  intentExecutionMode = null,
+  signalBarCloseUtcForIntent = null,
+  signalBarCloseMsForIntent = null,
+  intentSignalBarCloseUtc = null,
+  intentSignalBarCloseMs = null,
+  execBarCloseUtcForIntent = null,
+  execBarCloseMsForIntent = null,
+  signalDocId = null,
+  signalPrice = null,
+  runId = null,
+} = {}) {
+  const rowFeatures = features && typeof features === "object" && !Array.isArray(features)
+    ? { ...features }
+    : {};
+  const sig = signal && typeof signal === "object" ? signal : {};
+  const resolvedSignalId = sig.signal_id || rowFeatures.signal_id || null;
+  const resolvedSignalDocId = sig.signal_doc_id || signalDocId || rowFeatures.signal_doc_id || resolvedSignalId || null;
+  const requestId = resolvedSignalId || resolvedSignalDocId || [
+    "V2_DISCOVERY_SIGNAL_FAN_IN",
+    String(exchange || "EX").toUpperCase(),
+    String(symbol || "SYMBOL").toUpperCase(),
+    String(tf || "TF"),
+    String(signalBarCloseMsForIntent || intentSignalBarCloseMs || Date.now()),
+    String(sig.event || "EVENT").toUpperCase(),
+  ].join("__");
+  if (resolvedSignalId && !rowFeatures.signal_id) rowFeatures.signal_id = resolvedSignalId;
+  if (resolvedSignalDocId && !rowFeatures.signal_doc_id) rowFeatures.signal_doc_id = resolvedSignalDocId;
+  return {
+    intent_id: requestId,
+    request_id: requestId,
+    exchange,
+    symbol,
+    symbol_or_pair_id: symbol,
+    tf,
+    event: sig.event,
+    side: sig.side,
+    qty_pct: qtyFraction,
+    reason: sig.reason || "SIGNAL",
+    features_json: rowFeatures,
+    signal_id: resolvedSignalId,
+    signal_doc_id: resolvedSignalDocId,
+    signal_price: Number.isFinite(Number(signalPrice)) ? Number(signalPrice) : null,
+    signal_bar_close_time_utc: intentSignalBarCloseUtc || signalBarCloseUtcForIntent || null,
+    signal_bar_close_time_utc_ms: Number.isFinite(Number(intentSignalBarCloseMs))
+      ? Number(intentSignalBarCloseMs)
+      : (Number.isFinite(Number(signalBarCloseMsForIntent)) ? Number(signalBarCloseMsForIntent) : null),
+    scheduled_exec_bar_close_time_utc: execBarCloseUtcForIntent || null,
+    scheduled_exec_bar_close_time_utc_ms: Number.isFinite(Number(execBarCloseMsForIntent)) ? Number(execBarCloseMsForIntent) : null,
+    execution_mode: intentExecutionMode,
+    run_id: runId || null,
+  };
+}
+
 function resolveForceAllSignalsAdd(sysCfg = {}, exchange = "") {
   if (resolveLiveRescueAddConfig(sysCfg, exchange).enabled === true) return false;
   const envRaw = process.env.FORCE_ALL_SIGNALS_ADD;
@@ -14802,6 +14871,108 @@ async function runPaperBinanceForBar({
       metaUpdates.tp_p1_pending_event = s.event;
     }
 
+    if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+      features.v2_discovery_signal_fan_in_handoff = true;
+      features.v2_discovery_entry_filter_authority = "PRODUCTION_ENTRY_ROUTE";
+      const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
+        exchange,
+        symbol,
+        tf,
+        signal: s,
+        features,
+        qtyFraction,
+        intentExecutionMode,
+        signalBarCloseUtcForIntent,
+        signalBarCloseMsForIntent,
+        intentSignalBarCloseUtc,
+        intentSignalBarCloseMs,
+        execBarCloseUtcForIntent,
+        execBarCloseMsForIntent,
+        signalDocId,
+        signalPrice: Number(bar && (bar.close ?? bar.c)),
+        runId,
+      });
+      const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+        env: process.env,
+        intentRow: handoffIntentRow,
+        liveCfg,
+        referencePrice: Number(bar && (bar.open ?? bar.o)) || handoffIntentRow.signal_price || Number(bar && (bar.close ?? bar.c)),
+        requestId: handoffIntentRow.request_id,
+      }).catch((error) => ({
+        ok: false,
+        reason: "V2_DISCOVERY_BRIDGE_THROWN",
+        error_message: error && error.message ? String(error.message) : String(error),
+      }));
+      if (handoff && handoff.ok === true) {
+        const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+        const requestBundle = requestBody.bundle || {};
+        const requestPermit = requestBody.executionPermit || {};
+        const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          signalId: s.signal_id || (features && features.signal_id) || null,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: routeReason,
+          pendingReason: "IMMEDIATE_EXEC",
+          scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+          meta: {
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        }).catch((err) => {
+          console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_HANDOFF_ALERT_FAIL]", err?.message || err);
+        });
+        if (s.signal_id) {
+          const lock = await tryLockSignal({ signalId: s.signal_id, runId });
+          if (lock && lock.ok) {
+            await markSignalConsumed({
+              signalId: s.signal_id,
+              runId,
+              consumedAtIso: new Date().toISOString(),
+              execBarCloseMs: execBarCloseMsForIntent,
+              execBarCloseUtc: execBarCloseUtcForIntent,
+              reason: routeReason,
+              meta: {
+                intent: intent || null,
+                v2_discovery_bridge_reason: handoff.reason || null,
+                v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+                v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+              },
+            });
+          }
+        }
+        continue;
+      }
+      const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+      signalDrops.push({
+        ...s,
+        bar_close_time_utc_ms: effectiveBarMs,
+        qty_pct: qtyFraction,
+        reason: blockReason,
+        drop_reason_code: blockReason,
+        features_json: {
+          ...(features || {}),
+          v2_discovery_signal_fan_in_blocked: true,
+          v2_discovery_bridge_reason: handoff && handoff.reason ? handoff.reason : null,
+          v2_discovery_bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
+          v2_discovery_endpoint_reason: handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null,
+          v2_discovery_router_reason: handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision))
+            ? (handoff.routedDecision || (handoff.request && handoff.request.routedDecision)).reason || null
+            : null,
+        },
+        event_intent: intent,
+      });
+      continue;
+    }
+
     if (isImmediateEntry || immediateReason === "CORE_CONFIRM_NEXT_BAR") {
       console.log(
         `[immediate_entry] ex=${exchange} sym=${symbol} tf=${tf} ev=${s.event} side=${s.side} qty=${qtyFraction} reason=${execOnCurrentBar ? "EXEC_CURRENT_BAR" : (immediateReason || "IMMEDIATE_ENTRY")} sched=${execBarCloseUtcForIntent}`
@@ -18360,6 +18531,108 @@ async function runPaperFuturesForBar({
       metaUpdates.tp_p1_pending_at_ms = Number.isFinite(pendingAtMs) ? pendingAtMs : null;
       metaUpdates.tp_p1_pending_until_ms = Number.isFinite(pendingAtMs) ? (pendingAtMs + tpP1PendingHoldMs) : null;
       metaUpdates.tp_p1_pending_event = s.event;
+    }
+
+    if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+      features.v2_discovery_signal_fan_in_handoff = true;
+      features.v2_discovery_entry_filter_authority = "PRODUCTION_ENTRY_ROUTE";
+      const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
+        exchange,
+        symbol,
+        tf,
+        signal: s,
+        features,
+        qtyFraction,
+        intentExecutionMode,
+        signalBarCloseUtcForIntent,
+        signalBarCloseMsForIntent,
+        intentSignalBarCloseUtc,
+        intentSignalBarCloseMs,
+        execBarCloseUtcForIntent,
+        execBarCloseMsForIntent,
+        signalDocId: s.signal_doc_id || null,
+        signalPrice: Number(bar && (bar.close ?? bar.c)),
+        runId,
+      });
+      const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+        env: process.env,
+        intentRow: handoffIntentRow,
+        liveCfg,
+        referencePrice: Number(bar && (bar.open ?? bar.o)) || handoffIntentRow.signal_price || Number(bar && (bar.close ?? bar.c)),
+        requestId: handoffIntentRow.request_id,
+      }).catch((error) => ({
+        ok: false,
+        reason: "V2_DISCOVERY_BRIDGE_THROWN",
+        error_message: error && error.message ? String(error.message) : String(error),
+      }));
+      if (handoff && handoff.ok === true) {
+        const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+        const requestBundle = requestBody.bundle || {};
+        const requestPermit = requestBody.executionPermit || {};
+        const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          signalId: s.signal_id || (features && features.signal_id) || null,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: routeReason,
+          pendingReason: "IMMEDIATE_EXEC",
+          scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+          meta: {
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        }).catch((err) => {
+          console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_HANDOFF_ALERT_FAIL]", err?.message || err);
+        });
+        if (s.signal_id) {
+          const lock = await tryLockSignal({ signalId: s.signal_id, runId });
+          if (lock && lock.ok) {
+            await markSignalConsumed({
+              signalId: s.signal_id,
+              runId,
+              consumedAtIso: new Date().toISOString(),
+              execBarCloseMs: execBarCloseMsForIntent,
+              execBarCloseUtc: execBarCloseUtcForIntent,
+              reason: routeReason,
+              meta: {
+                intent: intent || null,
+                v2_discovery_bridge_reason: handoff.reason || null,
+                v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+                v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+              },
+            });
+          }
+        }
+        continue;
+      }
+      const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+      signalDrops.push({
+        ...s,
+        bar_close_time_utc_ms: effectiveBarMs,
+        qty_pct: qtyFraction,
+        reason: blockReason,
+        drop_reason_code: blockReason,
+        features_json: {
+          ...(features || {}),
+          v2_discovery_signal_fan_in_blocked: true,
+          v2_discovery_bridge_reason: handoff && handoff.reason ? handoff.reason : null,
+          v2_discovery_bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
+          v2_discovery_endpoint_reason: handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null,
+          v2_discovery_router_reason: handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision))
+            ? (handoff.routedDecision || (handoff.request && handoff.request.routedDecision)).reason || null
+            : null,
+        },
+        event_intent: intent,
+      });
+      continue;
     }
 
     if (isImmediateEntry || immediateReason === "CORE_CONFIRM_NEXT_BAR") {
