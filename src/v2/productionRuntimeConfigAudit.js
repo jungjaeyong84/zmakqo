@@ -300,10 +300,22 @@ function auditV2ProductionRuntimeConfigContract({ cloudbuildSource = "", dockerf
       { value: substitutions._DONBEOLJA_V2_CANARY_ONLY || null }
     ),
     buildCheck(
-      "CLOUDBUILD_DEFAULT_LIVE_ENDPOINT_OFF",
-      substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED === "0",
-      "default Cloud Build deploy must keep the production entry live endpoint disabled",
+      "CLOUDBUILD_DEFAULT_DISCOVERY_LIVE_ENDPOINT_ON",
+      substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED === "1",
+      "default Cloud Build deploy must preserve the guarded V2 discovery live endpoint; canary_only still blocks formal LIVE",
       { value: substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED || null }
+    ),
+    buildCheck(
+      "CLOUDBUILD_DEFAULT_DISCOVERY_CANARY_ON",
+      substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED === "1",
+      "default Cloud Build deploy must preserve discovery canary mode so direct builds cannot silently disable sampling",
+      { value: substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED || null }
+    ),
+    buildCheck(
+      "CLOUDBUILD_DEFAULT_DISCOVERY_SYMBOLS_CONFIGURED",
+      String(substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || "").split(/[|,]/).filter(Boolean).length > 0,
+      "default Cloud Build deploy must keep a non-empty discovery symbol allowlist",
+      { value: substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || null }
     ),
     buildCheck(
       "CLOUDBUILD_DEFAULT_SCHEDULER_CUTOVER_MODE_OPENCLAW_CRON",
