@@ -8,6 +8,24 @@ const { __test: accountSummaryTest } = require("../services/binanceFuturesAccoun
   const result = evaluateV2RiskGovernor({
     env: {
       DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "250",
+      DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: "230",
+      DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE: "250",
+    },
+    account: { equity_quote: 500, daily_loss_quote: 0, consecutive_loss_n: 0, trade_count_24h: 0 },
+    positions: [],
+    candidate: { symbol: "BTCUSDT", notional_quote: 230 },
+    market: { volatility_bps: 80 },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_RISK_GOVERNOR_PASS");
+  assert.strictEqual(result.metrics.symbol_after_notional_quote, 230);
+  assert.strictEqual(result.metrics.group_after_notional_quote, 230);
+}
+
+{
+  const result = evaluateV2RiskGovernor({
+    env: {
+      DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "250",
       DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: "100",
       DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE: "180",
     },
