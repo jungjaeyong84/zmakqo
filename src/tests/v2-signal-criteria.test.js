@@ -47,6 +47,71 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.expected_edge_model.edge_cohort, "STRONG_EDGE");
   assert.ok(criteria.expected_edge_model.tp1_reach_probability > 0.5);
   assert.ok(criteria.signal_score >= 80);
+  assert.strictEqual(criteria.criteria_profile, "V6_COMPAT_DISCOVERY");
+  assert.strictEqual(criteria.entry_grade, "CORE");
+  assert.strictEqual(criteria.trigger_type, "NONE");
+})();
+
+(function v6CompatDiscoveryAllowsEarlySignalsWithoutStrictMode() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "transition",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.55,
+      setup_type: "MOMENTUM_CONTINUATION",
+      setup_quality_score: 0.6,
+      trigger_type: "CONTINUATION",
+      trigger_confirmed: true,
+      volume_zscore: 0.8,
+      rsi_entry_tf: 52,
+      expected_gross_r: 1.5,
+      expected_net_r_after_cost: 0.5,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.8,
+      spread_bps: 8,
+      mark_index_gap_bps: 3,
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 8, mark_index_gap_bps: 3 } },
+  });
+  assert.strictEqual(criteria.verdict, "PASS");
+  assert.strictEqual(criteria.criteria_profile, "V6_COMPAT_DISCOVERY");
+  assert.strictEqual(criteria.entry_grade, "EARLY");
+  assert.strictEqual(criteria.trigger_type, "CONTINUATION");
+})();
+
+(function strictProfileRejectsSameEarlySignal() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "STRICT",
+    featureValues: {
+      market_regime: "transition",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.55,
+      setup_type: "MOMENTUM_CONTINUATION",
+      setup_quality_score: 0.6,
+      trigger_type: "CONTINUATION",
+      trigger_confirmed: true,
+      volume_zscore: 0.8,
+      rsi_entry_tf: 52,
+      expected_gross_r: 1.5,
+      expected_net_r_after_cost: 0.5,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.8,
+      spread_bps: 8,
+      mark_index_gap_bps: 3,
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 8, mark_index_gap_bps: 3 } },
+  });
+  assert.strictEqual(criteria.verdict, "BLOCK");
+  assert.strictEqual(criteria.criteria_profile, "STRICT");
+  assert.ok(criteria.blockers.includes("HTF_REGIME:ALIGNMENT_REQUIRED"));
+  assert.ok(criteria.blockers.includes("TRIGGER:CONFIRMATION_REQUIRED"));
 })();
 
 (function missingEvidenceFailsClosed() {

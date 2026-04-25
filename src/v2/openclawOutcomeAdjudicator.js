@@ -30,6 +30,26 @@ function toNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function buildTimingMeasurement({ criteria = null, evidence = null } = {}) {
+  const row = asObject(evidence) || {};
+  const crit = asObject(criteria) || {};
+  const triggerGate = asObject(crit.trigger_gate) || {};
+  const entryGrade = upper(row.entry_grade || crit.entry_grade) || "NONE";
+  const triggerType = upper(row.trigger_type || crit.trigger_type || triggerGate.trigger_type) || "NONE";
+  const triggerConfirmed = row.trigger_confirmed === true || triggerGate.trigger_confirmed === true;
+  const explicitBucket = upper(row.timing_bucket || row.febt_bucket || row.febt_phase);
+  const timingBucket = explicitBucket
+    || (triggerConfirmed && entryGrade !== "NONE" ? "FIRE" : "VOID");
+  return Object.freeze({
+    source: "V2_SIGNAL_CRITERIA_TIMING_MEASUREMENT",
+    timing_bucket: timingBucket,
+    entry_grade: entryGrade,
+    trigger_type: triggerType,
+    trigger_confirmed: triggerConfirmed,
+    signal_score: toNumberOrNull(row.signal_score ?? crit.signal_score),
+  });
+}
+
 function extractIds({ bundle = null, positionCycle = null, executedEntry = null } = {}) {
   const decision = asObject(asObject(bundle) && bundle.openclawDecision);
   const signal = asObject(asObject(bundle) && bundle.signalIntent);
@@ -72,6 +92,13 @@ function buildDefaultOutcomeEvidence({
   }
   if (!seed.setup_type && criteria && criteria.setup_gate) {
     seed.setup_type = trimOrNull(criteria.setup_gate.setup_type);
+  }
+  if (!seed.entry_grade && criteria && criteria.entry_grade) seed.entry_grade = criteria.entry_grade;
+  if (!seed.trigger_type && criteria && criteria.trigger_type) seed.trigger_type = criteria.trigger_type;
+  if (!seed.signal_criteria_profile && criteria && criteria.criteria_profile) seed.signal_criteria_profile = criteria.criteria_profile;
+  if (seed.signal_score === undefined && criteria && criteria.signal_score !== undefined) seed.signal_score = criteria.signal_score;
+  if (!seed.timing_measurement) {
+    seed.timing_measurement = buildTimingMeasurement({ criteria, evidence: seed });
   }
   return seed;
 }
@@ -182,5 +209,6 @@ module.exports = {
     toNumberOrNull,
     extractIds,
     buildDefaultOutcomeEvidence,
+    buildTimingMeasurement,
   },
 };

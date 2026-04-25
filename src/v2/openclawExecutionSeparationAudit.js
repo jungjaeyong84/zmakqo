@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { V2_SERVICE_BOUNDARIES } = require("./boundaries");
 const { V2_SERVICES } = require("./constants");
 const { resolveEntryIntentFromOpenClaw } = require("./signalAuthorityRouter");
+const { extractCurrentSignalContext } = require("./sameDirectionCooldown");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -12,6 +13,10 @@ function trimOrNull(value) {
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
+}
+
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
 function hash12(payload) {
@@ -36,6 +41,9 @@ function normalizeBundle(bundle) {
   return Object.freeze({
     signalIntent,
     openclawDecision,
+    featureSnapshot: source.featureSnapshot || null,
+    signalCriteria: source.signalCriteria || null,
+    mlAiSignalProposal: source.mlAiSignalProposal || null,
     strategyFilterResult: source.strategyFilterResult || null,
     openclawDecisionBundleHash: trimOrNull(source.openclawDecisionBundleHash || openclawDecision.openclaw_decision_bundle_hash),
   });
@@ -62,6 +70,7 @@ function evaluateOpenClawExecutionSeparation({
   const signalIntent = normalized.signalIntent;
   const openclawDecision = normalized.openclawDecision;
   const openclawDecisionBundleHash = trimOrNull(normalized.openclawDecisionBundleHash);
+  const signalContext = extractCurrentSignalContext(normalized);
   const signalIntentId = trimOrNull(signalIntent.signal_intent_id);
   const openclawDecisionId = trimOrNull(openclawDecision.openclaw_decision_id);
   const decisionSignalIntentId = trimOrNull(openclawDecision.signal_intent_id);
@@ -150,6 +159,16 @@ function evaluateOpenClawExecutionSeparation({
     signal_intent_id: signalIntentId,
     openclaw_decision_id: openclawDecisionId,
     openclaw_decision_bundle_hash: openclawDecisionBundleHash,
+    symbol: signalContext.symbol,
+    side: signalContext.side,
+    entry_grade: signalContext.entry_grade,
+    trigger_type: signalContext.trigger_type,
+    setup_type: signalContext.setup_type,
+    signal_criteria_profile: trimOrNull(asObject(normalized.signalCriteria) && normalized.signalCriteria.criteria_profile)
+      || trimOrNull(asObject(asObject(openclawDecision.canonical_evidence_summary) && openclawDecision.canonical_evidence_summary.signal_criteria)
+        && openclawDecision.canonical_evidence_summary.signal_criteria.criteria_profile),
+    signal_score: signalContext.signal_score,
+    bar_time_ms: signalContext.bar_time_ms,
     decision_mode: decisionMode,
     deterministic_route_status: routedOk ? "ENTRY_INTENT_CREATED" : "ENTRY_INTENT_BLOCKED",
     execution_kernel_status: executed ? "EXECUTED_ENTRY_PRESENT" : "NO_EXECUTION_ATTACHED",

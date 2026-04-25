@@ -44,6 +44,77 @@ function clamp01OrNull(value) {
   return Math.max(0, Math.min(1, n));
 }
 
+const SIGNAL_CRITERIA_PROFILE_STRICT = "STRICT";
+const SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY = "V6_COMPAT_DISCOVERY";
+const DEFAULT_SIGNAL_CRITERIA_PROFILE = SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY;
+
+const SIGNAL_CRITERIA_PROFILE_DEFAULTS = Object.freeze({
+  [SIGNAL_CRITERIA_PROFILE_STRICT]: Object.freeze({
+    max_spread_bps: 8,
+    max_mark_index_gap_bps: 8,
+    max_funding_penalty_bps: 2,
+    min_htf_alignment_score: 0.6,
+    min_setup_quality_score: 0.6,
+    min_market_quality_score: 0.75,
+    min_volume_zscore: 1,
+    min_rsi_long: 55,
+    max_rsi_short: 45,
+    min_expected_gross_r: 1.8,
+    min_expected_net_r_after_cost: 0.3,
+    min_signal_score: 80,
+    early_signal_score: 64,
+    core_signal_score: 80,
+  }),
+  [SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY]: Object.freeze({
+    max_spread_bps: 14,
+    max_mark_index_gap_bps: 10,
+    max_funding_penalty_bps: 3,
+    min_htf_alignment_score: 0.4,
+    min_setup_quality_score: 0.38,
+    min_market_quality_score: 0.7,
+    min_volume_zscore: 0.3,
+    min_rsi_long: 48,
+    max_rsi_short: 52,
+    min_expected_gross_r: 1.45,
+    min_expected_net_r_after_cost: 0.25,
+    min_signal_score: 55,
+    early_signal_score: 55,
+    core_signal_score: 78,
+  }),
+});
+
+function normalizeSignalCriteriaProfile(value) {
+  const token = upper(value);
+  if (token === SIGNAL_CRITERIA_PROFILE_STRICT) return SIGNAL_CRITERIA_PROFILE_STRICT;
+  if (token === "V6_COMPAT" || token === "V6_DISCOVERY" || token === SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY) {
+    return SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY;
+  }
+  return DEFAULT_SIGNAL_CRITERIA_PROFILE;
+}
+
+function resolveSignalCriteriaThresholds({ profile, thresholds } = {}) {
+  const criteriaProfile = normalizeSignalCriteriaProfile(profile);
+  const defaults = SIGNAL_CRITERIA_PROFILE_DEFAULTS[criteriaProfile];
+  const cfg = asObject(thresholds) || {};
+  return Object.freeze({
+    criteria_profile: criteriaProfile,
+    max_spread_bps: toNumberOrNull(cfg.max_spread_bps) ?? defaults.max_spread_bps,
+    max_mark_index_gap_bps: toNumberOrNull(cfg.max_mark_index_gap_bps) ?? defaults.max_mark_index_gap_bps,
+    max_funding_penalty_bps: toNumberOrNull(cfg.max_funding_penalty_bps) ?? defaults.max_funding_penalty_bps,
+    min_htf_alignment_score: toNumberOrNull(cfg.min_htf_alignment_score) ?? defaults.min_htf_alignment_score,
+    min_setup_quality_score: toNumberOrNull(cfg.min_setup_quality_score) ?? defaults.min_setup_quality_score,
+    min_market_quality_score: toNumberOrNull(cfg.min_market_quality_score) ?? defaults.min_market_quality_score,
+    min_volume_zscore: toNumberOrNull(cfg.min_volume_zscore) ?? defaults.min_volume_zscore,
+    min_rsi_long: toNumberOrNull(cfg.min_rsi_long) ?? defaults.min_rsi_long,
+    max_rsi_short: toNumberOrNull(cfg.max_rsi_short) ?? defaults.max_rsi_short,
+    min_expected_gross_r: toNumberOrNull(cfg.min_expected_gross_r) ?? defaults.min_expected_gross_r,
+    min_expected_net_r_after_cost: toNumberOrNull(cfg.min_expected_net_r_after_cost) ?? defaults.min_expected_net_r_after_cost,
+    min_signal_score: toNumberOrNull(cfg.min_signal_score) ?? defaults.min_signal_score,
+    early_signal_score: toNumberOrNull(cfg.early_signal_score) ?? defaults.early_signal_score,
+    core_signal_score: toNumberOrNull(cfg.core_signal_score) ?? defaults.core_signal_score,
+  });
+}
+
 function resolveFeatureValue(featureValues, ...keys) {
   const features = asObject(featureValues);
   if (!features) return null;
@@ -64,6 +135,15 @@ function normalizeSetupType(value) {
   if (token === "PULLBACK_RECLAIM" || token === "BREAKOUT_RETEST" || token === "MOMENTUM_CONTINUATION" || token === "NONE") {
     return token;
   }
+  return "NONE";
+}
+
+function normalizeTriggerType(value) {
+  const token = upper(value);
+  if (!token) return "NONE";
+  if (token === "BREAKOUT" || token === "BREAKDOWN" || token === "BREAKOUT_RETEST") return "BREAKOUT";
+  if (token === "RECLAIM" || token === "LOSS" || token === "PULLBACK_RECLAIM") return "RECLAIM";
+  if (token === "CONTINUATION" || token === "MOMENTUM_CONTINUATION") return "CONTINUATION";
   return "NONE";
 }
 
@@ -128,6 +208,7 @@ function buildSignalCriteria({
   costREquivalent = null,
   fundingPenaltyBps = null,
   signalScore = null,
+  criteriaProfile = null,
   thresholds = null,
 } = {}) {
   const side = upper(signalSide);
@@ -140,20 +221,16 @@ function buildSignalCriteria({
   const market = asObject(marketDataQuality) || {};
   const metrics = resolveMarketMetrics(marketDataQuality);
   const cfg = asObject(thresholds) || {};
-
-  const resolvedThresholds = Object.freeze({
-    max_spread_bps: toNumberOrNull(cfg.max_spread_bps) ?? 14,
-    max_mark_index_gap_bps: toNumberOrNull(cfg.max_mark_index_gap_bps) ?? 10,
-    max_funding_penalty_bps: toNumberOrNull(cfg.max_funding_penalty_bps) ?? 3,
-    min_htf_alignment_score: toNumberOrNull(cfg.min_htf_alignment_score) ?? 0.4,
-    min_setup_quality_score: toNumberOrNull(cfg.min_setup_quality_score) ?? 0.38,
-    min_market_quality_score: toNumberOrNull(cfg.min_market_quality_score) ?? 0.7,
-    min_volume_zscore: toNumberOrNull(cfg.min_volume_zscore) ?? 0.3,
-    min_rsi_long: toNumberOrNull(cfg.min_rsi_long) ?? 48,
-    max_rsi_short: toNumberOrNull(cfg.max_rsi_short) ?? 52,
-    min_expected_gross_r: toNumberOrNull(cfg.min_expected_gross_r) ?? 1.45,
-    min_expected_net_r_after_cost: toNumberOrNull(cfg.min_expected_net_r_after_cost) ?? 0.25,
-    min_signal_score: toNumberOrNull(cfg.min_signal_score) ?? 55,
+  const resolvedCriteriaProfile = normalizeSignalCriteriaProfile(
+    seed.criteria_profile
+    ?? seed.signal_criteria_profile
+    ?? criteriaProfile
+    ?? cfg.criteria_profile
+    ?? cfg.profile
+  );
+  const resolvedThresholds = resolveSignalCriteriaThresholds({
+    profile: resolvedCriteriaProfile,
+    thresholds: cfg,
   });
 
   const resolvedHtfRegime = normalizeRegime(
@@ -193,6 +270,11 @@ function buildSignalCriteria({
     ?? seed.trigger_confirmed
     ?? triggerConfirmed
     ?? resolveFeatureValue(features, "trigger_confirmed");
+  const resolvedTriggerType = normalizeTriggerType(
+    (seed.trigger_gate && seed.trigger_gate.trigger_type)
+    ?? seed.trigger_type
+    ?? resolveFeatureValue(features, "trigger_type")
+  );
   const featureTriggerType = normalizeSetupType(resolveFeatureValue(features, "trigger_type"));
   const resolvedTriggerConfirmedRaw = asBooleanOrNull(explicitTriggerConfirmed) ?? (featureTriggerType !== "NONE" ? true : null);
   const resolvedTriggerConfirmed = resolvedTriggerConfirmedRaw === true;
@@ -353,6 +435,9 @@ function buildSignalCriteria({
 
   const computedSignalScore = Object.values(componentScores).reduce((sum, value) => sum + value, 0);
   const finalSignalScore = computedSignalScore;
+  const entryGrade = finalSignalScore >= resolvedThresholds.core_signal_score
+    ? "CORE"
+    : (finalSignalScore >= resolvedThresholds.early_signal_score ? "EARLY" : "NONE");
 
   const blockers = [];
   if (noTradeBlockers.length) blockers.push(...noTradeBlockers.map((code) => `NO_TRADE:${code}`));
@@ -368,9 +453,13 @@ function buildSignalCriteria({
 
   return Object.freeze({
     present: true,
+    criteria_profile: resolvedCriteriaProfile,
+    signal_profile: resolvedCriteriaProfile,
     verdict: blockers.length === 0 ? "PASS" : "BLOCK",
     blockers: Object.freeze(blockers),
     thresholds: resolvedThresholds,
+    entry_grade: entryGrade,
+    trigger_type: resolvedTriggerType,
     signal_score: finalSignalScore,
     signal_score_components: componentScores,
     no_trade_gate: Object.freeze({
@@ -392,6 +481,7 @@ function buildSignalCriteria({
       ok: setupPass,
     }),
     trigger_gate: Object.freeze({
+      trigger_type: resolvedTriggerType,
       trigger_level: resolvedTriggerLevel,
       trigger_confirmed: resolvedTriggerConfirmed,
       volume_zscore: resolvedVolumeZScore,
@@ -417,4 +507,10 @@ function buildSignalCriteria({
 
 module.exports = {
   buildSignalCriteria,
+  SIGNAL_CRITERIA_PROFILE_STRICT,
+  SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY,
+  DEFAULT_SIGNAL_CRITERIA_PROFILE,
+  normalizeSignalCriteriaProfile,
+  resolveSignalCriteriaThresholds,
+  normalizeTriggerType,
 };

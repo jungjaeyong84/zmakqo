@@ -96,10 +96,17 @@ function extractOutcomeContext(row) {
     getPath(criteria, ["expected_edge_gate", "expected_net_r_after_cost"]),
     expectedEdgeModel.net_r_multiple
   ));
+  const timingMeasurement = asObject(evidence.timing_measurement) || {};
+  const entryGrade = upper(firstValue(evidence.entry_grade, criteria.entry_grade, timingMeasurement.entry_grade)) || "UNKNOWN";
+  const triggerType = upper(firstValue(evidence.trigger_type, criteria.trigger_type, triggerGate.trigger_type, timingMeasurement.trigger_type)) || "UNKNOWN";
+  const timingBucket = upper(firstValue(evidence.timing_bucket, timingMeasurement.timing_bucket, evidence.febt_phase)) || "UNKNOWN";
 
   return Object.freeze({
     symbol,
     side,
+    entry_grade: entryGrade,
+    trigger_type: triggerType,
+    timing_bucket: timingBucket,
     setup_type: setupType,
     structural_regime: structuralRegime,
     regime_cohort: regimeCohort,
@@ -123,6 +130,9 @@ function createBucketRow(key, context) {
     edge_cohort: context.edge_cohort,
     signal_score_bucket: context.signal_score_bucket,
     trigger_quality_bucket: context.trigger_quality_bucket,
+    entry_grade: context.entry_grade,
+    trigger_type: context.trigger_type,
+    timing_bucket: context.timing_bucket,
     outcome_n: 0,
     trade_n: 0,
     win_n: 0,
@@ -155,6 +165,8 @@ function summarizeOutcomeCohorts(outcomes = []) {
   const bySetupRegime = new Map();
   const bySignalScoreBucket = new Map();
   const byTriggerQualityBucket = new Map();
+  const byEntryGrade = new Map();
+  const byTimingBucket = new Map();
 
   function record(map, key, row, context) {
     if (!map.has(key)) map.set(key, createBucketRow(key, context));
@@ -186,6 +198,8 @@ function summarizeOutcomeCohorts(outcomes = []) {
     record(bySetupRegime, context.setup_regime_key, row, context);
     record(bySignalScoreBucket, context.signal_score_bucket, row, context);
     record(byTriggerQualityBucket, context.trigger_quality_bucket, row, context);
+    record(byEntryGrade, context.entry_grade, row, context);
+    record(byTimingBucket, context.timing_bucket, row, context);
   }
 
   const setupRegimeRows = finalizeBucketRows(bySetupRegime);
@@ -201,6 +215,8 @@ function summarizeOutcomeCohorts(outcomes = []) {
     by_setup_regime: setupRegimeRows,
     by_signal_score_bucket: finalizeBucketRows(bySignalScoreBucket),
     by_trigger_quality_bucket: finalizeBucketRows(byTriggerQualityBucket),
+    by_entry_grade: finalizeBucketRows(byEntryGrade),
+    by_timing_bucket: finalizeBucketRows(byTimingBucket),
     top_positive_setup_regime: topPositiveSetupRegime,
     top_negative_setup_regime: topNegativeSetupRegime,
   });

@@ -269,6 +269,12 @@ function resolveEntryIntentFromOpenClaw({
 
   const signalIntentId = trimOrNull(intent.signal_intent_id);
   const entryIntentId = `EINTV2__${hash10(signalIntentId)}`;
+  const summary = decision.canonical_evidence_summary && typeof decision.canonical_evidence_summary === "object"
+    ? decision.canonical_evidence_summary
+    : {};
+  const criteria = summary.signal_criteria && typeof summary.signal_criteria === "object"
+    ? summary.signal_criteria
+    : {};
   return Object.freeze({
     ok: true,
     reason: null,
@@ -284,6 +290,9 @@ function resolveEntryIntentFromOpenClaw({
       openclaw_decision_id: trimOrNull(decision.openclaw_decision_id),
       ml_ai_proposal_verdict: mlAiProposalGate.proposal_verdict,
       signal_criteria_verdict: signalCriteriaGate.verdict,
+      signal_criteria_profile: trimOrNull(criteria.criteria_profile),
+      entry_grade: upper(criteria.entry_grade),
+      trigger_type: upper(criteria.trigger_type),
     }),
   });
 }

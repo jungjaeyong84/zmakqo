@@ -7,6 +7,7 @@ const { evaluateOpenClawExecutionSeparation } = require("./openclawExecutionSepa
 const { persistOpenClawExecutionAudit } = require("./openclawExecutionAuditLedger");
 const { validateOpenClawExecutionPermit } = require("./openclawExecutionPermit");
 const { queryV2DocsByField } = require("./storage");
+const { evaluateV2SameDirectionCooldown, extractCurrentSignalContext } = require("./sameDirectionCooldown");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -139,6 +140,37 @@ async function findExistingDecisionBundleExecution({
   });
 }
 
+async function findRecentSameDirectionExecutions({
+  db = null,
+  env = process.env,
+  bundle,
+  limit = 20,
+} = {}) {
+  const context = extractCurrentSignalContext(bundle);
+  if (!context.symbol) {
+    return Object.freeze({
+      ok: false,
+      reason: "SAME_DIRECTION_COOLDOWN_SYMBOL_REQUIRED",
+      rows: Object.freeze([]),
+      context,
+    });
+  }
+  const query = await queryV2DocsByField({
+    db,
+    env,
+    collectionKey: "OPENCLAW_EXECUTION_AUDITS",
+    field: "symbol",
+    value: context.symbol,
+    limit,
+  });
+  return Object.freeze({
+    ok: true,
+    reason: "SAME_DIRECTION_COOLDOWN_RECENT_EXECUTIONS_LOADED",
+    rows: Object.freeze(Array.isArray(query.rows) ? query.rows : []),
+    context,
+  });
+}
+
 async function runV2ProductionEntryRoute({
   db = null,
   env = process.env,
@@ -151,6 +183,8 @@ async function runV2ProductionEntryRoute({
   persistExecutionAudit = persistOpenClawExecutionAudit,
   validateExecutionPermit = validateOpenClawExecutionPermit,
   findExistingBundleExecution = findExistingDecisionBundleExecution,
+  findRecentSameDirectionExecutionsFn = findRecentSameDirectionExecutions,
+  evaluateSameDirectionCooldown = evaluateV2SameDirectionCooldown,
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
   stopLossPct = 0.0165,
@@ -161,6 +195,8 @@ async function runV2ProductionEntryRoute({
   if (typeof persistExecutionAudit !== "function") throw new Error("PERSIST_EXECUTION_AUDIT_REQUIRED");
   if (typeof validateExecutionPermit !== "function") throw new Error("VALIDATE_EXECUTION_PERMIT_REQUIRED");
   if (typeof findExistingBundleExecution !== "function") throw new Error("FIND_EXISTING_BUNDLE_EXECUTION_REQUIRED");
+  if (typeof findRecentSameDirectionExecutionsFn !== "function") throw new Error("FIND_RECENT_SAME_DIRECTION_EXECUTIONS_REQUIRED");
+  if (typeof evaluateSameDirectionCooldown !== "function") throw new Error("EVALUATE_SAME_DIRECTION_COOLDOWN_REQUIRED");
 
   const runtimeConfig = resolveV2RuntimeConfig(env);
   const runtime = summarizeRuntimeConfig(runtimeConfig);
@@ -312,6 +348,52 @@ async function runV2ProductionEntryRoute({
     });
   }
 
+  let sameDirectionCooldownGuard = null;
+  try {
+    const recentExecutions = await findRecentSameDirectionExecutionsFn({
+      db,
+      env,
+      bundle,
+      executionPermit,
+      worldState,
+      routedDecision,
+      now,
+    });
+    sameDirectionCooldownGuard = evaluateSameDirectionCooldown({
+      bundle,
+      env,
+      recentExecutions: recentExecutions && Array.isArray(recentExecutions.rows) ? recentExecutions.rows : [],
+      nowMs: Date.parse(now()),
+    });
+  } catch (error) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_SAME_DIRECTION_COOLDOWN_GUARD_FAILED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      sameDirectionCooldownGuard: Object.freeze({
+        ok: false,
+        reason: "SAME_DIRECTION_COOLDOWN_GUARD_THROWN",
+        error_message: trimOrNull(error && error.message) || String(error),
+      }),
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+  if (!sameDirectionCooldownGuard || sameDirectionCooldownGuard.ok !== true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_SAME_DIRECTION_COOLDOWN_BLOCKED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+
   const kernelResult = await runEntryKernel({
     db,
     env,
@@ -333,6 +415,7 @@ async function runV2ProductionEntryRoute({
       post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
@@ -345,6 +428,7 @@ async function runV2ProductionEntryRoute({
       post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
     });
@@ -376,6 +460,7 @@ async function runV2ProductionEntryRoute({
       post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
       openclawExecutionAudit,
       auditLedgerResult: Object.freeze({
         ok: false,
@@ -393,6 +478,7 @@ async function runV2ProductionEntryRoute({
       post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
       openclawExecutionAudit,
       auditLedgerResult,
     });
@@ -406,6 +492,7 @@ async function runV2ProductionEntryRoute({
       post_fill_side_effect: postFillSideEffect,
       executionPermitValidation,
       decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
       openclawExecutionAudit,
       auditLedgerResult,
     });
@@ -418,6 +505,7 @@ async function runV2ProductionEntryRoute({
     post_fill_side_effect: postFillSideEffect,
     executionPermitValidation,
     decisionBundleReplayGuard,
+    sameDirectionCooldownGuard,
     openclawExecutionAudit,
     auditLedgerResult,
   });
@@ -435,5 +523,6 @@ module.exports = {
     summarizePostFillSideEffect,
     extractDecisionBundleHash,
     findExistingDecisionBundleExecution,
+    findRecentSameDirectionExecutions,
   },
 };

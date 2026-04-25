@@ -99,6 +99,9 @@ function buildCanonicalEvidenceSummary({
       size_ratio: mlAiSignalProposal.size_ratio,
       risk_band: mlAiSignalProposal.risk_band,
       setup_type: mlAiSignalProposal.setup_type || null,
+      entry_grade: mlAiSignalProposal.entry_grade || null,
+      trigger_type: mlAiSignalProposal.trigger_type || null,
+      signal_criteria_profile: mlAiSignalProposal.signal_criteria_profile || null,
       signal_score: mlAiSignalProposal.signal_score ?? null,
       expected_net_r_after_cost: mlAiSignalProposal.expected_net_r_after_cost ?? null,
       structural_regime: mlAiSignalProposal.structural_regime || null,
@@ -114,6 +117,9 @@ function buildCanonicalEvidenceSummary({
       size_ratio: null,
       risk_band: null,
       setup_type: null,
+      entry_grade: null,
+      trigger_type: null,
+      signal_criteria_profile: null,
       signal_score: null,
       expected_net_r_after_cost: null,
       structural_regime: null,
@@ -197,6 +203,8 @@ function buildOpenClawDecisionBundle({
   costREquivalent = null,
   fundingPenaltyBps = null,
   signalScore = null,
+  criteriaProfile = null,
+  signalCriteriaProfile = null,
   createdAt = null,
 } = {}) {
   const signalIntent = buildSignalIntentDoc({
@@ -297,6 +305,7 @@ function buildOpenClawDecisionBundle({
         costREquivalent,
         fundingPenaltyBps,
         signalScore,
+        criteriaProfile: criteriaProfile ?? signalCriteriaProfile,
       })
     : null;
 

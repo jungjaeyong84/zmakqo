@@ -141,6 +141,10 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
     net_pnl_usdt: summary.net_pnl_usdt,
     summary,
     cohort_summary: cohortSummary,
+    timing_summary: Object.freeze({
+      by_timing_bucket: cohortSummary.by_timing_bucket || Object.freeze([]),
+      by_entry_grade: cohortSummary.by_entry_grade || Object.freeze([]),
+    }),
     outcomes: Object.freeze(asArray(outcomes).map((row) => Object.freeze({
       openclaw_outcome_adjudication_id: trimOrNull(row.openclaw_outcome_adjudication_id),
       openclaw_decision_id: trimOrNull(row.openclaw_decision_id),

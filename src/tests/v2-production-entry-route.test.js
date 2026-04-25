@@ -116,6 +116,14 @@ function noReplayGuard(calls = null) {
   };
 }
 
+function noSameDirectionCooldown(rows = []) {
+  return async () => ({
+    ok: true,
+    reason: "SAME_DIRECTION_COOLDOWN_RECENT_EXECUTIONS_LOADED",
+    rows,
+  });
+}
+
 async function disabledRuntimeBlocksBeforeKernel() {
   const calls = [];
   const result = await runV2ProductionEntryRoute({
@@ -163,6 +171,7 @@ async function canaryRouteExecutesOnlyThroughKernelAndPersistsAudit() {
     bundle,
     ...permit,
     findExistingBundleExecution: noReplayGuard(calls),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async ({ entryIntent }) => {
       calls.push({ type: "kernel", entryIntent });
       return buildKernelResultFromBundle(bundle);
@@ -241,6 +250,7 @@ async function expiredExecutionPermitBlocksRetryBeforeKernel() {
     bundle,
     ...permit,
     findExistingBundleExecution: noReplayGuard(),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async () => {
       calls.push("kernel");
       return buildKernelResultFromBundle(bundle);
@@ -266,6 +276,7 @@ async function executionPermitWithoutCurrentWorldStateBlocksBeforeKernel() {
     bundle,
     executionPermit: permit.executionPermit,
     findExistingBundleExecution: noReplayGuard(),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async () => {
       calls.push("kernel");
       return buildKernelResultFromBundle(bundle);
@@ -320,6 +331,94 @@ async function repeatedDecisionBundleBlocksBeforeKernel() {
   assert.deepStrictEqual(calls, ["replay_guard"]);
 }
 
+async function sameDirectionCooldownBlocksDuplicateTriggerBeforeKernel() {
+  const calls = [];
+  const currentBarMs = Date.parse("2026-04-21T06:15:00.000Z");
+  const bundle = buildBundle({
+    featureValues: {
+      trend_bias: 0.76,
+      volatility_rank: 0.35,
+      trigger_type: "RECLAIM",
+      bar_close_time_utc_ms: currentBarMs,
+    },
+  });
+  const permit = buildPermitForBundle(bundle, { issuedAt: "2026-04-21T06:15:00.000Z" });
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(calls),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown([
+      {
+        ok: true,
+        symbol: "ETHUSDT",
+        side: "LONG",
+        trigger_type: "RECLAIM",
+        entry_grade: "CORE",
+        bar_time_ms: currentBarMs - (15 * 60 * 1000),
+      },
+    ]),
+    runEntryKernel: async () => {
+      calls.push({ type: "kernel" });
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push({ type: "persist" });
+      return { ok: true };
+    },
+    now: () => "2026-04-21T06:15:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_SAME_DIRECTION_COOLDOWN_BLOCKED");
+  assert.strictEqual(result.sameDirectionCooldownGuard.reason, "SAME_DIRECTION_COOLDOWN_ACTIVE");
+  assert.deepStrictEqual(calls.map((row) => row.type), ["replay_guard"]);
+}
+
+async function sameDirectionCooldownAllowsChangedTrigger() {
+  const calls = [];
+  const currentBarMs = Date.parse("2026-04-21T06:15:00.000Z");
+  const bundle = buildBundle({
+    featureValues: {
+      trend_bias: 0.76,
+      volatility_rank: 0.35,
+      trigger_type: "RECLAIM",
+      bar_close_time_utc_ms: currentBarMs,
+    },
+  });
+  const permit = buildPermitForBundle(bundle, { issuedAt: "2026-04-21T06:15:00.000Z" });
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(calls),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown([
+      {
+        ok: true,
+        symbol: "ETHUSDT",
+        side: "LONG",
+        trigger_type: "BREAKOUT",
+        entry_grade: "CORE",
+        bar_time_ms: currentBarMs - (15 * 60 * 1000),
+      },
+    ]),
+    runEntryKernel: async ({ entryIntent }) => {
+      calls.push({ type: "kernel", entryIntent });
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async ({ audit }) => {
+      calls.push({ type: "persist", audit });
+      return { ok: true, skipped: false, reason: "OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITTEN" };
+    },
+    now: () => "2026-04-21T06:15:00.000Z",
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.sameDirectionCooldownGuard.reason, "SAME_DIRECTION_COOLDOWN_CLEAR");
+  assert.strictEqual(result.openclawExecutionAudit.symbol, "ETHUSDT");
+  assert.strictEqual(result.openclawExecutionAudit.trigger_type, "RECLAIM");
+  assert.strictEqual(result.openclawExecutionAudit.bar_time_ms, currentBarMs);
+  assert.deepStrictEqual(calls.map((row) => row.type), ["replay_guard", "kernel", "persist"]);
+}
+
 async function kernelBlockDoesNotBecomeRouteSuccess() {
   const calls = [];
   const bundle = buildBundle();
@@ -329,6 +428,7 @@ async function kernelBlockDoesNotBecomeRouteSuccess() {
     bundle,
     ...permit,
     findExistingBundleExecution: noReplayGuard(),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async () => {
       calls.push("kernel");
       return {
@@ -371,6 +471,7 @@ async function postFillProtectionFailureIsClassifiedCritical() {
     bundle,
     ...permit,
     findExistingBundleExecution: noReplayGuard(),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async () => ({
       ok: false,
       reason: "V2_ENTRY_EXECUTION_KERNEL_BLOCKED",
@@ -422,6 +523,7 @@ async function acceptedEntryOrderWithoutFilledReceiptIsClassifiedCritical() {
     bundle,
     ...permit,
     findExistingBundleExecution: noReplayGuard(),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async () => ({
       ok: false,
       reason: "V2_ENTRY_EXECUTION_KERNEL_BLOCKED",
@@ -474,6 +576,7 @@ async function inconsistentKernelOkWithUnprotectedFillIsBlocked() {
     bundle,
     ...permit,
     findExistingBundleExecution: noReplayGuard(),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async () => ({
       ok: true,
       reason: "V2_ENTRY_EXECUTION_KERNEL_PROTECTED",
@@ -515,6 +618,7 @@ async function tamperedKernelExecutionLineageBlocksRouteSuccess() {
     bundle,
     ...permit,
     findExistingBundleExecution: noReplayGuard(),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async () => buildKernelResultFromBundle(otherBundle),
     persistExecutionAudit: async () => ({ ok: true, skipped: true }),
     now: () => "2026-04-21T06:00:00.000Z",
@@ -533,6 +637,7 @@ async function auditLedgerFailureDoesNotLookSuccessful() {
     bundle,
     ...permit,
     findExistingBundleExecution: noReplayGuard(),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
     runEntryKernel: async () => buildKernelResultFromBundle(bundle),
     persistExecutionAudit: async () => {
       throw new Error("firestore write denied");
@@ -553,6 +658,8 @@ async function main() {
   await expiredExecutionPermitBlocksRetryBeforeKernel();
   await executionPermitWithoutCurrentWorldStateBlocksBeforeKernel();
   await repeatedDecisionBundleBlocksBeforeKernel();
+  await sameDirectionCooldownBlocksDuplicateTriggerBeforeKernel();
+  await sameDirectionCooldownAllowsChangedTrigger();
   await kernelBlockDoesNotBecomeRouteSuccess();
   await postFillProtectionFailureIsClassifiedCritical();
   await acceptedEntryOrderWithoutFilledReceiptIsClassifiedCritical();
