@@ -23,7 +23,7 @@ const env = {
   assert.deepStrictEqual(policy.allowed_symbols, ["BTCUSDT"]);
   assert.strictEqual(policy.max_symbol_count, 2);
   assert.strictEqual(policy.max_notional_quote, 25);
-  assert.strictEqual(policy.symbol_notional_quote_map.BTCUSDT, 100);
+  assert.strictEqual(policy.symbol_notional_quote_map.BTCUSDT, 200);
   assert.strictEqual(policy.max_position_count, 1);
   assert.strictEqual(policy.max_trades_per_day, 1);
   assert.strictEqual(policy.daily_loss_halt_quote, 10);
@@ -98,7 +98,7 @@ const env = {
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: symbols,
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
-      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:100|ETHUSDT:40|LINKUSDT:40|BNBUSDT:10|XRPUSDT:10|SOLUSDT:10|AXSUSDT:10|DOGEUSDT:10",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:200|ETHUSDT:40|LINKUSDT:40|BNBUSDT:10|XRPUSDT:10|SOLUSDT:10|AXSUSDT:10|DOGEUSDT:10",
     },
     confirm: DISCOVERY_CONFIRM_PHRASE,
     runtime: { enabled: true, dry_run: false, canary_only: true },

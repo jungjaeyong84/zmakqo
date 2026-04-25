@@ -253,7 +253,7 @@ function ensureBinanceCoreMarkets(markets, provider) {
 }
 
 const BINANCE_MIN_NOTIONAL = {
-  BTCUSDT: 100,
+  BTCUSDT: 200,
   ETHUSDT: 20,
   XRPUSDT: 10,
   DOGEUSDT: 10,
