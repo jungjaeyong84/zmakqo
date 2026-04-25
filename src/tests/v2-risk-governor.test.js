@@ -2,6 +2,7 @@
 
 const assert = require("assert");
 const { resolveRiskGovernorPolicy, evaluateV2RiskGovernor } = require("../v2/riskGovernor");
+const { __test: accountSummaryTest } = require("../services/binanceFuturesAccountSummary");
 
 {
   const result = evaluateV2RiskGovernor({
@@ -43,6 +44,17 @@ const { resolveRiskGovernorPolicy, evaluateV2RiskGovernor } = require("../v2/ris
   const policy = resolveRiskGovernorPolicy({});
   assert.strictEqual(policy.enabled, true);
   assert.strictEqual(policy.required, true);
+}
+
+{
+  const positions = accountSummaryTest.normalizeActivePositions([
+    { symbol: "SOLUSDT", positionAmt: "0.12", markPrice: "86.36", notional: "10.3632" },
+    { symbol: "XRPUSDT", positionAmt: "0", markPrice: "1.4" },
+  ]);
+  assert.strictEqual(positions.length, 1);
+  assert.strictEqual(positions[0].symbol, "SOLUSDT");
+  assert.strictEqual(positions[0].side, "LONG");
+  assert.ok(positions[0].notional_quote > 10);
 }
 
 {

@@ -59,6 +59,14 @@ function isCriticalPostFillProtectionFailure(routeResult) {
     && sideEffect.unprotected_position_possible === true;
 }
 
+function isProtectedPostFillRouteFailure(routeResult) {
+  const result = asObject(routeResult);
+  const sideEffect = asObject(result && result.post_fill_side_effect);
+  return !!sideEffect
+    && sideEffect.exchange_write_performed === true
+    && sideEffect.unprotected_position_possible !== true;
+}
+
 function extractBundle({ body = null, bundle = null } = {}) {
   const explicit = asObject(bundle);
   if (explicit) return explicit;
@@ -236,7 +244,9 @@ async function runV2ProductionEntryLiveEndpoint({
       positions: riskGovernorInput && riskGovernorInput.positions,
       candidate: (riskGovernorInput && riskGovernorInput.candidate) || {
         symbol: transportResolution && transportResolution.symbol,
-        notional_quote: (transportResolution && Number(transportResolution.entry_qty_abs) * Number(transportResolution.reference_price || 0)) || undefined,
+        notional_quote: (transportResolution && Number(transportResolution.notional_quote))
+          || (transportResolution && Number(transportResolution.entry_qty_abs) * Number(transportResolution.reference_price || 0))
+          || undefined,
       },
       market: riskGovernorInput && riskGovernorInput.market,
     });
@@ -262,14 +272,20 @@ async function runV2ProductionEntryLiveEndpoint({
   });
 
   const criticalPostFillFailure = isCriticalPostFillProtectionFailure(routeResult);
+  const protectedPostFillRouteFailure = !criticalPostFillFailure
+    && (!routeResult || routeResult.ok !== true)
+    && isProtectedPostFillRouteFailure(routeResult);
   if (!routeResult || routeResult.ok !== true || criticalPostFillFailure) {
     return buildBlock(
       criticalPostFillFailure
         ? "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL"
+        : protectedPostFillRouteFailure
+          ? "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED"
         : "V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED",
       {
       ...base,
       critical_post_fill_failure: criticalPostFillFailure,
+      protected_post_fill_route_failure: protectedPostFillRouteFailure,
       route_called: true,
       route_result: routeResult || null,
       transport_resolution: summarizeTransportResolution(transportResolution),
@@ -301,6 +317,8 @@ function summarizeTransportResolution(transportResolution = null) {
     symbol: upper(row.symbol),
     side: upper(row.side),
     entry_qty_abs: Number.isFinite(Number(row.entry_qty_abs)) ? Number(row.entry_qty_abs) : null,
+    reference_price: Number.isFinite(Number(row.reference_price)) ? Number(row.reference_price) : null,
+    notional_quote: Number.isFinite(Number(row.notional_quote)) ? Number(row.notional_quote) : null,
     live_cfg_summary: asObject(row.live_cfg_summary) ? Object.freeze({ ...row.live_cfg_summary }) : null,
   });
 }
@@ -322,5 +340,6 @@ module.exports = {
     summarizeTransportResolution,
     summarizeRuntimeConfig,
     isCriticalPostFillProtectionFailure,
+    isProtectedPostFillRouteFailure,
   },
 };

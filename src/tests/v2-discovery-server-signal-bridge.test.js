@@ -4,6 +4,7 @@ const assert = require("assert");
 const {
   buildDiscoveryCanaryLiveRequestFromIntent,
   buildSignalCriteriaSeedFromIntent,
+  __test,
 } = require("../v2/discoveryCanaryServerSignalBridge");
 
 function buildEnv(overrides = {}) {
@@ -119,6 +120,37 @@ function marketDataQuality(overrides = {}) {
   assert.ok(seed.expected_edge_gate.expected_net_r_after_cost > 1.4);
   assert.ok(seed.expected_edge_gate.cost_r_equivalent > 0);
   assert.ok(seed.expected_edge_gate.cost_estimate_bps >= 11);
+})();
+
+(function discoveryStateUsesLiveAccountActivePositionsAsHardSource() {
+  const state = __test.mergeDiscoveryCanaryStateWithAccount({
+    state: {
+      active_position_n: 0,
+      trade_count_24h: 0,
+      daily_realized_pnl_quote: 0,
+    },
+    accountSummary: {
+      positions: [{ symbol: "SOLUSDT", side: "LONG", qty_abs: 0.12, notional_quote: 10.4 }],
+    },
+  });
+  assert.strictEqual(state.active_position_n, 1);
+  assert.strictEqual(state.exchange_active_position_n, 1);
+  assert.strictEqual(state.exchange_positions[0].symbol, "SOLUSDT");
+})();
+
+(function discoveryStateKeepsTradeEvidenceFailClosedWhenFirestoreFails() {
+  const state = __test.mergeDiscoveryCanaryStateWithAccount({
+    state: {
+      active_position_n: null,
+      trade_count_24h: null,
+      daily_realized_pnl_quote: null,
+      fill_state_error: "FIRESTORE_UNAVAILABLE",
+    },
+    accountSummary: { positions: [] },
+  });
+  assert.strictEqual(state.active_position_n, 0);
+  assert.strictEqual(state.trade_count_24h, null);
+  assert.strictEqual(state.fill_state_error, "FIRESTORE_UNAVAILABLE");
 })();
 
 async function dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop() {

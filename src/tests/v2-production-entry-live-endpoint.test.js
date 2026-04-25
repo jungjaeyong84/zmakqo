@@ -327,6 +327,47 @@ async function criticalPostFillRouteFailureIsEscalated() {
   assert.strictEqual(result.route_result.post_fill_side_effect.entry_order_id, "ORDER__ETH__POST_FILL");
 }
 
+async function protectedPostFillRouteFailureIsNotReportedAsPlainDrop() {
+  const bundle = buildBundle();
+  const result = await runV2ProductionEntryLiveEndpoint({
+    env: buildEnv(),
+    body: {
+      confirm: LIVE_CONFIRM_PHRASE,
+      bundle,
+      entrySizingDecision: buildSizingDecision(bundle),
+      riskGovernor: buildRiskGovernorInput(),
+    },
+    buildLiveTransports: async () => ({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+      entry_intent_id: "EINTV2__POST_FILL_PROTECTED",
+      symbol: "ETHUSDT",
+      side: "LONG",
+      entry_qty_abs: 0.4,
+      entryTransport: { submitEntryOrder: async () => ({}) },
+      protectionTransports: {
+        placeInitialSl: async () => ({}),
+        placeInitialTp1: async () => ({}),
+      },
+    }),
+    runProductionEntryRoute: async () => ({
+      ok: false,
+      reason: "V2_PRODUCTION_ENTRY_AUDIT_LEDGER_FAILED",
+      post_fill_side_effect: {
+        exchange_write_performed: true,
+        entry_order_id: "ORDER__ETH__PROTECTED",
+        unprotected_position_possible: false,
+        protection_ok: true,
+        severity: "INFO",
+      },
+    }),
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED");
+  assert.strictEqual(result.critical_post_fill_failure, false);
+  assert.strictEqual(result.protected_post_fill_route_failure, true);
+}
+
 async function criticalPostFillRouteSuccessIsNotAllowed() {
   const bundle = buildBundle();
   const result = await runV2ProductionEntryLiveEndpoint({
@@ -508,6 +549,7 @@ async function main() {
   await missingRiskGovernorBlocksBeforeRouteByDefault();
   await routeFailureIsNotReclassifiedAsSuccess();
   await criticalPostFillRouteFailureIsEscalated();
+  await protectedPostFillRouteFailureIsNotReportedAsPlainDrop();
   await criticalPostFillRouteSuccessIsNotAllowed();
   await transportFailureBlocksBeforeRoute();
   await discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath();

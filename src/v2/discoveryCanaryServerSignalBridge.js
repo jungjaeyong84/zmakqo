@@ -108,6 +108,37 @@ function hash12(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 12);
 }
 
+function normalizeAccountPositions(accountSummary = null) {
+  return (Array.isArray(accountSummary && accountSummary.positions) ? accountSummary.positions : []).map((row) => {
+    const symbol = upper(row && row.symbol);
+    const notionalQuote = Math.abs(toNumberOrNull(row && (row.notional_quote ?? row.notionalQuote)) || 0);
+    const qtyAbs = Math.abs(toNumberOrNull(row && (row.qty_abs ?? row.qtyAbs ?? row.position_amt ?? row.positionAmt)) || 0);
+    return {
+      symbol,
+      side: upper(row && row.side),
+      notional_quote: notionalQuote,
+      qty_abs: qtyAbs,
+    };
+  }).filter((row) => row.symbol && (row.qty_abs > 0 || row.notional_quote > 0));
+}
+
+function mergeDiscoveryCanaryStateWithAccount({ state = null, accountSummary = null } = {}) {
+  const base = asObject(state) ? { ...state } : {};
+  const accountPositions = normalizeAccountPositions(accountSummary);
+  const accountActivePositionN = accountPositions.length;
+  const stateActivePositionN = toNumberOrNull(base.active_position_n ?? base.activePositionN);
+  const mergedActivePositionN = Number.isFinite(stateActivePositionN)
+    ? Math.max(stateActivePositionN, accountActivePositionN)
+    : accountActivePositionN;
+  return Object.freeze({
+    ...base,
+    active_position_n: mergedActivePositionN,
+    exchange_active_position_n: accountActivePositionN,
+    exchange_positions: accountPositions,
+    state_source: "FIRESTORE_READ_MODEL_AND_BINANCE_ACCOUNT",
+  });
+}
+
 function sideFromIntent(row = {}) {
   const event = upper(row.event);
   const side = upper(row.side);
@@ -319,15 +350,24 @@ function buildDiscoveryCanaryBundleFromIntent({
 
 async function buildDiscoveryCanaryState({ db = null, exchange = "BINANCEFUT", nowMs = Date.now() } = {}) {
   const firestore = db || getFirestore();
-  const positions = await listExchangePositionReadViews({ exchange, limit: 100 }).catch(() => []);
-  const activePositionN = (Array.isArray(positions) ? positions : []).filter((row) => {
-    const state = upper(row && row.state);
-    const qty = Math.abs(toNumberOrNull(row && (row.qty_base ?? row.position_amt ?? row.size_pct)) || 0);
-    return state === "ACTIVE" || qty > 0;
-  }).length;
-  let tradeCount24h = 0;
-  let dailyRealizedPnlQuote = 0;
+  let activePositionN = null;
+  let positionStateError = null;
   try {
+    const positions = await listExchangePositionReadViews({ exchange, limit: 100 });
+    activePositionN = (Array.isArray(positions) ? positions : []).filter((row) => {
+      const state = upper(row && row.state);
+      const qty = Math.abs(toNumberOrNull(row && (row.qty_base ?? row.position_amt ?? row.size_pct)) || 0);
+      return state === "ACTIVE" || qty > 0;
+    }).length;
+  } catch (error) {
+    positionStateError = error && error.message ? String(error.message) : String(error);
+  }
+  let tradeCount24h = null;
+  let dailyRealizedPnlQuote = null;
+  let fillStateError = null;
+  try {
+    tradeCount24h = 0;
+    dailyRealizedPnlQuote = 0;
     const sinceMs = Number(nowMs) - (24 * 60 * 60 * 1000);
     const snap = await firestore.collection("fills_paper").orderBy("created_at", "desc").limit(200).get();
     snap.forEach((doc) => {
@@ -340,13 +380,19 @@ async function buildDiscoveryCanaryState({ db = null, exchange = "BINANCEFUT", n
       const pnl = toNumberOrNull(row.realized_pnl_quote ?? row.realizedPnlQuote ?? row.pnl);
       if (pnl !== null) dailyRealizedPnlQuote += pnl;
     });
-  } catch (_) {
-    tradeCount24h = 0;
+  } catch (error) {
+    tradeCount24h = null;
+    dailyRealizedPnlQuote = null;
+    fillStateError = error && error.message ? String(error.message) : String(error);
   }
   return Object.freeze({
     active_position_n: activePositionN,
     trade_count_24h: tradeCount24h,
     daily_realized_pnl_quote: dailyRealizedPnlQuote,
+    state_source: "FIRESTORE_READ_MODEL",
+    state_ok: positionStateError === null && fillStateError === null,
+    position_state_error: positionStateError,
+    fill_state_error: fillStateError,
   });
 }
 
@@ -449,19 +495,31 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
   runLiveEndpoint = runV2ProductionEntryLiveEndpoint,
   nowMs = Date.now(),
 } = {}) {
+  if (!asObject(intentRow)) return Object.freeze({ ok: false, reason: "V2_DISCOVERY_BRIDGE_INTENT_REQUIRED" });
+  const accountSummary = await getBinanceFuturesAccountSummary({
+    apiKey: liveCfg && liveCfg.apiKey,
+    apiSecret: liveCfg && liveCfg.apiSecret,
+    forceRefresh: true,
+  });
+  const firestoreState = await buildDiscoveryCanaryState({
+    db,
+    exchange: intentRow && (intentRow.exchange || "BINANCEFUT"),
+    nowMs,
+  });
+  const discoveryState = mergeDiscoveryCanaryStateWithAccount({
+    state: firestoreState,
+    accountSummary,
+  });
   const built = await buildDiscoveryCanaryLiveRequestFromIntent({
     env,
     db,
     intentRow,
     liveCfg,
     referencePrice,
+    discoveryState,
     nowMs,
   });
   if (!built.ok) return built;
-  const accountSummary = await getBinanceFuturesAccountSummary({
-    apiKey: liveCfg && liveCfg.apiKey,
-    apiSecret: liveCfg && liveCfg.apiSecret,
-  });
   const candidateNotional = built.request && built.request.entrySizingDecision
     ? built.request.entrySizingDecision.notional_quote
     : null;
@@ -477,7 +535,7 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
           consecutive_loss_n: 0,
           trade_count_24h: toNumberOrNull(built.discovery_canary_state && built.discovery_canary_state.trade_count_24h) || 0,
         },
-        positions: [],
+        positions: normalizeAccountPositions(accountSummary),
         candidate: {
           symbol: upper(intentRow && (intentRow.symbol_or_pair_id || intentRow.symbol)),
           notional_quote: candidateNotional,
@@ -525,5 +583,7 @@ module.exports = {
     resolveReferencePrice,
     stepSafeNotional,
     buildStrategyFilterResultFromIntent,
+    normalizeAccountPositions,
+    mergeDiscoveryCanaryStateWithAccount,
   },
 };

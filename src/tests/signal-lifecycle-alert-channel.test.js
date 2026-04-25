@@ -128,6 +128,20 @@ const { __test } = require("../services/signalLifecycleAlert");
   assert.ok(postFillCritical.body.includes("CRITICAL 상태"));
   assert.ok(!postFillCritical.title.includes("드롭"));
 
+  const protectedPostFill = __test.buildDroppedMessage({
+    symbol: "ETHUSDT",
+    event: "LONG",
+    side: "BUY",
+    tf: "15m",
+    qtyPct: 1,
+    executionMode: "LIVE",
+    reason: "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED",
+  });
+  assert.strictEqual(protectedPostFill.title, "ETHUSDT 진입 체결 후 기록 확인 필요");
+  assert.strictEqual(protectedPostFill.severity, "ERROR");
+  assert.ok(protectedPostFill.body.includes("실제 체결 이후 기록 확인"));
+  assert.ok(!protectedPostFill.title.includes("드롭"));
+
   const received = __test.buildReceivedMessage({
     symbol: "BTCUSDT",
     event: "EARLY_LONG",

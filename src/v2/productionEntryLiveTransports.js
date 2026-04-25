@@ -33,6 +33,12 @@ function normalizeSizingComparable(row = null) {
   });
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function sizingDecisionsConflict(left = null, right = null) {
   const a = normalizeSizingComparable(left);
   const b = normalizeSizingComparable(right);
@@ -137,6 +143,8 @@ async function buildV2ProductionEntryLiveTransports({
     symbol: entryIntent.symbol,
     side: entryIntent.side,
     entry_qty_abs: resolvedQty,
+    reference_price: toNumberOrNull(sizingDecision.reference_price),
+    notional_quote: toNumberOrNull(sizingDecision.notional_quote),
     live_cfg_summary: summarizeLiveCfg({
       ...liveCfg,
       symbol: entryIntent.symbol,

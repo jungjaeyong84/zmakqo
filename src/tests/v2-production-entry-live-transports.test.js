@@ -119,6 +119,8 @@ async function buildsTransportsFromApprovedSizingAndLiveCfg() {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY");
   assert.strictEqual(result.entry_qty_abs, 0.4);
+  assert.strictEqual(result.reference_price, 2500);
+  assert.strictEqual(result.notional_quote, 1000);
   assert.strictEqual(result.entryTransport, entryTransport);
   assert.strictEqual(result.protectionTransports, protectionTransports);
   assert.deepStrictEqual(calls.map((row) => row.type), ["liveCfg", "entryTransport", "protectionTransports"]);
