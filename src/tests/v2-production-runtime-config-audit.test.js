@@ -45,12 +45,14 @@ const {
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, "250");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "0");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES, "0");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_ENABLED, "$_DONBEOLJA_V2_ENABLED");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "$_DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "$_DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED");
+  assert.strictEqual(result.main_service_env.DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES, "$_DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "$_DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "$_DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED");
   assert.strictEqual(result.main_service_env.DONBEOLJA_STRATEGY_ID, "donbeolja_v2_openclaw");
@@ -91,6 +93,7 @@ const {
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "$_DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "$_DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "$_DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED");
+  assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES, "$_DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "$_DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "$_DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_STRATEGY_ID, "donbeolja_v2_openclaw");

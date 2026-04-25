@@ -45,6 +45,7 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE", value: "250" }),
                 Object.freeze({ name: "DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL", value: "0" }),
+                Object.freeze({ name: "DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES", value: "0" }),
                 Object.freeze({ name: "DONBEOLJA_V2_COLLECTION_PREFIX", value: "v2__" }),
                 Object.freeze({ name: "ML_LIVE_SERVING_ARMED", value: "0" }),
                 Object.freeze({ name: "OPENCLAW_AGENT_APPLY_ENABLED", value: "0" }),

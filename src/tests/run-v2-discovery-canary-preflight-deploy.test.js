@@ -98,8 +98,10 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "250");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, "230");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, "250");
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES, "0");
     assert(result.command_preview.includes("gcloud builds submit"));
     assert(result.command_preview.includes("_DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS=ETHUSDT"));
+    assert(result.command_preview.includes("_DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES=0"));
     assert.strictEqual(result.performance.stage_matrix.highest_passed_stage, "CANARY");
     assert.strictEqual(result.performance.stage_matrix.discovery.ok, true);
     assert.strictEqual(result.performance.stage_matrix.canary.ok, true);

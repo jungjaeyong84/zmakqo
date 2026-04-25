@@ -56,6 +56,25 @@ function driftStatus(paritySummary = {}) {
   return "PARITY_DRIFT";
 }
 
+function executionAuthorityForSourceMode(sourceMode) {
+  const mode = String(sourceMode || "").trim().toUpperCase();
+  if (mode === "SERVER_PRIMARY") return "SERVER_PRIMARY_AUTHORITATIVE";
+  if (mode === "PINE_PRIMARY") return "PINE_PRIMARY_AUTHORITATIVE";
+  return "SOURCE_AUTHORITY_UNKNOWN";
+}
+
+function pineRoleForSourceMode(sourceMode) {
+  const mode = String(sourceMode || "").trim().toUpperCase();
+  if (mode === "SERVER_PRIMARY") return "VISUAL_SHADOW_ONLY";
+  if (mode === "PINE_PRIMARY") return "EXECUTION_AUTHORITY";
+  return "UNKNOWN";
+}
+
+function parityClaimForStatus(status) {
+  const normalized = String(status || "").trim().toUpperCase();
+  return normalized === "PARITY_STABLE" ? "PARITY_STABLE" : "DO_NOT_CLAIM_PINE_SERVER_IDENTICAL";
+}
+
 function deriveServerSignalAuthority({ signalsRecent = null, parityReport = null, nowMs = Date.now() } = {}) {
   const docs = pickDocs(signalsRecent);
   const dayAgoMs = Number(nowMs) - (24 * 60 * 60 * 1000);
@@ -90,6 +109,8 @@ function deriveServerSignalAuthority({ signalsRecent = null, parityReport = null
   }
 
   const paritySummary = (parityReport && parityReport.summary) || {};
+  const sourceMode = paritySummary.source_mode || null;
+  const status = driftStatus(paritySummary);
   const summary = {
     docs_n: docs.length,
     authoritative_server_n: serverN,
@@ -105,8 +126,11 @@ function deriveServerSignalAuthority({ signalsRecent = null, parityReport = null
     shadow_observed_n: Number(paritySummary.shadow_observed_n) || 0,
     source_parity_match_n: Number(paritySummary.source_parity_match_n) || 0,
     source_parity_mismatch_n: Number(paritySummary.source_parity_mismatch_n) || 0,
-    source_mode: paritySummary.source_mode || null,
-    drift_status: driftStatus(paritySummary),
+    source_mode: sourceMode,
+    execution_authority: executionAuthorityForSourceMode(sourceMode),
+    pine_role: pineRoleForSourceMode(sourceMode),
+    drift_status: status,
+    parity_claim: parityClaimForStatus(status),
   };
 
   return {
@@ -125,6 +149,9 @@ module.exports = {
   __test: {
     sourceOf,
     driftStatus,
+    executionAuthorityForSourceMode,
+    pineRoleForSourceMode,
+    parityClaimForStatus,
     toKstString,
   },
 };

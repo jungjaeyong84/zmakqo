@@ -64,6 +64,9 @@ function resolveHistorySource(env = process.env) {
     const upper = explicit.toUpperCase();
     if (upper === "FIRESTORE" || upper === "JSONL") return upper;
   }
+  if (String(env.DONBEOLJA_V2_DISABLE_CANARY_STREAK_FIRESTORE_DEFAULT || "").trim() !== "1") {
+    return "FIRESTORE";
+  }
   return isProductionEntryRouteCanaryFirestoreReadEnabled(env) ? "FIRESTORE" : "JSONL";
 }
 

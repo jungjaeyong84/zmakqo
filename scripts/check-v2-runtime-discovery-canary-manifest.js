@@ -203,6 +203,12 @@ function buildExpectedEnv(env = process.env) {
       "DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL",
       "0",
     ),
+    DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_ALLOW_LEGACY_SCHEDULER_WRITES",
+      "DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES",
+      "0",
+    ),
     DONBEOLJA_V2_COLLECTION_PREFIX: expectedValue(
       env,
       "DONBEOLJA_V2_EXPECTED_COLLECTION_PREFIX",
