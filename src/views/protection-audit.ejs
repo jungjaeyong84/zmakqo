@@ -297,6 +297,8 @@
                 <span class="k">TP id</span><span><%= p.exchange.tp_order.orderId %></span>
                 <span class="k">TP price</span><span><%= fmtPrice(p.exchange.tp_order.stopPrice) %></span>
                 <span class="k">TP qty</span><span><%= p.exchange.tp_order.origQty ?? '—' %></span>
+              <% } else if (p.match && p.match.tp_required_on_exchange === false) { %>
+                <span class="k">TP</span><span style="color:#188038">🟢 TP1 완료 — TP 주문 없음 정상</span>
               <% } else { %>
                 <span class="k">TP</span><span style="color:#c5221f">🔴 없음</span>
               <% } %>
@@ -319,18 +321,41 @@
             <span class="label">SL price 일치 (±0.5%)</span>
             <span class="val"><%= boolMark(p.match.sl_price_matches) %></span>
           </div>
-          <div class="pa-match-row">
-            <span class="label">TP 거래소에 존재</span>
-            <span class="val"><%= boolMark(p.match.tp_present_on_exchange) %></span>
-          </div>
-          <div class="pa-match-row">
-            <span class="label">TP order_id 일치</span>
-            <span class="val"><%= boolMark(p.match.tp_id_matches) %></span>
-          </div>
-          <div class="pa-match-row">
-            <span class="label">TP price 일치 (±0.5%)</span>
-            <span class="val"><%= boolMark(p.match.tp_price_matches) %></span>
-          </div>
+          <% if (p.match && p.match.tp_required_on_exchange === false) { %>
+            <div class="pa-match-row">
+              <span class="label">단계</span>
+              <span class="val">TP1 완료 → 러너/트레일링 감시</span>
+            </div>
+            <div class="pa-match-row">
+              <span class="label">익싯 워커 감시 활성</span>
+              <span class="val"><%= boolMark(p.match.runner_protection_active) %></span>
+            </div>
+            <div class="pa-match-row">
+              <span class="label">트레일링 활성</span>
+              <span class="val"><%= boolMark(p.match.runner_trailing_active) %></span>
+            </div>
+            <div class="pa-match-row">
+              <span class="label">native refresh OK</span>
+              <span class="val"><%= boolMark(p.match.runner_native_refresh_ok) %></span>
+            </div>
+            <div class="pa-match-row">
+              <span class="label">러너 SL 거래소에 존재</span>
+              <span class="val"><%= boolMark(p.match.runner_sl_present_on_exchange) %></span>
+            </div>
+          <% } else { %>
+            <div class="pa-match-row">
+              <span class="label">TP 거래소에 존재</span>
+              <span class="val"><%= boolMark(p.match.tp_present_on_exchange) %></span>
+            </div>
+            <div class="pa-match-row">
+              <span class="label">TP order_id 일치</span>
+              <span class="val"><%= boolMark(p.match.tp_id_matches) %></span>
+            </div>
+            <div class="pa-match-row">
+              <span class="label">TP price 일치 (±0.5%)</span>
+              <span class="val"><%= boolMark(p.match.tp_price_matches) %></span>
+            </div>
+          <% } %>
         </div>
 
         <% if (p.issues && p.issues.length) { %>
