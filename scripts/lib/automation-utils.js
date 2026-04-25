@@ -445,6 +445,7 @@ const AUTOMATION_TELEGRAM_TITLE_RULES = Object.freeze([
   { category: "SUMMARY", prefix: "[자동화 변경 이상 여부 점검]" },
   { category: "TUNING", prefix: "[4차 EV/시간가치층 자동 조정]" },
   { category: "TUNING", prefix: "[5차 진입 타이밍 자동 조정]" },
+  { category: "TUNING", prefix: "[V2 OpenClaw 학습 점검]" },
   { category: "TUNING", prefix: "[학습 기반 필터 점검]" },
   { category: "TUNING", prefix: "[주간 전략 점검]" },
   { category: "TUNING", prefix: "[Codex 주간 패치 엔진]" },

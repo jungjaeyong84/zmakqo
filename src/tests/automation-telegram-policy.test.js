@@ -15,6 +15,7 @@ function run() {
 
   assert.strictEqual(classifyAutomationTelegramTitle("[목표] HOLD"), "ESSENTIAL");
   assert.strictEqual(classifyAutomationTelegramTitle("[4차 EV/시간가치층 자동 조정] BINANCEFUT"), "TUNING");
+  assert.strictEqual(classifyAutomationTelegramTitle("[V2 OpenClaw 학습 점검] BINANCEFUT"), "TUNING");
   assert.strictEqual(classifyAutomationTelegramTitle("[자산] BINANCEFUT"), "ESSENTIAL");
 
   let decision = resolveAutomationTelegramPolicyDecision({
