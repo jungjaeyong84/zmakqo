@@ -122,6 +122,12 @@ const {
   isMakerFirstEnabled: isEntryMakerFirstEnabled,
 } = require("../services/binanceMakerFirstEntry");
 const { writeOpenClawShadowEntryBootstrap } = require("../v2/openclawShadowPositionWriter");
+const {
+  writeOpenClawShadowTp1Transition,
+  writeOpenClawShadowTrailActivation,
+  writeOpenClawShadowStopExit,
+  writeOpenClawShadowExternalClose,
+} = require("../v2/openclawShadowExitWriter");
 
 const POS_SIZE_EPSILON = (() => {
   const raw = Number(process.env.POS_SIZE_EPSILON);
@@ -4600,6 +4606,238 @@ function mergeMeta(base, patch) {
   return out;
 }
 
+function trimTextOrNull(value) {
+  const text = String(value == null ? "" : value).trim();
+  return text || null;
+}
+
+function numOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function buildSyntheticV2ExitEvidenceId({ kind, exchange, symbol, entryEventId, observedAtMs }) {
+  const resolvedKind = String(kind || "EXIT").trim().toUpperCase() || "EXIT";
+  const resolvedExchange = String(exchange || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+  const resolvedSymbol = String(symbol || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+  const resolvedEntry = String(entryEventId || "NO_ENTRY_EVENT").trim() || "NO_ENTRY_EVENT";
+  const resolvedAt = Number.isFinite(Number(observedAtMs)) ? Number(observedAtMs) : Date.now();
+  return `${resolvedKind}__${resolvedExchange}__${resolvedSymbol}__${resolvedEntry}__${resolvedAt}`;
+}
+
+const FLAT_SYNC_PRESERVE_FOR_RECONCILE_FIELDS = Object.freeze([
+  "canonical_exit_stage",
+  "canonical_exit_chain_key",
+  "canonical_primary_transition_event",
+  "trail_active",
+  "trail_high",
+  "trail_high_at_ms",
+  "trail_low",
+  "trail_low_at_ms",
+  "trail_stop_by_r",
+  "trail_stop_by_pct",
+  "runner_remaining_qty_abs",
+  "tp_p1_done",
+  "tp_p1_at",
+  "tp_p1_bar_ms",
+  "tp_p1_price",
+  "tp_p1_source",
+  "tp_p1_entry_event_id",
+  "tp_p1_entry_exec_bar_ms",
+  "tp_p1_recovery_trigger",
+  "tp_p1_recovery_observed_at",
+  "tp_p1_recovery_seeded_price",
+  "entry_event_id",
+  "entry_exec_bar_ms",
+  "entry_qty_abs",
+  "entry_qty_base",
+  "position_side",
+  "native_protection_stop_order_id",
+  "native_protection_stop_price",
+  "native_protection_tp_order_id",
+  "native_protection_tp_price",
+  "native_protection_tp_qty_base",
+]);
+
+function buildFlatSyncReconcileInputMeta({ prevMeta, clearedMeta } = {}) {
+  const previous = prevMeta && typeof prevMeta === "object" ? prevMeta : {};
+  const next = clearedMeta && typeof clearedMeta === "object" ? { ...clearedMeta } : {};
+  for (const field of FLAT_SYNC_PRESERVE_FOR_RECONCILE_FIELDS) {
+    if (previous[field] !== undefined && previous[field] !== null && previous[field] !== "") {
+      next[field] = previous[field];
+    }
+  }
+  return next;
+}
+
+function resolveV2FlatSyncExitReplayPlan({
+  exchange,
+  symbol,
+  prevMeta,
+  meta,
+  prevSide,
+  prevQtyBase,
+  qtyBase,
+  fillPrice,
+  observedAtMs,
+} = {}) {
+  const previous = prevMeta && typeof prevMeta === "object" ? prevMeta : {};
+  const current = meta && typeof meta === "object" ? meta : {};
+  const entryEventId = trimTextOrNull(previous.entry_event_id || current.entry_event_id || previous.origin_entry_event_id);
+  const positionSide = normalizePositionSide(
+    previous.position_side || current.position_side || previous.external_side || current.external_side || prevSide,
+  );
+  if (!entryEventId || !positionSide) {
+    return { ok: false, reason: "V2_FLAT_SYNC_ENTRY_CONTEXT_MISSING" };
+  }
+
+  const observedMs = Number.isFinite(Number(observedAtMs)) ? Number(observedAtMs) : Date.now();
+  const priorQty = numOrNull(prevQtyBase);
+  const afterQty = numOrNull(qtyBase);
+  const tpQty = numOrNull(previous.native_protection_tp_qty_base)
+    || numOrNull(current.native_protection_tp_qty_base);
+  const tpOrderId = trimTextOrNull(previous.native_protection_tp_order_id || current.native_protection_tp_order_id);
+  const stopOrderId = trimTextOrNull(previous.native_protection_stop_order_id || current.native_protection_stop_order_id);
+  const stopPrice = numOrNull(previous.native_protection_stop_price)
+    || numOrNull(current.native_protection_stop_price)
+    || numOrNull(previous.trail_stop_by_r)
+    || numOrNull(previous.trail_stop_by_pct)
+    || numOrNull(fillPrice);
+  const resolvedFillPrice = numOrNull(fillPrice)
+    || numOrNull(previous.native_protection_stop_price)
+    || numOrNull(previous.tp_p1_recovery_seeded_price);
+  const tp1Recovered = previous.tp_p1_done === true
+    || current.tp_p1_done === true
+    || !!trimTextOrNull(previous.tp_p1_recovery_trigger || current.tp_p1_recovery_trigger);
+  const trailWasActive = previous.trail_active === true
+    || current.frozen_trail_active === true
+    || current.trail_active === true
+    || String(previous.canonical_exit_stage || current.frozen_canonical_exit_stage || "").toUpperCase() === "TRAIL";
+  const tp1FillQtyAbs = Number.isFinite(tpQty) && tpQty > 0
+    ? tpQty
+    : (Number.isFinite(priorQty) && Number.isFinite(afterQty)
+      ? Math.max(0, Number((priorQty - afterQty).toFixed(8)))
+      : null);
+
+  return {
+    ok: true,
+    reason: "V2_FLAT_SYNC_REPLAY_READY",
+    exchange: String(exchange || "BINANCEFUT").toUpperCase(),
+    symbol: String(symbol || "").toUpperCase(),
+    entryEventId,
+    positionSide,
+    observedAtMs: observedMs,
+    tp1: tp1Recovered && tpOrderId && Number.isFinite(tp1FillQtyAbs) && tp1FillQtyAbs > 0
+      ? {
+        sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "TP1RECOVERY", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+        sourceOrderId: tpOrderId,
+        fillQtyAbs: tp1FillQtyAbs,
+        fillPrice: numOrNull(previous.tp_p1_recovery_seeded_price) || numOrNull(previous.native_protection_tp_price) || resolvedFillPrice,
+      }
+      : null,
+    trailActivation: trailWasActive && stopOrderId && Number.isFinite(stopPrice) && stopPrice > 0
+      ? {
+        sourceOrderId: stopOrderId,
+        nextStopPrice: stopPrice,
+        nativeStopPrice: stopPrice,
+      }
+      : null,
+    terminal: trailWasActive && stopOrderId && Number.isFinite(resolvedFillPrice) && resolvedFillPrice > 0
+      ? {
+        type: "TRAIL",
+        sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "TRAILFLATSYNC", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+        sourceOrderId: stopOrderId,
+        fillPrice: resolvedFillPrice,
+      }
+      : {
+        type: "EXTERNAL",
+        sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "EXTERNALFLATSYNC", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+        sourceOrderId: stopOrderId || buildSyntheticV2ExitEvidenceId({ kind: "EXTERNALORDER", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+      },
+  };
+}
+
+async function replayV2FlatSyncExitArtifacts({
+  exchange,
+  symbol,
+  plan,
+  fillPrice,
+  observedAtMs,
+} = {}) {
+  if (!plan || plan.ok !== true) return { ok: true, skipped: true, reason: plan && plan.reason || "V2_FLAT_SYNC_REPLAY_NOT_READY" };
+  const results = [];
+  const common = {
+    exchange: plan.exchange || exchange,
+    symbol: plan.symbol || symbol,
+    entryEventId: plan.entryEventId,
+    positionSide: plan.positionSide,
+    observedAtMs: plan.observedAtMs || observedAtMs,
+    exchangeEvidence: {
+      event: "BINANCE_POSITION_FLAT_SYNC",
+      execution_type: "TRADE",
+      full_exit: true,
+      position_qty_after: 0,
+      position_closed: true,
+    },
+  };
+  if (plan.tp1) {
+    results.push(await writeOpenClawShadowTp1Transition({
+      ...common,
+      sourceFillId: plan.tp1.sourceFillId,
+      sourceOrderId: plan.tp1.sourceOrderId,
+      fillQtyAbs: plan.tp1.fillQtyAbs,
+      fillPrice: plan.tp1.fillPrice,
+    }));
+  }
+  if (plan.trailActivation) {
+    results.push(await writeOpenClawShadowTrailActivation({
+      ...common,
+      sourceOrderId: plan.trailActivation.sourceOrderId,
+      nextStopPrice: plan.trailActivation.nextStopPrice,
+      nativeStopPrice: plan.trailActivation.nativeStopPrice,
+      nativeRefreshStatus: "OK",
+      exchangeEvidence: {
+        ...common.exchangeEvidence,
+        event: "TRAIL_ACTIVATION_RECOVERED_FROM_FLAT_SYNC",
+        stop_price: plan.trailActivation.nativeStopPrice,
+      },
+    }));
+  }
+  if (plan.terminal && plan.terminal.type === "TRAIL") {
+    results.push(await writeOpenClawShadowStopExit({
+      ...common,
+      sourceFillId: plan.terminal.sourceFillId,
+      sourceOrderId: plan.terminal.sourceOrderId,
+      fillPrice: plan.terminal.fillPrice || fillPrice,
+      event: "EXIT_TRAIL",
+      fullExit: true,
+      exchangeEvidence: {
+        ...common.exchangeEvidence,
+        event: "EXIT_TRAIL",
+        event_type: "EXIT_TRAIL",
+        order_type: "STOP_MARKET",
+        stop_price: plan.trailActivation && plan.trailActivation.nativeStopPrice || plan.terminal.fillPrice,
+      },
+    }));
+  } else if (plan.terminal) {
+    results.push(await writeOpenClawShadowExternalClose({
+      ...common,
+      sourceFillId: plan.terminal.sourceFillId,
+      sourceOrderId: plan.terminal.sourceOrderId,
+      event: "EXIT_EXTERNAL_SYNC",
+      closeKind: "EXTERNAL",
+      fullExit: true,
+      exchangeEvidence: common.exchangeEvidence,
+    }));
+  }
+  return {
+    ok: results.every((row) => row && row.ok !== false),
+    reason: "V2_FLAT_SYNC_REPLAY_ATTEMPTED",
+    results,
+  };
+}
+
 function metaValueEquals(a, b) {
   if (Object.is(a, b)) return true;
   const aObj = !!a && typeof a === "object";
@@ -8804,9 +9042,12 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       console.warn("[BINANCE_SYNC_ALGO_ORDERS_FAIL]", symbol, e && e.message ? e.message : String(e));
     }
   }
+  const reconcileInputMeta = (!active && prevActive)
+    ? buildFlatSyncReconcileInputMeta({ prevMeta, clearedMeta: meta })
+    : meta;
   const reconciledProjection = reconcileBinancePositionMetaWithExchange({
     active,
-    meta,
+    meta: reconcileInputMeta,
     positionSide: active ? side : null,
     qtyBase,
     previousQtyBase: prevActive ? prevQtyBase : null,
@@ -8819,6 +9060,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     markPrice: Number.isFinite(markPrice) ? markPrice : (Number.isFinite(priceRef) ? priceRef : null),
   });
   meta = reconciledProjection.meta;
+  let v2FlatSyncExitReplay = null;
 
   // ── Recovery-path trade alert (Fix #1, 2026-04-18) ────────────────
   // When the reconciler flips tp_p1_done=false → true via the qty-reduction
@@ -8871,6 +9113,43 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
   } catch (recoveryAlertErr) {
     console.warn("[TP1_RECOVERY_ALERT_GUARD]",
       recoveryAlertErr && recoveryAlertErr.message ? recoveryAlertErr.message : recoveryAlertErr);
+  }
+  if (!active && prevActive) {
+    try {
+      const replayPlan = resolveV2FlatSyncExitReplayPlan({
+        exchange,
+        symbol,
+        prevMeta,
+        meta,
+        prevSide,
+        prevQtyBase,
+        qtyBase,
+        fillPrice: Number.isFinite(markPrice) ? markPrice : priceRef,
+        observedAtMs: syncEventMs,
+      });
+      v2FlatSyncExitReplay = await replayV2FlatSyncExitArtifacts({
+        exchange,
+        symbol,
+        plan: replayPlan,
+        fillPrice: Number.isFinite(markPrice) ? markPrice : priceRef,
+        observedAtMs: syncEventMs,
+      });
+      meta = mergeMeta(meta, {
+        v2_flat_sync_exit_replay_attempted_at: new Date().toISOString(),
+        v2_flat_sync_exit_replay_ok: v2FlatSyncExitReplay && v2FlatSyncExitReplay.ok === true,
+        v2_flat_sync_exit_replay_reason: v2FlatSyncExitReplay && v2FlatSyncExitReplay.reason || null,
+        v2_flat_sync_exit_replay_result_n: Array.isArray(v2FlatSyncExitReplay && v2FlatSyncExitReplay.results)
+          ? v2FlatSyncExitReplay.results.length
+          : 0,
+      });
+    } catch (replayErr) {
+      console.warn("[V2_FLAT_SYNC_EXIT_REPLAY_FAIL]", symbol, replayErr && replayErr.message ? replayErr.message : String(replayErr));
+      meta = mergeMeta(meta, {
+        v2_flat_sync_exit_replay_attempted_at: new Date().toISOString(),
+        v2_flat_sync_exit_replay_ok: false,
+        v2_flat_sync_exit_replay_reason: String(replayErr && replayErr.message || replayErr).slice(0, 160),
+      });
+    }
   }
   if (Array.isArray(reconciledProjection.invariants) && reconciledProjection.invariants.length) {
     meta = mergeMeta(meta, {
@@ -19063,6 +19342,8 @@ module.exports = {
     resolveConfiguredFuturesExitProfileMode,
     resolveRecentExternalFlatSyncGuard,
     normalizeEntryLineage,
+    buildFlatSyncReconcileInputMeta,
+    resolveV2FlatSyncExitReplayPlan,
     buildEntryLineageMetaPatch,
     shouldProbeRecoveredEntryTransition,
     shouldTreatRecoveredLineageAsEntryTransition,
