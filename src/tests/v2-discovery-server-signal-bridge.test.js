@@ -263,9 +263,53 @@ async function marketDataQualityBlockFailsClosed() {
   assert.strictEqual(result.reason, "V2_DISCOVERY_BRIDGE_MARKET_DATA_QUALITY_BLOCKED");
 }
 
+async function linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied() {
+  const result = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env: buildEnv(),
+    intentRow: buildIntent({
+      intent_id: "INTENT__LINK__TEST",
+      request_id: "REQ__LINK__TEST",
+      symbol_or_pair_id: "LINKUSDT",
+      signal_price: 9.41018307,
+      signal_id: "SIG__BINANCEFUT__LINKUSDT__15m__1777080600000__LONG",
+      features_json: {
+        signal_id: "SIG__BINANCEFUT__LINKUSDT__15m__1777080600000__LONG",
+      },
+    }),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 20 },
+    referencePrice: 9.41018307,
+    nowMs: Date.parse("2026-04-25T01:31:00.000Z"),
+    marketDataQuality: marketDataQuality({
+      metrics: {
+        symbol: "LINKUSDT",
+        candle_age_ms: 60_000,
+        mark_index_divergence_bps: 1.1,
+        spread_bps: 2.2,
+        quality_score: 0.95,
+      },
+    }),
+    exchangeInfo: {
+      minNotional: 20,
+      minQty: 0.01,
+      stepSize: 0.01,
+    },
+    discoveryState: {
+      active_position_n: 0,
+      trade_count_24h: 0,
+      daily_realized_pnl_quote: 0,
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_DISCOVERY_BRIDGE_REQUEST_READY");
+  assert.strictEqual(result.request.entrySizingDecision.symbol, "LINKUSDT");
+  assert.ok(result.request.entrySizingDecision.notional_quote < 50);
+  assert.ok(result.request.entrySizingDecision.notional_quote > 49);
+}
+
 async function main() {
   await serverSignalRoutesToV2ProductionEntryLiveRequest();
   await dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop();
+  await linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied();
   await marketDataQualityBlockFailsClosed();
   console.log("V2_DISCOVERY_SERVER_SIGNAL_BRIDGE_TEST_OK");
 }

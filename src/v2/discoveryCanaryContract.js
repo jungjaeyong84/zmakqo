@@ -31,6 +31,14 @@ function toNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function floorToStep(value, step) {
+  const v = toNumberOrNull(value);
+  const s = toNumberOrNull(step);
+  if (!(v > 0)) return null;
+  if (!(s > 0)) return v;
+  return Math.floor(v / s) * s;
+}
+
 function parseBool(value, fallback = false) {
   const raw = String(value == null ? "" : value).trim().toLowerCase();
   if (!raw) return fallback;
@@ -101,6 +109,9 @@ function buildResult({ blockers, policy, state, sizingDecision, symbol, decision
       side: upper(sizingDecision.side),
       notional_quote: toNumberOrNull(sizingDecision.notional_quote),
       entry_qty_abs: toNumberOrNull(sizingDecision.entry_qty_abs),
+      reference_price: toNumberOrNull(sizingDecision.reference_price),
+      min_notional_quote: toNumberOrNull(sizingDecision.min_notional_quote),
+      step_size: toNumberOrNull(sizingDecision.step_size),
       max_size_ratio: toNumberOrNull(sizingDecision.max_size_ratio),
     }) : null,
   });
@@ -128,11 +139,19 @@ function evaluateDiscoveryCanaryContract({
   const dailyLossQuote = toNumberOrNull(resolvedState && (resolvedState.daily_loss_quote ?? resolvedState.dailyLossQuote));
   const dailyRealizedPnlQuote = toNumberOrNull(resolvedState && (resolvedState.daily_realized_pnl_quote ?? resolvedState.dailyRealizedPnlQuote));
   const notionalQuote = toNumberOrNull(resolvedSizing && resolvedSizing.notional_quote);
+  const entryQtyAbs = toNumberOrNull(resolvedSizing && resolvedSizing.entry_qty_abs);
+  const referencePrice = toNumberOrNull(resolvedSizing && resolvedSizing.reference_price);
+  const minNotionalQuote = toNumberOrNull(resolvedSizing && resolvedSizing.min_notional_quote);
+  const stepSize = toNumberOrNull(resolvedSizing && resolvedSizing.step_size);
   const effectiveMaxNotionalQuote = resolveDiscoverySymbolNotionalQuote({
     env,
     symbol: resolvedSymbol,
     fallback: policy.max_notional_quote,
   });
+  const tp1QtyAbs = floorToStep(Number.isFinite(entryQtyAbs) ? entryQtyAbs * 0.5 : null, stepSize);
+  const tp1NotionalQuote = Number.isFinite(tp1QtyAbs) && Number.isFinite(referencePrice)
+    ? tp1QtyAbs * referencePrice
+    : null;
 
   if (policy.enabled !== true) blockers.push("DISCOVERY_CANARY:NOT_ENABLED");
   if (trimOrNull(confirm) !== DISCOVERY_CONFIRM_PHRASE) blockers.push("DISCOVERY_CANARY:CONFIRM_REQUIRED");
@@ -160,7 +179,14 @@ function evaluateDiscoveryCanaryContract({
   if (Number.isFinite(notionalQuote) && Number.isFinite(effectiveMaxNotionalQuote) && notionalQuote > effectiveMaxNotionalQuote) {
     blockers.push("DISCOVERY_CANARY:MAX_NOTIONAL_EXCEEDED");
   }
-  if (Number.isFinite(notionalQuote) && Number.isFinite(effectiveMaxNotionalQuote) && notionalQuote < effectiveMaxNotionalQuote) {
+  if (!Number.isFinite(entryQtyAbs) || !Number.isFinite(referencePrice) || !Number.isFinite(minNotionalQuote) || !Number.isFinite(stepSize)) {
+    blockers.push("DISCOVERY_CANARY:PARTIAL_TP1_EVIDENCE_REQUIRED");
+  }
+  if (
+    Number.isFinite(tp1NotionalQuote)
+    && Number.isFinite(minNotionalQuote)
+    && tp1NotionalQuote + 1e-9 < minNotionalQuote
+  ) {
     blockers.push("DISCOVERY_CANARY:PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
   }
 
@@ -191,5 +217,6 @@ module.exports = {
     ensureArray,
     toNumberOrNull,
     parseBool,
+    floorToStep,
   },
 };

@@ -52,6 +52,9 @@ const env = {
         side: "LONG",
         notional_quote: 15,
         entry_qty_abs: 8,
+        reference_price: 1.44,
+        min_notional_quote: 5,
+        step_size: 0.1,
       },
     },
   });
@@ -115,7 +118,10 @@ const env = {
         symbol: "DOGEUSDT",
         side: "LONG",
         notional_quote: 15,
-        entry_qty_abs: 20,
+        entry_qty_abs: 151,
+        reference_price: 0.099,
+        min_notional_quote: 5,
+        step_size: 1,
       },
     },
   });
@@ -146,13 +152,49 @@ const env = {
         symbol: "ETHUSDT",
         side: "LONG",
         notional_quote: 50,
-        entry_qty_abs: 0.005,
+        entry_qty_abs: 0.022,
+        reference_price: 2315,
+        min_notional_quote: 20,
+        step_size: 0.001,
       },
     },
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_CONTRACT_PASS");
   assert.strictEqual(result.blocker_n, 0);
+})();
+
+(function allowsStepSafeNotionalBelowPolicyWhenTp1MinNotionalPasses() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "LINKUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "LINKUSDT:50",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "LINKUSDT",
+        side: "LONG",
+        notional_quote: 49.9680721017,
+        entry_qty_abs: 5.31,
+        reference_price: 9.41018307,
+        min_notional_quote: 20,
+        step_size: 0.01,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_CONTRACT_PASS");
 })();
 
 (function blocksUnsafeDiscoveryInputs() {
@@ -208,6 +250,9 @@ const env = {
         side: "LONG",
         notional_quote: 6,
         entry_qty_abs: 60,
+        reference_price: 0.098,
+        min_notional_quote: 5,
+        step_size: 1,
       },
     },
   });
