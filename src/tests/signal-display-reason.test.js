@@ -97,13 +97,13 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   const waitStage = classifySignalReasonStage('DROP_WAIT_ONE_BAR_TIMING');
   assert.strictEqual(waitStage.step, null);
   assert.strictEqual(waitStage.key, 'LEGACY_RETIRED');
-  assert.strictEqual(waitStage.text, 'V1 legacy timing filter retired');
+  assert.strictEqual(waitStage.text, 'Retired legacy timing guard');
 
   const waitReason = buildSignalDisplayReason(
     { reason: 'DROP_WAIT_ONE_BAR_TIMING' },
     {}
   );
-  assert.match(waitReason.reason_ko, /V1 legacy wait-one-bar/);
+  assert.match(waitReason.reason_ko, /은퇴된 wait-one-bar/);
 
   const chaseStage = classifySignalReasonStage('DROP_CHASE_ENTRY_QUALITY');
   assert.strictEqual(chaseStage.step, null);
@@ -113,7 +113,7 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
     { reason: 'DROP_CHASE_ENTRY_QUALITY' },
     {}
   );
-  assert.match(chaseReason.reason_ko, /V1 legacy chase-entry/);
+  assert.match(chaseReason.reason_ko, /은퇴된 chase-entry/);
 
   const rescueAddBlocked = buildSignalDisplayReason(
     { reason: 'LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED' },

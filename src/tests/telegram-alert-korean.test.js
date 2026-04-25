@@ -58,6 +58,8 @@ function run() {
   });
   assert.ok(v2Text.includes("[오류] [V2 DISCOVERY_CANARY] [V2 긴급] SOLUSDT live exit exception"));
   assert.ok(v2Text.includes("runtime=V2 DISCOVERY_CANARY"));
+  assert.ok(v2Text.includes("canary_only=1"));
+  assert.ok(v2Text.includes("formal_live=0"));
   assert.ok(v2Text.includes("legacy_webhook=차단됨"));
   assert.ok(v2Text.includes("symbols=SOLUSDT|XRPUSDT"));
   assert.ok(v2Text.includes("symbol_notional=SOLUSDT:15|XRPUSDT:15"));

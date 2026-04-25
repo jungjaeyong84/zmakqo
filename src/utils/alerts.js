@@ -163,8 +163,11 @@ function resolveV2TelegramRuntimeContext(env = process.env) {
   const mode = discovery
     ? "DISCOVERY_CANARY"
     : (canaryOnly ? "CANARY_ONLY" : "LIVE");
+  const formalLive = !dryRun && !canaryOnly && !discovery;
   const risk = [
     `dry_run=${dryRun ? "1" : "0"}`,
+    `canary_only=${canaryOnly ? "1" : "0"}`,
+    `formal_live=${formalLive ? "1" : "0"}`,
     `live_endpoint=${liveEndpoint ? "1" : "0"}`,
     `ml_live=${mlLive ? "1" : "0"}`,
     `agent_apply=${agentApply ? "1" : "0"}`,

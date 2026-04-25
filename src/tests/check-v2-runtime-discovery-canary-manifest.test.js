@@ -48,6 +48,9 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL", value: "0" }),
                 Object.freeze({ name: "DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES", value: "0" }),
+                Object.freeze({ name: "DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED", value: "1" }),
+                Object.freeze({ name: "DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED", value: "1" }),
+                Object.freeze({ name: "DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_COLLECTION_PREFIX", value: "v2__" }),
                 Object.freeze({ name: "ML_LIVE_SERVING_ARMED", value: "0" }),
                 Object.freeze({ name: "OPENCLAW_AGENT_APPLY_ENABLED", value: "0" }),
@@ -206,6 +209,19 @@ function traceOnlyServiceJson({
   assert.strictEqual(result.service_results.length, 4);
   assert.strictEqual(result.service_results.find((row) => row.service_name === "donbeolja-egress").env_contract_checked, false);
   assert.strictEqual(result.service_results.find((row) => row.service_name === "donbeolja").env_contract_checked, true);
+}
+
+{
+  const unsafeService = JSON.parse(JSON.stringify(serviceJson()));
+  unsafeService.spec.template.spec.containers[0].env = unsafeService.spec.template.spec.containers[0].env
+    .filter((item) => item.name !== "DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED");
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(unsafeService),
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, false);
+  assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED_MISMATCH"));
 }
 
 {

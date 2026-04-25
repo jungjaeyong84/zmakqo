@@ -166,8 +166,8 @@ function classifySignalReasonStage(reason) {
     return {
       step: null,
       key: "LEGACY_RETIRED",
-      label: "V1 legacy retired",
-      text: "V1 legacy timing filter retired",
+      label: "Retired legacy guard",
+      text: "Retired legacy timing guard",
       code,
     };
   }
@@ -176,8 +176,8 @@ function classifySignalReasonStage(reason) {
     return {
       step: null,
       key: "LEGACY_RETIRED",
-      label: "V1 legacy retired",
-      text: "V1 legacy timing filter retired",
+      label: "Retired legacy guard",
+      text: "Retired legacy timing guard",
       code,
     };
   }
@@ -224,8 +224,8 @@ function explainSignalReason(reason) {
 
     DROP_EV_GATE_TP1_PROB: "TP0/TP1/시간청산을 함께 반영한 기대값 하한이 기준보다 낮아 진입을 보류했습니다.",
     DROP_EV_GATE_BARS_MISSING: "EV 판단에 필요한 최근 봉 데이터가 부족해 진입을 보류했습니다.",
-    DROP_WAIT_ONE_BAR_TIMING: "V1 legacy wait-one-bar 필터입니다. V2 discovery에서는 hard drop으로 쓰면 안 되며, 이 사유가 실행 알림에 나오면 legacy leakage로 봐야 합니다.",
-    DROP_CHASE_ENTRY_QUALITY: "V1 legacy chase-entry 필터입니다. V2 discovery에서는 productionEntryRoute의 V2 기준만 주문 권한을 가져야 합니다.",
+    DROP_WAIT_ONE_BAR_TIMING: "은퇴된 wait-one-bar 타이밍 가드입니다. V2 discovery에서는 hard drop으로 쓰면 안 되며, 이 사유가 실행 알림에 나오면 retired guard leakage로 봐야 합니다.",
+    DROP_CHASE_ENTRY_QUALITY: "은퇴된 chase-entry 품질 가드입니다. V2 discovery에서는 productionEntryRoute의 V2 기준만 주문 권한을 가져야 합니다.",
 
     DROP_OPPOSITE_COOLDOWN: "직전 반대 방향 종료 후 쿨다운 구간이라 진입을 보류했습니다.",
     DROP_OPPOSITE_TIME_COOLDOWN: "반대 방향 시간 쿨다운이 남아 있어 진입을 보류했습니다.",
@@ -264,7 +264,7 @@ function explainSignalReason(reason) {
     "V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED": "V2 risk governor 필수 플래그가 확인되지 않아 discovery canary 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED": "legacy webhook 차단이 확인되지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_ALLOWED": "legacy webhook 허용 플래그가 켜져 있어 실제 주문을 보류했습니다.",
-    "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_RUNTIME_NOT_RETIRED": "V2 discovery canary에서 V1 legacy runtime retired 플래그가 확인되지 않아 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_RUNTIME_NOT_RETIRED": "V2 discovery canary에서 legacy runtime retired 플래그가 확인되지 않아 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_ENTRY_FILTERS_NOT_RETIRED": "V2 discovery canary에서 legacy entry filter 비활성 계약이 확인되지 않아 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WAIT_ONE_BAR_HARD_DROP_NOT_RETIRED": "V2 discovery canary에서 legacy wait-one-bar hard drop 비활성 계약이 확인되지 않아 주문을 보류했습니다.",
     V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE: "서버 신호를 legacy live 주문 경로에서 실행하지 않고 V2 productionEntryLiveEndpoint/productionEntryRoute로 위임했습니다.",
