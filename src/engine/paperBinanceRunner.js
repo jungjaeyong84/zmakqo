@@ -5966,6 +5966,7 @@ function resolveV2DiscoveryHandoffDetail(handoff = null) {
 
 function buildV2DiscoveryHandoffFeaturePatch(handoff = null) {
   const detail = resolveV2DiscoveryHandoffDetail(handoff);
+  const sideEffect = resolveV2DiscoveryPostFillSideEffect(handoff);
   return {
     v2_discovery_bridge_reason: detail.bridge_reason,
     v2_discovery_bridge_error: detail.bridge_error,
@@ -5978,10 +5979,58 @@ function buildV2DiscoveryHandoffFeaturePatch(handoff = null) {
     v2_discovery_canary_contract_blockers: detail.discovery_contract_blockers,
     v2_discovery_market_data_quality_reason: detail.market_data_quality_reason,
     v2_discovery_market_data_quality_blockers: detail.market_data_quality_blockers,
+    v2_discovery_post_fill_exchange_write: sideEffect ? sideEffect.exchange_write_performed === true : false,
+    v2_discovery_post_fill_unprotected_possible: sideEffect ? sideEffect.unprotected_position_possible === true : false,
+    v2_discovery_post_fill_entry_order_id: sideEffect ? (sideEffect.entry_order_id || null) : null,
+    v2_discovery_post_fill_position_cycle_id: sideEffect ? (sideEffect.position_cycle_id || null) : null,
+  };
+}
+
+function resolveV2DiscoveryPostFillSideEffect(handoff = null) {
+  const endpointResult = handoff && handoff.endpoint_result && typeof handoff.endpoint_result === "object"
+    ? handoff.endpoint_result
+    : null;
+  const routeResult = endpointResult && endpointResult.route_result && typeof endpointResult.route_result === "object"
+    ? endpointResult.route_result
+    : null;
+  const sideEffect = routeResult && routeResult.post_fill_side_effect && typeof routeResult.post_fill_side_effect === "object"
+    ? routeResult.post_fill_side_effect
+    : null;
+  return sideEffect || null;
+}
+
+function classifyV2DiscoveryPostFillHandoff(handoff = null) {
+  const sideEffect = resolveV2DiscoveryPostFillSideEffect(handoff);
+  if (!sideEffect || sideEffect.exchange_write_performed !== true) {
+    return {
+      exchange_write_performed: false,
+      unprotected_position_possible: false,
+      reason: null,
+      status: null,
+      note: null,
+      side_effect: sideEffect,
+    };
+  }
+  const unprotected = sideEffect.unprotected_position_possible === true;
+  return {
+    exchange_write_performed: true,
+    unprotected_position_possible: unprotected,
+    reason: unprotected
+      ? "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTION_CRITICAL"
+      : "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED",
+    status: unprotected
+      ? "FAILED_INTERNAL"
+      : "SUPERSEDED_BY_V2_PROTECTED_ENTRY",
+    note: unprotected
+      ? "V2 route submitted an exchange entry but protection was not confirmed. This is not a signal drop; repair protection immediately."
+      : "V2 route submitted an exchange entry and protection was confirmed, but route/kernel audit did not fully pass. This is not a signal drop; reconcile internal evidence.",
+    side_effect: sideEffect,
   };
 }
 
 function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE") {
+  const postFill = classifyV2DiscoveryPostFillHandoff(handoff);
+  if (postFill.exchange_write_performed === true && postFill.reason) return postFill.reason;
   const detail = resolveV2DiscoveryHandoffDetail(handoff);
   if (detail.router_reason) return detail.router_reason;
   if (detail.router_blockers.length) return detail.router_blockers[0];
@@ -5999,6 +6048,47 @@ function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISC
   if (detail.discovery_contract_reason) return detail.discovery_contract_reason;
   if (detail.bridge_reason) return detail.bridge_reason;
   return fallback;
+}
+
+function sendV2DiscoveryPostFillHandoffProgressAlert({
+  exchange = null,
+  symbol = null,
+  event = null,
+  side = null,
+  tf = null,
+  qtyPct = null,
+  executionMode = null,
+  signalId = null,
+  scheduledExecBarCloseUtc = null,
+  blockReason = null,
+  handoff = null,
+  postFillHandoff = null,
+} = {}) {
+  const classified = postFillHandoff || classifyV2DiscoveryPostFillHandoff(handoff);
+  if (classified.exchange_write_performed !== true) return;
+  sendSignalProgressAlert({
+    exchange,
+    symbol,
+    event,
+    side,
+    tf,
+    qtyPct,
+    executionMode,
+    source: "SERVER",
+    authoritative: true,
+    progressReason: blockReason || classified.reason || "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED",
+    pendingReason: classified.unprotected_position_possible === true
+      ? "PROTECTION_REPAIR_REQUIRED"
+      : "POST_FILL_RECONCILE",
+    signalId,
+    scheduledExecBarCloseUtc,
+    meta: {
+      ...buildV2DiscoveryHandoffFeaturePatch(handoff),
+      post_fill_note: classified.note || null,
+    },
+  }).catch((err) => {
+    console.warn("[V2_DISCOVERY_POST_FILL_HANDOFF_ALERT_FAIL]", err && err.message ? err.message : String(err));
+  });
 }
 
 function buildV2DiscoverySignalFanInIntentRow({
@@ -13001,7 +13091,9 @@ async function runPaperBinanceForBar({
       }
       const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
       const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
-      const endpointPostFillCritical = String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
+      const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+      const endpointPostFillCritical = postFillHandoff.unprotected_position_possible === true
+        || String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
       let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
       if (routedDecision && routedDecision.reason) {
         blockReason = String(routedDecision.reason).trim().toUpperCase();
@@ -13010,19 +13102,41 @@ async function runPaperBinanceForBar({
       } else if (handoff && handoff.reason) {
         blockReason = String(handoff.reason).trim().toUpperCase();
       }
-      await markIntentStatus(it.intent_id, endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED", {
+      if (postFillHandoff.exchange_write_performed === true && postFillHandoff.reason) {
+        blockReason = postFillHandoff.reason;
+      }
+      await markIntentStatus(it.intent_id, postFillHandoff.status || (endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED"), {
         cancel_reason: blockReason,
         status_reason: blockReason,
         cancel_note: JSON.stringify({
-          note: endpointPostFillCritical
+          note: postFillHandoff.note || (endpointPostFillCritical
             ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
-            : "V2 discovery entry was handed to productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters.",
+            : "V2 discovery entry was handed to productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters."),
           bridge_reason: handoff && handoff.reason ? handoff.reason : null,
           bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
           endpoint_reason: endpointReason,
           router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
+          post_fill_exchange_write_performed: postFillHandoff.exchange_write_performed === true,
+          post_fill_unprotected_position_possible: postFillHandoff.unprotected_position_possible === true,
+          post_fill_side_effect: postFillHandoff.side_effect || null,
         }),
       });
+      if (postFillHandoff.exchange_write_performed === true) {
+        sendV2DiscoveryPostFillHandoffProgressAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: normalizeSideValue(it.side),
+          tf: signalTf,
+          qtyPct: Number(it.qty_pct),
+          executionMode: liveCfg.executionMode,
+          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
+          blockReason,
+          handoff,
+          postFillHandoff,
+        });
+        continue;
+      }
       notifyTradeExitFailureAlert({
         exchange,
         symbol,
@@ -15378,6 +15492,49 @@ async function runPaperBinanceForBar({
         continue;
       }
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+      const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+      if (postFillHandoff.exchange_write_performed === true) {
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          signalId: s.signal_id || (features && features.signal_id) || null,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: blockReason,
+          pendingReason: "POST_FILL_RECONCILE",
+          scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+          meta: {
+            ...buildV2DiscoveryHandoffFeaturePatch(handoff),
+            post_fill_note: postFillHandoff.note || null,
+          },
+        }).catch((err) => {
+          console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_POST_FILL_ALERT_FAIL]", err?.message || err);
+        });
+        if (s.signal_id) {
+          const lock = await tryLockSignal({ signalId: s.signal_id, runId });
+          if (lock && lock.ok) {
+            await markSignalConsumed({
+              signalId: s.signal_id,
+              runId,
+              consumedAtIso: new Date().toISOString(),
+              execBarCloseMs: execBarCloseMsForIntent,
+              execBarCloseUtc: execBarCloseUtcForIntent,
+              reason: blockReason,
+              meta: {
+                intent: intent || null,
+                v2_discovery_post_fill_exchange_write: true,
+                v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+              },
+            });
+          }
+        }
+        continue;
+      }
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -15814,7 +15971,9 @@ async function runPaperFuturesForBar({
       }
       const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
       const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
-      const endpointPostFillCritical = String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
+      const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+      const endpointPostFillCritical = postFillHandoff.unprotected_position_possible === true
+        || String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
       let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
       if (routedDecision && routedDecision.reason) {
         blockReason = String(routedDecision.reason).trim().toUpperCase();
@@ -15823,19 +15982,41 @@ async function runPaperFuturesForBar({
       } else if (handoff && handoff.reason) {
         blockReason = String(handoff.reason).trim().toUpperCase();
       }
-      await markIntentStatus(it.intent_id, endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED", {
+      if (postFillHandoff.exchange_write_performed === true && postFillHandoff.reason) {
+        blockReason = postFillHandoff.reason;
+      }
+      await markIntentStatus(it.intent_id, postFillHandoff.status || (endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED"), {
         cancel_reason: blockReason,
         status_reason: blockReason,
         cancel_note: JSON.stringify({
-          note: endpointPostFillCritical
+          note: postFillHandoff.note || (endpointPostFillCritical
             ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
-            : "V2 discovery entry was handed to productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters.",
+            : "V2 discovery entry was handed to productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters."),
           bridge_reason: handoff && handoff.reason ? handoff.reason : null,
           bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
           endpoint_reason: endpointReason,
           router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
+          post_fill_exchange_write_performed: postFillHandoff.exchange_write_performed === true,
+          post_fill_unprotected_position_possible: postFillHandoff.unprotected_position_possible === true,
+          post_fill_side_effect: postFillHandoff.side_effect || null,
         }),
       });
+      if (postFillHandoff.exchange_write_performed === true) {
+        sendV2DiscoveryPostFillHandoffProgressAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: normalizeSideValue(it.side),
+          tf: signalTf,
+          qtyPct: Number(it.qty_pct),
+          executionMode: liveCfg.executionMode,
+          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
+          blockReason,
+          handoff,
+          postFillHandoff,
+        });
+        continue;
+      }
       notifyTradeExitFailureAlert({
         exchange,
         symbol,
@@ -16589,7 +16770,9 @@ async function runPaperFuturesForBar({
         const signalCriteriaGate = routedDecision && routedDecision.signal_criteria_gate;
         const marketDataQualityGate = routedDecision && routedDecision.market_data_quality_gate;
         const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
-        const endpointPostFillCritical = String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
+        const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+        const endpointPostFillCritical = postFillHandoff.unprotected_position_possible === true
+          || String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
         let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
         if (routedDecision && routedDecision.reason) {
           blockReason = String(routedDecision.reason).trim().toUpperCase();
@@ -16598,23 +16781,45 @@ async function runPaperFuturesForBar({
         } else if (handoff && handoff.reason) {
           blockReason = String(handoff.reason).trim().toUpperCase();
         }
-        await markIntentStatus(it.intent_id, endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED", {
+        if (postFillHandoff.exchange_write_performed === true && postFillHandoff.reason) {
+          blockReason = postFillHandoff.reason;
+        }
+        await markIntentStatus(it.intent_id, postFillHandoff.status || (endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED"), {
           cancel_reason: blockReason,
           status_reason: blockReason,
           cancel_note: JSON.stringify({
-            note: endpointPostFillCritical
+            note: postFillHandoff.note || (endpointPostFillCritical
               ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
-              : "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path.",
+              : "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path."),
             bridge_reason: handoff && handoff.reason ? handoff.reason : null,
             bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
             endpoint_reason: endpointReason,
             endpoint_post_fill_critical: endpointPostFillCritical,
+            post_fill_exchange_write_performed: postFillHandoff.exchange_write_performed === true,
+            post_fill_unprotected_position_possible: postFillHandoff.unprotected_position_possible === true,
+            post_fill_side_effect: postFillHandoff.side_effect || null,
             router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
             router_detail: routedDecision && routedDecision.detail ? routedDecision.detail : null,
             signal_criteria_blockers: signalCriteriaGate && Array.isArray(signalCriteriaGate.blockers) ? signalCriteriaGate.blockers : [],
             market_data_quality_blockers: marketDataQualityGate && Array.isArray(marketDataQualityGate.blockers) ? marketDataQualityGate.blockers : [],
           }),
         });
+        if (postFillHandoff.exchange_write_performed === true) {
+          sendV2DiscoveryPostFillHandoffProgressAlert({
+            exchange,
+            symbol,
+            event: it.event,
+            side: actionSide,
+            tf: signalTf,
+            qtyPct: qtyFraction,
+            executionMode: liveCfg.executionMode,
+            signalId: liveSignalId,
+            blockReason,
+            handoff,
+            postFillHandoff,
+          });
+          continue;
+        }
         notifyTradeExitFailureAlert({
           exchange,
           symbol,
@@ -19035,6 +19240,49 @@ async function runPaperFuturesForBar({
         continue;
       }
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+      const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+      if (postFillHandoff.exchange_write_performed === true) {
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          signalId: s.signal_id || (features && features.signal_id) || null,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: blockReason,
+          pendingReason: "POST_FILL_RECONCILE",
+          scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+          meta: {
+            ...buildV2DiscoveryHandoffFeaturePatch(handoff),
+            post_fill_note: postFillHandoff.note || null,
+          },
+        }).catch((err) => {
+          console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_POST_FILL_ALERT_FAIL]", err?.message || err);
+        });
+        if (s.signal_id) {
+          const lock = await tryLockSignal({ signalId: s.signal_id, runId });
+          if (lock && lock.ok) {
+            await markSignalConsumed({
+              signalId: s.signal_id,
+              runId,
+              consumedAtIso: new Date().toISOString(),
+              execBarCloseMs: execBarCloseMsForIntent,
+              execBarCloseUtc: execBarCloseUtcForIntent,
+              reason: blockReason,
+              meta: {
+                intent: intent || null,
+                v2_discovery_post_fill_exchange_write: true,
+                v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+              },
+            });
+          }
+        }
+        continue;
+      }
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -19417,6 +19665,8 @@ module.exports = {
     shouldBypassLegacyEntryFiltersForV2Discovery,
     resolveV2DiscoveryHandoffDetail,
     buildV2DiscoveryHandoffFeaturePatch,
+    resolveV2DiscoveryPostFillSideEffect,
+    classifyV2DiscoveryPostFillHandoff,
     deriveV2DiscoveryHandoffBlockReason,
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,

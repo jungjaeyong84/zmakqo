@@ -88,6 +88,8 @@ function classifySignalReasonStage(reason) {
     code === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL" ||
     code === "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL" ||
     code === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED" ||
+    code === "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTION_CRITICAL" ||
+    code === "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED" ||
     code === "V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED" ||
     code === "LIVE_DISABLED" ||
     code === "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE" ||
@@ -262,6 +264,8 @@ function explainSignalReason(reason) {
     V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL: "진입 주문이 체결된 뒤 보호주문 확인 또는 복구가 실패했습니다. 이 상태는 신호 드롭이 아니라 실제 포지션 보호 복구가 필요한 CRITICAL 상태입니다.",
     V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL: "진입 주문이 체결된 뒤 보호주문 확인 또는 복구가 실패했습니다. 이 상태는 신호 드롭이 아니라 실제 포지션 보호 복구가 필요한 CRITICAL 상태입니다.",
     V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED: "진입 주문과 보호주문은 완료됐지만 route/audit 후처리가 실패했습니다. 이 상태는 신호 드롭이 아니라 실제 체결 이후 기록 확인이 필요한 상태입니다.",
+    V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTION_CRITICAL: "V2 discovery 진입 주문이 실제 체결됐지만 보호주문 확인이 실패했습니다. 신호 드롭이 아니며 즉시 보호 복구가 필요한 상태입니다.",
+    V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED: "V2 discovery 진입 주문이 실제 체결되고 보호도 확인됐지만 내부 route/kernel evidence가 완전히 닫히지 않았습니다. 신호 드롭이 아니며 내부 기록 reconciliation이 필요한 상태입니다.",
     V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED: "V2 production entry route가 주문 전 단계에서 진입을 차단했습니다. 세부 사유는 route_result 또는 V2 discovery route blocker를 확인해야 합니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED": "V2 discovery canary 허용 심볼 목록에 없는 심볼이라 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LIVE_ENDPOINT_REQUIRED": "V2 discovery live endpoint가 켜져 있지 않아 실제 주문을 보류했습니다.",

@@ -141,16 +141,28 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
 
 (function postFillEndpointCriticalMustNotLookLikeNormalDrop() {
   assert.ok(
-    source.includes("endpointPostFillCritical"),
-    "paper runner must detect endpoint post-fill protection critical state"
+    source.includes("classifyV2DiscoveryPostFillHandoff"),
+    "paper runner must classify endpoint post-fill exchange-write state"
   );
   assert.ok(
-    source.includes('endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED"'),
-    "post-fill protection critical state must not be written as a normal canceled/drop intent"
+    source.includes("V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED"),
+    "post-fill protected route failure must be reported as executed/reconcile, not as a normal drop"
   );
   assert.ok(
-    source.includes("Actual exchange entry may exist and requires protection repair verification."),
-    "post-fill protection critical note must tell operators that an exchange position may exist"
+    source.includes("postFillHandoff.status || (endpointPostFillCritical ? \"FAILED_INTERNAL\" : \"CANCELED\")"),
+    "post-fill exchange-write state must override the normal canceled/drop intent status"
+  );
+  assert.ok(
+    source.includes("This is not a signal drop; reconcile internal evidence."),
+    "post-fill protected route failure note must tell operators it is not a signal drop"
+  );
+  assert.ok(
+    source.includes("sendV2DiscoveryPostFillHandoffProgressAlert"),
+    "post-fill exchange-write state must use progress/reconcile alerts instead of normal drop alerts"
+  );
+  assert.ok(
+    source.includes("PROTECTION_REPAIR_REQUIRED"),
+    "post-fill unprotected exchange-write state must be surfaced as repair required"
   );
 })();
 

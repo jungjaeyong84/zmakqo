@@ -224,13 +224,68 @@ function discoveryHandoffBlockReasonKeepsMarketDataCause() {
   assert.deepStrictEqual(patch.v2_discovery_market_data_quality_blockers, ["MARKET_DATA:STALE_CANDLE"]);
 }
 
+function discoveryHandoffPostFillExchangeWriteDoesNotLookLikeDrop() {
+  const protectedHandoff = {
+    reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED",
+    endpoint_result: {
+      ok: false,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED",
+      route_result: {
+        ok: false,
+        reason: "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED",
+        post_fill_side_effect: {
+          exchange_write_performed: true,
+          unprotected_position_possible: false,
+          entry_order_id: "ORDER__LINK__ENTRY",
+          position_cycle_id: "PCY__LINK__01",
+        },
+      },
+    },
+  };
+  assert.strictEqual(
+    __test.deriveV2DiscoveryHandoffBlockReason(protectedHandoff),
+    "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED"
+  );
+  const protectedClassified = __test.classifyV2DiscoveryPostFillHandoff(protectedHandoff);
+  assert.strictEqual(protectedClassified.exchange_write_performed, true);
+  assert.strictEqual(protectedClassified.unprotected_position_possible, false);
+  assert.strictEqual(protectedClassified.status, "SUPERSEDED_BY_V2_PROTECTED_ENTRY");
+  const patch = __test.buildV2DiscoveryHandoffFeaturePatch(protectedHandoff);
+  assert.strictEqual(patch.v2_discovery_post_fill_exchange_write, true);
+  assert.strictEqual(patch.v2_discovery_post_fill_unprotected_possible, false);
+  assert.strictEqual(patch.v2_discovery_post_fill_entry_order_id, "ORDER__LINK__ENTRY");
+
+  const criticalHandoff = {
+    endpoint_result: {
+      ok: false,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED",
+      route_result: {
+        ok: false,
+        reason: "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED",
+        post_fill_side_effect: {
+          exchange_write_performed: true,
+          unprotected_position_possible: true,
+          entry_order_id: "ORDER__XRP__ENTRY",
+        },
+      },
+    },
+  };
+  assert.strictEqual(
+    __test.deriveV2DiscoveryHandoffBlockReason(criticalHandoff),
+    "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTION_CRITICAL"
+  );
+  assert.strictEqual(__test.classifyV2DiscoveryPostFillHandoff(criticalHandoff).status, "FAILED_INTERNAL");
+}
+
 function liveDisabledReasonIsOperatorReadable() {
   const classified = classifySignalReasonStage("LIVE_DISABLED");
   assert.strictEqual(classified.key, "LIVE_CONFIG");
   assert.strictEqual(classifySignalReasonStage("V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED").key, "LIVE_CONFIG");
+  assert.strictEqual(classifySignalReasonStage("V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED").key, "LIVE_CONFIG");
   assert.strictEqual(classifySignalReasonStage("MARKET_DATA:STALE_CANDLE").key, "MARKET_DATA");
   assert.match(explainSignalReason("LIVE_DISABLED"), /서버 신호는 생성/);
   assert.match(explainSignalReason("V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED"), /route/);
+  assert.match(explainSignalReason("V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED"), /신호 드롭이 아니며/);
   assert.match(explainSignalReason("MARKET_DATA:STALE_CANDLE"), /stale candle/);
   assert.match(explainSignalReason("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED"), /허용 심볼/);
   assert.match(explainSignalReason("V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE"), /productionEntryLiveEndpoint/);
@@ -246,6 +301,7 @@ function main() {
   discoveryBridgeBypassesLegacyEntryFiltersBeforeHandoff();
   discoveryHandoffBlockReasonKeepsNestedRouteCause();
   discoveryHandoffBlockReasonKeepsMarketDataCause();
+  discoveryHandoffPostFillExchangeWriteDoesNotLookLikeDrop();
   liveDisabledReasonIsOperatorReadable();
   console.log("V2_DISCOVERY_LIVE_BRIDGE_TEST_OK");
 }
