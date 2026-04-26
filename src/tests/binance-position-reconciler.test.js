@@ -441,6 +441,31 @@ async function run() {
     "valid existing trail_low must be kept when it is tighter (lower) than seedPrice"
   );
 
+  // When V2 is resolved active via env-fallback (input meta lacks the flag),
+  // the reconciler must stamp simplified_exit_v2_enabled=true onto the output
+  // so downstream meta consumers don't treat the position as legacy two-TP.
+  process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
+  const simplifiedV2EnvFallbackStamp = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      exit_rules_override: { TP_P1_QTY: 0.5 },
+    },
+    positionSide: "LONG",
+    qtyBase: 10,
+    entryPrice: 100,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [
+      { orderId: "stop-1", type: "STOP_MARKET", side: "SELL", closePosition: true, stopPrice: "98.35" },
+      { orderId: "tp1-armed", type: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, stopPrice: "101.68", origQty: "5" },
+    ],
+  });
+  assert.strictEqual(
+    simplifiedV2EnvFallbackStamp.meta.simplified_exit_v2_enabled,
+    true,
+    "reconciler must stamp simplified_exit_v2_enabled=true when V2 is active, even if input meta lacked the flag"
+  );
+
   process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
 
   console.log("BINANCE_POSITION_RECONCILER_TEST_OK");

@@ -5504,6 +5504,17 @@ function buildClosingFillMetaPatch({
     exit_profile_rollback_until_ms: includeExitProfileRollback ? null : undefined,
     exit_profile_rollback_reason: includeExitProfileRollback ? null : undefined,
     exit_policy_source: null,
+    // Runtime exit-rule repair flags must be reset between cycles. They are
+    // diagnostic markers attached to the *current* position's entry, not
+    // ledger history. Without this reset they leak across close→reopen and
+    // make every fresh entry look like it triggered ENTRY_RUNTIME_EXIT_RULES_INVALID,
+    // hiding real repair events behind days-old timestamps.
+    runtime_exit_invariant_repaired: null,
+    runtime_exit_invariant_reason: null,
+    runtime_exit_invariant_at_ms: null,
+    runtime_exit_repair_applied: null,
+    runtime_exit_repair_reason: null,
+    runtime_exit_repair_at_ms: null,
     ...buildSameDirectionTrailProfitLegacyResetMetaPatch(),
   };
 }

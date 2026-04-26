@@ -425,6 +425,12 @@ async function run() {
   assert.strictEqual(closingPatch.exit_profile, null);
   assert.strictEqual(closingPatch.exit_profile_rollback_active, undefined);
   assert.strictEqual(closingPatch.same_direction_trail_profit_exit_dir, null);
+  assert.strictEqual(closingPatch.runtime_exit_invariant_repaired, null);
+  assert.strictEqual(closingPatch.runtime_exit_invariant_reason, null);
+  assert.strictEqual(closingPatch.runtime_exit_invariant_at_ms, null);
+  assert.strictEqual(closingPatch.runtime_exit_repair_applied, null);
+  assert.strictEqual(closingPatch.runtime_exit_repair_reason, null);
+  assert.strictEqual(closingPatch.runtime_exit_repair_at_ms, null);
 
   const closingPatchWithRollback = __test.buildClosingFillMetaPatch({
     execBarCloseMs: 789,

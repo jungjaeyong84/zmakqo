@@ -12,6 +12,10 @@ const { listExchangePositionReadViews } = require("./positionReadModel");
 const { resolveExitRulesForPosition } = require("../engine/signalEngine");
 const { normalizePositionSide, resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
 const { updateAlgoEndpointDegradationState } = require("../v2/algoEndpointDegradationState");
+const {
+  DEFAULT_TP1_TARGET_PCT: SIMPLIFIED_EXIT_V2_TP1_TARGET_PCT,
+  isSimplifiedExitV2Active,
+} = require("./simplifiedExitV2");
 
 function toBool(v, def = false) {
   if (v == null) return def;
@@ -57,11 +61,18 @@ function computeExpectedNativeStopPx({ positionSide, entryPrice, leverage, rules
   return side === "SHORT" ? entry * (1 + movePct) : entry * (1 - movePct);
 }
 
-function computeExpectedNativeTpPx({ positionSide, entryPrice, leverage, rules } = {}) {
+function computeExpectedNativeTpPx({ positionSide, entryPrice, leverage, rules, simplifiedExitV2Active = false } = {}) {
   const side = normalizePositionSide(positionSide);
   const entry = Number(entryPrice);
   const lev = Number(leverage);
-  const tp = Math.abs(Number(rules && rules.TP_P1));
+  // simplifiedExitV2 places TP1 at the policy default (1.68%) regardless of the
+  // resolved cohort's TP_P1 (which can be the RESCUE 1.65% safety floor). Using
+  // rules.TP_P1 here would emit NATIVE_TP1_TRIGGER_MISMATCH on every active V2
+  // position. The expected price must match the order the writer actually placed.
+  const tpPolicy = simplifiedExitV2Active === true
+    ? SIMPLIFIED_EXIT_V2_TP1_TARGET_PCT
+    : Math.abs(Number(rules && rules.TP_P1));
+  const tp = Math.abs(Number(tpPolicy));
   if (!side || !Number.isFinite(entry) || entry <= 0 || !Number.isFinite(lev) || lev <= 0 || !Number.isFinite(tp) || tp <= 0) {
     return null;
   }
@@ -518,7 +529,13 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = nu
           if (rules && entryPrice && leverage && tpCandidates.length) {
             const expectedTp = resolveExpectedNativeTrigger({
               meta: meta.native_protection_tp_price,
-              fallbackExpected: computeExpectedNativeTpPx({ positionSide: externalSide, entryPrice, leverage, rules }),
+              fallbackExpected: computeExpectedNativeTpPx({
+                positionSide: externalSide,
+                entryPrice,
+                leverage,
+                rules,
+                simplifiedExitV2Active: isSimplifiedExitV2Active(internal),
+              }),
             });
             const info = await fetchFuturesExchangeInfo(sym).catch(() => null);
             const tickSize = Number(info && info.tickSize);
@@ -587,5 +604,7 @@ module.exports = {
     isValidTrailReference,
     resolveTp1PendingState,
     shouldVerifyNativeTp1Protection,
+    computeExpectedNativeTpPx,
+    computeExpectedNativeStopPx,
   },
 };

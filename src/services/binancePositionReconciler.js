@@ -723,6 +723,12 @@ function reconcileBinancePositionMetaWithExchange({
   }
 
   if (simplifiedExitV2Enabled) {
+    // Stamp the resolved policy onto reconciled meta. Without this, positions
+    // entered before the env-fallback was needed (or fetched fresh from the
+    // exchange) carry an undefined flag, and downstream consumers that read
+    // meta directly (rather than going through isSimplifiedExitV2Active) treat
+    // them as legacy two-TP positions.
+    nextMeta.simplified_exit_v2_enabled = true;
     nextMeta.tp_p0_done = false;
     nextMeta.tp_p0_at = null;
     nextMeta.tp_p0_price = null;
