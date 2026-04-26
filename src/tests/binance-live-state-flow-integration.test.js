@@ -244,6 +244,30 @@ const { __test: runnerTest } = require("../engine/paperBinanceRunner");
   assert.strictEqual(flatReplayPlan.trailActivation.sourceOrderId, "stop-link");
   assert.strictEqual(flatReplayPlan.terminal.type, "TRAIL");
 
+  const slFlatReplayPlan = runnerTest.resolveV2FlatSyncExitReplayPlan({
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    prevSide: "LONG",
+    prevQtyBase: 1.5,
+    qtyBase: 0,
+    fillPrice: 122.4,
+    observedAtMs: 1777151004082,
+    prevMeta: {
+      entry_event_id: "ENTRYV2__SOLUSDT__LONG__1",
+      position_side: "LONG",
+      tp_p1_done: false,
+      trail_active: false,
+      native_protection_stop_order_id: "sl-sol",
+      native_protection_stop_price: 122.4,
+    },
+    meta: {
+      external_sync: true,
+    },
+  });
+  assert.strictEqual(slFlatReplayPlan.ok, true);
+  assert.strictEqual(slFlatReplayPlan.terminal.type, "STOP");
+  assert.strictEqual(slFlatReplayPlan.terminal.sourceOrderId, "sl-sol");
+
   if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
   else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
   console.log("BINANCE_LIVE_STATE_FLOW_INTEGRATION_TEST_OK");

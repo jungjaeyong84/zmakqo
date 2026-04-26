@@ -4714,6 +4714,7 @@ function resolveV2FlatSyncExitReplayPlan({
     || current.frozen_trail_active === true
     || current.trail_active === true
     || String(previous.canonical_exit_stage || current.frozen_canonical_exit_stage || "").toUpperCase() === "TRAIL";
+  const stopWasArmed = !!stopOrderId;
   const tp1FillQtyAbs = Number.isFinite(tpQty) && tpQty > 0
     ? tpQty
     : (Number.isFinite(priorQty) && Number.isFinite(afterQty)
@@ -4750,7 +4751,15 @@ function resolveV2FlatSyncExitReplayPlan({
         sourceOrderId: stopOrderId,
         fillPrice: resolvedFillPrice,
       }
-      : {
+      : (stopWasArmed && Number.isFinite(resolvedFillPrice) && resolvedFillPrice > 0
+        ? {
+          type: "STOP",
+          sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "SLFLATSYNC", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+          sourceOrderId: stopOrderId,
+          fillPrice: resolvedFillPrice,
+        }
+        : null)
+      || {
         type: "EXTERNAL",
         sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "EXTERNALFLATSYNC", exchange, symbol, entryEventId, observedAtMs: observedMs }),
         sourceOrderId: stopOrderId || buildSyntheticV2ExitEvidenceId({ kind: "EXTERNALORDER", exchange, symbol, entryEventId, observedAtMs: observedMs }),
@@ -4818,6 +4827,22 @@ async function replayV2FlatSyncExitArtifacts({
         event_type: "EXIT_TRAIL",
         order_type: "STOP_MARKET",
         stop_price: plan.trailActivation && plan.trailActivation.nativeStopPrice || plan.terminal.fillPrice,
+      },
+    }));
+  } else if (plan.terminal && plan.terminal.type === "STOP") {
+    results.push(await writeOpenClawShadowStopExit({
+      ...common,
+      sourceFillId: plan.terminal.sourceFillId,
+      sourceOrderId: plan.terminal.sourceOrderId,
+      fillPrice: plan.terminal.fillPrice || fillPrice,
+      event: "EXIT_SL",
+      fullExit: true,
+      exchangeEvidence: {
+        ...common.exchangeEvidence,
+        event: "EXIT_SL",
+        event_type: "EXIT_SL",
+        order_type: "STOP_MARKET",
+        stop_price: plan.terminal.fillPrice || fillPrice,
       },
     }));
   } else if (plan.terminal) {
