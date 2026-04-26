@@ -499,6 +499,94 @@ Required drills:
 
 Each drill requires artifact and postmortem note.
 
+### P2-5. Signal Shadow Counterfactual Ledger (F0/F1)
+
+#### Problem
+
+The four shadow filters (BTC 1h trend, MTF 1h alignment, volatility chaos, cost-adjusted edge) currently produce a `would_block` verdict per signal but no counterfactual evidence. Without per-filter precision/recall and counterfactual PnL, promoting any filter to a hard-block is guesswork. Independent verification ("did the would-be-blocked signal actually lose money?") is missing.
+
+#### Building Block (shipped)
+
+Add `src/v2/signalShadowCounterfactualLedger.js` as a standalone module. Default OFF behind `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED` so this is purely additive and dormant in production until explicitly enabled per environment.
+
+Module API:
+
+- `resolveCounterfactualLedgerPolicy(env)` — reads `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED`, `_HORIZON_BARS` (default 24), `_BAR_INTERVAL_MS` (default 15m), `_MAX_AGE_MS` (default 7d), `_BATCH_LIMIT` (default 50).
+- `buildFilterCombinationHash({ would_block_filter_set, would_pass_filter_set, insufficient_evidence_filter_set })` — order-independent sha1 prefix. Enables leave-one-out attribution per filter combination.
+- `extractFilterSetsFromShadowDecision(decision)` — peels filter id sets out of `signalShadowFilters.buildSignalShadowFilters` output.
+- `buildPendingRecord({ symbol, side, candle_close_ms, ref_price, signal_verdict, shadow_filter_decision, horizon_bars, bar_interval_ms, now_ms })` — frozen record schema.
+- `evaluatePendingExpiry({ pending, now_ms, max_age_ms })` — returns `{action: WAIT|CLOSE|EXPIRE|SKIP}`.
+- `closeRecordFromKlines({ pending, klines, now_ms })` — pure: from kline array spanning entry candle through horizon, computes `mfe_pct`, `mae_pct`, `exit_close_pct`, `bar_n_observed` for the recorded side.
+- `recordCounterfactualEvaluation({ db, env, ... })` — idempotent Firestore set with merge. Already-CLOSED records are not overwritten.
+- `closeCounterfactualRecord({ db, doc_id, pending, fetchKlines, now_ms, max_age_ms })` — close-or-expire transition for one doc.
+- `walkPendingCounterfactuals({ db, env, fetchKlines, now_ms })` — finds PENDING records with `horizon_close_ms <= now_ms`, closes each by fetching klines and computing the update; expires records past `max_age_ms` without fetch.
+
+State storage:
+
+- Collection `v2__signal_shadow_counterfactuals`. Doc id `{SYMBOL}__{candle_close_ms}__{SIDE}__{filter_combination_hash}`. One record per filter-combination outcome per signal candle. Multiple signals on the same candle with the same outcome collapse to one record. The filter-combination hash is the key axis for downstream leave-one-out attribution.
+
+Schema fields:
+
+```json
+{
+  "record_type": "V2_SIGNAL_SHADOW_COUNTERFACTUAL",
+  "symbol": "BTCUSDT",
+  "side": "LONG",
+  "candle_close_ms": 1700000000000,
+  "ref_price": 50000.0,
+  "signal_verdict": "PASS|BLOCK|null",
+  "shadow_verdict": "WOULD_PASS|WOULD_BLOCK|null",
+  "would_block_filter_set": ["BTC_1H_TREND_ALT_LONG"],
+  "would_pass_filter_set": ["MULTI_TF_1H_ALIGNMENT", "COST_ADJUSTED_EDGE"],
+  "insufficient_evidence_filter_set": ["VOLATILITY_CHAOS_30M"],
+  "filter_combination_hash": "abc123...",
+  "status": "PENDING|CLOSED|EXPIRED",
+  "horizon_bars": 24,
+  "horizon_close_ms": 1700021600000,
+  "mfe_pct": 0.012,
+  "mae_pct": 0.005,
+  "exit_close_pct": -0.003,
+  "bar_n_observed": 24,
+  "close_reason": "HORIZON_KLINES|NO_KLINES|MAX_AGE_EXCEEDED"
+}
+```
+
+Tests: `src/tests/v2-signal-shadow-counterfactual-ledger.test.js` covers exports, policy defaults and env honoring, hash order independence, filter set extraction, pending record contract, expiry transitions (`WAIT|CLOSE|EXPIRE|SKIP`), close-from-klines for both LONG and SHORT, no-kline graceful close, disabled-flag passthrough, idempotent already-CLOSED skip, walker close-past-horizon, walker expire-stale.
+
+Required gate: `npm run check:v2-signal-shadow-counterfactual-ledger` runs `scripts/check-v2-signal-shadow-counterfactual-ledger.js` to assert exports, defaults, namespace, hash order independence, filter set extraction, pending record contract, expiry decision contract, and close-from-klines contract without any I/O. Wired into `npm run check:v2-p2-phase-gate`.
+
+#### Wire-Up Plan (deferred)
+
+Live integration is intentionally deferred to a separate PR (same conservative pattern as P2-3 alert escalation router) so this ships as a dormant building block with no risk to the live decision path.
+
+When activated:
+
+- Wire `recordCounterfactualEvaluation` at the persistence boundary that already captures `shadow_filter_decision` (likely the OpenClaw evidence write or the discovery handoff success path), fire-and-forget with try/catch wrapping.
+- Add a launchd / Cloud Scheduler job invoking a `scripts/walk-v2-signal-shadow-counterfactual-ledger.js` walker every bar interval (15m) or hourly to close pending records past their horizon.
+- Promote env flag `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED=1` per environment after wire-up lands.
+
+#### Roadmap Position
+
+This is **F0 + F1** of the Stage 1 filter promotion roadmap discussed with operator on 2026-04-26:
+
+- F0: shadow ledger schema + walker (this PR)
+- F1: counterfactual tracker added (this PR — module ready, wire-up deferred)
+- F2: leave-one-out analysis at `blocked_n ≥ 50` per filter (separate analysis script)
+- F3: precision (true positive rate) `≥ 0.65` and counterfactual PnL drag `≤ -0.3R` are required to promote a filter from SHADOW_ONLY to hard-block
+- F4: funding/OI/liquidation/orderbook feature additions (separate PR after F3 promotion settles)
+
+#### Required Invariants
+
+- Default OFF — no live record writes until explicit env flag.
+- Pure decision logic isolated from Firestore I/O — `closeRecordFromKlines`, `evaluatePendingExpiry`, `buildPendingRecord`, `buildFilterCombinationHash` callable in unit tests with no fakes.
+- Idempotent writes — re-recording for the same `(symbol, candle_close_ms, side, filter_combination_hash)` does not overwrite a CLOSED record.
+- Walker is a no-op when disabled, never throws when `fetchKlines` returns empty.
+- No live decision (entry permit, signal authority) reads from this collection. Evidence-only.
+
+#### Rollback
+
+Set `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED=0` and the recorder/walker become no-ops. The Firestore collection can be left in place as historical evidence or dropped by the operator at will.
+
 ## 10. P3 Scope: Evidence And Formal LIVE Readiness
 
 P3 starts only after P2 completion and a 7-day post-P2 safety streak.
