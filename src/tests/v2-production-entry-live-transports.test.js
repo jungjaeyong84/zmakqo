@@ -213,6 +213,46 @@ async function bodyAndBundleSizingConflictFailsClosed() {
   );
 }
 
+async function embeddedSizingMustSupportPartialTp1MinNotional() {
+  const bundle = buildBundle({
+    signalLineageId: "LINEAGE__DOGE__PROD_ENTRY__LIVE_TRANSPORTS_TP1_MIN",
+    symbol: "DOGEUSDT",
+    policyScope: "DOGE_15M",
+  });
+  const badSizing = buildSizingDecision(bundle, {
+    entryIntent: {
+      entry_intent_id: entryIntentIdFor(bundle),
+      symbol: "DOGEUSDT",
+      side: "LONG",
+    },
+    referencePrice: 0.1,
+    requestedNotionalQuote: 6,
+    maxNotionalQuote: 6,
+    minNotionalQuote: 0,
+    minQtyAbs: 1,
+    stepSize: 1,
+  });
+  assert.strictEqual(badSizing.ok, true);
+  await assert.rejects(
+    () => buildV2ProductionEntryLiveTransports({
+      bundle,
+      body: {
+        entrySizingDecision: {
+          ...badSizing,
+          min_notional_quote: 5,
+        },
+      },
+      resolveLiveCfg: async () => ({
+        apiKey: "key",
+        apiSecret: "secret",
+        liveEnabled: true,
+        liveDryRun: false,
+      }),
+    }),
+    /ENTRY_SIZING_PARTIAL_TP1_MIN_NOTIONAL_REQUIRED/
+  );
+}
+
 function validationNeverLeaksSecretsInSummary() {
   const cfg = validateLiveCfgForEntry({
     apiKey: "key",
@@ -236,6 +276,7 @@ async function main() {
   await dryRunLiveCfgIsRejectedForLiveEndpoint();
   await sizingDecisionMustMatchRoutedIntent();
   await bodyAndBundleSizingConflictFailsClosed();
+  await embeddedSizingMustSupportPartialTp1MinNotional();
   validationNeverLeaksSecretsInSummary();
 }
 

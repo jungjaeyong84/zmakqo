@@ -71,6 +71,8 @@ function buildV2ProductionEntryLiveRequest({
     stepSize: sizing.stepSize ?? sizing.step_size,
     maxSizeRatio: sizing.maxSizeRatio ?? sizing.max_size_ratio ?? extractMlMaxSizeRatioFromBundle(sourceBundle),
     allowMinOrderBump: sizing.allowMinOrderBump === true || sizing.allow_min_order_bump === true,
+    requirePartialTp1MinNotional: sizing.requirePartialTp1MinNotional !== false && sizing.require_partial_tp1_min_notional !== false,
+    tp1QtyRatio: sizing.tp1QtyRatio ?? sizing.tp1_qty_ratio ?? 0.5,
     createdAt: trimOrNull(sizing.createdAt || sizing.created_at) || trimOrNull(now()) || new Date().toISOString(),
   });
 

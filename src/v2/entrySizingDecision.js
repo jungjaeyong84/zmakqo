@@ -58,6 +58,17 @@ function ceilToStep(value, step) {
   return Number(ceiled.toFixed(Math.max(0, Math.min(12, precision))));
 }
 
+function floorToStep(value, step) {
+  const v = Number(value);
+  const s = Number(step);
+  if (!Number.isFinite(v) || v <= 0) return null;
+  if (!Number.isFinite(s) || s <= 0) return v;
+  const precision = decimalPlacesFromStep(s);
+  const units = Math.floor((v + (s * 1e-12)) / s);
+  const floored = units * s;
+  return Number(floored.toFixed(Math.max(0, Math.min(12, precision))));
+}
+
 function resolveMaxSizeRatio({
   maxSizeRatio = null,
   max_size_ratio = null,
@@ -79,6 +90,65 @@ function resolveMaxSizeRatio({
     if (n !== null) return n;
   }
   return null;
+}
+
+function evaluatePartialTp1MinNotional({
+  entryQtyAbs = null,
+  referencePrice = null,
+  minNotionalQuote = null,
+  stepSize = null,
+  tp1QtyRatio = 0.5,
+} = {}) {
+  const qty = toNumberOrNull(entryQtyAbs);
+  const price = toNumberOrNull(referencePrice);
+  const minNotional = toNumberOrNull(minNotionalQuote);
+  const step = toNumberOrNull(stepSize);
+  const ratio = toNumberOrNull(tp1QtyRatio);
+  const tp1QtyAbs = floorToStep(Number.isFinite(qty) && Number.isFinite(ratio) ? qty * ratio : null, step);
+  const tp1NotionalQuote = Number.isFinite(tp1QtyAbs) && Number.isFinite(price)
+    ? tp1QtyAbs * price
+    : null;
+  const evidenceOk = Number.isFinite(qty)
+    && Number.isFinite(price)
+    && Number.isFinite(minNotional)
+    && Number.isFinite(step)
+    && Number.isFinite(ratio)
+    && ratio > 0
+    && ratio <= 1;
+  return Object.freeze({
+    ok: evidenceOk && tp1NotionalQuote + 1e-9 >= minNotional,
+    evidence_ok: evidenceOk,
+    entry_qty_abs: qty,
+    reference_price: price,
+    min_notional_quote: minNotional,
+    step_size: step,
+    tp1_qty_ratio: ratio,
+    tp1_qty_abs: Number.isFinite(tp1QtyAbs) ? tp1QtyAbs : null,
+    tp1_notional_quote: Number.isFinite(tp1NotionalQuote) ? tp1NotionalQuote : null,
+  });
+}
+
+function assertPartialTp1MinNotionalSupported(sizingDecision, { tp1QtyRatio = 0.5 } = {}) {
+  const decision = sizingDecision && typeof sizingDecision === "object" ? sizingDecision : null;
+  if (!decision) throw new Error("ENTRY_SIZING_DECISION_REQUIRED");
+  const check = evaluatePartialTp1MinNotional({
+    entryQtyAbs: decision.entry_qty_abs,
+    referencePrice: decision.reference_price,
+    minNotionalQuote: decision.min_notional_quote,
+    stepSize: decision.step_size,
+    tp1QtyRatio,
+  });
+  if (check.evidence_ok !== true) {
+    const error = new Error("ENTRY_SIZING_PARTIAL_TP1_EVIDENCE_REQUIRED");
+    error.partialTp1MinNotional = check;
+    throw error;
+  }
+  if (check.ok !== true) {
+    const error = new Error("ENTRY_SIZING_PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
+    error.partialTp1MinNotional = check;
+    throw error;
+  }
+  return check;
 }
 
 function buildBlockedDecision({
@@ -131,6 +201,10 @@ function buildV2EntrySizingDecision({
   executionPermit = null,
   execution_permit = null,
   allowMinOrderBump = false,
+  requirePartialTp1MinNotional = false,
+  require_partial_tp1_min_notional = false,
+  tp1QtyRatio = 0.5,
+  tp1_qty_ratio = null,
   createdAt = null,
 } = {}) {
   const intent = validateEntryIntent(entryIntent);
@@ -277,6 +351,48 @@ function buildV2EntrySizingDecision({
     });
   }
 
+  const partialTp1Required = requirePartialTp1MinNotional === true || require_partial_tp1_min_notional === true;
+  const resolvedTp1QtyRatio = toNumberOrNull(tp1_qty_ratio) ?? toNumberOrNull(tp1QtyRatio) ?? 0.5;
+  if (partialTp1Required) {
+    const partialTp1Check = evaluatePartialTp1MinNotional({
+      entryQtyAbs: qty,
+      referencePrice: price,
+      minNotionalQuote: minNotional,
+      stepSize: step,
+      tp1QtyRatio: resolvedTp1QtyRatio,
+    });
+    if (partialTp1Check.evidence_ok !== true) {
+      return buildBlockedDecision({
+        entryIntent,
+        reason: "PARTIAL_TP1_EVIDENCE_REQUIRED",
+        referencePrice,
+        requestedNotionalQuote,
+        maxNotionalQuote,
+        minNotionalQuote,
+        minQtyAbs,
+        stepSize,
+        maxSizeRatio: resolvedMaxSizeRatio,
+        sizingCapNotionalQuote: sizingCapNotional,
+        detail: partialTp1Check,
+      });
+    }
+    if (partialTp1Check.ok !== true) {
+      return buildBlockedDecision({
+        entryIntent,
+        reason: "PARTIAL_TP1_MIN_NOTIONAL_REQUIRED",
+        referencePrice,
+        requestedNotionalQuote,
+        maxNotionalQuote,
+        minNotionalQuote,
+        minQtyAbs,
+        stepSize,
+        maxSizeRatio: resolvedMaxSizeRatio,
+        sizingCapNotionalQuote: sizingCapNotional,
+        detail: partialTp1Check,
+      });
+    }
+  }
+
   return Object.freeze({
     ok: true,
     status: "APPROVED",
@@ -322,6 +438,8 @@ function buildEntryQuantityResolverFromSizingDecision(sizingDecision) {
 module.exports = {
   buildV2EntrySizingDecision,
   buildEntryQuantityResolverFromSizingDecision,
+  evaluatePartialTp1MinNotional,
+  assertPartialTp1MinNotionalSupported,
   __test: {
     trimOrNull,
     upper,
@@ -330,7 +448,9 @@ module.exports = {
     validateEntryIntent,
     decimalPlacesFromStep,
     ceilToStep,
+    floorToStep,
     resolveMaxSizeRatio,
+    evaluatePartialTp1MinNotional,
     buildBlockedDecision,
   },
 };

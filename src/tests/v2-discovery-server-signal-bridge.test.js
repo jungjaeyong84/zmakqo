@@ -214,6 +214,47 @@ async function dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop() {
   assert.ok(criteria.expected_edge_gate.expected_net_r_after_cost > 1.4);
 }
 
+async function dogeLowNotionalBlocksWhenPartialTp1CannotMeetExchangeMinimum() {
+  const result = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env: buildEnv({
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "DOGEUSDT:6",
+    }),
+    intentRow: buildIntent({
+      symbol_or_pair_id: "DOGEUSDT",
+      event: "LONG",
+      side: "BUY",
+      signal_price: 0.1,
+      features_json: {
+        signal_id: "SIG__BINANCEFUT__DOGEUSDT__15m__1777001400000__LONG",
+      },
+    }),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
+    referencePrice: 0.1,
+    nowMs: Date.parse("2026-04-24T08:01:26.000Z"),
+    nowIso: "2026-04-24T08:01:26.000Z",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      spread_bps: 3,
+      mark_index_gap_bps: 1,
+    },
+    exchangeInfo: {
+      minNotional: 5,
+      minQty: 1,
+      stepSize: 1,
+    },
+    discoveryState: {
+      active_position_n: 0,
+      trade_count_24h: 0,
+      daily_realized_pnl_quote: 0,
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED");
+  assert.strictEqual(result.entrySizingDecision.reason, "PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
+}
+
 async function serverSignalRoutesToV2ProductionEntryLiveRequest() {
   const result = await buildDiscoveryCanaryLiveRequestFromIntent({
     env: buildEnv(),
@@ -535,6 +576,7 @@ async function main() {
   await bridgePersistsRouteRequiredLedgersBeforeEndpoint();
   await bridgeDoesNotReissueAlreadyClaimedPermit();
   await dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop();
+  await dogeLowNotionalBlocksWhenPartialTp1CannotMeetExchangeMinimum();
   await linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied();
   await marketDataQualityBlockFailsClosed();
   await shadowCounterfactualWireUpDerivesInputsFromBundle();

@@ -1,7 +1,10 @@
 "use strict";
 
 const { resolveEntryIntentFromOpenClaw } = require("./signalAuthorityRouter");
-const { buildEntryQuantityResolverFromSizingDecision } = require("./entrySizingDecision");
+const {
+  buildEntryQuantityResolverFromSizingDecision,
+  assertPartialTp1MinNotionalSupported,
+} = require("./entrySizingDecision");
 const { buildBinanceEntryOrderTransport } = require("./binanceEntryOrderTransport");
 const { buildBinanceInitialProtectionTransports } = require("./binanceInitialProtectionTransport");
 const { resolveDefaultLiveFuturesConfig } = require("./binanceRepairLiveCfgResolver");
@@ -122,6 +125,7 @@ async function buildV2ProductionEntryLiveTransports({
   const entryIntent = routedDecision.entryIntent;
   const sizingDecision = extractSizingDecision({ body, bundle });
   if (!sizingDecision) throw new Error("V2_PRODUCTION_ENTRY_LIVE_SIZING_DECISION_REQUIRED");
+  assertPartialTp1MinNotionalSupported(sizingDecision, { tp1QtyRatio: 0.5 });
 
   const quantityResolver = buildEntryQuantityResolverFromSizingDecision(sizingDecision);
   const resolvedQty = Number(quantityResolver({ entryIntent }));

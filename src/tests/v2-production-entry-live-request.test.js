@@ -126,6 +126,30 @@ function buildSizing(overrides = {}) {
   assert.strictEqual(result.executionPermit.decision_mode, "CANARY");
 })();
 
+(function liveRequestBlocksSizingThatCannotPlacePartialTp1() {
+  const result = buildV2ProductionEntryLiveRequest({
+    bundle: buildBundle({
+      signalLineageId: "LINEAGE__DOGE__PROD_ENTRY__LIVE_REQUEST_TP1_MIN",
+      symbol: "DOGEUSDT",
+      decisionMode: "CANARY",
+      policyScope: "DOGE_15M",
+    }),
+    sizing: buildSizing({
+      referencePrice: 0.1,
+      requestedNotionalQuote: 6,
+      maxNotionalQuote: 6,
+      minNotionalQuote: 5,
+      minQtyAbs: 1,
+      stepSize: 1,
+      maxSizeRatio: 1,
+    }),
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED");
+  assert.strictEqual(result.entrySizingDecision.reason, "PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
+})();
+
 (function blockedSizingDoesNotCreateEndpointBody() {
   const result = buildV2ProductionEntryLiveRequest({
     bundle: buildBundle({ signalLineageId: "LINEAGE__ETH__PROD_ENTRY__LIVE_REQUEST_BLOCKED" }),

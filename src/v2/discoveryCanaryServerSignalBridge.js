@@ -90,16 +90,20 @@ function estimateCostREquivalent({ costEstimateBps = null, stopPct = null, gross
   return null;
 }
 
-function stepSafeNotional({ maxNotionalQuote = null, referencePrice = null, stepSize = null, minNotionalQuote = null } = {}) {
+function stepSafeNotional({ maxNotionalQuote = null, referencePrice = null, stepSize = null, minNotionalQuote = null, tp1QtyRatio = 0.5 } = {}) {
   const maxNotional = toNumberOrNull(maxNotionalQuote);
   const price = toNumberOrNull(referencePrice);
   const step = toNumberOrNull(stepSize);
   const minNotional = toNumberOrNull(minNotionalQuote) ?? 0;
+  const ratio = toNumberOrNull(tp1QtyRatio) ?? 0.5;
   if (!(maxNotional > 0) || !(price > 0) || !(step > 0)) return maxNotional;
   const units = Math.floor(maxNotional / price / step);
   const safeQty = units * step;
   const safeNotional = safeQty * price;
-  if (safeNotional >= minNotional && safeNotional > 0) return safeNotional;
+  const tp1Units = Math.floor((safeQty * ratio) / step);
+  const tp1Qty = tp1Units * step;
+  const tp1Notional = tp1Qty * price;
+  if (safeNotional >= minNotional && tp1Notional >= minNotional && safeNotional > 0) return safeNotional;
   return maxNotional;
 }
 
