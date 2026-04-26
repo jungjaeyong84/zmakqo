@@ -2,13 +2,13 @@
 
 | Field | Value |
 |---|---|
-| Document version | 1.2 clean-current |
+| Document version | 1.3 current-progress |
 | Written at | 2026-04-26 KST |
 | Target period | 2026-04-26 ~ 2026-06-30, about 9 weeks |
-| Baseline commit | `96e28f04611eb94623a67a4ab8e2c44cc09f578c` |
-| Baseline image | `gcr.io/donbeolja-dev/donbeolja:v2-96e28f04` |
-| Baseline Cloud Run revision | `donbeolja-01529-g8z` |
-| Baseline CloudBuild | `67230565-de71-422f-a983-4364966a1a0d` |
+| Baseline commit | `8b5f46231239ee5ce03dc7cbec246cd2a3c1cc20` |
+| Baseline image | `gcr.io/donbeolja-dev/donbeolja:v2-8b5f4623` |
+| Baseline Cloud Run revision | `donbeolja-01530-dph` |
+| Baseline CloudBuild | `113166f5-d12a-4fe5-a2e2-36d1a8013bac` |
 | Target system | DONBEOLJA V2 Discovery Canary live-write |
 
 ## 1. Purpose
@@ -44,14 +44,15 @@ The plan does not attempt to improve alpha. It is about not losing money because
 | Mode | V2 `DISCOVERY_CANARY` live-write |
 | Formal LIVE | Disabled by `CANARY_ONLY=1` and performance gate |
 | Runtime manifest | PASS at baseline commit |
-| Active protection reconciliation | PASS, active=3, protected=3, unprotected=0 at 2026-04-26 11:52 KST check |
-| Active symbols at baseline check | `BNBUSDT`, `XRPUSDT`, `LINKUSDT` |
+| Active protection reconciliation | PASS, active=4, protected=4, unprotected=0 at 2026-04-26 post-deploy check |
+| Active symbols at baseline check | `BTCUSDT`, `BNBUSDT`, `XRPUSDT`, `SOLUSDT` |
 | `system_settings.live_enabled` | false, discovery enabled, canary-only true |
 | Scheduler health drift | PASS |
+| Entry route canary streak | BLOCKED by old unhealthy rows until approximately 2026-04-27 10:06 KST; do not delete or fake history |
 | Performance sample | `sample_n=0`, Formal LIVE blocked |
 | AI/news external cost paths | Disabled by env and manifest forbidden key checks |
 | V1 entry/add | hard-denied for V2 discovery path |
-| V1 exit/direct writer | partially denied as of baseline; writer identity closure remains P0 |
+| V1 exit/direct writer | hard-denied for V2 discovery bridge / legacy runtime disabled; transport regression test required in CI |
 
 ## 4. Safety Principles
 
@@ -90,13 +91,13 @@ P0 is about blocking paths that can immediately lose money or produce false oper
 
 | P0 item | Current status at baseline | Remaining work |
 |---|---|---|
-| P0-1 Initial protection deadline/abort | Partially complete. Initial SL/TP1 now use `withProtectionWriteDeadline`; runtime chain audit checks initial SL/TP1 deadline. | Add late-placed reconciler and structured post-abort evidence. |
-| P0-2 Drop consumed-lock suppress | Partially complete. `recordSignalDrops` suppresses consumed/locked signals. | Persist suppressed rows to `v2__signals_dropped_suppressed`; expose riskGovernor reason consistently. |
-| P0-3 V1 direct exchange writer deny | Partially complete. Legacy EXIT deny added for V2 bridge / legacy runtime disabled. | Add explicit `legacyV1ExchangeWriterEnabled` axis and audit all V1 `placeFutures*` call sites. |
-| P0-4 TP1 strict reconciliation | Partially complete. TP1 candidate now requires correct type/side/reduceOnly/closePosition and checks order id/qty. | Add stale `tp_p1_pending` expiry CRIT logic. |
+| P0-1 Initial protection deadline/abort | Complete in code. Initial SL/TP1 use `withProtectionWriteDeadline`; late-placed reconciler evidence exists. | Keep in `test:v2-promotion` / runtime-chain regression. |
+| P0-2 Drop consumed-lock suppress | Complete in code. `recordSignalDrops` suppresses consumed/locked signals and persists forensic rows; riskGovernor reason surface is normalized. | Keep webhook/paperRunner race regression. |
+| P0-3 V1 direct exchange writer deny | Complete in code. `legacyV1ExchangeWriterEnabled` axis exists and V1 writer deny covers ENTRY/ADD/EXIT under V2 discovery / legacy runtime disabled. | Keep V2 transport unaffected regression in CI. |
+| P0-4 TP1 strict reconciliation | Complete in code. TP1 strict candidate validation and stale `tp_p1_pending` CRIT are implemented. | Keep exit integrity regression. |
 | P0-5 Telegram runtime context | Complete. Runtime alerts include `max_pos`, `max_trades`, `daily_loss_halt`, `risk_total`, `risk_symbol`, `risk_group`. | Keep in regression tests. |
 
-P0 completion requires all remaining work above plus `npm run test:v2-promotion`, runtime manifest PASS, active protection PASS, system settings live disabled PASS, and scheduler drift PASS.
+P0 code closure is complete at baseline. P0 phase closure still requires the entry-route canary streak to clear old unhealthy rows naturally, then a fresh gate run: `npm run test:v2-promotion`, runtime manifest PASS, active protection PASS, system settings live disabled PASS, scheduler drift PASS, and entry route canary streak PASS.
 
 ## 7. P0 Detailed Design
 
@@ -719,11 +720,11 @@ All items must pass before Formal LIVE decision is even discussed.
 
 ## 16. Immediate Next Work
 
-1. Implement P0-1 late-placed reconciler.
-2. Implement P0-2 suppressed drop forensic ledger and riskGovernor reason surface.
-3. Implement P0-3 explicit V1 writer identity deny across all direct writer sites.
-4. Implement P0-4 stale TP1 pending CRIT.
-5. Run P0 gate and start 7-day post-P0 safety streak.
+1. Keep current bounded Discovery Canary running while entry-route unhealthy rows age out naturally.
+2. Re-run the full P0 gate after approximately 2026-04-27 10:06 KST.
+3. Do not start P2 code or exit-worker HA until P0/P1 gates and the required safety streaks pass.
+4. Continue adding regression locks for already-closed P0/P1 invariants.
+5. Keep Formal LIVE blocked until performance evidence reaches the documented thresholds.
 
 ## 17. Final Position
 
