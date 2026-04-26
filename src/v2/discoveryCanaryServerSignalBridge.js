@@ -12,6 +12,7 @@ const {
   buildOpenClawDecisionBundle,
   persistOpenClawDecisionBundleLedger,
 } = require("./openclawControlPlane");
+const { recordCounterfactualEvaluation } = require("./signalShadowCounterfactualLedger");
 const { buildV2ProductionEntryLiveRequest } = require("./productionEntryLiveRequest");
 const { persistOpenClawWorldState } = require("./openclawWorldState");
 const { resolveDiscoverySymbolNotionalQuote } = require("./discoveryCanaryNotionalPolicy");
@@ -159,10 +160,59 @@ async function persistDiscoveryExecutionPermitLedger({
   });
 }
 
+function deriveCounterfactualInputs({ bundle, intentRow, request, body }) {
+  const bundleObj = asObject(bundle);
+  if (!bundleObj) return null;
+  const signalCriteria = asObject(bundleObj.signalCriteria);
+  const shadowDecision = asObject(signalCriteria && signalCriteria.shadow_filter_decision);
+  if (!shadowDecision) return null;
+  const signalIntent = asObject(bundleObj.signalIntent);
+  const symbol = upper(signalIntent && signalIntent.symbol);
+  const side = upper(signalIntent && signalIntent.side);
+  if (!symbol || !side) return null;
+  const intent = asObject(intentRow);
+  const featureValues = asObject(intent && intent.features_json);
+  const candleCloseMs = toNumberOrNull(
+    (intent && intent.signal_bar_close_time_utc_ms)
+    ?? (featureValues && featureValues.signal_bar_close_time_utc_ms),
+  );
+  if (!Number.isFinite(candleCloseMs)) return null;
+  const requestBody = asObject(body) || asObject(request && request.body);
+  const sizing = asObject(requestBody && requestBody.sizing);
+  const refPrice = toNumberOrNull(
+    (sizing && sizing.referencePrice)
+    ?? (intent && intent.signal_price)
+    ?? (featureValues && featureValues.reference_price),
+  );
+  const decision = asObject(bundleObj.openclawDecision);
+  const verdict = decision && decision.approved === true ? "PASS" : "BLOCK";
+  return {
+    symbol,
+    side,
+    candle_close_ms: candleCloseMs,
+    ref_price: refPrice,
+    signal_id: trimOrNull(signalIntent && signalIntent.signal_intent_id),
+    signal_verdict: verdict,
+    shadow_filter_decision: shadowDecision,
+  };
+}
+
+function recordDiscoveryBridgeShadowCounterfactual({ db, env, bundle, intentRow, request, body }) {
+  const inputs = deriveCounterfactualInputs({ bundle, intentRow, request, body });
+  if (!inputs) return;
+  Promise.resolve()
+    .then(() => recordCounterfactualEvaluation({ db, env, ...inputs, now_ms: Date.now() }))
+    .catch((error) => {
+      const message = error && error.message ? String(error.message) : String(error);
+      console.warn("[V2_SHADOW_COUNTERFACTUAL_LEDGER_FAIL]", message);
+    });
+}
+
 async function persistDiscoveryBridgeLedgers({
   db = null,
   env = process.env,
   built = null,
+  intentRow = null,
   nowIso = null,
 } = {}) {
   const row = asObject(built);
@@ -211,6 +261,7 @@ async function persistDiscoveryBridgeLedgers({
     };
     return Object.freeze(result);
   }
+  recordDiscoveryBridgeShadowCounterfactual({ db, env, bundle, intentRow, request, body });
   result.execution_permit = await persistDiscoveryExecutionPermitLedger({
     db,
     env,
@@ -687,6 +738,7 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
     db,
     env,
     built,
+    intentRow,
     nowIso: new Date(nowMs).toISOString(),
   });
   if (!ledgerPersistence || ledgerPersistence.ok !== true) {
@@ -768,5 +820,7 @@ module.exports = {
     mergeDiscoveryCanaryStateWithAccount,
     persistDiscoveryExecutionPermitLedger,
     persistDiscoveryBridgeLedgers,
+    deriveCounterfactualInputs,
+    recordDiscoveryBridgeShadowCounterfactual,
   },
 };
