@@ -5992,6 +5992,15 @@ function clampDiscoveryCanaryMaxOrderQuote(currentMaxOrderQuote, bridge) {
   return Math.min(currentMax, discoveryMax);
 }
 
+function isV2DiscoveryCanaryLegacyExchangeWriteBlocked({ liveCfg = null } = {}) {
+  if (!normalizeBool(process.env.DONBEOLJA_V2_LEGACY_V1_WRITER_DENY_ENABLED, true)) return false;
+  if (!liveCfg) return false;
+  if (liveCfg.legacy_runtime_disabled === true) return true;
+  if (liveCfg.v2DiscoveryCanaryBridge === true) return true;
+  if (liveCfg.v2DiscoveryCanaryConfigured === true && liveCfg.legacyV1ExchangeWriterEnabled !== true) return true;
+  return false;
+}
+
 function isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg = null, intent = null } = {}) {
   const entryIntent = String(intent || "").toUpperCase();
   return !!(
@@ -6033,6 +6042,11 @@ function resolveV2DiscoveryHandoffDetail(handoff = null) {
   const discoveryContract = endpointResult && endpointResult.discovery_canary_contract
     ? endpointResult.discovery_canary_contract
     : null;
+  const riskGovernor = endpointResult && endpointResult.risk_governor && typeof endpointResult.risk_governor === "object"
+    ? endpointResult.risk_governor
+    : (routeResult && routeResult.risk_governor && typeof routeResult.risk_governor === "object"
+      ? routeResult.risk_governor
+      : null);
   const marketDataQuality = handoff && handoff.marketDataQuality && typeof handoff.marketDataQuality === "object"
     ? handoff.marketDataQuality
     : (endpointResult && endpointResult.market_data_quality && typeof endpointResult.market_data_quality === "object"
@@ -6052,6 +6066,7 @@ function resolveV2DiscoveryHandoffDetail(handoff = null) {
   );
   const discoveryContractBlockers = collectReasonBlockers(discoveryContract && discoveryContract.blockers);
   const marketDataQualityBlockers = collectReasonBlockers(marketDataQuality && marketDataQuality.blockers);
+  const riskGovernorBlockers = collectReasonBlockers(riskGovernor && riskGovernor.blockers);
   return {
     bridge_reason: handoff && handoff.reason ? String(handoff.reason).trim().toUpperCase() : null,
     bridge_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
@@ -6070,6 +6085,10 @@ function resolveV2DiscoveryHandoffDetail(handoff = null) {
       ? String(marketDataQuality.reason).trim().toUpperCase()
       : null,
     market_data_quality_blockers: marketDataQualityBlockers,
+    risk_governor_reason: riskGovernor && riskGovernor.reason
+      ? String(riskGovernor.reason).trim().toUpperCase()
+      : null,
+    risk_governor_blockers: riskGovernorBlockers,
   };
 }
 
@@ -6088,6 +6107,8 @@ function buildV2DiscoveryHandoffFeaturePatch(handoff = null) {
     v2_discovery_canary_contract_blockers: detail.discovery_contract_blockers,
     v2_discovery_market_data_quality_reason: detail.market_data_quality_reason,
     v2_discovery_market_data_quality_blockers: detail.market_data_quality_blockers,
+    v2_discovery_risk_governor_reason: detail.risk_governor_reason,
+    v2_discovery_risk_governor_blockers: detail.risk_governor_blockers,
     v2_discovery_post_fill_exchange_write: sideEffect ? sideEffect.exchange_write_performed === true : false,
     v2_discovery_post_fill_unprotected_possible: sideEffect ? sideEffect.unprotected_position_possible === true : false,
     v2_discovery_post_fill_entry_order_id: sideEffect ? (sideEffect.entry_order_id || null) : null,
@@ -6153,6 +6174,11 @@ function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISC
   }
   if (detail.market_data_quality_blockers.length) return detail.market_data_quality_blockers[0];
   if (detail.market_data_quality_reason) return detail.market_data_quality_reason;
+  if (detail.endpoint_reason === "V2_RISK_GOVERNOR_BLOCKED" && detail.risk_governor_blockers.length) {
+    return detail.risk_governor_blockers[0];
+  }
+  if (detail.risk_governor_blockers.length) return detail.risk_governor_blockers[0];
+  if (detail.risk_governor_reason) return detail.risk_governor_reason;
   if (detail.endpoint_reason) return detail.endpoint_reason;
   if (detail.discovery_contract_reason) return detail.discovery_contract_reason;
   if (detail.bridge_reason) return detail.bridge_reason;
@@ -8297,6 +8323,7 @@ async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } 
   const liveDryRun = Boolean(cfg.live_dry_run) || execMode === "LIVE_DRY_RUN";
   const discoveryBridge = evaluateV2DiscoveryCanaryLiveBridge({ env, symbol, executionMode });
   const discoveryCanaryConfigured = discoveryBridge.policy.discovery_enabled === true;
+  const legacyRuntimeDisabled = discoveryBridge.policy.legacy_runtime_disabled === true;
   let liveEnabled = executionMode === "LIVE" && (
     discoveryCanaryConfigured
       ? discoveryBridge.ok === true
@@ -8332,10 +8359,15 @@ async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } 
     cfg.futures_exit_profile_mode ?? process.env.FUTURES_EXIT_PROFILE_MODE ?? "",
     null
   );
+  const legacyV1ExchangeWriterEnabled = liveEnabled === true
+    && legacyRuntimeDisabled !== true
+    && discoveryBridge.ok !== true;
 
   return {
     executionMode,
     liveEnabled,
+    legacyV1ExchangeWriterEnabled,
+    legacy_runtime_disabled: legacyRuntimeDisabled,
     liveDryRun,
     minOrderQuote: Number.isFinite(minOrderQuote) ? minOrderQuote : 5,
     maxOrderQuote: discoveryBridge.ok === true
@@ -8351,7 +8383,7 @@ async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } 
     v2DiscoveryCanaryBridgeReason: discoveryBridge.reason,
     v2DiscoveryCanaryBridgeBlockers: discoveryBridge.blockers,
     v2DiscoveryCanaryConfigured: discoveryCanaryConfigured,
-    v2DiscoveryCanaryLegacyEntryWriteBlocked: discoveryBridge.ok === true,
+    v2DiscoveryCanaryLegacyEntryWriteBlocked: legacyV1ExchangeWriterEnabled !== true,
   };
 }
 
@@ -11842,28 +11874,23 @@ async function executeLiveFuturesOrder({
     return { ok: false, mode: "LIVE", reason: "BAD_PRICE" };
   }
 
-  const isExit = String(intent || "").toUpperCase() === "EXIT";
+  const normalizedIntent = String(intent || "").toUpperCase();
+  const isExit = normalizedIntent === "EXIT";
   const isTpP1Exit = isExit && isTpP1EventLocal(event);
-  if (
-    isExit
-    && (
-      liveCfg.v2DiscoveryCanaryBridge === true
-      || normalizeBool(process.env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, false) === true
-    )
-  ) {
+  if (isV2DiscoveryCanaryLegacyExchangeWriteBlocked({ liveCfg, intent })) {
+    const reason = liveCfg.legacy_runtime_disabled === true
+      ? "V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED"
+      : (isExit
+        ? "V2_DISCOVERY_CANARY_LEGACY_EXIT_WRITE_DENIED"
+        : "V2_DISCOVERY_CANARY_LEGACY_ENTRY_WRITE_DENIED");
     return {
       ok: false,
       mode: "LIVE",
-      reason: "V2_DISCOVERY_CANARY_LEGACY_EXIT_WRITE_DENIED",
-      note: "V2 live-write exits must be handled by the V2 exit worker/canonical reducer path, not the legacy futures order path.",
-    };
-  }
-  if (!isExit && isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
-    return {
-      ok: false,
-      mode: "LIVE",
-      reason: "V2_DISCOVERY_CANARY_LEGACY_ENTRY_WRITE_DENIED",
-      note: "Discovery canary entries must be executed only by productionEntryLiveEndpoint/productionEntryRoute.",
+      reason,
+      note: isExit
+        ? "V2 live-write exits must be handled by the V2 exit worker/canonical reducer path, not the legacy futures order path."
+        : "Discovery canary entries must be executed only by productionEntryLiveEndpoint/productionEntryRoute.",
+      intent_observed: normalizedIntent || null,
     };
   }
   const manualRetryEntry = !isExit && (manualRetry === true || isManualRetryFeatures(features));
@@ -19905,6 +19932,7 @@ module.exports = {
     splitRuntimeList,
     evaluateV2DiscoveryCanaryLiveBridge,
     clampDiscoveryCanaryMaxOrderQuote,
+    isV2DiscoveryCanaryLegacyExchangeWriteBlocked,
     isV2DiscoveryCanaryLegacyEntryWriteBlocked,
     shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery,
     shouldBypassLegacyEntryFiltersForV2Discovery,

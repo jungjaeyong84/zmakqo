@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { getFirestore } = require("./firestore");
 const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
 const { tryLockSignal } = require("./signalsConsume");
@@ -9,6 +10,10 @@ const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = requi
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function hash10(payload) {
+  return crypto.createHash("sha1").update(String(payload || "")).digest("hex").slice(0, 10);
 }
 
 function normalizeExecutionMode(v) {
@@ -294,7 +299,7 @@ function isSignalDropAlreadyHandled(lock = null) {
   return reason === "ALREADY_CONSUMED" || reason === "LOCKED";
 }
 
-async function filterDropsForConsumedSignals({ drops = [], runId = null } = {}) {
+async function filterDropsForConsumedSignals({ drops = [], runId = null, tryLockSignalFn = tryLockSignal } = {}) {
   if (!Array.isArray(drops) || drops.length === 0) {
     return Object.freeze({ kept: [], suppressed: [] });
   }
@@ -307,7 +312,7 @@ async function filterDropsForConsumedSignals({ drops = [], runId = null } = {}) 
       continue;
     }
     try {
-      const lock = await tryLockSignal({ signalId, runId });
+      const lock = await tryLockSignalFn({ signalId, runId });
       if (lock && lock.ok === true) {
         kept.push(drop);
         continue;
@@ -315,7 +320,7 @@ async function filterDropsForConsumedSignals({ drops = [], runId = null } = {}) 
       if (isSignalDropAlreadyHandled(lock)) {
         const reason = String(lock && lock.reason || "").trim().toUpperCase() || "ALREADY_HANDLED";
         console.warn(`[SIGNAL_DROP_SUPPRESSED_ALREADY_CONSUMED] signal_id=${signalId} reason=${reason}`);
-        suppressed.push({ signal_id: signalId, reason });
+        suppressed.push({ signal_id: signalId, reason, drop });
         continue;
       }
       kept.push(drop);
@@ -327,20 +332,131 @@ async function filterDropsForConsumedSignals({ drops = [], runId = null } = {}) 
   return Object.freeze({ kept, suppressed });
 }
 
-async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId = null, runId = null, decisionReason = null } = {}) {
+function buildSuppressedSignalDropDoc({
+  suppressed,
+  exchange,
+  symbol,
+  tf,
+  requestId = null,
+  runId = null,
+  createdAt = null,
+} = {}) {
+  const row = suppressed && typeof suppressed === "object" ? suppressed : {};
+  const drop = row.drop && typeof row.drop === "object" ? row.drop : {};
+  const signalId = resolveSignalIdFromDrop(drop) || trimString(row.signal_id);
+  const barCloseMs = drop.bar_close_time_utc_ms == null ? null : Number(drop.bar_close_time_utc_ms);
+  const event = drop.event || null;
+  const side = drop.side || null;
+  const reason = upper(row.reason) || "ALREADY_HANDLED";
+  const at = createdAt || nowIso();
+  const docId = [
+    "SUPPRESSED_DROP",
+    String(exchange || "").trim().toUpperCase(),
+    String(symbol || "").trim().toUpperCase(),
+    String(tf || "").trim(),
+    String(barCloseMs || ""),
+    String(event || "").trim().toUpperCase(),
+    String(side || "").trim().toUpperCase(),
+    hash10(`${signalId || ""}__${reason}__${JSON.stringify(drop)}`),
+  ].join("__");
+  return Object.freeze({
+    suppressed_drop_id: docId,
+    signal_id: signalId || null,
+    exchange: String(exchange || "").trim().toUpperCase() || null,
+    symbol_or_pair_id: String(symbol || "").trim() || null,
+    tf: String(tf || "").trim() || null,
+    bar_close_time_utc_ms: Number.isFinite(barCloseMs) ? barCloseMs : null,
+    event,
+    side,
+    suppress_reason: reason,
+    request_id: drop.request_id || requestId || null,
+    run_id: drop.run_id || runId || null,
+    original_drop: drop,
+    alert_suppressed: true,
+    collection_reason: "SIGNAL_CONSUME_LOCK_SUPPRESSED_DROP",
+    created_at: at,
+    updated_at: at,
+  });
+}
+
+async function persistSuppressedSignalDrops({
+  db,
+  suppressed = [],
+  exchange,
+  symbol,
+  tf,
+  requestId = null,
+  runId = null,
+  createdAt = null,
+} = {}) {
+  if (!Array.isArray(suppressed) || suppressed.length === 0) {
+    return Object.freeze({ ok: true, written: 0, failed: 0 });
+  }
+  const firestore = db || getFirestore();
+  const docs = suppressed.map((row) => buildSuppressedSignalDropDoc({
+    suppressed: row,
+    exchange,
+    symbol,
+    tf,
+    requestId,
+    runId,
+    createdAt,
+  }));
+  const writes = docs.map((doc) =>
+    firestore.collection("v2__signals_dropped_suppressed")
+      .doc(doc.suppressed_drop_id)
+      .set(doc, { merge: true })
+  );
+  const settled = await Promise.allSettled(writes);
+  const failed = settled.filter((row) => row.status === "rejected").length;
+  return Object.freeze({
+    ok: failed === 0,
+    written: settled.length - failed,
+    failed,
+    docs,
+  });
+}
+
+function trimString(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+async function recordSignalDrops({
+  exchange,
+  symbol,
+  tf,
+  drops = [],
+  requestId = null,
+  runId = null,
+  decisionReason = null,
+  db: injectedDb = null,
+  tryLockSignalFn = tryLockSignal,
+} = {}) {
   if (!Array.isArray(drops) || drops.length === 0) return { ok: true, written: 0 };
-  const filtered = await filterDropsForConsumedSignals({ drops, runId });
+  const filtered = await filterDropsForConsumedSignals({ drops, runId, tryLockSignalFn });
   const effectiveDrops = filtered.kept;
+  const db = injectedDb || getFirestore();
+  const now = nowIso();
+  const suppressedCommit = await persistSuppressedSignalDrops({
+    db,
+    suppressed: filtered.suppressed,
+    exchange,
+    symbol,
+    tf,
+    requestId,
+    runId,
+    createdAt: now,
+  });
   if (!effectiveDrops.length) {
     return {
-      ok: true,
+      ok: suppressedCommit.ok === true,
       written: 0,
       suppressed: filtered.suppressed.length,
       suppressed_signal_drops: filtered.suppressed,
+      suppressed_commit: suppressedCommit,
     };
   }
-  const db = getFirestore();
-  const now = nowIso();
 
   const normalizedDrops = [];
   const writes = effectiveDrops.map((d) => {
@@ -494,6 +610,7 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId =
     written: writes.length,
     suppressed: filtered.suppressed.length,
     suppressed_signal_drops: filtered.suppressed,
+    suppressed_commit: suppressedCommit,
   };
 }
 
@@ -512,5 +629,7 @@ module.exports = {
     resolveSignalIdFromDrop,
     isSignalDropAlreadyHandled,
     filterDropsForConsumedSignals,
+    buildSuppressedSignalDropDoc,
+    persistSuppressedSignalDrops,
   },
 };

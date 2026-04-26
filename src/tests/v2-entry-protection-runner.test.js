@@ -6,6 +6,7 @@ const { resolveEntryIntentFromOpenClaw } = require("../v2/signalAuthorityRouter"
 const { buildV2ExecutedEntryFromIntent } = require("../v2/entryExecutor");
 const { runV2EntryProtectionActivation } = require("../v2/entryProtectionRunner");
 const { buildBinanceInitialProtectionTransports } = require("../v2/binanceInitialProtectionTransport");
+const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSeed");
 
 function buildFakeDb(calls) {
   return {
@@ -64,6 +65,13 @@ function buildExecutedEntry() {
     featuresHash: "feat_hash_entry_runner",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "entry runner canary long approved",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: { symbol: "ETHUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
+    },
+    signalCriteria: buildPassSignalCriteriaSeed("LONG"),
   });
   const routed = resolveEntryIntentFromOpenClaw(bundle);
   return buildV2ExecutedEntryFromIntent({

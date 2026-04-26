@@ -1,6 +1,7 @@
 "use strict";
 
 const {
+  fetchFuturesOrder,
   placeFuturesStopMarketOrder,
   placeFuturesTakeProfitMarketOrder,
 } = require("../exchanges/binanceFuturesPrivate");
@@ -99,6 +100,7 @@ function assertCommandType(command, expectedType) {
 
 function buildBinanceInitialProtectionTransports({
   liveCfg,
+  fetchOrder = fetchFuturesOrder,
   placeStopMarketOrder = placeFuturesStopMarketOrder,
   placeTakeProfitMarketOrder = placeFuturesTakeProfitMarketOrder,
   now = () => new Date().toISOString(),
@@ -110,8 +112,24 @@ function buildBinanceInitialProtectionTransports({
   if (typeof placeTakeProfitMarketOrder !== "function") {
     throw new Error("BINANCE_INITIAL_TP1_ORDER_FN_REQUIRED");
   }
+  if (typeof fetchOrder !== "function") {
+    throw new Error("BINANCE_INITIAL_FETCH_ORDER_FN_REQUIRED");
+  }
 
   return Object.freeze({
+    async fetchOrderByClientOrderId({ command } = {}) {
+      const row = command && typeof command === "object" ? command : {};
+      const clientOrderId = trimOrNull(row.client_order_key);
+      if (!clientOrderId) throw new Error("BINANCE_INITIAL_CLIENT_ORDER_KEY_REQUIRED");
+      if (cfg.liveDryRun === true || cfg.liveEnabled !== true) return null;
+      return fetchOrder({
+        apiKey: cfg.apiKey,
+        apiSecret: cfg.apiSecret,
+        symbol: upper(row.symbol),
+        origClientOrderId: clientOrderId,
+      });
+    },
+
     async placeInitialSl({ command } = {}) {
       const row = assertCommandType(command, "PLACE_INITIAL_SL");
       if (cfg.liveDryRun === true || cfg.liveEnabled !== true) {

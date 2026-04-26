@@ -168,6 +168,32 @@ function hasTrackedNativeProtectionMeta(meta) {
   return !!(stopOrderId || tpOrderId || refreshStatus === "OK" || tpStatus === "OK");
 }
 
+function resolveTp1PendingState(meta = {}, nowMs = Date.now()) {
+  const ctx = meta && typeof meta === "object" ? meta : {};
+  if (ctx.tp_p1_pending !== true) {
+    return { pending: false, fresh: false, expired: false, unbounded: false, pending_until_ms: null };
+  }
+  const pendingUntil = Number(ctx.tp_p1_pending_until_ms);
+  if (!Number.isFinite(pendingUntil) || pendingUntil <= 0) {
+    return { pending: true, fresh: false, expired: false, unbounded: true, pending_until_ms: null };
+  }
+  const now = Number(nowMs);
+  const expired = Number.isFinite(now) && pendingUntil < now;
+  return {
+    pending: true,
+    fresh: !expired,
+    expired,
+    unbounded: false,
+    pending_until_ms: pendingUntil,
+  };
+}
+
+function shouldVerifyNativeTp1Protection(meta = {}, nowMs = Date.now()) {
+  const ctx = meta && typeof meta === "object" ? meta : {};
+  const pendingState = resolveTp1PendingState(ctx, nowMs);
+  return !(ctx.tp_p1_done === true || ctx.trail_active === true || pendingState.fresh === true);
+}
+
 async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) {
   const keys = await resolveBinanceKeys();
   if (!keys) return { ok: false, reason: "BINANCE_KEYS_MISSING", updated_at: nowIso(), issues: [], markets: [] };
@@ -295,14 +321,21 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
         }
       }
 
-      if (meta.tp_p1_pending === true) {
-        const pendingUntil = Number(meta.tp_p1_pending_until_ms);
-        if (Number.isFinite(pendingUntil) && pendingUntil > 0 && pendingUntil < Date.now()) {
+      const tp1PendingState = resolveTp1PendingState(meta);
+      if (tp1PendingState.pending === true) {
+        if (tp1PendingState.expired === true) {
           marketIssues.push(makeIssue({
             symbol: sym,
-            code: "TP1_PENDING_EXPIRED",
-            severity: "WARN",
-            detail: `TP1 pending 만료 후 잔류 (${new Date(pendingUntil).toISOString()})`,
+            code: "TP1_PENDING_EXPIRED_STILL_PENDING",
+            severity: "CRIT",
+            detail: `TP1 pending 만료 후에도 pending — 보호주문 부재 가능 (${new Date(tp1PendingState.pending_until_ms).toISOString()})`,
+          }));
+        } else if (tp1PendingState.unbounded === true) {
+          marketIssues.push(makeIssue({
+            symbol: sym,
+            code: "TP1_PENDING_UNBOUNDED",
+            severity: "CRIT",
+            detail: "TP1 pending=true 이지만 pending_until_ms가 없어 TP1 누락을 숨길 수 있음",
           }));
         }
       }
@@ -397,8 +430,7 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
         }
 
         const meta = (internal && typeof internal.meta === "object") ? internal.meta : {};
-        const tp1Done = meta.tp_p1_done === true || meta.trail_active === true || meta.tp_p1_pending === true;
-        if (!tp1Done && toBool(process.env.BINANCE_NATIVE_TP_ENABLED, false)) {
+        if (shouldVerifyNativeTp1Protection(meta) && toBool(process.env.BINANCE_NATIVE_TP_ENABLED, false)) {
           const tpCandidates = allOrders.filter((o) => isStrictTp1OrderCandidate(o, closeSide));
           if (!tpCandidates.length) {
             marketIssues.push(makeIssue({
@@ -496,5 +528,7 @@ module.exports = {
     isV2LiveWriteRuntime,
     resolveExpectedNativeTrigger,
     isValidTrailReference,
+    resolveTp1PendingState,
+    shouldVerifyNativeTp1Protection,
   },
 };

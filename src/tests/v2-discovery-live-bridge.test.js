@@ -111,9 +111,37 @@ function discoveryBridgeBlocksLegacyEntryWritePath() {
     false
   );
   assert.strictEqual(
+    __test.isV2DiscoveryCanaryLegacyExchangeWriteBlocked({ liveCfg, intent: "EXIT" }),
+    true
+  );
+  assert.strictEqual(
     __test.isV2DiscoveryCanaryLegacyEntryWriteBlocked({
       liveCfg: { ...liveCfg, v2DiscoveryCanaryBridge: false },
       intent: "ENTRY",
+    }),
+    false
+  );
+  assert.strictEqual(
+    __test.isV2DiscoveryCanaryLegacyExchangeWriteBlocked({
+      liveCfg: {
+        executionMode: "LIVE",
+        liveEnabled: true,
+        v2DiscoveryCanaryBridge: false,
+        v2DiscoveryCanaryConfigured: true,
+        legacyV1ExchangeWriterEnabled: false,
+      },
+    }),
+    true
+  );
+  assert.strictEqual(
+    __test.isV2DiscoveryCanaryLegacyExchangeWriteBlocked({
+      liveCfg: {
+        executionMode: "LIVE",
+        liveEnabled: true,
+        v2DiscoveryCanaryBridge: false,
+        v2DiscoveryCanaryConfigured: false,
+        legacyV1ExchangeWriterEnabled: true,
+      },
     }),
     false
   );
