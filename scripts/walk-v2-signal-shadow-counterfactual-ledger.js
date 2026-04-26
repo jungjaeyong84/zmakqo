@@ -116,6 +116,9 @@ async function main({
       ? result.results.filter((r) => r && r.action === "EXPIRE").length
       : 0,
   };
+  if (result.ok !== true && result.error_message) {
+    payload.error_message = result.error_message;
+  }
   emit(payload);
   if (!result.ok && setProcessExitCode) process.exitCode = 1;
   return payload;
