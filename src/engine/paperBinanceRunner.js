@@ -1309,6 +1309,48 @@ async function markSignalConsumedIfClaimed({
   return { ok: true };
 }
 
+function isSignalClaimAlreadyHandled(result = null) {
+  const reason = String(result && result.reason || "").trim().toUpperCase();
+  return reason === "ALREADY_CONSUMED" || reason === "LOCKED";
+}
+
+async function claimSignalForProgressAlert({
+  signalId = null,
+  runId = null,
+  consumedAtIso = null,
+  execBarCloseMs = null,
+  execBarCloseUtc = null,
+  reason = null,
+  meta = null,
+  critical = false,
+} = {}) {
+  const id = String(signalId || "").trim();
+  if (!id) return { ok: true, signal_id: null, reason: "SIGNAL_ID_MISSING" };
+  const claim = await markSignalConsumedIfClaimed({
+    signalId: id,
+    runId,
+    consumedAtIso,
+    execBarCloseMs,
+    execBarCloseUtc,
+    reason,
+    meta,
+  }).catch((err) => ({
+    ok: false,
+    reason: "SIGNAL_CLAIM_ERROR",
+    error_message: err && err.message ? String(err.message) : String(err),
+  }));
+  if (claim && claim.ok === true) return { ok: true, signal_id: id, reason: "CLAIMED" };
+  if (critical === true) {
+    console.warn(`[SIGNAL_PROGRESS_CLAIM_FAILED_CRITICAL_ALERT_ALLOWED] signal_id=${id} reason=${claim && claim.reason ? claim.reason : "UNKNOWN"}`);
+    return { ok: true, signal_id: id, reason: claim && claim.reason ? claim.reason : "CLAIM_FAILED" };
+  }
+  if (isSignalClaimAlreadyHandled(claim)) {
+    console.warn(`[SIGNAL_PROGRESS_SUPPRESSED_ALREADY_CONSUMED] signal_id=${id} reason=${String(claim && claim.reason || "").toUpperCase()}`);
+    return { ok: false, signal_id: id, reason: claim && claim.reason ? claim.reason : "ALREADY_HANDLED" };
+  }
+  return { ok: true, signal_id: id, reason: claim && claim.reason ? claim.reason : "CLAIM_NOT_REQUIRED" };
+}
+
 async function filterSignalDropsForRecording({ drops = [], runId = null } = {}) {
   if (!Array.isArray(drops) || drops.length === 0) return [];
   const kept = [];
@@ -13139,22 +13181,23 @@ async function runPaperBinanceForBar({
           v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
           v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
         });
-        if (handoffSignalId) {
-          await markSignalConsumedIfClaimed({
-            signalId: handoffSignalId,
-            runId,
-            consumedAtIso: new Date().toISOString(),
-            execBarCloseMs,
-            execBarCloseUtc,
-            reason: routeReason,
-            meta: {
-              intent,
-              order_intent_id: it.intent_id || null,
-              v2_discovery_bridge_reason: handoff.reason || null,
-              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
-              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
-            },
-          });
+        const handoffSignalClaim = await claimSignalForProgressAlert({
+          signalId: handoffSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs,
+          execBarCloseUtc,
+          reason: routeReason,
+          meta: {
+            intent,
+            order_intent_id: it.intent_id || null,
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        });
+        if (handoffSignalClaim.ok !== true) {
+          continue;
         }
         sendSignalProgressAlert({
           exchange,
@@ -13208,21 +13251,23 @@ async function runPaperBinanceForBar({
       });
       if (postFillHandoff.exchange_write_performed === true) {
         const postFillSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
-        if (postFillSignalId) {
-          await markSignalConsumedIfClaimed({
-            signalId: postFillSignalId,
-            runId,
-            consumedAtIso: new Date().toISOString(),
-            execBarCloseMs,
-            execBarCloseUtc,
-            reason: blockReason,
-            meta: {
-              intent,
-              order_intent_id: it.intent_id || null,
-              v2_discovery_post_fill_exchange_write: true,
-              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
-            },
-          });
+        const postFillSignalClaim = await claimSignalForProgressAlert({
+          signalId: postFillSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs,
+          execBarCloseUtc,
+          reason: blockReason,
+          critical: postFillHandoff.unprotected_position_possible === true,
+          meta: {
+            intent,
+            order_intent_id: it.intent_id || null,
+            v2_discovery_post_fill_exchange_write: true,
+            v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+          },
+        });
+        if (postFillSignalClaim.ok !== true) {
+          continue;
         }
         sendV2DiscoveryPostFillHandoffProgressAlert({
           exchange,
@@ -15551,21 +15596,23 @@ async function runPaperBinanceForBar({
         const requestBundle = requestBody.bundle || {};
         const requestPermit = requestBody.executionPermit || {};
         const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
-        if (s.signal_id) {
-          await markSignalConsumedIfClaimed({
-            signalId: s.signal_id,
-            runId,
-            consumedAtIso: new Date().toISOString(),
-            execBarCloseMs: execBarCloseMsForIntent,
-            execBarCloseUtc: execBarCloseUtcForIntent,
-            reason: routeReason,
-            meta: {
-              intent: intent || null,
-              v2_discovery_bridge_reason: handoff.reason || null,
-              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
-              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
-            },
-          });
+        const handoffSignalId = s.signal_id || (features && features.signal_id) || null;
+        const handoffSignalClaim = await claimSignalForProgressAlert({
+          signalId: handoffSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs: execBarCloseMsForIntent,
+          execBarCloseUtc: execBarCloseUtcForIntent,
+          reason: routeReason,
+          meta: {
+            intent: intent || null,
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        });
+        if (handoffSignalClaim.ok !== true) {
+          continue;
         }
         sendSignalProgressAlert({
           exchange,
@@ -15574,7 +15621,7 @@ async function runPaperBinanceForBar({
           event: s.event,
           side: s.side,
           qtyPct: qtyFraction,
-          signalId: s.signal_id || (features && features.signal_id) || null,
+          signalId: handoffSignalId,
           executionMode: intentExecutionMode,
           source: "SERVER",
           authoritative: true,
@@ -15594,20 +15641,23 @@ async function runPaperBinanceForBar({
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
       const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
       if (postFillHandoff.exchange_write_performed === true) {
-        if (s.signal_id) {
-          await markSignalConsumedIfClaimed({
-            signalId: s.signal_id,
-            runId,
-            consumedAtIso: new Date().toISOString(),
-            execBarCloseMs: execBarCloseMsForIntent,
-            execBarCloseUtc: execBarCloseUtcForIntent,
-            reason: blockReason,
-            meta: {
-              intent: intent || null,
-              v2_discovery_post_fill_exchange_write: true,
-              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
-            },
-          });
+        const postFillSignalId = s.signal_id || (features && features.signal_id) || null;
+        const postFillSignalClaim = await claimSignalForProgressAlert({
+          signalId: postFillSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs: execBarCloseMsForIntent,
+          execBarCloseUtc: execBarCloseUtcForIntent,
+          reason: blockReason,
+          critical: postFillHandoff.unprotected_position_possible === true,
+          meta: {
+            intent: intent || null,
+            v2_discovery_post_fill_exchange_write: true,
+            v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+          },
+        });
+        if (postFillSignalClaim.ok !== true) {
+          continue;
         }
         sendSignalProgressAlert({
           exchange,
@@ -15616,7 +15666,7 @@ async function runPaperBinanceForBar({
           event: s.event,
           side: s.side,
           qtyPct: qtyFraction,
-          signalId: s.signal_id || (features && features.signal_id) || null,
+          signalId: postFillSignalId,
           executionMode: intentExecutionMode,
           source: "SERVER",
           authoritative: true,
@@ -16053,22 +16103,23 @@ async function runPaperFuturesForBar({
           v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
           v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
         });
-        if (handoffSignalId) {
-          await markSignalConsumedIfClaimed({
-            signalId: handoffSignalId,
-            runId,
-            consumedAtIso: new Date().toISOString(),
-            execBarCloseMs,
-            execBarCloseUtc,
-            reason: routeReason,
-            meta: {
-              intent,
-              order_intent_id: it.intent_id || null,
-              v2_discovery_bridge_reason: handoff.reason || null,
-              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
-              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
-            },
-          });
+        const handoffSignalClaim = await claimSignalForProgressAlert({
+          signalId: handoffSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs,
+          execBarCloseUtc,
+          reason: routeReason,
+          meta: {
+            intent,
+            order_intent_id: it.intent_id || null,
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        });
+        if (handoffSignalClaim.ok !== true) {
+          continue;
         }
         sendSignalProgressAlert({
           exchange,
@@ -16122,21 +16173,23 @@ async function runPaperFuturesForBar({
       });
         if (postFillHandoff.exchange_write_performed === true) {
           const postFillSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
-          if (postFillSignalId) {
-            await markSignalConsumedIfClaimed({
-              signalId: postFillSignalId,
-              runId,
-              consumedAtIso: new Date().toISOString(),
-              execBarCloseMs,
-              execBarCloseUtc,
-              reason: blockReason,
-              meta: {
-                intent,
-                order_intent_id: it.intent_id || null,
-                v2_discovery_post_fill_exchange_write: true,
-                v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
-              },
-            });
+          const postFillSignalClaim = await claimSignalForProgressAlert({
+            signalId: postFillSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: blockReason,
+            critical: postFillHandoff.unprotected_position_possible === true,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_post_fill_exchange_write: true,
+              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+            },
+          });
+          if (postFillSignalClaim.ok !== true) {
+            continue;
           }
           sendV2DiscoveryPostFillHandoffProgressAlert({
             exchange,
@@ -16885,22 +16938,23 @@ async function runPaperFuturesForBar({
             v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
             v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
           });
-          if (handoffSignalId) {
-            await markSignalConsumedIfClaimed({
-              signalId: handoffSignalId,
-              runId,
-              consumedAtIso: new Date().toISOString(),
-              execBarCloseMs,
-              execBarCloseUtc,
-              reason: routeReason,
-              meta: {
-                intent,
-                order_intent_id: it.intent_id || null,
-                v2_discovery_bridge_reason: handoff.reason || null,
-                v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
-                v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
-              },
-            });
+          const handoffSignalClaim = await claimSignalForProgressAlert({
+            signalId: handoffSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: routeReason,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_bridge_reason: handoff.reason || null,
+              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+            },
+          });
+          if (handoffSignalClaim.ok !== true) {
+            continue;
           }
           sendSignalProgressAlert({
             exchange,
@@ -16960,21 +17014,23 @@ async function runPaperFuturesForBar({
         });
         if (postFillHandoff.exchange_write_performed === true) {
           const postFillSignalId = liveSignalId;
-          if (postFillSignalId) {
-            await markSignalConsumedIfClaimed({
-              signalId: postFillSignalId,
-              runId,
-              consumedAtIso: new Date().toISOString(),
-              execBarCloseMs,
-              execBarCloseUtc,
-              reason: blockReason,
-              meta: {
-                intent,
-                order_intent_id: it.intent_id || null,
-                v2_discovery_post_fill_exchange_write: true,
-                v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
-              },
-            });
+          const postFillSignalClaim = await claimSignalForProgressAlert({
+            signalId: postFillSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: blockReason,
+            critical: postFillHandoff.unprotected_position_possible === true,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_post_fill_exchange_write: true,
+              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+            },
+          });
+          if (postFillSignalClaim.ok !== true) {
+            continue;
           }
           sendV2DiscoveryPostFillHandoffProgressAlert({
             exchange,
@@ -19368,21 +19424,23 @@ async function runPaperFuturesForBar({
         const requestBundle = requestBody.bundle || {};
         const requestPermit = requestBody.executionPermit || {};
         const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
-        if (s.signal_id) {
-          await markSignalConsumedIfClaimed({
-            signalId: s.signal_id,
-            runId,
-            consumedAtIso: new Date().toISOString(),
-            execBarCloseMs: execBarCloseMsForIntent,
-            execBarCloseUtc: execBarCloseUtcForIntent,
-            reason: routeReason,
-            meta: {
-              intent: intent || null,
-              v2_discovery_bridge_reason: handoff.reason || null,
-              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
-              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
-            },
-          });
+        const handoffSignalId = s.signal_id || (features && features.signal_id) || null;
+        const handoffSignalClaim = await claimSignalForProgressAlert({
+          signalId: handoffSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs: execBarCloseMsForIntent,
+          execBarCloseUtc: execBarCloseUtcForIntent,
+          reason: routeReason,
+          meta: {
+            intent: intent || null,
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        });
+        if (handoffSignalClaim.ok !== true) {
+          continue;
         }
         sendSignalProgressAlert({
           exchange,
@@ -19391,7 +19449,7 @@ async function runPaperFuturesForBar({
           event: s.event,
           side: s.side,
           qtyPct: qtyFraction,
-          signalId: s.signal_id || (features && features.signal_id) || null,
+          signalId: handoffSignalId,
           executionMode: intentExecutionMode,
           source: "SERVER",
           authoritative: true,
@@ -19411,20 +19469,23 @@ async function runPaperFuturesForBar({
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
       const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
       if (postFillHandoff.exchange_write_performed === true) {
-        if (s.signal_id) {
-          await markSignalConsumedIfClaimed({
-            signalId: s.signal_id,
-            runId,
-            consumedAtIso: new Date().toISOString(),
-            execBarCloseMs: execBarCloseMsForIntent,
-            execBarCloseUtc: execBarCloseUtcForIntent,
-            reason: blockReason,
-            meta: {
-              intent: intent || null,
-              v2_discovery_post_fill_exchange_write: true,
-              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
-            },
-          });
+        const postFillSignalId = s.signal_id || (features && features.signal_id) || null;
+        const postFillSignalClaim = await claimSignalForProgressAlert({
+          signalId: postFillSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs: execBarCloseMsForIntent,
+          execBarCloseUtc: execBarCloseUtcForIntent,
+          reason: blockReason,
+          critical: postFillHandoff.unprotected_position_possible === true,
+          meta: {
+            intent: intent || null,
+            v2_discovery_post_fill_exchange_write: true,
+            v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+          },
+        });
+        if (postFillSignalClaim.ok !== true) {
+          continue;
         }
         sendSignalProgressAlert({
           exchange,
@@ -19433,7 +19494,7 @@ async function runPaperFuturesForBar({
           event: s.event,
           side: s.side,
           qtyPct: qtyFraction,
-          signalId: s.signal_id || (features && features.signal_id) || null,
+          signalId: postFillSignalId,
           executionMode: intentExecutionMode,
           source: "SERVER",
           authoritative: true,

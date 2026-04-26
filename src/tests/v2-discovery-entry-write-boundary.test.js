@@ -176,6 +176,14 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
     "suppressed duplicate drop alerts must be observable"
   );
   assert.ok(
+    source.includes("SIGNAL_PROGRESS_SUPPRESSED_ALREADY_CONSUMED"),
+    "suppressed duplicate progress alerts must be observable"
+  );
+  assert.ok(
+    source.includes("claimSignalForProgressAlert"),
+    "V2 discovery progress alerts must claim signal ownership before alerting"
+  );
+  assert.ok(
     source.includes("signal_drop_suppressed_n"),
     "run summary must expose suppressed duplicate signal drops"
   );
@@ -184,10 +192,18 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
     "drop recording must happen only after consumed-signal filtering"
   );
   const routedHandoffN = (source.match(/V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE/g) || []).length;
-  const claimedConsumedN = (source.match(/await markSignalConsumedIfClaimed/g) || []).length;
+  const progressClaimN = (source.match(/await claimSignalForProgressAlert/g) || []).length;
   assert.ok(
-    claimedConsumedN >= routedHandoffN,
-    "every V2 discovery routed/post-fill handoff path must claim signal consumption before emitting progress alerts"
+    progressClaimN >= routedHandoffN * 2,
+    "every V2 discovery routed/post-fill handoff path must claim signal ownership before emitting progress alerts"
+  );
+  assert.ok(
+    source.includes("if (handoffSignalClaim.ok !== true)"),
+    "routed handoff progress alerts must stop when the signal was already consumed or locked"
+  );
+  assert.ok(
+    source.includes("if (postFillSignalClaim.ok !== true)"),
+    "post-fill progress alerts must stop when the signal was already consumed or locked"
   );
 })();
 
