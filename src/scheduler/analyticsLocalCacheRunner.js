@@ -9,6 +9,12 @@ const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
 const SCRIPT_PATH = path.join(REPO_ROOT, "scripts", "refresh-analytics-local-cache.js");
 const LATEST_PATH = path.join(OPS_DAILY_DIR, "analytics_local_cache_refresh_latest.json");
 const LOCK_PATH = path.join(OPS_DAILY_DIR, ".analytics_local_cache_refresh.lock.json");
+const BOUNDED_REFRESH_ENV = Object.freeze({
+  ANALYTICS_CACHE_DEFAULT_LIMIT: "3000",
+  ANALYTICS_CACHE_FILLS_LIMIT: "6000",
+  ANALYTICS_CACHE_PAGE_SIZE: "500",
+  ANALYTICS_CACHE_SKIP_DEPENDENT_REPORTS: "1",
+});
 
 function readJsonSafe(filePath) {
   try {
@@ -80,7 +86,14 @@ function releaseLock() {
   }
 }
 
-function runAnalyticsLocalCacheRefresh({ trigger = "manual", force = false, maxAgeMs = 15 * 60 * 1000, staleLockMs = 60 * 60 * 1000 } = {}) {
+function runAnalyticsLocalCacheRefresh({
+  trigger = "manual",
+  force = false,
+  maxAgeMs = 15 * 60 * 1000,
+  staleLockMs = 60 * 60 * 1000,
+  skipDependentReports = false,
+  envOverrides = {},
+} = {}) {
   const nowMs = Date.now();
   const latest = readLatestAnalyticsLocalCache();
   if (!force && isFreshAnalyticsLocalCache(latest, nowMs, maxAgeMs)) {
@@ -92,7 +105,13 @@ function runAnalyticsLocalCacheRefresh({ trigger = "manual", force = false, maxA
     const child = spawnSync(process.execPath, [SCRIPT_PATH], {
       cwd: REPO_ROOT,
       encoding: "utf8",
-      env: { ...process.env, ANALYTICS_CACHE_TRIGGER: trigger },
+      env: {
+        ...process.env,
+        ...(skipDependentReports ? BOUNDED_REFRESH_ENV : {}),
+        ...envOverrides,
+        ANALYTICS_CACHE_TRIGGER: trigger,
+        ...(skipDependentReports ? { ANALYTICS_CACHE_SKIP_DEPENDENT_REPORTS: "1" } : {}),
+      },
       maxBuffer: 1024 * 1024 * 16,
     });
     return {
@@ -114,6 +133,7 @@ module.exports = {
   readLatestAnalyticsLocalCache,
   isFreshAnalyticsLocalCache,
   __test: {
+    BOUNDED_REFRESH_ENV,
     latestGeneratedAtMs,
     parseLastJsonLine,
     isFreshAnalyticsLocalCache,

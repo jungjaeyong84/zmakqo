@@ -66,7 +66,7 @@ async function run() {
     tf: "15m",
     telemetry: staleGap,
   });
-  assert.strictEqual(payload.title, "[P0] ETHUSDT TP1 native protection gap");
+  assert.strictEqual(payload.title, "[V2 긴급] ETHUSDT TP1 native protection gap");
   assert.ok(payload.body.includes("reason: TP1_NATIVE_PROTECTION_GAP"));
 
   const first = __test.shouldSendTp1NativeProtectionGapAlert({

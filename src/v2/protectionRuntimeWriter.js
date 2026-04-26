@@ -32,6 +32,12 @@ function normalizeOrderAck(name, ack) {
     trigger_price: toNumberOrNull(row.trigger_price),
     error_code: trimOrNull(row.error_code),
     ack_at: trimOrNull(row.ack_at),
+    late_placed_after_abort: row.late_placed_after_abort === true,
+    original_error_code: trimOrNull(row.original_error_code),
+    late_placed_observed_at: trimOrNull(row.late_placed_observed_at),
+    late_placed_client_order_key: trimOrNull(row.late_placed_client_order_key),
+    late_placed_reconcile_status: trimOrNull(row.late_placed_reconcile_status),
+    late_placed_reconcile_reason: trimOrNull(row.late_placed_reconcile_reason),
   });
 }
 
@@ -135,6 +141,19 @@ function buildProtectionRuntimeWriteResult({
     placementFinishedAt,
     slAckAt: normalizedSlAck.ack_at,
     tp1AckAt: normalizedTp1Ack.ack_at,
+    lastExchangeEvidence: {
+      initial_protection: {
+        sl_ack: normalizedSlAck,
+        tp1_ack: normalizedTp1Ack,
+        late_placed_after_abort: normalizedSlAck.late_placed_after_abort === true ||
+          normalizedTp1Ack.late_placed_after_abort === true,
+        late_placed_legs: [
+          normalizedSlAck.late_placed_after_abort === true ? "SL" : null,
+          normalizedTp1Ack.late_placed_after_abort === true ? "TP1" : null,
+        ].filter(Boolean),
+      },
+    },
+    lastEvidenceObservedAt: trimOrNull(observedAt),
   });
   return Object.freeze({
     runtimeDoc,

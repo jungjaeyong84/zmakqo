@@ -11,6 +11,7 @@ const {
   commitProtectedEntryActivation,
   commitEntryProtectionRepairQueue,
 } = require("./entryProtectionStorage");
+const { reconcileInitialProtectionLatePlaced } = require("./initialProtectionLatePlacedReconciler");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -47,6 +48,12 @@ function normalizeProtectionAck(name, ack) {
     trigger_price: row.trigger_price == null ? null : Number(row.trigger_price),
     error_code: trimOrNull(row.error_code),
     ack_at: trimOrNull(row.ack_at),
+    late_placed_after_abort: row.late_placed_after_abort === true,
+    original_error_code: trimOrNull(row.original_error_code),
+    late_placed_observed_at: trimOrNull(row.late_placed_observed_at),
+    late_placed_client_order_key: trimOrNull(row.late_placed_client_order_key),
+    late_placed_reconcile_status: trimOrNull(row.late_placed_reconcile_status),
+    late_placed_reconcile_reason: trimOrNull(row.late_placed_reconcile_reason),
   });
 }
 
@@ -61,6 +68,12 @@ function buildFailedProtectionAck({ name, command, error, rawAck = null } = {}) 
       : Number(row.trigger_price ?? row.triggerPrice),
     error_code: stableCode(message) || `${name}_TRANSPORT_FAILED`,
     ack_at: null,
+    late_placed_after_abort: row.late_placed_after_abort === true,
+    original_error_code: trimOrNull(row.original_error_code),
+    late_placed_observed_at: trimOrNull(row.late_placed_observed_at),
+    late_placed_client_order_key: trimOrNull(row.late_placed_client_order_key),
+    late_placed_reconcile_status: trimOrNull(row.late_placed_reconcile_status),
+    late_placed_reconcile_reason: trimOrNull(row.late_placed_reconcile_reason),
   });
 }
 
@@ -113,7 +126,7 @@ async function runV2EntryProtectionActivation({
     placementRetryId,
   });
 
-  const slAck = await invokeProtectionTransport({
+  let slAck = await invokeProtectionTransport({
     name: "SL",
     fn: placeInitialSl,
     command: protectionCommands.commands.sl,
@@ -125,7 +138,7 @@ async function runV2EntryProtectionActivation({
       db,
     },
   });
-  const tp1Ack = await invokeProtectionTransport({
+  let tp1Ack = await invokeProtectionTransport({
     name: "TP1",
     fn: placeInitialTp1,
     command: protectionCommands.commands.tp1,
@@ -137,6 +150,16 @@ async function runV2EntryProtectionActivation({
       db,
     },
   });
+  const latePlacedReconcile = await reconcileInitialProtectionLatePlaced({
+    slAck,
+    tp1Ack,
+    commands: protectionCommands.commands,
+    fetchOrderByClientOrderId: transportBag.fetchOrderByClientOrderId,
+    env,
+    now,
+  });
+  slAck = normalizeProtectionAck("SL", latePlacedReconcile.slAck || slAck);
+  tp1Ack = normalizeProtectionAck("TP1", latePlacedReconcile.tp1Ack || tp1Ack);
   const placementFinishedAt = trimOrNull(now()) || new Date().toISOString();
 
   let auditedProtection = null;
@@ -185,6 +208,7 @@ async function runV2EntryProtectionActivation({
       protectionCommands,
       slAck,
       tp1Ack,
+      latePlacedReconcile,
       protectionWriteResult,
       repairQueueCommit,
       activationCommit: null,
@@ -208,6 +232,7 @@ async function runV2EntryProtectionActivation({
     protectionCommands,
     slAck,
     tp1Ack,
+    latePlacedReconcile,
     protectionWriteResult,
     repairQueueCommit: null,
     activationCommit,

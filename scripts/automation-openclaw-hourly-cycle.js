@@ -171,7 +171,11 @@ function buildStepRegistry() {
       depends_on: [],
       produces_artifact: "analytics_local_cache_refresh_latest.json",
       run() {
-        const analytics = runAnalyticsLocalCacheRefresh({ trigger: "openclaw_hourly_cycle", force: false });
+        const analytics = runAnalyticsLocalCacheRefresh({
+          trigger: "openclaw_hourly_cycle",
+          force: false,
+          skipDependentReports: true,
+        });
         return {
           status: analytics.ok ? (analytics.skipped ? "SKIP" : "PASS") : "FAIL",
           summary: analytics.reason || (analytics.parsed && (analytics.parsed.reason || analytics.parsed.status)) || "OK",

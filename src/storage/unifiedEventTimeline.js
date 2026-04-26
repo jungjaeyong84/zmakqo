@@ -18,6 +18,34 @@ function toTimeMs(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function boundedPositiveInt(value, fallback, { min = 1, max = 5000 } = {}) {
+  const n = Math.trunc(Number(value));
+  const base = Number.isFinite(n) && n > 0 ? n : fallback;
+  return Math.max(min, Math.min(max, Math.trunc(Number(base) || fallback || min)));
+}
+
+function resolveTimelineFetchLimit(limit) {
+  const hardMax = boundedPositiveInt(process.env.UNIFIED_EVENT_TIMELINE_FETCH_MAX_LIMIT, 5000, {
+    min: 100,
+    max: 20000,
+  });
+  return boundedPositiveInt(limit, 500, {
+    min: 1,
+    max: hardMax,
+  });
+}
+
+function resolveTimelineFallbackScanLimit(limit) {
+  const hardMax = boundedPositiveInt(process.env.UNIFIED_EVENT_TIMELINE_FALLBACK_SCAN_LIMIT, 1500, {
+    min: 100,
+    max: 10000,
+  });
+  return boundedPositiveInt((Number(limit) || 500) * 3, hardMax, {
+    min: 1,
+    max: hardMax,
+  });
+}
+
 function safeClone(value) {
   if (value == null) return null;
   try {
@@ -169,15 +197,16 @@ async function fetchUnifiedEventTimeline({
   fromMs = null,
   toMs = null,
   limit = 500,
+  db = null,
 } = {}) {
-  const db = getFirestore();
+  const store = db || getFirestore();
   const resolvedExchange = upper(exchange);
   const resolvedSymbol = upper(symbol);
-  const resolvedLimit = Math.max(1, Math.trunc(Number(limit) || 500));
+  const resolvedLimit = resolveTimelineFetchLimit(limit);
   const resolvedFromMs = toTimeMs(fromMs);
   const resolvedToMs = toTimeMs(toMs);
   try {
-    let query = db.collection("unified_event_timeline")
+    let query = store.collection("unified_event_timeline")
       .where("exchange", "==", resolvedExchange)
       .where("symbol", "==", resolvedSymbol)
       .orderBy("ts_ms", "asc")
@@ -186,9 +215,21 @@ async function fetchUnifiedEventTimeline({
     if (resolvedToMs != null) query = query.where("ts_ms", "<", resolvedToMs);
     const snap = await query.get();
     const rows = snap.docs.map((doc) => doc.data() || {});
-    if (rows.length > 0) return rows;
+    return rows;
   } catch (_) {}
-  const fallbackSnap = await db.collection("unified_event_timeline").get();
+
+  // Fail bounded: never full-scan this collection from Cloud Run. A missing
+  // composite index should degrade to a small recent scan, not heap exhaustion.
+  const fallbackLimit = resolveTimelineFallbackScanLimit(resolvedLimit);
+  let fallbackSnap = null;
+  try {
+    fallbackSnap = await store.collection("unified_event_timeline")
+      .orderBy("ts_ms", "desc")
+      .limit(fallbackLimit)
+      .get();
+  } catch (_) {
+    return [];
+  }
   return fallbackSnap.docs
     .map((doc) => doc.data() || {})
     .filter((row) => row.exchange === resolvedExchange && row.symbol === resolvedSymbol)
@@ -210,5 +251,7 @@ module.exports = {
     buildUnifiedEventId,
     buildUnifiedEventDoc,
     toTimeMs,
+    resolveTimelineFetchLimit,
+    resolveTimelineFallbackScanLimit,
   },
 };

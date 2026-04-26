@@ -762,6 +762,7 @@ async function placeFuturesMarketOrder({
   recvWindow = 5000,
   clientOrderId,
   idempotencyKey,
+  newOrderRespType = "RESULT",
 } = {}) {
   const resolvedClientOrderId = resolveClientOrderId({ clientOrderId, idempotencyKey });
   if (shouldUseEgressProxy()) {
@@ -778,6 +779,7 @@ async function placeFuturesMarketOrder({
         recvWindow,
         clientOrderId: resolvedClientOrderId,
         idempotencyKey,
+        newOrderRespType,
       },
     });
   }
@@ -801,6 +803,7 @@ async function placeFuturesMarketOrder({
         timestamp: ts,
         recvWindow: normalizeRecvWindow(recvWindow),
         newClientOrderId: resolvedClientOrderId || undefined,
+        newOrderRespType: String(newOrderRespType || "").trim().toUpperCase() || undefined,
       },
       apiKey,
       apiSecret,

@@ -163,6 +163,7 @@ function buildBinanceEntryOrderTransport({
         reduceOnly: false,
         clientOrderId,
         idempotencyKey: clientOrderId,
+        newOrderRespType: "RESULT",
       });
       return normalizeEntryOrderReceipt({
         order,

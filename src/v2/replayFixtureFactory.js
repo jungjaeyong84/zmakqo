@@ -441,7 +441,14 @@ function buildReferenceNativeMlEvidencePack() {
       ok: true,
       reason: "V2_MARKET_DATA_QUALITY_PASS",
       blockers: [],
-      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+      metrics: { symbol: "ETHUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
+    },
+    signalCriteria: {
+      htf_regime: { regime: "LONG", alignment_score: 0.94 },
+      setup_gate: { setup_type: "PULLBACK_RECLAIM", setup_quality_score: 0.92 },
+      trigger_gate: { trigger_confirmed: true, volume_zscore: 2.1, rsi_entry_tf: 65 },
+      no_trade_gate: { market_quality_score: 1, spread_bps: 2, mark_index_gap_bps: 1, funding_penalty_bps: 1 },
+      expected_edge_gate: { expected_gross_r: 2.2, expected_net_r_after_cost: 0.5, cost_estimate_bps: 5, cost_r_equivalent: 1.7 },
     },
   });
 }

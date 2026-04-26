@@ -253,11 +253,14 @@ function ensureBinanceCoreMarkets(markets, provider) {
 }
 
 const BINANCE_MIN_NOTIONAL = {
-  BTCUSDT: 100,
-  ETHUSDT: 20,
-  XRPUSDT: 10,
-  DOGEUSDT: 10,
-  AXSUSDT: 10,
+  BTCUSDT: 230,
+  ETHUSDT: 50,
+  LINKUSDT: 50,
+  BNBUSDT: 15,
+  XRPUSDT: 15,
+  SOLUSDT: 15,
+  DOGEUSDT: 15,
+  AXSUSDT: 15,
 };
 const BINANCE_MIN_NOTIONAL_BUFFER = Number(process.env.BINANCE_MIN_NOTIONAL_BUFFER || 1.5);
 

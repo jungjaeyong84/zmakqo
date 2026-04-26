@@ -71,6 +71,7 @@ async function liveLongEntryUsesMarketBuyReduceOnlyFalse() {
   assert.strictEqual(calls[0].side, "BUY");
   assert.strictEqual(calls[0].quantity, 0.8);
   assert.strictEqual(calls[0].reduceOnly, false);
+  assert.strictEqual(calls[0].newOrderRespType, "RESULT");
   assert.ok(String(calls[0].clientOrderId).startsWith("EV2_"));
   assert.strictEqual(receipt.status, "FILLED");
   assert.strictEqual(receipt.entry_order_id, "ENTRY_ORDER__1");

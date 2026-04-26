@@ -4,7 +4,7 @@
 # Usage:
 #   ./ops/deploy/apply_openclaw_phase.sh day0       # shadow ledger only
 #   ./ops/deploy/apply_openclaw_phase.sh day1       # + ml soft-gate shadow
-#   ./ops/deploy/apply_openclaw_phase.sh day7       # + narrative CLI live (shadow)
+#   ./ops/deploy/apply_openclaw_phase.sh day7       # + Codex-only narrative shadow
 #   ./ops/deploy/apply_openclaw_phase.sh day10      # + conductor + retrospect (shadow)
 #   ./ops/deploy/apply_openclaw_phase.sh day14      # narrative APPLY on (scale only)
 #   ./ops/deploy/apply_openclaw_phase.sh day17      # conductor APPLY on (SL tighten only)
@@ -17,6 +17,8 @@
 #
 # Safety:
 #   - Never touches the trade engine, Firestore, or the repo. Env only.
+#   - V2 phases are Codex-only. The script does not write Claude CLI or
+#     alternate LLM provider env, so re-running it cannot resurrect V1 AI spend.
 #   - Prints the diff vs. the previous env so the operator can audit.
 #   - All transitions are reversible — `rollback` removes every openclaw
 #     env line and leaves the rest of ~/.env.openclaw untouched.
@@ -46,11 +48,9 @@ case "$PHASE" in
 # === openclaw phase:day0 (shadow ledger only) ===
 OPENCLAW_AGENT_SHADOW_ENABLED=1
 OPENCLAW_EVIDENCE_LEDGER_FIRESTORE=1
-OPENCLAW_CLAUDE_CLI_BIN=claude
-OPENCLAW_CLAUDE_CLI_MODEL=sonnet
-OPENCLAW_CLAUDE_CLI_TIMEOUT_MS=8000
-OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI
+OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_CLI_ONLY
 OPENCLAW_NARRATIVE_SHADOW_ONLY=1
+OPENAI_CODEX_FALLBACK_ENABLED=0
 BLOCK
 )
     ;;
@@ -61,28 +61,24 @@ OPENCLAW_AGENT_SHADOW_ENABLED=1
 OPENCLAW_EVIDENCE_LEDGER_FIRESTORE=1
 OPENCLAW_ML_GATE_ENABLED=1
 OPENCLAW_ML_MIN_TP1_PROB=0.22
-OPENCLAW_CLAUDE_CLI_BIN=claude
-OPENCLAW_CLAUDE_CLI_MODEL=sonnet
-OPENCLAW_CLAUDE_CLI_TIMEOUT_MS=8000
-OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI
+OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_CLI_ONLY
 OPENCLAW_NARRATIVE_SHADOW_ONLY=1
+OPENAI_CODEX_FALLBACK_ENABLED=0
 BLOCK
 )
     ;;
   day7)
     PHASE_BLOCK=$(cat <<'BLOCK'
-# === openclaw phase:day7 (+ narrative CLI shadow) ===
+# === openclaw phase:day7 (+ Codex-only narrative shadow) ===
 OPENCLAW_AGENT_SHADOW_ENABLED=1
 OPENCLAW_EVIDENCE_LEDGER_FIRESTORE=1
 OPENCLAW_ML_GATE_ENABLED=1
 OPENCLAW_ML_MIN_TP1_PROB=0.22
 OPENCLAW_NARRATIVE_ENABLED=1
 OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED=1
-OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI
+OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_CLI_ONLY
 OPENCLAW_NARRATIVE_SHADOW_ONLY=1
-OPENCLAW_CLAUDE_CLI_BIN=claude
-OPENCLAW_CLAUDE_CLI_MODEL=sonnet
-OPENCLAW_CLAUDE_CLI_TIMEOUT_MS=8000
+OPENAI_CODEX_FALLBACK_ENABLED=0
 BLOCK
 )
     ;;
@@ -95,13 +91,11 @@ OPENCLAW_ML_GATE_ENABLED=1
 OPENCLAW_ML_MIN_TP1_PROB=0.22
 OPENCLAW_NARRATIVE_ENABLED=1
 OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED=1
-OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI
+OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_CLI_ONLY
 OPENCLAW_NARRATIVE_SHADOW_ONLY=1
 OPENCLAW_CONDUCTOR_ENABLED=1
 OPENCLAW_CONDUCTOR_SHADOW_ONLY=1
-OPENCLAW_CLAUDE_CLI_BIN=claude
-OPENCLAW_CLAUDE_CLI_MODEL=sonnet
-OPENCLAW_CLAUDE_CLI_TIMEOUT_MS=8000
+OPENAI_CODEX_FALLBACK_ENABLED=0
 BLOCK
 )
     ;;
@@ -115,13 +109,11 @@ OPENCLAW_ML_GATE_ENABLED=1
 OPENCLAW_ML_MIN_TP1_PROB=0.22
 OPENCLAW_NARRATIVE_ENABLED=1
 OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED=1
-OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI
+OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_CLI_ONLY
 OPENCLAW_NARRATIVE_SHADOW_ONLY=0
 OPENCLAW_CONDUCTOR_ENABLED=1
 OPENCLAW_CONDUCTOR_SHADOW_ONLY=1
-OPENCLAW_CLAUDE_CLI_BIN=claude
-OPENCLAW_CLAUDE_CLI_MODEL=sonnet
-OPENCLAW_CLAUDE_CLI_TIMEOUT_MS=8000
+OPENAI_CODEX_FALLBACK_ENABLED=0
 BLOCK
 )
     ;;
@@ -135,13 +127,11 @@ OPENCLAW_ML_GATE_ENABLED=1
 OPENCLAW_ML_MIN_TP1_PROB=0.22
 OPENCLAW_NARRATIVE_ENABLED=1
 OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED=1
-OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI
+OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_CLI_ONLY
 OPENCLAW_NARRATIVE_SHADOW_ONLY=0
 OPENCLAW_CONDUCTOR_ENABLED=1
 OPENCLAW_CONDUCTOR_SHADOW_ONLY=0
-OPENCLAW_CLAUDE_CLI_BIN=claude
-OPENCLAW_CLAUDE_CLI_MODEL=sonnet
-OPENCLAW_CLAUDE_CLI_TIMEOUT_MS=8000
+OPENAI_CODEX_FALLBACK_ENABLED=0
 BLOCK
 )
     ;;
@@ -158,13 +148,11 @@ OPENCLAW_ML_GATE_ENABLED=1
 OPENCLAW_ML_MIN_TP1_PROB=0.22
 OPENCLAW_NARRATIVE_ENABLED=1
 OPENCLAW_NARRATIVE_LIVE_CALL_ENABLED=1
-OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI
+OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_CLI_ONLY
 OPENCLAW_NARRATIVE_SHADOW_ONLY=0
 OPENCLAW_CONDUCTOR_ENABLED=1
 OPENCLAW_CONDUCTOR_SHADOW_ONLY=0
-OPENCLAW_CLAUDE_CLI_BIN=claude
-OPENCLAW_CLAUDE_CLI_MODEL=sonnet
-OPENCLAW_CLAUDE_CLI_TIMEOUT_MS=8000
+OPENAI_CODEX_FALLBACK_ENABLED=0
 BLOCK
 )
     ;;
@@ -181,7 +169,8 @@ esac
 # ───────────────────────────────────────────────────────────────────
 # Rewrite ~/.env.openclaw with the new block. We strip any existing
 # openclaw section (everything between "# === openclaw phase" markers,
-# plus any line starting with OPENCLAW_), then append the new block.
+# plus any line starting with OPENCLAW_ or OPENAI_CODEX_FALLBACK_ENABLED),
+# then append the new block.
 # ───────────────────────────────────────────────────────────────────
 mkdir -p "$(dirname "$ENV_FILE")"
 touch "$ENV_FILE"
@@ -189,8 +178,8 @@ BACKUP="${ENV_FILE}.bak.$(date +%s)"
 cp "$ENV_FILE" "$BACKUP"
 
 TMP="$(mktemp)"
-# Drop every OPENCLAW_* line and every openclaw phase marker comment.
-grep -vE '^OPENCLAW_|^# === openclaw phase' "$ENV_FILE" > "$TMP" || true
+# Drop every OpenClaw phase-managed line and every openclaw phase marker comment.
+grep -vE '^OPENCLAW_|^OPENAI_CODEX_FALLBACK_ENABLED=|^# === openclaw phase' "$ENV_FILE" > "$TMP" || true
 
 if [[ -n "$PHASE_BLOCK" ]]; then
   # printf is cross-shell safe (the wrapper runs under zsh in production

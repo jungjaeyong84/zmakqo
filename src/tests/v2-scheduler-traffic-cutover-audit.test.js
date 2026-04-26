@@ -62,6 +62,38 @@ function buildPassingState() {
         actual_time_zone: "Asia/Seoul",
         time_zone_match: true,
       },
+      {
+        job_id: "v2_active_protection_reconciliation",
+        scheduler_name: "v2-active-protection-reconciliation",
+        enabled: true,
+        criticality: "HIGH",
+        state: "ENABLED",
+        expected_http_path: "/api/openclaw/cron/v2-active-protection-reconciliation",
+        actual_http_path: "/api/openclaw/cron/v2-active-protection-reconciliation",
+        path_match: true,
+        expected_schedule: "0 * * * *",
+        actual_schedule: "0 * * * *",
+        schedule_match: true,
+        expected_time_zone: "Asia/Seoul",
+        actual_time_zone: "Asia/Seoul",
+        time_zone_match: true,
+      },
+      {
+        job_id: "openclaw_server_primary_tick",
+        scheduler_name: "openclaw-server-primary-tick",
+        enabled: true,
+        criticality: "HIGH",
+        state: "ENABLED",
+        expected_http_path: "/api/openclaw/cron/openclaw-server-primary-tick",
+        actual_http_path: "/api/openclaw/cron/openclaw-server-primary-tick",
+        path_match: true,
+        expected_schedule: "1,16,31,46 * * * *",
+        actual_schedule: "1,16,31,46 * * * *",
+        schedule_match: true,
+        expected_time_zone: "Asia/Seoul",
+        actual_time_zone: "Asia/Seoul",
+        time_zone_match: true,
+      },
     ],
     legacy_scheduler_jobs: [
       { label: "com.jaeyong.donbeolja.tick", enabled: false, active: false, target: "/scheduler/tick" },
@@ -103,6 +135,10 @@ function buildPassingState() {
   assert.deepStrictEqual(report.active_legacy_scheduler_jobs, []);
   assert.ok(report.required_openclaw_job_ids.includes("v2_exit_runtime_canary"));
   assert.ok(report.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_exit_runtime_canary" && job.path_match === true));
+  assert.ok(report.required_openclaw_job_ids.includes("v2_active_protection_reconciliation"));
+  assert.ok(report.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_active_protection_reconciliation" && job.path_match === true));
+  assert.ok(report.required_openclaw_job_ids.includes("openclaw_server_primary_tick"));
+  assert.ok(report.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "openclaw_server_primary_tick" && job.path_match === true));
 })();
 
 (function missingStateFailsClosed() {
@@ -131,18 +167,18 @@ function buildPassingState() {
 
 (function missingCloudSchedulerCanaryFailsClosed() {
   const state = buildPassingState();
-  state.openclaw_cloud_scheduler_jobs = state.openclaw_cloud_scheduler_jobs.filter((job) => job.job_id !== "v2_exit_runtime_canary");
+  state.openclaw_cloud_scheduler_jobs = state.openclaw_cloud_scheduler_jobs.filter((job) => job.job_id !== "openclaw_server_primary_tick");
   const report = audit.auditV2SchedulerTrafficCutoverReadiness({
     DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: JSON.stringify(state),
   });
   assert.strictEqual(report.ok, false);
   assert.ok(report.failed_check_ids.includes("SCHED_TRAFFIC_CHK_03"));
-  assert.ok(report.missing_openclaw_job_ids.includes("v2_exit_runtime_canary"));
+  assert.ok(report.missing_openclaw_job_ids.includes("openclaw_server_primary_tick"));
 })();
 
 (function wrongCloudSchedulerPathFailsClosed() {
   const state = buildPassingState();
-  const job = state.openclaw_cloud_scheduler_jobs.find((row) => row.job_id === "v2_exit_runtime_canary");
+  const job = state.openclaw_cloud_scheduler_jobs.find((row) => row.job_id === "openclaw_server_primary_tick");
   job.enabled = false;
   job.actual_http_path = "/api/openclaw/cron/wrong";
   job.path_match = false;
@@ -150,8 +186,8 @@ function buildPassingState() {
     DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: JSON.stringify(state),
   });
   assert.strictEqual(report.ok, false);
-  assert.ok(report.missing_openclaw_job_ids.includes("v2_exit_runtime_canary"));
-  assert.strictEqual(report.openclaw_cloud_scheduler_jobs.find((row) => row.job_id === "v2_exit_runtime_canary").path_match, false);
+  assert.ok(report.missing_openclaw_job_ids.includes("openclaw_server_primary_tick"));
+  assert.strictEqual(report.openclaw_cloud_scheduler_jobs.find((row) => row.job_id === "openclaw_server_primary_tick").path_match, false);
 })();
 
 (function checkScriptWritesArtifact() {

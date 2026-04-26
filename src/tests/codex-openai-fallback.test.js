@@ -10,6 +10,16 @@ const {
   const prevEnabled = process.env.OPENAI_CODEX_FALLBACK_ENABLED;
 
   process.env.OPENAI_API_KEY = "test-key";
+  delete process.env.OPENAI_CODEX_FALLBACK_ENABLED;
+
+  assert.strictEqual(
+    __test.shouldUseOpenAICodexFallback({
+      cliMissing: true,
+      cliResult: null,
+    }),
+    false
+  );
+
   process.env.OPENAI_CODEX_FALLBACK_ENABLED = "1";
 
   assert.strictEqual(__test.DEFAULT_OPENAI_CODEX_MODEL, "gpt-5.2-codex");

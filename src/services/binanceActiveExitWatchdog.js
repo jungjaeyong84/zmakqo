@@ -13,11 +13,18 @@ const { resolvePositionSideFromPosition } = require("../utils/positionSide");
 const { resolveTp1RemainingContractQtyRatio } = require("../utils/exitQtyContract");
 const { healBinanceLivePosition } = require("./binanceLiveStateSelfHeal");
 const { recordExitRepairRequest } = require("../storage/exitRepairRequests");
+const { buildRepairRequestDoc } = require("../v2/contracts");
+const { putV2Doc } = require("../v2/storage");
 const { resolveCanonicalPositionExitStage } = require("./positionStateMachine");
 const { isSimplifiedExitV2Active, buildSimplifiedExitShadowView } = require("./simplifiedExitV2");
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
+}
+
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
 }
 
 function toNum(value, fallback = null) {
@@ -515,6 +522,7 @@ function inspectExitProtection({
     tp_p1_done: meta.tp_p1_done === true,
     tp_p1_pending: meta.tp_p1_pending === true,
     trail_active: meta.trail_active === true,
+    position_cycle_id: trimOrNull(row.position_cycle_id || meta.position_cycle_id),
     external_active: externalActive,
     native_refresh_status: refreshStatus || null,
     expected_tp1_remaining_ratio: expectedTp1RemainingRatio,
@@ -559,6 +567,91 @@ function shouldRepairIssue(row = {}) {
   ]);
   const codes = Array.isArray(row.actionable_issue_codes) ? row.actionable_issue_codes : [];
   return codes.some((code) => repairableCodes.has(String(code || "").trim().toUpperCase()));
+}
+
+function resolveV2RepairAction(issueCode) {
+  const code = upper(issueCode);
+  if (code === "TP1_ORDER_MISSING") return "ENSURE_TP1_ORDER";
+  if (code === "TRAIL_STOP_MISSING" || code === "NATIVE_REFRESH_UNHEALTHY") return "REFRESH_NATIVE_STOP";
+  return null;
+}
+
+function resolveV2RepairHealth(issueCode) {
+  const code = upper(issueCode);
+  if (code === "TRAIL_STOP_MISSING") return "DEGRADED_UNPROTECTED";
+  return "DEGRADED_REPAIRABLE";
+}
+
+function normalizeV2RepairStage(stage) {
+  const normalized = upper(stage);
+  if (normalized === "PRE_TP1") return "PRE_TP1";
+  if (normalized === "RUNNER" || normalized === "TP1" || normalized === "TP1_DONE") return "TP1_DONE";
+  if (normalized === "TRAIL" || normalized === "TRAIL_ACTIVE") return "TRAIL_ACTIVE";
+  return normalized || "PRE_TP1";
+}
+
+function buildWatchdogV2RepairRequests(row = {}) {
+  const positionCycleId = trimOrNull(row.position_cycle_id);
+  if (!positionCycleId) return Object.freeze([]);
+  const codes = Array.isArray(row.actionable_issue_codes) ? row.actionable_issue_codes : [];
+  const docs = [];
+  for (const code of codes) {
+    const issueCode = upper(code);
+    const requestedAction = resolveV2RepairAction(issueCode);
+    if (!requestedAction) continue;
+    docs.push(buildRepairRequestDoc({
+      positionCycleId,
+      stage: normalizeV2RepairStage(row.stage || row.canonical_stage),
+      issueCode,
+      healthStatus: resolveV2RepairHealth(issueCode),
+      requestedAction,
+      detail: {
+        requested_by_service: "BINANCE_ACTIVE_EXIT_WATCHDOG",
+        source: "BINANCE_ACTIVE_EXIT_WATCHDOG",
+        symbol: trimOrNull(row.symbol),
+        position_side: upper(row.position_side),
+        qty_base: toNum(row.qty_base),
+        avg_price: toNum(row.avg_price),
+        expected_tp_qty_base: toNum(row.expected_tp_qty_base),
+        expected_tp1_remaining_ratio: toNum(row.expected_tp1_remaining_ratio),
+        actual_tp_qty_base: toNum(row.actual_tp_qty_base),
+        actual_tp_qty_ratio: toNum(row.actual_tp_qty_ratio),
+        tp1_order_id: trimOrNull(row.tp_order_id),
+        sl_order_id: trimOrNull(row.stop_order_id),
+        native_stop_price: toNum(row.actual_stop_price),
+        final_effective_stop: toNum(row.final_effective_stop),
+        chosen_stop_price: toNum(row.chosen_stop_price),
+        chosen_stop_source: upper(row.chosen_stop_source),
+        native_refresh_status: upper(row.native_refresh_status),
+        watchdog_issue_codes: Object.freeze(codes.map(upper).filter(Boolean)),
+      },
+    }));
+  }
+  return Object.freeze(docs);
+}
+
+async function persistWatchdogV2RepairRequests({
+  row = {},
+  env = process.env,
+  db = null,
+} = {}) {
+  const docs = buildWatchdogV2RepairRequests(row);
+  const writes = [];
+  for (const doc of docs) {
+    writes.push(await putV2Doc({
+      db,
+      env,
+      collectionKey: "REPAIR_REQUESTS",
+      doc,
+      merge: true,
+    }));
+  }
+  return Object.freeze({
+    ok: true,
+    requested_n: docs.length,
+    persisted_n: writes.length,
+    repair_request_ids: Object.freeze(docs.map((doc) => doc.exit_repair_request_id)),
+  });
 }
 
 async function loadWatchdogSnapshot({
@@ -627,6 +720,10 @@ async function runBinanceActiveExitWatchdog({
   maxRepairCount = 10,
   loadSnapshot = loadWatchdogSnapshot,
   healPosition = healBinanceLivePosition,
+  persistV2RepairRequests = persistWatchdogV2RepairRequests,
+  recordLegacyRepairRequest = recordExitRepairRequest,
+  env = process.env,
+  db = null,
 } = {}) {
   const snapshot = await loadSnapshot({ exchange });
   if (!snapshot || snapshot.ok !== true) {
@@ -660,7 +757,7 @@ async function runBinanceActiveExitWatchdog({
       const runId = `RUN__ACTIVE_EXIT_WATCHDOG__${exchange}__${row.symbol}__${Date.now()}`;
       let repaired;
       if (!allowMutation) {
-        repaired = await recordExitRepairRequest({
+        repaired = await recordLegacyRepairRequest({
           exchange,
           symbol: row.symbol,
           source: "BINANCE_ACTIVE_EXIT_WATCHDOG",
@@ -681,6 +778,25 @@ async function runBinanceActiveExitWatchdog({
           skipped: false,
           error: error && error.message ? error.message : String(error),
         }));
+        if (repaired && repaired.skipped === true && typeof persistV2RepairRequests === "function") {
+          const v2Repair = await persistV2RepairRequests({
+            row,
+            env,
+            db,
+          }).catch((error) => ({
+            ok: false,
+            error: error && error.message ? error.message : String(error),
+          }));
+          repaired = {
+            ...repaired,
+            v2_repair_request_ok: v2Repair && v2Repair.ok === true,
+            v2_repair_request_n: v2Repair && Number(v2Repair.persisted_n) || 0,
+            v2_repair_request_ids: v2Repair && Array.isArray(v2Repair.repair_request_ids)
+              ? v2Repair.repair_request_ids
+              : [],
+            v2_repair_request_error: v2Repair && v2Repair.error ? v2Repair.error : null,
+          };
+        }
       } else {
         repaired = await healPosition({
           exchange,
@@ -700,6 +816,12 @@ async function runBinanceActiveExitWatchdog({
         repair_skipped: repaired && repaired.skipped === true,
         repair_reason: repaired && repaired.reason ? repaired.reason : null,
         repair_error: repaired && repaired.error ? repaired.error : null,
+        v2_repair_request_ok: repaired && repaired.v2_repair_request_ok === true,
+        v2_repair_request_n: repaired && Number(repaired.v2_repair_request_n) || 0,
+        v2_repair_request_ids: repaired && Array.isArray(repaired.v2_repair_request_ids)
+          ? repaired.v2_repair_request_ids
+          : [],
+        v2_repair_request_error: repaired && repaired.v2_repair_request_error ? repaired.v2_repair_request_error : null,
       });
     }
   }
@@ -730,6 +852,10 @@ module.exports = {
     shouldRepairIssue,
     shouldAllowWatchdogMutation,
     resolveReadOnlyWatchdogRepairReason,
+    resolveV2RepairAction,
+    normalizeV2RepairStage,
+    buildWatchdogV2RepairRequests,
+    persistWatchdogV2RepairRequests,
     groupOrdersBySymbol,
     resolveBinanceKeys,
     loadWatchdogSnapshot,

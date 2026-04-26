@@ -6,6 +6,7 @@ const { upsertSelfHealFailureObservation } = require("../storage/positionRuntime
 const { sendAlert } = require("../utils/alerts");
 const { getPositionReadView, listExchangePositionReadViews } = require("./positionReadModel");
 const { repairLiveTrailingStageForSymbol } = require("./liveTrailingStageRepair");
+const { fetchBinanceFuturesAccount } = require("../exchanges/binanceFuturesPrivate");
 const {
   syncFuturesPositionOnly,
   runDistributedFuturesPositionSync,
@@ -17,6 +18,71 @@ const {
 
 function normalizeSymbol(symbol) {
   return String(symbol || "").trim().toUpperCase() || null;
+}
+
+function extractExternalActiveSymbolsFromAccount(account = {}) {
+  const rows = Array.isArray(account && account.positions) ? account.positions : [];
+  return rows
+    .filter((row) => {
+      const qty = Number(row && row.positionAmt);
+      return Number.isFinite(qty) && qty !== 0;
+    })
+    .map((row) => normalizeSymbol(row && row.symbol))
+    .filter(Boolean);
+}
+
+function buildSelfHealTargetSymbols({
+  explicitSymbols = [],
+  internalRows = [],
+  externalSymbols = [],
+  maxPositions = 20,
+} = {}) {
+  const limit = Math.max(1, Number(maxPositions) || 20);
+  const explicit = Array.isArray(explicitSymbols)
+    ? explicitSymbols.map((row) => normalizeSymbol(row)).filter(Boolean)
+    : [];
+  if (explicit.length) return Array.from(new Set(explicit)).slice(0, limit);
+
+  const internal = Array.isArray(internalRows)
+    ? internalRows
+      .filter((row) => isActivePaperPosition(row))
+      .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
+      .map((row) => normalizeSymbol(row.symbol_or_pair_id || row.symbol))
+      .filter(Boolean)
+    : [];
+  const external = Array.isArray(externalSymbols)
+    ? externalSymbols.map((row) => normalizeSymbol(row)).filter(Boolean)
+    : [];
+
+  // External-active symbols are first-class recovery targets.  This covers the
+  // failure mode where Binance has a live position but the internal read model
+  // is temporarily FLAT, so an internal-active-only scan would never heal it.
+  return Array.from(new Set([...external, ...internal])).slice(0, limit);
+}
+
+async function listExternalActiveBinanceSymbols({ exchange = "BINANCEFUT" } = {}) {
+  if (String(exchange || "").toUpperCase() !== "BINANCEFUT") return [];
+  const liveCfg = await resolveLiveFuturesConfig({ exchange }).catch(() => null);
+  if (!liveCfg || !liveCfg.apiKey || !liveCfg.apiSecret) return [];
+  const account = await fetchBinanceFuturesAccount({
+    apiKey: liveCfg.apiKey,
+    apiSecret: liveCfg.apiSecret,
+  });
+  return extractExternalActiveSymbolsFromAccount(account || {});
+}
+
+function buildExternalActiveScanFailureSummary({
+  exchange = "BINANCEFUT",
+  error = null,
+  atMs = Date.now(),
+} = {}) {
+  return Object.freeze({
+    ok: false,
+    reason: "EXTERNAL_ACTIVE_SCAN_FAILED",
+    exchange: String(exchange || "BINANCEFUT").toUpperCase(),
+    error: error && error.message ? error.message : String(error || "UNKNOWN"),
+    at_ms: Number.isFinite(Number(atMs)) ? Number(atMs) : Date.now(),
+  });
 }
 
 function isActivePaperPosition(pos = {}) {
@@ -88,7 +154,7 @@ async function sendSelfHealFailureAlert({
   if (!sym) return { ok: false, skipped: true, reason: "SYMBOL_REQUIRED" };
   return sendAlert({
     channel,
-    title: `${sym} self-heal 경고`,
+    title: `[V2 Self-Heal] ${sym} self-heal 경고`,
     body: [
       `exchange: ${String(exchange || "BINANCEFUT").toUpperCase()}`,
       `reason: ${String(reason || "UNKNOWN").trim().toUpperCase() || "UNKNOWN"}`,
@@ -319,18 +385,58 @@ async function runBinanceLiveStateSelfHeal({
     ? symbols.map((row) => normalizeSymbol(row)).filter(Boolean)
     : [];
   let targets = explicitSymbols;
+  let externalActiveScan = Object.freeze({
+    ok: true,
+    reason: "EXTERNAL_ACTIVE_SCAN_NOT_REQUIRED",
+    exchange: String(exchange || "BINANCEFUT").toUpperCase(),
+  });
 
   if (!targets.length) {
     const rows = await listExchangePositionReadViews({
       exchange,
       limit: Math.max(50, Number(maxPositions) * 4 || 80),
     }).catch(() => []);
-    targets = rows
-      .filter((row) => isActivePaperPosition(row))
-      .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")))
-      .map((row) => normalizeSymbol(row.symbol_or_pair_id))
-      .filter(Boolean)
-      .slice(0, Math.max(1, Number(maxPositions) || 20));
+    let externalSymbols = [];
+    externalActiveScan = Object.freeze({
+      ok: true,
+      reason: "EXTERNAL_ACTIVE_SCAN_PASS",
+      exchange: String(exchange || "BINANCEFUT").toUpperCase(),
+    });
+    try {
+      externalSymbols = await listExternalActiveBinanceSymbols({ exchange });
+    } catch (error) {
+      externalActiveScan = buildExternalActiveScanFailureSummary({ exchange, error });
+      await upsertSelfHealFailureObservation({
+        exchange,
+        symbol: "EXTERNAL_ACTIVE_SCAN",
+        reason: externalActiveScan.reason,
+        error: externalActiveScan.error,
+        atMs: externalActiveScan.at_ms,
+      }).catch(() => {});
+      await sendSelfHealFailureAlert({
+        exchange,
+        symbol: "EXTERNAL_ACTIVE_SCAN",
+        reason: externalActiveScan.reason,
+        error: externalActiveScan.error,
+      }).catch(() => {});
+    }
+    targets = buildSelfHealTargetSymbols({
+      internalRows: rows,
+      externalSymbols,
+      maxPositions,
+    });
+    if (externalActiveScan.ok === false && targets.length === 0) {
+      return {
+        ok: false,
+        reason: "BINANCE_LIVE_STATE_SELF_HEAL_EXTERNAL_SCAN_FAILED",
+        exchange: String(exchange || "").toUpperCase(),
+        scanned: 0,
+        healed_n: 0,
+        skipped_n: 0,
+        external_active_scan: externalActiveScan,
+        results: [],
+      };
+    }
   }
 
   const results = [];
@@ -353,11 +459,15 @@ async function runBinanceLiveStateSelfHeal({
   }
 
   return {
-    ok: true,
+    ok: externalActiveScan.ok !== false,
+    reason: externalActiveScan.ok === false
+      ? "BINANCE_LIVE_STATE_SELF_HEAL_EXTERNAL_SCAN_FAILED"
+      : "BINANCE_LIVE_STATE_SELF_HEAL_PASS",
     exchange: String(exchange || "").toUpperCase(),
     scanned: targets.length,
     healed_n: results.filter((row) => row && row.repaired === true).length,
     skipped_n: results.filter((row) => row && row.skipped === true).length,
+    external_active_scan: externalActiveScan,
     results,
   };
 }
@@ -370,5 +480,9 @@ module.exports = {
     shouldRepairBinanceLivePosition,
     shouldForceImmediateSelfHealNativeProtection,
     buildSelfHealFailureMetaPatch,
+    buildExternalActiveScanFailureSummary,
+    extractExternalActiveSymbolsFromAccount,
+    buildSelfHealTargetSymbols,
+    listExternalActiveBinanceSymbols,
   },
 };

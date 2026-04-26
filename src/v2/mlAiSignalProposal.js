@@ -12,6 +12,7 @@ function buildMlAiSignalProposal({
   signalIntent,
   featureSnapshot,
   strategyFilterResult,
+  signalCriteria = null,
   decisionMode,
   proposalVerdict,
   qualityScore = null,
@@ -49,6 +50,29 @@ function buildMlAiSignalProposal({
     riskBand,
     strategyFilterName: filter.filter_name,
     strategyFilterVerdict: filter.verdict,
+    setupType: signalCriteria && signalCriteria.setup_gate ? signalCriteria.setup_gate.setup_type : null,
+    entryGrade: signalCriteria ? signalCriteria.entry_grade : null,
+    triggerType: signalCriteria ? signalCriteria.trigger_type : null,
+    signalCriteriaProfile: signalCriteria ? signalCriteria.criteria_profile : null,
+    signalScore: signalCriteria ? signalCriteria.signal_score : null,
+    expectedNetRAfterCost: signalCriteria && signalCriteria.expected_edge_gate
+      ? signalCriteria.expected_edge_gate.expected_net_r_after_cost
+      : null,
+    structuralRegime: signalCriteria && signalCriteria.regime_profile
+      ? signalCriteria.regime_profile.structural_regime
+      : null,
+    regimeCohort: signalCriteria && signalCriteria.regime_profile
+      ? signalCriteria.regime_profile.regime_cohort
+      : null,
+    edgeCohort: signalCriteria && signalCriteria.expected_edge_model
+      ? signalCriteria.expected_edge_model.edge_cohort
+      : null,
+    tp1ReachProbability: signalCriteria && signalCriteria.expected_edge_model
+      ? signalCriteria.expected_edge_model.tp1_reach_probability
+      : null,
+    stopHitProbability: signalCriteria && signalCriteria.expected_edge_model
+      ? signalCriteria.expected_edge_model.stop_hit_probability
+      : null,
     rationaleSummary,
     createdAt,
   }));

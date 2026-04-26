@@ -6,6 +6,10 @@ const {
   finalizeTp1RepairPlacement,
   finalizeFullProtectionRepairPlacement,
 } = require("./protectionWriter");
+const {
+  buildFirestoreProtectionWriterLeaseRegistry,
+  shouldUseFirestoreProtectionWriterLease,
+} = require("./protectionWriterLeaseRegistry");
 
 const activeProtectionWriterLeaseSlots = new Set();
 
@@ -122,18 +126,20 @@ function buildProtectionWriterLeaseConcurrencyKey(validated) {
   const row = validated && typeof validated === "object" ? validated : {};
   const lease = row.writerLease && typeof row.writerLease === "object" ? row.writerLease : null;
   const cycleId = trimOrNull(lease && lease.position_cycle_id);
-  const commandType = upper(lease && lease.command_type);
-  if (!cycleId || !commandType) throw new Error("PROTECTION_WRITER_LEASE_CONCURRENCY_KEY_INVALID");
-  return `${cycleId}:${commandType}`;
+  if (!cycleId) throw new Error("PROTECTION_WRITER_LEASE_CONCURRENCY_KEY_INVALID");
+  return cycleId;
 }
 
-function acquireProtectionWriterLeaseSlot({ registry, key }) {
+async function acquireProtectionWriterLeaseSlot({ registry, key, lease = null }) {
   if (!registry) return () => {};
   if (typeof registry.acquire === "function" && typeof registry.release === "function") {
-    if (registry.acquire(key) !== true) {
+    const acquired = await registry.acquire(key, { lease });
+    const ok = acquired === true || (acquired && acquired.acquired === true);
+    if (ok !== true) {
       throw new Error("PROTECTION_WRITER_LEASE_CONCURRENT_WRITE");
     }
-    return () => registry.release(key);
+    const token = acquired && typeof acquired === "object" ? acquired.token : null;
+    return async () => registry.release(key, { lease, token });
   }
   if (typeof registry.has !== "function" || typeof registry.add !== "function" || typeof registry.delete !== "function") {
     throw new Error("PROTECTION_WRITER_LEASE_REGISTRY_INVALID");
@@ -141,6 +147,14 @@ function acquireProtectionWriterLeaseSlot({ registry, key }) {
   if (registry.has(key)) throw new Error("PROTECTION_WRITER_LEASE_CONCURRENT_WRITE");
   registry.add(key);
   return () => registry.delete(key);
+}
+
+function resolveProtectionWriterLeaseRegistry({ writerLeaseRegistry = null, db = null, env = process.env } = {}) {
+  if (writerLeaseRegistry) return writerLeaseRegistry;
+  if (shouldUseFirestoreProtectionWriterLease({ db, env })) {
+    return buildFirestoreProtectionWriterLeaseRegistry({ db, env });
+  }
+  return activeProtectionWriterLeaseSlots;
 }
 
 async function executeRefreshNativeStopRepair({
@@ -316,8 +330,13 @@ function buildDelegatedRepairExecutor({
   env = process.env,
   db = null,
   recordedAt = null,
-  writerLeaseRegistry = activeProtectionWriterLeaseSlots,
+  writerLeaseRegistry = null,
 } = {}) {
+  const resolvedWriterLeaseRegistry = resolveProtectionWriterLeaseRegistry({
+    writerLeaseRegistry,
+    db,
+    env,
+  });
   return async function executeDelegatedRepair({ delegatedRepair } = {}) {
     const validated = validateDelegatedRepair(delegatedRepair);
     const commandType = upper(validated.delegation.command && validated.delegation.command.command_type)
@@ -325,9 +344,10 @@ function buildDelegatedRepairExecutor({
       || upper(validated.delegation.action_required);
     let releaseSlot = null;
     try {
-      releaseSlot = acquireProtectionWriterLeaseSlot({
-        registry: writerLeaseRegistry,
+      releaseSlot = await acquireProtectionWriterLeaseSlot({
+        registry: resolvedWriterLeaseRegistry,
         key: buildProtectionWriterLeaseConcurrencyKey(validated),
+        lease: validated.writerLease,
       });
     } catch (error) {
       return buildFailedProtectionWriteResult({
@@ -379,7 +399,16 @@ function buildDelegatedRepairExecutor({
         recordedAt,
       });
     } finally {
-      if (typeof releaseSlot === "function") releaseSlot();
+      if (typeof releaseSlot === "function") {
+        try {
+          await releaseSlot();
+        } catch (error) {
+          console.warn(
+            "[V2_PROTECTION_WRITER_LEASE_RELEASE_FAILED]",
+            error && error.message ? error.message : error
+          );
+        }
+      }
     }
   };
 }
@@ -394,6 +423,7 @@ module.exports = {
     stableCode,
     buildProtectionWriterLeaseConcurrencyKey,
     acquireProtectionWriterLeaseSlot,
+    resolveProtectionWriterLeaseRegistry,
     executeRefreshNativeStopRepair,
     executePlaceOrReplaceTp1Repair,
     executePlaceOrReplaceFullProtectionRepair,

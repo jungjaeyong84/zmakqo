@@ -8,6 +8,7 @@ const {
   normalizeStrategyId,
   resolveCurrentVersionPineSource,
   syncCurrentVersionPineAlias,
+  syncCurrentVersionPineAliases,
 } = require("../../scripts/lib/current-version-pine");
 const automationSyncCurrentVersionPine = require("../../scripts/automation-sync-current-version-pine");
 const { buildPineOpenContext } = require("../../scripts/lib/pine-file-ops");
@@ -22,6 +23,7 @@ function run() {
 
   const sourcePath = path.join(codeDir, "donbeolja_v6.1.1.0_TV_IMPORT_FINAL.pine.txt");
   const latestPath = path.join(codeDir, "donbeolja_latest_generated.pine.txt");
+  const genericPath = path.join(codeDir, "donbeolja.pine.txt");
   fs.writeFileSync(sourcePath, "// current tv import\n", "utf8");
 
   const resolved = resolveCurrentVersionPineSource({
@@ -62,6 +64,22 @@ function run() {
   assert.strictEqual(sync.synced, true);
   assert.strictEqual(automationSyncCurrentVersionPine.__test.shouldOpenSyncedPine(sync), true);
   assert.strictEqual(fs.readFileSync(latestPath, "utf8"), "// changed tv import\n");
+
+  let multiSync = syncCurrentVersionPineAliases({
+    sourceFilePath: resolved.source_file_path,
+    aliasFilePaths: [latestPath, genericPath],
+  });
+  assert.strictEqual(multiSync.ok, true);
+  assert.strictEqual(multiSync.synced, true);
+  assert.strictEqual(fs.readFileSync(genericPath, "utf8"), "// changed tv import\n");
+  assert.strictEqual(multiSync.aliases.length, 2);
+
+  multiSync = syncCurrentVersionPineAliases({
+    sourceFilePath: resolved.source_file_path,
+    aliasFilePaths: [latestPath, genericPath],
+  });
+  assert.strictEqual(multiSync.ok, true);
+  assert.strictEqual(multiSync.synced, false);
 
   console.log("CURRENT_VERSION_PINE_SYNC_TEST_OK");
 }

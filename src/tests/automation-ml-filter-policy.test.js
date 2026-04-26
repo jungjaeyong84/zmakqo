@@ -110,8 +110,8 @@ function run() {
   assert.strictEqual(bestFebtGuarded.AI.action, "HOLD");
   assert.strictEqual(bestFebtGuarded.MARKET.action, "HOLD");
   assert.strictEqual(bestFebtGuarded.EV.action, "HOLD");
-  assert.strictEqual(__test.bestFebtGuardReason({ tightening_allowed: false }), "BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.");
-  assert.strictEqual(__test.bestFebtGuardReason({ market: "DOGEUSDT", tightening_allowed: false }), "[DOGEUSDT] BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.");
+  assert.strictEqual(__test.bestFebtGuardReason({ tightening_allowed: false }), "V2 Discovery 계약의 체결 기회 보존 기준(count_ratio_global < 1.00)에서는 강화 자동 권고를 차단합니다.");
+  assert.strictEqual(__test.bestFebtGuardReason({ market: "DOGEUSDT", tightening_allowed: false }), "[DOGEUSDT] V2 Discovery 계약의 체결 기회 보존 기준(count_ratio_global < 1.00)에서는 강화 자동 권고를 차단합니다.");
   assert.strictEqual(__test.isAiHardeningRecommendation("ALLOW", 0.5, { action: "REVIEW_UPDATE", next: "REDUCE" }), true);
   assert.strictEqual(__test.isEvHardeningRecommendation({
     ev_gate_tp1_prob_min: 0.55,
@@ -125,6 +125,52 @@ function run() {
       ev_gate_qty_scale_mid: 0.65,
     },
   }), true);
+
+  const telegramPayload = __test.buildV2MlFilterTelegramSummary({
+    provider: "BINANCEFUT",
+    examples: Array.from({ length: 10 }, () => ({})),
+    executedExamples: Array.from({ length: 2 }, () => ({})),
+    dropExamples: Array.from({ length: 8 }, () => ({})),
+    split: { mode: "HOLDOUT", eval: Array.from({ length: 3 }, () => ({})) },
+    trainingRows: Array.from({ length: 7 }, () => ({})),
+    metrics: { ok: true, accuracy: 0.66, brier: 0.23, logloss: 0.65 },
+    selfValidation: { ok: false, result: "WARN", checks: ["holdout validation available"] },
+    sharedObjective: {
+      objectiveConfig: { min_monthly_net_krw: 1500000 },
+      currentObjective: { verdict: "FAIL", monthly_run_rate_krw: -1234 },
+    },
+    bestFebtContract: { mode: "NORMAL", projected_replacement_ratio: null, projected_count_ratio_global: 1 },
+    latePenalty: {
+      late_1_plus: { labelRate: 0.52 },
+      on_time: { labelRate: 0.39 },
+      penalty_1_plus: 0.13,
+    },
+    recommendations: {
+      QUALITY: [{ action: "REVIEW_TIGHTEN", key: "gate_core_score_abs", current: 35, next: 37, reason: "CORE score above boundary underperformed" }],
+      AI: { action: "KEEP", reason: "current evidence weak" },
+      MARKET: { action: "KEEP", reason: "current evidence weak" },
+      EV: { action: "KEEP", reason: "formal live gate blocks loosening" },
+    },
+    mdPath: "/tmp/report.md",
+    jsonPath: "/tmp/report.json",
+  });
+  const telegramText = JSON.stringify(telegramPayload);
+  assert.strictEqual(telegramPayload.title, "[V2 OpenClaw 학습 점검] BINANCEFUT");
+  assert(telegramText.includes("V2 OpenClaw 학습 상태"));
+  assert(telegramText.includes("V2 Discovery 계약"));
+  assert(telegramText.includes("V2 신호 기준/서버 정본"));
+  for (const legacyTerm of [
+    "학습 기반 필터 점검",
+    "BEST/FEBT",
+    "공통 목표",
+    "1차 상태/무결성",
+    "2차 진입 품질",
+    "3차 상태 기반 Soft Sizing",
+    "4차 EV/시간가치층",
+    "LONG/SHORT 확장 진입",
+  ]) {
+    assert(!telegramText.includes(legacyTerm), `legacy telegram term leaked: ${legacyTerm}`);
+  }
 
   console.log("AUTOMATION_ML_FILTER_POLICY_TEST_OK");
 }

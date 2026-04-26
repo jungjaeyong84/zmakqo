@@ -8,6 +8,7 @@ const {
   evaluateDiscoveryCanaryContract,
 } = require("./discoveryCanaryContract");
 const { evaluateV2RiskGovernor } = require("./riskGovernor");
+const { normalizeRiskGovernorSurface } = require("./riskGovernorSurface");
 
 const LIVE_CONFIRM_PHRASE = "EXECUTE_V2_LIVE_ENTRY";
 
@@ -49,6 +50,22 @@ function summarizeRuntimeConfig(cfg) {
     namespace: trimOrNull(cfg.namespace),
     collection_prefix: trimOrNull(cfg.collectionPrefix),
   });
+}
+
+function isCriticalPostFillProtectionFailure(routeResult) {
+  const result = asObject(routeResult);
+  const sideEffect = asObject(result && result.post_fill_side_effect);
+  return !!sideEffect
+    && sideEffect.exchange_write_performed === true
+    && sideEffect.unprotected_position_possible === true;
+}
+
+function isProtectedPostFillRouteFailure(routeResult) {
+  const result = asObject(routeResult);
+  const sideEffect = asObject(result && result.post_fill_side_effect);
+  return !!sideEffect
+    && sideEffect.exchange_write_performed === true
+    && sideEffect.unprotected_position_possible !== true;
 }
 
 function extractBundle({ body = null, bundle = null } = {}) {
@@ -220,6 +237,7 @@ async function runV2ProductionEntryLiveEndpoint({
   }
 
   let riskGovernorSummary = null;
+  let riskGovernorSurface = null;
   const riskGovernorInput = extractRiskGovernorInput({ body, bundle: resolvedBundle });
   if (riskGovernorInput || parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, true)) {
     riskGovernorSummary = evaluateV2RiskGovernor({
@@ -228,16 +246,20 @@ async function runV2ProductionEntryLiveEndpoint({
       positions: riskGovernorInput && riskGovernorInput.positions,
       candidate: (riskGovernorInput && riskGovernorInput.candidate) || {
         symbol: transportResolution && transportResolution.symbol,
-        notional_quote: (transportResolution && Number(transportResolution.entry_qty_abs) * Number(transportResolution.reference_price || 0)) || undefined,
+        notional_quote: (transportResolution && Number(transportResolution.notional_quote))
+          || (transportResolution && Number(transportResolution.entry_qty_abs) * Number(transportResolution.reference_price || 0))
+          || undefined,
       },
       market: riskGovernorInput && riskGovernorInput.market,
     });
+    riskGovernorSurface = normalizeRiskGovernorSurface(riskGovernorSummary);
     if (!riskGovernorSummary.ok) {
       return buildBlock("V2_RISK_GOVERNOR_BLOCKED", {
         ...base,
         transport_resolution: summarizeTransportResolution(transportResolution),
         discovery_canary_contract: discoveryContract,
         risk_governor: riskGovernorSummary,
+        risk_governor_surface: riskGovernorSurface,
       });
     }
   }
@@ -250,18 +272,33 @@ async function runV2ProductionEntryLiveEndpoint({
     worldState: resolvedWorldState,
     entryTransport: resolvedEntryTransport,
     protectionTransports: resolvedProtectionTransports,
+    riskGovernorSurface,
     now: () => startedAt,
   });
 
-  if (!routeResult || routeResult.ok !== true) {
-    return buildBlock("V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED", {
+  const criticalPostFillFailure = isCriticalPostFillProtectionFailure(routeResult);
+  const protectedPostFillRouteFailure = !criticalPostFillFailure
+    && (!routeResult || routeResult.ok !== true)
+    && isProtectedPostFillRouteFailure(routeResult);
+  if (!routeResult || routeResult.ok !== true || criticalPostFillFailure) {
+    return buildBlock(
+      criticalPostFillFailure
+        ? "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL"
+        : protectedPostFillRouteFailure
+          ? "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED"
+        : "V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED",
+      {
       ...base,
+      critical_post_fill_failure: criticalPostFillFailure,
+      protected_post_fill_route_failure: protectedPostFillRouteFailure,
       route_called: true,
       route_result: routeResult || null,
       transport_resolution: summarizeTransportResolution(transportResolution),
       discovery_canary_contract: discoveryContract,
       risk_governor: riskGovernorSummary,
-    });
+      risk_governor_surface: riskGovernorSurface,
+      },
+    );
   }
 
   return Object.freeze({
@@ -273,6 +310,7 @@ async function runV2ProductionEntryLiveEndpoint({
     transport_resolution: summarizeTransportResolution(transportResolution),
     discovery_canary_contract: discoveryContract,
     risk_governor: riskGovernorSummary,
+    risk_governor_surface: riskGovernorSurface,
   });
 }
 
@@ -286,6 +324,8 @@ function summarizeTransportResolution(transportResolution = null) {
     symbol: upper(row.symbol),
     side: upper(row.side),
     entry_qty_abs: Number.isFinite(Number(row.entry_qty_abs)) ? Number(row.entry_qty_abs) : null,
+    reference_price: Number.isFinite(Number(row.reference_price)) ? Number(row.reference_price) : null,
+    notional_quote: Number.isFinite(Number(row.notional_quote)) ? Number(row.notional_quote) : null,
     live_cfg_summary: asObject(row.live_cfg_summary) ? Object.freeze({ ...row.live_cfg_summary }) : null,
   });
 }
@@ -306,5 +346,7 @@ module.exports = {
     isDiscoveryCanaryAttempt,
     summarizeTransportResolution,
     summarizeRuntimeConfig,
+    isCriticalPostFillProtectionFailure,
+    isProtectedPostFillRouteFailure,
   },
 };

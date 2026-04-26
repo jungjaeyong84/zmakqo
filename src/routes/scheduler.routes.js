@@ -87,6 +87,36 @@ function openClaudeBridgeRemoved(res) {
   });
 }
 
+function parseBoolEnv(value, fallback = false) {
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+function isV2LegacySchedulerWriteBlocked(env = process.env) {
+  return parseBoolEnv(env.DONBEOLJA_V2_ENABLED, false) === true
+    && parseBoolEnv(env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, false) === true
+    && parseBoolEnv(env.DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES, false) !== true;
+}
+
+function legacySchedulerBlockedPayload(route) {
+  return {
+    ok: false,
+    error: "V2_LEGACY_SCHEDULER_WRITE_BLOCKED",
+    route,
+    reason: "DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED",
+    message: "V2 runtime blocks legacy scheduler write/apply routes. Use OpenClaw/V2-native jobs only.",
+  };
+}
+
+function blockV2LegacySchedulerWriteRoute(req, res, route) {
+  if (!isV2LegacySchedulerWriteBlocked(process.env)) return false;
+  res.status(409).json(legacySchedulerBlockedPayload(route));
+  return true;
+}
+
 
 async function getMarketsFromSettings() {
   const ex = await getEffectiveExchangesSettings(2000);
@@ -429,6 +459,7 @@ function createSchedulerRoutes(scheduler) {
   });
   
   router.post("/scheduler/tick", requireSchedulerAuth, async (req, res) => {
+    if (blockV2LegacySchedulerWriteRoute(req, res, "/scheduler/tick")) return;
     const exchange = String((req.body && (req.body.exchange || req.body.EXCHANGE)) || "BINANCEFUT").toUpperCase();
     const tf = String((req.body && (req.body.tf || req.body.TF)) || DEFAULT_EXEC_TF);
 
@@ -553,6 +584,7 @@ const markets = (tickResult && tickResult.markets) ? tickResult.markets : [];
 // P2: multi-market tick wrapper (compat)
   // - scheduler.tick()가 자체적으로 BINANCEFUT_MARKETS 전체를 처리하므로, tick-multi는 alias 역할만 수행
   router.post("/scheduler/tick-multi", requireSchedulerAuth, async (req, res) => {
+    if (blockV2LegacySchedulerWriteRoute(req, res, "/scheduler/tick-multi")) return;
     const exchange = String((req.body && (req.body.exchange || req.body.EXCHANGE)) || "BINANCEFUT").toUpperCase();
     const tf = String((req.body && (req.body.tf || req.body.TF)) || DEFAULT_EXEC_TF);
 
@@ -631,6 +663,7 @@ const markets = (tickResult && tickResult.markets) ? tickResult.markets : [];
       const result = runAnalyticsLocalCacheRefresh({
         trigger: force ? "scheduler_route_force" : "scheduler_route",
         force,
+        skipDependentReports: true,
       });
       if (!result.ok && !result.skipped) {
         return res.status(500).json({ ok: false, error: "ANALYTICS_LOCAL_CACHE_REFRESH_FAIL", result });
@@ -986,7 +1019,9 @@ return res.json({ ok: true, found });
       const { getFirestore } = require("../storage/firestore");
       const db = getFirestore();
 
-      const snap = await db.collection("kpi_latest").get();
+      const snap = await db.collection("kpi_latest")
+        .limit(500)
+        .get();
 
       let found = 0;
       snap.forEach(d => {
@@ -1014,6 +1049,7 @@ return res.json({ ok: true, found });
 
   router.post("/scheduler/cost-guard", requireSchedulerAuth, async (req, res) => {
     try {
+      if (blockV2LegacySchedulerWriteRoute(req, res, "/scheduler/cost-guard")) return;
       const body = (req && req.body && typeof req.body === "object") ? req.body : {};
       const query = (req && req.query && typeof req.query === "object") ? req.query : {};
       const dryRunRaw = body.dry_run ?? query.dry_run ?? body.dryRun ?? query.dryRun;
@@ -1074,6 +1110,7 @@ return res.json({ ok: true, found });
   // AI allocation: update risk budget based on news + quant weights
   router.post("/scheduler/ai-allocation", requireSchedulerAuth, async (req, res) => {
     try {
+      if (blockV2LegacySchedulerWriteRoute(req, res, "/scheduler/ai-allocation")) return;
       const dryRun = String((req.body && req.body.dry_run) || "") === "1" || String(req.query.dry_run || "") === "1";
       const force = String((req.body && req.body.force) || "") === "1" || String(req.query.force || "") === "1";
       const provider = req.body && (req.body.provider || req.body.exchange);
@@ -1114,3 +1151,8 @@ return res.json({ ok: true, found });
 }
 
 module.exports = createSchedulerRoutes;
+module.exports.__test = {
+  parseBoolEnv,
+  isV2LegacySchedulerWriteBlocked,
+  legacySchedulerBlockedPayload,
+};

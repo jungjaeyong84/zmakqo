@@ -198,8 +198,17 @@ function buildFakeDb(rows) {
   assert.ok(checker.__test.resolveOutputFile({}).endsWith("v2_production_entry_route_canary_streak_latest.json"));
   assert.strictEqual(checker.__test.resolveStreakConfig({}).lookbackHours, 24);
   assert.strictEqual(checker.__test.resolveStreakConfig({ DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_REQUIRE_FIRESTORE: "1" }).requireFirestoreSource, true);
-  assert.strictEqual(checker.__test.resolveHistorySource({}), "JSONL");
+  assert.strictEqual(checker.__test.resolveHistorySource({}), "FIRESTORE");
+  assert.strictEqual(checker.__test.resolveHistorySource({ DONBEOLJA_V2_DISABLE_CANARY_STREAK_FIRESTORE_DEFAULT: "1" }), "JSONL");
   assert.strictEqual(checker.__test.resolveHistorySource({ DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED: "1" }), "FIRESTORE");
+  assert.strictEqual(
+    checker.__test.normalizeFirestoreEnv({}, "FIRESTORE").DONBEOLJA_V2_COLLECTION_PREFIX,
+    "v2__"
+  );
+  assert.strictEqual(
+    checker.__test.normalizeFirestoreEnv({ DONBEOLJA_V2_COLLECTION_PREFIX: "custom__" }, "FIRESTORE").DONBEOLJA_V2_COLLECTION_PREFIX,
+    "custom__"
+  );
 })();
 
 async function streakCanReadFirestoreHistorySource() {

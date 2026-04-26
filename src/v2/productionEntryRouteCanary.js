@@ -6,8 +6,10 @@ const { buildV2ExecutedEntryFromIntent } = require("./entryExecutor");
 const { evaluateEntryExecutionKernelResult } = require("./entryExecutionKernel");
 const { runV2ProductionEntryRoute } = require("./productionEntryRoute");
 const { buildV2EntrySizingDecision } = require("./entrySizingDecision");
-const { buildOpenClawWorldState } = require("./openclawWorldState");
+const { buildOpenClawWorldState, persistOpenClawWorldState } = require("./openclawWorldState");
 const { issueOpenClawExecutionPermit } = require("./openclawExecutionPermit");
+const { persistOpenClawDecisionBundleLedger } = require("./openclawControlPlane");
+const { resolveV2CollectionRef } = require("./storage");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -47,6 +49,111 @@ function collectFailedChecks(routeResult) {
   }
   if (result && result.reason && result.ok !== true) failed.push(result.reason);
   return Object.freeze([...new Set(failed.map(trimOrNull).filter(Boolean))]);
+}
+
+async function persistCanaryExecutionPermitLedger({
+  db = null,
+  env = process.env,
+  executionPermit = null,
+} = {}) {
+  const permit = asObject(executionPermit);
+  const permitId = trimOrNull(permit && permit.openclaw_execution_permit_id);
+  if (!permit || !permitId) {
+    return Object.freeze({
+      ok: false,
+      reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_DOC_REQUIRED",
+      openclaw_execution_permit_id: permitId,
+    });
+  }
+  const permits = resolveV2CollectionRef({ db, env, collectionKey: "OPENCLAW_EXECUTION_PERMITS" });
+  const ref = permits.ref.doc(permitId);
+  const snap = await ref.get();
+  if (snap && snap.exists === true) {
+    const existing = snap.data ? (snap.data() || {}) : {};
+    const status = String(existing.permit_status || "").trim().toUpperCase();
+    if (status !== "ISSUED") {
+      return Object.freeze({
+        ok: false,
+        reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_ALREADY_USED",
+        openclaw_execution_permit_id: permitId,
+        permit_status: status,
+      });
+    }
+    return Object.freeze({
+      ok: true,
+      reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_ALREADY_ISSUED",
+      openclaw_execution_permit_id: permitId,
+      collectionName: permits.collectionName,
+    });
+  }
+  await ref.set(permit, { merge: false });
+  return Object.freeze({
+    ok: true,
+    reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_WRITTEN",
+    openclaw_execution_permit_id: permitId,
+    collectionName: permits.collectionName,
+  });
+}
+
+async function persistProductionEntryRouteCanaryPrerequisiteLedgers({
+  db = null,
+  env = process.env,
+  bundle = null,
+  worldState = null,
+  executionPermit = null,
+  createdAt = null,
+} = {}) {
+  const result = {
+    ok: true,
+    reason: "PRODUCTION_ENTRY_ROUTE_CANARY_PREREQUISITE_LEDGERS_WRITTEN",
+    world_state: null,
+    decision_bundle: null,
+    execution_permit: null,
+  };
+  try {
+    result.world_state = await persistOpenClawWorldState({
+      db,
+      env,
+      worldState,
+      merge: true,
+    });
+  } catch (error) {
+    result.ok = false;
+    result.reason = "PRODUCTION_ENTRY_ROUTE_CANARY_WORLD_STATE_LEDGER_WRITE_FAILED";
+    result.world_state = Object.freeze({
+      ok: false,
+      reason: trimOrNull(error && error.message) || "WORLD_STATE_LEDGER_WRITE_FAILED",
+    });
+    return Object.freeze(result);
+  }
+  try {
+    result.decision_bundle = await persistOpenClawDecisionBundleLedger({
+      db,
+      env,
+      bundle,
+      source: "V2_PRODUCTION_ENTRY_ROUTE_CANARY",
+      createdAt,
+    });
+  } catch (error) {
+    result.ok = false;
+    result.reason = "PRODUCTION_ENTRY_ROUTE_CANARY_DECISION_BUNDLE_LEDGER_WRITE_FAILED";
+    result.decision_bundle = Object.freeze({
+      ok: false,
+      reason: trimOrNull(error && error.message) || "DECISION_BUNDLE_LEDGER_WRITE_FAILED",
+    });
+    return Object.freeze(result);
+  }
+  result.execution_permit = await persistCanaryExecutionPermitLedger({
+    db,
+    env,
+    executionPermit,
+  });
+  if (!result.execution_permit || result.execution_permit.ok !== true) {
+    result.ok = false;
+    result.reason = "PRODUCTION_ENTRY_ROUTE_CANARY_EXECUTION_PERMIT_LEDGER_WRITE_FAILED";
+    return Object.freeze(result);
+  }
+  return Object.freeze(result);
 }
 
 function buildNoExchangeKernelResult({ bundle, nowIso = new Date().toISOString() } = {}) {
@@ -192,6 +299,7 @@ function buildNoExchangeKernelResult({ bundle, nowIso = new Date().toISOString()
 
 async function runV2ProductionEntryRouteCanary({
   env = process.env,
+  db = null,
   bundle = buildReferenceNativeMlEvidencePack(),
   now = () => new Date().toISOString(),
   runProductionEntryRoute = runV2ProductionEntryRoute,
@@ -235,7 +343,53 @@ async function runV2ProductionEntryRouteCanary({
     issuedAt: startedAt,
     ttlMinutes: parseBoundedPermitTtlMinutes(canaryEnv),
   });
+  const prerequisiteLedgers = await persistProductionEntryRouteCanaryPrerequisiteLedgers({
+    db,
+    env: canaryEnv,
+    bundle,
+    worldState,
+    executionPermit,
+    createdAt: startedAt,
+  });
+  if (!prerequisiteLedgers || prerequisiteLedgers.ok !== true) {
+    const checks = Object.freeze([
+      Object.freeze({
+        id: "V2_PRODUCTION_ROUTE_CANARY_PREREQUISITE_LEDGERS",
+        ok: false,
+        reason: prerequisiteLedgers && prerequisiteLedgers.reason,
+      }),
+      Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_NO_EXCHANGE_WRITE", ok: true }),
+    ]);
+    return Object.freeze({
+      ok: false,
+      reason: "V2_PRODUCTION_ENTRY_ROUTE_CANARY_BLOCKED",
+      scope: "production_entry_route_canary",
+      canary_mode: "NO_EXCHANGE_ROUTE_PROOF",
+      exchange_write_performed: false,
+      route_called: false,
+      kernel_called: false,
+      persist_called: false,
+      prerequisite_ledgers: prerequisiteLedgers || null,
+      generated_at: startedAt,
+      check_n: checks.length,
+      fail_n: 1,
+      check_ids: Object.freeze(checks.map((row) => row.id)),
+      passed_check_ids: Object.freeze(["V2_PRODUCTION_ROUTE_CANARY_NO_EXCHANGE_WRITE"]),
+      failed_check_ids: Object.freeze([
+        "V2_PRODUCTION_ROUTE_CANARY_PREREQUISITE_LEDGERS",
+        trimOrNull(prerequisiteLedgers && prerequisiteLedgers.reason),
+      ].filter(Boolean)),
+      route_result_summary: Object.freeze({
+        ok: false,
+        reason: trimOrNull(prerequisiteLedgers && prerequisiteLedgers.reason),
+        openclaw_execution_permit_id: trimOrNull(executionPermit && executionPermit.openclaw_execution_permit_id),
+        world_state_hash: trimOrNull(worldState && worldState.world_state_hash),
+      }),
+      checks,
+    });
+  }
   const routeResult = await runProductionEntryRoute({
+    db,
     env: canaryEnv,
     bundle,
     worldState,
@@ -268,6 +422,7 @@ async function runV2ProductionEntryRouteCanary({
   const permitValidation = asObject(routeResult && routeResult.executionPermitValidation);
   const ledgerResult = asObject(routeResult && routeResult.auditLedgerResult);
   const checks = Object.freeze([
+    Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_PREREQUISITE_LEDGERS", ok: prerequisiteLedgers && prerequisiteLedgers.ok === true }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_ROUTE_OK", ok: routeResult && routeResult.ok === true }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_ROUTE_REASON", ok: routeResult && routeResult.reason === "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED" }),
     Object.freeze({ id: "V2_PRODUCTION_ROUTE_CANARY_RUNTIME_NOT_DRY_RUN", ok: runtime && runtime.dry_run === false }),
@@ -291,6 +446,7 @@ async function runV2ProductionEntryRouteCanary({
     kernel_called: kernelCalled,
     persist_called: persistCalled,
     generated_at: startedAt,
+    prerequisite_ledgers: prerequisiteLedgers,
     check_n: checks.length,
     fail_n: failedChecks.length,
     check_ids: Object.freeze(checks.map((row) => row.id)),
@@ -310,6 +466,7 @@ async function runV2ProductionEntryRouteCanary({
       openclaw_execution_permit_id: trimOrNull(executionPermit && executionPermit.openclaw_execution_permit_id),
       world_state_hash: trimOrNull(worldState && worldState.world_state_hash),
       audit_ledger_reason: trimOrNull(ledgerResult && ledgerResult.reason),
+      prerequisite_ledger_reason: trimOrNull(prerequisiteLedgers && prerequisiteLedgers.reason),
       entry_sizing_decision: entrySizingDecision ? Object.freeze({
         ok: entrySizingDecision.ok === true,
         status: trimOrNull(entrySizingDecision.status),
@@ -333,5 +490,7 @@ module.exports = {
     trimOrNull,
     asObject,
     collectFailedChecks,
+    persistCanaryExecutionPermitLedger,
+    persistProductionEntryRouteCanaryPrerequisiteLedgers,
   },
 };

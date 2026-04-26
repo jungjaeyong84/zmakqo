@@ -132,6 +132,43 @@ function resolveMarketDataQualityDecisionGate(openclawDecision) {
   return Object.freeze({ ok: true, reason: null, blockers: Object.freeze([]) });
 }
 
+function resolveSignalCriteriaGate(openclawDecision) {
+  const decision = openclawDecision && typeof openclawDecision === "object" ? openclawDecision : null;
+  const summary = decision && decision.canonical_evidence_summary && typeof decision.canonical_evidence_summary === "object"
+    ? decision.canonical_evidence_summary
+    : null;
+  const sourceMode = upper((summary && summary.signal_source_mode) || (decision && decision.signal_source_mode));
+  const criteria = summary && summary.signal_criteria && typeof summary.signal_criteria === "object"
+    ? summary.signal_criteria
+    : null;
+  if (sourceMode !== "SERVER_NATIVE_ML_AI" && (!criteria || criteria.present !== true)) {
+    return Object.freeze({ ok: true, reason: null, blockers: Object.freeze([]), verdict: null });
+  }
+  if (!criteria || criteria.present !== true) {
+    return Object.freeze({
+      ok: false,
+      reason: "SIGNAL_CRITERIA_REQUIRED",
+      blockers: Object.freeze(["SIGNAL_CRITERIA:EVIDENCE_REQUIRED"]),
+      verdict: null,
+    });
+  }
+  const verdict = upper(criteria.verdict);
+  if (verdict !== "PASS") {
+    return Object.freeze({
+      ok: false,
+      reason: "SIGNAL_CRITERIA_BLOCKED",
+      blockers: Object.freeze(Array.isArray(criteria.blockers) ? criteria.blockers : []),
+      verdict,
+    });
+  }
+  return Object.freeze({
+    ok: true,
+    reason: null,
+    blockers: Object.freeze([]),
+    verdict,
+  });
+}
+
 function resolveEntryIntentFromOpenClaw({
   signalIntent,
   openclawDecision,
@@ -219,8 +256,25 @@ function resolveEntryIntentFromOpenClaw({
     });
   }
 
+  const signalCriteriaGate = resolveSignalCriteriaGate(decision);
+  if (!signalCriteriaGate.ok) {
+    return Object.freeze({
+      ok: false,
+      reason: signalCriteriaGate.reason,
+      detail: signalCriteriaGate.blockers.join(","),
+      signal_criteria_gate: signalCriteriaGate,
+      entryIntent: null,
+    });
+  }
+
   const signalIntentId = trimOrNull(intent.signal_intent_id);
   const entryIntentId = `EINTV2__${hash10(signalIntentId)}`;
+  const summary = decision.canonical_evidence_summary && typeof decision.canonical_evidence_summary === "object"
+    ? decision.canonical_evidence_summary
+    : {};
+  const criteria = summary.signal_criteria && typeof summary.signal_criteria === "object"
+    ? summary.signal_criteria
+    : {};
   return Object.freeze({
     ok: true,
     reason: null,
@@ -235,6 +289,10 @@ function resolveEntryIntentFromOpenClaw({
       policy_scope: trimOrNull(decision.policy_scope),
       openclaw_decision_id: trimOrNull(decision.openclaw_decision_id),
       ml_ai_proposal_verdict: mlAiProposalGate.proposal_verdict,
+      signal_criteria_verdict: signalCriteriaGate.verdict,
+      signal_criteria_profile: trimOrNull(criteria.criteria_profile),
+      entry_grade: upper(criteria.entry_grade),
+      trigger_type: upper(criteria.trigger_type),
     }),
   });
 }
@@ -244,5 +302,6 @@ module.exports = {
   extractMlAiProposalFromDecision,
   resolveMlAiProposalGate,
   resolveMarketDataQualityDecisionGate,
+  resolveSignalCriteriaGate,
   resolveEntryIntentFromOpenClaw,
 };

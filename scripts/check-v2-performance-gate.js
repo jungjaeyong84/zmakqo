@@ -3,7 +3,12 @@
 
 const fs = require("fs");
 const path = require("path");
-const { evaluateV2PerformanceGate, resolvePerformanceGateThresholds } = require("../src/v2/performanceGate");
+const {
+  evaluateV2PerformanceGate,
+  resolvePerformanceGateThresholds,
+  resolvePerformanceGateStage,
+  evaluateV2PerformanceStageMatrix,
+} = require("../src/v2/performanceGate");
 
 const OUTPUT_FILENAME = "v2_performance_gate_latest.json";
 
@@ -34,10 +39,17 @@ function main(env = process.env) {
   const inputFile = path.resolve(resolveInputFile(env));
   const outputFile = path.resolve(resolveOutputFile(env));
   const metrics = JSON.parse(fs.readFileSync(inputFile, "utf8"));
+  const resolvedStage = resolvePerformanceGateStage(null, env);
   const payload = {
     ...evaluateV2PerformanceGate({
       metrics,
-      thresholds: resolvePerformanceGateThresholds(env),
+      thresholds: resolvePerformanceGateThresholds(env, resolvedStage),
+      mode: trimOrNull(env.V2_PERFORMANCE_GATE_MODE) || metrics.mode || "LIVE",
+      stage: resolvedStage,
+    }),
+    stage_matrix: evaluateV2PerformanceStageMatrix({
+      metrics,
+      env,
       mode: trimOrNull(env.V2_PERFORMANCE_GATE_MODE) || metrics.mode || "LIVE",
     }),
     input_file: inputFile,

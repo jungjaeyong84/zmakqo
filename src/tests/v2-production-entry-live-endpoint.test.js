@@ -254,6 +254,8 @@ async function missingRiskGovernorBlocksBeforeRouteByDefault() {
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.reason, "V2_RISK_GOVERNOR_BLOCKED");
   assert.ok(result.risk_governor.blockers.includes("RISK_GOVERNOR:EQUITY_REQUIRED"));
+  assert.strictEqual(result.risk_governor.surface.primary_code, "ACCOUNT_REQUIRED");
+  assert.strictEqual(result.risk_governor_surface.primary_code, "ACCOUNT_REQUIRED");
   assert.deepStrictEqual(calls, []);
 }
 
@@ -287,6 +289,125 @@ async function routeFailureIsNotReclassifiedAsSuccess() {
   assert.strictEqual(result.route_result.reason, "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED");
 }
 
+async function criticalPostFillRouteFailureIsEscalated() {
+  const bundle = buildBundle();
+  const result = await runV2ProductionEntryLiveEndpoint({
+    env: buildEnv(),
+    body: {
+      confirm: LIVE_CONFIRM_PHRASE,
+      bundle,
+      entrySizingDecision: buildSizingDecision(bundle),
+      riskGovernor: buildRiskGovernorInput(),
+    },
+    buildLiveTransports: async () => ({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+      entry_intent_id: "EINTV2__POST_FILL",
+      symbol: "ETHUSDT",
+      side: "LONG",
+      entry_qty_abs: 0.4,
+      entryTransport: { submitEntryOrder: async () => ({}) },
+      protectionTransports: {
+        placeInitialSl: async () => ({}),
+        placeInitialTp1: async () => ({}),
+      },
+    }),
+    runProductionEntryRoute: async () => ({
+      ok: false,
+      reason: "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED",
+      post_fill_side_effect: {
+        exchange_write_performed: true,
+        entry_order_id: "ORDER__ETH__POST_FILL",
+        unprotected_position_possible: true,
+        severity: "CRITICAL",
+      },
+    }),
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL");
+  assert.strictEqual(result.critical_post_fill_failure, true);
+  assert.strictEqual(result.route_result.post_fill_side_effect.entry_order_id, "ORDER__ETH__POST_FILL");
+}
+
+async function protectedPostFillRouteFailureIsNotReportedAsPlainDrop() {
+  const bundle = buildBundle();
+  const result = await runV2ProductionEntryLiveEndpoint({
+    env: buildEnv(),
+    body: {
+      confirm: LIVE_CONFIRM_PHRASE,
+      bundle,
+      entrySizingDecision: buildSizingDecision(bundle),
+      riskGovernor: buildRiskGovernorInput(),
+    },
+    buildLiveTransports: async () => ({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+      entry_intent_id: "EINTV2__POST_FILL_PROTECTED",
+      symbol: "ETHUSDT",
+      side: "LONG",
+      entry_qty_abs: 0.4,
+      entryTransport: { submitEntryOrder: async () => ({}) },
+      protectionTransports: {
+        placeInitialSl: async () => ({}),
+        placeInitialTp1: async () => ({}),
+      },
+    }),
+    runProductionEntryRoute: async () => ({
+      ok: false,
+      reason: "V2_PRODUCTION_ENTRY_AUDIT_LEDGER_FAILED",
+      post_fill_side_effect: {
+        exchange_write_performed: true,
+        entry_order_id: "ORDER__ETH__PROTECTED",
+        unprotected_position_possible: false,
+        protection_ok: true,
+        severity: "INFO",
+      },
+    }),
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED");
+  assert.strictEqual(result.critical_post_fill_failure, false);
+  assert.strictEqual(result.protected_post_fill_route_failure, true);
+}
+
+async function criticalPostFillRouteSuccessIsNotAllowed() {
+  const bundle = buildBundle();
+  const result = await runV2ProductionEntryLiveEndpoint({
+    env: buildEnv(),
+    body: {
+      confirm: LIVE_CONFIRM_PHRASE,
+      bundle,
+      entrySizingDecision: buildSizingDecision(bundle),
+      riskGovernor: buildRiskGovernorInput(),
+    },
+    buildLiveTransports: async () => ({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY",
+      symbol: "ETHUSDT",
+      side: "LONG",
+      entry_qty_abs: 0.4,
+      entryTransport: { submitEntryOrder: async () => ({}) },
+      protectionTransports: {
+        placeInitialSl: async () => ({}),
+        placeInitialTp1: async () => ({}),
+      },
+    }),
+    runProductionEntryRoute: async () => ({
+      ok: true,
+      reason: "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED",
+      post_fill_side_effect: {
+        exchange_write_performed: true,
+        entry_order_id: "ORDER__ETH__INCONSISTENT",
+        unprotected_position_possible: true,
+        severity: "CRITICAL",
+      },
+    }),
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL");
+  assert.strictEqual(result.critical_post_fill_failure, true);
+}
+
 async function transportFailureBlocksBeforeRoute() {
   const calls = [];
   const result = await runV2ProductionEntryLiveEndpoint({
@@ -317,7 +438,7 @@ async function discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath() {
     decisionMode: "CANARY",
   });
   const sizingDecision = buildSizingDecision(bundle, {
-    requestedNotionalQuote: 12,
+    requestedNotionalQuote: 20,
     maxNotionalQuote: 20,
     maxSizeRatio: 1,
   });
@@ -327,8 +448,9 @@ async function discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath() {
       DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "20",
-      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
-      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "ETHUSDT:20",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "5",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
       DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "5",
     }),
     body: {
@@ -341,7 +463,7 @@ async function discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath() {
         daily_loss_quote: 0,
       },
       riskGovernor: buildRiskGovernorInput({
-        candidate: { symbol: "ETHUSDT", notional_quote: 12 },
+        candidate: { symbol: "ETHUSDT", notional_quote: 20 },
       }),
     },
     buildLiveTransports: async () => ({
@@ -385,6 +507,7 @@ async function discoveryCanaryBlocksUnsafeContractBeforeRoute() {
       DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "20",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "ETHUSDT:20",
     }),
     body: {
       confirm: DISCOVERY_CONFIRM_PHRASE,
@@ -427,6 +550,9 @@ async function main() {
   await liveEndpointDelegatesOnlyToProductionRoute();
   await missingRiskGovernorBlocksBeforeRouteByDefault();
   await routeFailureIsNotReclassifiedAsSuccess();
+  await criticalPostFillRouteFailureIsEscalated();
+  await protectedPostFillRouteFailureIsNotReportedAsPlainDrop();
+  await criticalPostFillRouteSuccessIsNotAllowed();
   await transportFailureBlocksBeforeRoute();
   await discoveryCanaryAllowsOnlyBoundedCanaryLiveWritePath();
   await discoveryCanaryBlocksUnsafeContractBeforeRoute();

@@ -85,6 +85,12 @@ function boolSetting(raw, fallback = true) {
   return !["0", "false", "off", "no"].includes(text);
 }
 
+function resolveBoundedInt(value, fallback, { min = 1, max = 1000 } = {}) {
+  const n = Math.trunc(Number(value));
+  const base = Number.isFinite(n) && n > 0 ? n : fallback;
+  return Math.max(min, Math.min(max, Math.trunc(Number(base) || fallback || min)));
+}
+
 function buildServingBindingSnapshot({ aiGuard = null } = {}) {
   const guard = aiGuard && typeof aiGuard === "object" ? aiGuard : {};
   return {
@@ -134,12 +140,22 @@ function buildShadowPromotionAction({
 function parseMarkets(value, fallbackExchange = null) {
   const raw = Array.isArray(value)
     ? value
-    : String(value || "").split(",");
+    : String(value || "").split(/[,\|]/);
   const rows = raw
     .map((row) => upper(row))
     .filter(Boolean);
   if (rows.length) return rows;
   return defaultMarketsFromEnv(fallbackExchange || "BINANCEFUT");
+}
+
+function resolveMlOpsPipelineMarkets(markets = null, fallbackExchange = null) {
+  const explicit = parseMarkets(markets, fallbackExchange);
+  if (markets != null && explicit.length) return explicit;
+  const envMarkets = parseMarkets(
+    process.env.ML_OPS_PIPELINE_MARKETS || process.env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || "",
+    fallbackExchange
+  );
+  return envMarkets.length ? envMarkets : explicit;
 }
 
 function renderFeatureLabelDatasetMarkdown(payload = {}) {
@@ -190,7 +206,14 @@ async function runFeatureLabelDatasetJob({
   const exchangeUpper = upper(exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER) || "BINANCEFUT";
   const marketList = parseMarkets(markets, exchangeUpper);
   const tfValue = String(tf || defaultExecTfFromEnv() || "15m").trim() || "15m";
-  const limitValue = Math.max(100, Number(limitN || process.env.FEATURE_LABEL_DATASET_LIMIT_N || 2000));
+  const featureMaxLimit = resolveBoundedInt(process.env.FEATURE_LABEL_DATASET_MAX_LIMIT_N, 1000, {
+    min: 100,
+    max: 5000,
+  });
+  const limitValue = resolveBoundedInt(limitN || process.env.FEATURE_LABEL_DATASET_LIMIT_N, 500, {
+    min: 20,
+    max: featureMaxLimit,
+  });
   const windowDaysValue = Math.max(1, Number(windowDays || process.env.FEATURE_LABEL_DATASET_WINDOW_DAYS || 14));
   const minIntervalMs = Math.max(5 * 60 * 1000, Number(process.env.FEATURE_LABEL_DATASET_MIN_INTERVAL_MS || (6 * 60 * 60 * 1000)));
   const latestJson = path.join(OPS_DAILY_DIR, "feature_label_dataset_latest.json");
@@ -260,12 +283,16 @@ async function runFeatureLabelDatasetJob({
 async function fetchRecentShadowEvaluations({
   exchange = null,
   fromMs = null,
-  limit = Math.max(100, Number(process.env.SHADOW_EVAL_SUMMARY_LIMIT || 2000)),
+  limit = null,
 } = {}) {
   const db = getFirestore();
+  const limitValue = resolveBoundedInt(limit || process.env.SHADOW_EVAL_SUMMARY_LIMIT, 500, {
+    min: 20,
+    max: resolveBoundedInt(process.env.SHADOW_EVAL_SUMMARY_MAX_LIMIT, 1000, { min: 100, max: 5000 }),
+  });
   const snap = await db.collection("shadow_evaluations")
     .orderBy("created_at", "desc")
-    .limit(Math.max(1, Math.trunc(Number(limit) || 2000)))
+    .limit(limitValue)
     .get();
   const ex = upper(exchange);
   return snap.docs
@@ -489,7 +516,10 @@ async function runShadowEvaluationSummaryJob({
   const nowMeta = nowKstMeta();
   const exchangeUpper = upper(exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER || null);
   const windowHoursValue = Math.max(1, Number(windowHours || process.env.SHADOW_EVAL_SUMMARY_WINDOW_HOURS || 24));
-  const limitValue = Math.max(100, Number(limit || process.env.SHADOW_EVAL_SUMMARY_LIMIT || 2000));
+  const limitValue = resolveBoundedInt(limit || process.env.SHADOW_EVAL_SUMMARY_LIMIT, 500, {
+    min: 20,
+    max: resolveBoundedInt(process.env.SHADOW_EVAL_SUMMARY_MAX_LIMIT, 1000, { min: 100, max: 5000 }),
+  });
   const minIntervalMs = Math.max(5 * 60 * 1000, Number(process.env.SHADOW_EVAL_SUMMARY_MIN_INTERVAL_MS || (60 * 60 * 1000)));
   const latestJson = path.join(OPS_DAILY_DIR, "shadow_evaluation_summary_latest.json");
   const latestMd = path.join(OPS_DAILY_DIR, "shadow_evaluation_summary_latest.md");
@@ -551,7 +581,10 @@ async function runShadowInferenceCanaryJob({
   const nowMeta = nowKstMeta();
   const exchangeUpper = upper(exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER || null);
   const windowHoursValue = Math.max(1, Number(windowHours || process.env.SHADOW_INFERENCE_CANARY_WINDOW_HOURS || 24));
-  const limitValue = Math.max(100, Number(limit || process.env.SHADOW_INFERENCE_CANARY_LIMIT || 2000));
+  const limitValue = resolveBoundedInt(limit || process.env.SHADOW_INFERENCE_CANARY_LIMIT, 500, {
+    min: 20,
+    max: resolveBoundedInt(process.env.SHADOW_INFERENCE_CANARY_MAX_LIMIT, 1000, { min: 100, max: 5000 }),
+  });
   const minIntervalMs = Math.max(5 * 60 * 1000, Number(process.env.SHADOW_INFERENCE_CANARY_MIN_INTERVAL_MS || (60 * 60 * 1000)));
   const latestJson = path.join(OPS_DAILY_DIR, "shadow_inference_canary_latest.json");
   const latestMd = path.join(OPS_DAILY_DIR, "shadow_inference_canary_latest.md");
@@ -745,12 +778,82 @@ async function runShadowInferenceCanaryJob({
 }
 
 async function runMlOpsPipelineJob(options = {}) {
-  const dataset = await runFeatureLabelDatasetJob(options);
-  const shadow = await runShadowEvaluationSummaryJob(options);
-  const shadowCanary = await runShadowInferenceCanaryJob(options);
-  const openclaw = await runOpenClawPolicyTuningReport(options);
+  const exchangeUpper = upper(options.exchange || process.env.ML_OPS_PIPELINE_EXCHANGE || process.env.BEST_SELF_EVOLUTION_PROVIDER) || "BINANCEFUT";
+  const pipelineMarkets = resolveMlOpsPipelineMarkets(options.markets, exchangeUpper);
+  const datasetLimit = resolveBoundedInt(
+    options.limitN || process.env.ML_OPS_PIPELINE_FEATURE_LIMIT_N || process.env.FEATURE_LABEL_DATASET_LIMIT_N,
+    40,
+    {
+      min: 10,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_FEATURE_MAX_LIMIT_N, 100, { min: 20, max: 500 }),
+    }
+  );
+  const shadowLimit = resolveBoundedInt(
+    options.limit || process.env.ML_OPS_PIPELINE_SHADOW_LIMIT || process.env.SHADOW_EVAL_SUMMARY_LIMIT,
+    100,
+    {
+      min: 20,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_SHADOW_MAX_LIMIT, 200, { min: 50, max: 1000 }),
+    }
+  );
+  const openclawDecisionLimit = resolveBoundedInt(
+    options.limitDecisions || process.env.ML_OPS_PIPELINE_OPENCLAW_LIMIT_DECISIONS || process.env.OPENCLAW_POLICY_TUNING_LIMIT_DECISIONS,
+    200,
+    {
+      min: 50,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_OPENCLAW_MAX_DECISIONS, 500, { min: 100, max: 2000 }),
+    }
+  );
+  const openclawFillLimit = resolveBoundedInt(
+    options.limitFills || process.env.ML_OPS_PIPELINE_OPENCLAW_LIMIT_FILLS || process.env.OPENCLAW_POLICY_TUNING_LIMIT_FILLS,
+    200,
+    {
+      min: 50,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_OPENCLAW_MAX_FILLS, 500, { min: 100, max: 2000 }),
+    }
+  );
+  const openclawShadowLimit = resolveBoundedInt(
+    options.limitShadow || process.env.ML_OPS_PIPELINE_OPENCLAW_LIMIT_SHADOW || process.env.OPENCLAW_POLICY_TUNING_LIMIT_SHADOW,
+    100,
+    {
+      min: 50,
+      max: resolveBoundedInt(process.env.ML_OPS_PIPELINE_OPENCLAW_MAX_SHADOW, 300, { min: 100, max: 2000 }),
+    }
+  );
+
+  const common = {
+    ...options,
+    exchange: exchangeUpper,
+  };
+  const dataset = await runFeatureLabelDatasetJob({
+    ...common,
+    markets: pipelineMarkets,
+    limitN: datasetLimit,
+  });
+  const shadow = await runShadowEvaluationSummaryJob({
+    ...common,
+    limit: shadowLimit,
+  });
+  const shadowCanary = await runShadowInferenceCanaryJob({
+    ...common,
+    limit: shadowLimit,
+  });
+  const openclaw = await runOpenClawPolicyTuningReport({
+    ...common,
+    limitDecisions: openclawDecisionLimit,
+    limitFills: openclawFillLimit,
+    limitShadow: openclawShadowLimit,
+  });
   return {
     ok: dataset.ok === true && shadow.ok === true && shadowCanary.ok === true && openclaw.ok === true,
+    caps: {
+      markets: pipelineMarkets,
+      dataset_limit_n: datasetLimit,
+      shadow_limit: shadowLimit,
+      openclaw_limit_decisions: openclawDecisionLimit,
+      openclaw_limit_fills: openclawFillLimit,
+      openclaw_limit_shadow: openclawShadowLimit,
+    },
     dataset,
     shadow,
     shadow_canary: shadowCanary,
@@ -778,5 +881,7 @@ module.exports = {
     renderMlServingStateMarkdown,
     buildServingBindingSnapshot,
     buildShadowPromotionAction,
+    resolveBoundedInt,
+    resolveMlOpsPipelineMarkets,
   },
 };

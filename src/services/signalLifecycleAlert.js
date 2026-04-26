@@ -6,6 +6,7 @@ const { getSystemSettingsForProvider } = require("../storage/settings");
 const { sendAlert } = require("../utils/alerts");
 const { classifySignalReasonStage, explainSignalReason } = require("../utils/signalReasonView");
 const { canonicalExternalEntryEvent } = require("../utils/liveEntryTaxonomy");
+const { riskGovernorTelegramLine } = require("../v2/riskGovernorSurface");
 
 const channelCache = new Map();
 const ROOT = path.resolve(__dirname, "../..");
@@ -48,6 +49,18 @@ function isLiveExecutionMode(mode) {
 function shouldAlertForMode(mode) {
   if (toBool(process.env.SIGNAL_LIFECYCLE_ALERT_INCLUDE_PAPER, false)) return true;
   return isLiveExecutionMode(mode);
+}
+
+function appendRiskGovernorLine(lines, payload = {}) {
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : {};
+  const line = riskGovernorTelegramLine(
+    payload.riskGovernor
+    || payload.risk_governor
+    || meta.v2_discovery_risk_governor_surface
+    || meta.risk_governor_surface
+    || null
+  );
+  if (line) lines.push(line);
 }
 
 function isTelegramChannel(raw) {
@@ -199,6 +212,7 @@ function formatSignalSource(payload = {}) {
 function buildLifecycleTitle(payload = {}, kind = "RECEIVED") {
   const symbol = String(payload.symbol || "").toUpperCase();
   const source = String(payload.source || "").trim().toUpperCase();
+  const reason = String(payload.dropReasonCode || payload.reason || "").trim().toUpperCase();
   const authoritative = payload.authoritative === true || source === "SERVER";
   const isWebhook = source === "WEBHOOK";
   if (kind === "RECEIVED") {
@@ -210,6 +224,15 @@ function buildLifecycleTitle(payload = {}, kind = "RECEIVED") {
     if (authoritative) return `${symbol} 서버 신호 진행`;
     if (isWebhook) return `${symbol} 웹훅 신호 진행`;
     return `${symbol} 신호 진행`;
+  }
+  if (
+    reason === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL"
+    || reason === "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL"
+  ) {
+    return `${symbol} 보호주문 복구 필요`;
+  }
+  if (reason === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED") {
+    return `${symbol} 진입 체결 후 기록 확인 필요`;
   }
   if (authoritative) return `${symbol} 서버 신호 드롭`;
   if (isWebhook) return `${symbol} 웹훅 신호 드롭`;
@@ -246,6 +269,10 @@ function buildDroppedMessage(payload = {}) {
   const dropReason = reasonCode || reason || "DROP_FILTER";
   const stage = classifySignalReasonStage(dropReason);
   const reasonKo = explainSignalReason(dropReason);
+  const postFillReason = String(dropReason || "").trim().toUpperCase();
+  const isPostFillCritical = postFillReason === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL"
+    || postFillReason === "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL";
+  const isPostFillProtected = postFillReason === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED";
   const isTimingDefer = stage && stage.key === "TIMING";
   const dropGroup = String(payload.dropGroup || payload.eventGroup || "").trim().toUpperCase() || null;
   const dropSubtype = String(payload.dropSubtype || payload.eventSubtype || "").trim().toUpperCase() || null;
@@ -267,8 +294,9 @@ function buildDroppedMessage(payload = {}) {
     `실행모드: ${String(payload.executionMode || "-")}`,
   ];
   appendDropQtyLines(lines, payload, { isTimingDefer });
+  appendRiskGovernorLine(lines, payload);
   if (payload.signalId) lines.push(`signal_id: ${payload.signalId}`);
-  return { title, body: lines.join("\n"), severity: isTimingDefer ? "INFO" : "WARN" };
+  return { title, body: lines.join("\n"), severity: isPostFillCritical ? "CRITICAL" : (isPostFillProtected ? "ERROR" : (isTimingDefer ? "INFO" : "WARN")) };
 }
 
 function buildProgressMessage(payload = {}) {
@@ -294,6 +322,7 @@ function buildProgressMessage(payload = {}) {
     `진행 상태: ${String(payload.progressReason || "INTENT_CREATED")}`,
     `다음 단계: ${nextStep}`,
   ];
+  appendRiskGovernorLine(lines, payload);
   if (payload.signalId) lines.push(`signal_id: ${payload.signalId}`);
   if (payload.scheduledExecBarCloseUtc) lines.push(`예정 집행시각: ${String(payload.scheduledExecBarCloseUtc)}`);
   return { title, body: lines.join("\n"), severity: "INFO" };
@@ -503,6 +532,7 @@ module.exports = {
     buildProgressMessage,
     buildDroppedMessage,
     buildCompareMessage,
+    appendRiskGovernorLine,
     shouldSendCompareAlert,
   },
 };

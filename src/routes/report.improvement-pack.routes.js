@@ -30,7 +30,7 @@ const router = express.Router();
 const BASE_TF = defaultExecTfFromEnv() || "15m";
 const DEFAULT_BASE_TF_MS = tfToMs(BASE_TF) || (15 * 60 * 1000);
 const PACK_SCHEMA = "donbeolja_improvement_pack_v1";
-const DEFAULT_STRATEGY_ID = process.env.DONBEOLJA_STRATEGY_ID || "STRAT_v010";
+const DEFAULT_STRATEGY_ID = process.env.DONBEOLJA_STRATEGY_ID || "donbeolja_v2_openclaw";
 const DEFAULT_LIMIT_DOCS = 50000;
 const DEFAULT_BARS_LIMIT = Number(process.env.IMPROVEMENT_PACK_BARS_LIMIT || 3000);
 const IMPROVEMENT_PACK_AUTO_BACKFILL = String(process.env.IMPROVEMENT_PACK_AUTO_BACKFILL || "1") === "1";

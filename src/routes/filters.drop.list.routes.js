@@ -6,7 +6,9 @@ const { getFirestore } = require("../storage/firestore");
 router.get("/api/filters/drop", async (req, res) => {
   try {
     const db = getFirestore();
-    const snap = await db.collection("filters_drop").get();
+    const snap = await db.collection("filters_drop")
+      .limit(1000)
+      .get();
     const rows = snap.docs.map(d => d.data() || {});
     rows.sort((a,b) => String(b.updated_at||"").localeCompare(String(a.updated_at||"")));
     return res.json({ ok:true, count: rows.length, rows });

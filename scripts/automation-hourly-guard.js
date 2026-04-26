@@ -208,6 +208,19 @@ function buildHourlyBestFebtContractLine(contract = {}) {
   return `mode ${contract.mode || "N/A"} / tightening ${contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${contract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${contract.projected_replacement_ratio != null ? Number(contract.projected_replacement_ratio).toFixed(2) : "N/A"} / count ${contract.projected_count_ratio_global != null ? `${Number(contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"} / delta ${contract.projected_net_signal_delta_n != null ? contract.projected_net_signal_delta_n : "N/A"}`;
 }
 
+function buildActiveProtectionLine(integrity = {}) {
+  const markets = Array.isArray(integrity.markets) ? integrity.markets : [];
+  const active = markets.filter((row) => row && (row.internal_active === true || row.external_active === true));
+  const issueSymbols = new Set(
+    (Array.isArray(integrity.issues) ? integrity.issues : [])
+      .filter((issue) => String(issue && issue.severity || "").toUpperCase() === "CRIT")
+      .map((issue) => String(issue && issue.symbol || "").toUpperCase())
+      .filter(Boolean)
+  );
+  const protectedN = Math.max(0, active.length - issueSymbols.size);
+  return `실포지션 보호 ${protectedN}/${active.length} / CRIT ${issueSymbols.size}`;
+}
+
 function buildHourlyGuardTelegramSections({
   findings = [],
   recentSignals = [],
@@ -230,6 +243,7 @@ function buildHourlyGuardTelegramSections({
         findings.length ? findings[0] : "정상",
         `신호 ${recentSignals.length} / 드롭 ${recentDropped.length} / Gate PASS ${gatePass}`,
         `보호주문 이슈 ${integrity.issue_count || 0}건`,
+        buildActiveProtectionLine(integrity),
         `시스템 오류 24h ${Number.isFinite(Number(report.system_error_count_24h)) ? Number(report.system_error_count_24h) : "N/A"}건`,
       ],
     },
@@ -452,6 +466,7 @@ if (require.main === module) {
       buildHourlyPhysicsLine,
       buildHourlyFebtLine,
       buildHourlyBestFebtContractLine,
+      buildActiveProtectionLine,
       buildHourlyGuardTelegramSections,
     },
   };

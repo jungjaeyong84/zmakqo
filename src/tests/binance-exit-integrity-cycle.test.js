@@ -81,6 +81,7 @@ function buildScriptResult(parsed) {
       if (script === "report-binance-canonical-exit-stage-qa.js") return buildScriptResult({ fail_n: 0 });
       if (script === "report-simplified-exit-v2-live-flow.js") return buildScriptResult({ actionable_symbol_n: 0, issue_code_counts: {} });
       if (script === "report-simplified-exit-v2-tp1-drilldown.js") return buildScriptResult({ actionable_symbol_n: 0, issue_code_counts: {} });
+      if (script === "report-native-protection-unprotected-window.js") return buildScriptResult({ breach_count: 0, gate_status: "PASS", available: true });
       throw new Error(`unexpected script ${script}`);
     },
   });
@@ -115,6 +116,7 @@ function buildScriptResult(parsed) {
         missing_alert_fill_n: 7,
         missing_verified_exit_alert_fill_n: 3,
         missing_non_actionable_alert_fill_n: 4,
+        missing_entry_alert_fill_n: 1,
       },
     },
     fill_sync_alert_duplication_live_separation: { parsed: { live_duplicate_group_n: 2 } },
@@ -130,6 +132,7 @@ function buildScriptResult(parsed) {
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_n, 3);
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_total_n, 3);
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_non_actionable_n, 4);
+  assert.strictEqual(warnSummary.trade_execution_alert_missing_entry_fill_n, 1);
   assert.strictEqual(warnSummary.trade_execution_alert_missing_fill_raw_total_n, 7);
   assert.strictEqual(warnSummary.trade_execution_alert_coverage_ready, true);
   assert.strictEqual(warnSummary.authority_live_issue_position_n, 3);
@@ -157,7 +160,7 @@ function buildScriptResult(parsed) {
     trail_runner_floor_live_separation: buildScriptResult({ live_violation_n: 0 }),
     fill_sync_alert_duplication: buildScriptResult({ duplicate_group_n: 0, report: { duplicate_group_n: 0 } }),
     fill_sync_alert_event_consistency: buildScriptResult({ issue_n: 0 }),
-    trade_execution_alert_cross_audit: buildScriptResult({ coverage_ready: true, missing_alert_fill_n: 0 }),
+    trade_execution_alert_cross_audit: buildScriptResult({ coverage_ready: true, missing_alert_fill_n: 0, missing_entry_alert_fill_n: 0 }),
     fill_sync_alert_duplication_live_separation: buildScriptResult({ live_duplicate_group_n: 0 }),
     binance_exit_authority_live_board: buildScriptResult({ live_issue_position_n: 0, actionable_live_issue_position_n: 0, artifact_only_live_issue_position_n: 3 }),
     binance_canonical_exit_stage_qa: buildScriptResult({ fail_n: 0 }),

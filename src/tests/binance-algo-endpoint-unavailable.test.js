@@ -12,6 +12,10 @@ const exitAudit = require("../services/exitIntegrityAudit");
   assert.strictEqual(typeof auditTest.hasTrackedNativeProtectionMeta, "function", "hasTrackedNativeProtectionMeta export missing");
   assert.strictEqual(typeof auditTest.normalizeOrderType, "function", "audit normalizeOrderType export missing");
   assert.strictEqual(typeof auditTest.normalizeOrderTriggerPrice, "function", "audit normalizeOrderTriggerPrice export missing");
+  assert.strictEqual(typeof auditTest.normalizeOrderId, "function", "audit normalizeOrderId export missing");
+  assert.strictEqual(typeof auditTest.normalizeOrderQuantity, "function", "audit normalizeOrderQuantity export missing");
+  assert.strictEqual(typeof auditTest.isStrictTp1OrderCandidate, "function", "isStrictTp1OrderCandidate export missing");
+  assert.strictEqual(typeof auditTest.isV2LiveWriteRuntime, "function", "isV2LiveWriteRuntime export missing");
 
   const unavailableErr = {
     status: 404,
@@ -52,6 +56,36 @@ const exitAudit = require("../services/exitIntegrityAudit");
 
   assert.strictEqual(auditTest.normalizeOrderType({ orderType: "TAKE_PROFIT_MARKET" }), "TAKE_PROFIT_MARKET");
   assert.strictEqual(auditTest.normalizeOrderTriggerPrice({ triggerPrice: "123.45" }), 123.45);
+  assert.strictEqual(auditTest.normalizeOrderId({ algoId: 123456 }), "123456");
+  assert.strictEqual(auditTest.normalizeOrderQuantity({ origQty: "0.125" }), 0.125);
+  assert.strictEqual(auditTest.isStrictTp1OrderCandidate({
+    orderType: "TAKE_PROFIT_MARKET",
+    side: "SELL",
+    reduceOnly: true,
+    closePosition: false,
+  }, "SELL"), true);
+  assert.strictEqual(auditTest.isStrictTp1OrderCandidate({
+    orderType: "TAKE_PROFIT_MARKET",
+    side: "SELL",
+    reduceOnly: true,
+    closePosition: true,
+  }, "SELL"), false);
+  assert.strictEqual(auditTest.isStrictTp1OrderCandidate({
+    orderType: "TAKE_PROFIT_MARKET",
+    side: "SELL",
+    reduceOnly: false,
+    closePosition: false,
+  }, "SELL"), false);
+  assert.strictEqual(auditTest.isV2LiveWriteRuntime({
+    DONBEOLJA_V2_ENABLED: "1",
+    DONBEOLJA_V2_DRY_RUN: "0",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
+  }), true);
+  assert.strictEqual(auditTest.isV2LiveWriteRuntime({
+    DONBEOLJA_V2_ENABLED: "1",
+    DONBEOLJA_V2_DRY_RUN: "1",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
+  }), false);
 
   assert.strictEqual(auditTest.hasTrackedNativeProtectionMeta({
     native_protection_refresh_status: "OK",

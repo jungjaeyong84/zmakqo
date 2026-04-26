@@ -233,6 +233,9 @@ const BINANCE_PRIVATE_ACTIONS = new Set([
   "fetchFuturesOrder",
   "fetchFuturesUserTrades",
   "fetchFuturesIncomeHistory",
+  "createFuturesListenKey",
+  "keepaliveFuturesListenKey",
+  "deleteFuturesListenKey",
   "setFuturesLeverage",
   "setFuturesMarginType",
 ]);

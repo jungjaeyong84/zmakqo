@@ -8,6 +8,7 @@ const {
   runV2ProductionEntryLiveEndpoint,
 } = require("./productionEntryLiveEndpoint");
 const { buildV2ProductionEntryLiveRequest } = require("./productionEntryLiveRequest");
+const { resolveV2CollectionName } = require("./storage");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -21,11 +22,46 @@ function asObject(value) {
 function createMemoryFirestore() {
   const writes = [];
   const commits = [];
+  const docs = new Map();
+  function keyOf(ref) {
+    return `${ref.collectionName}/${ref.id}`;
+  }
+  function writeDoc(ref, payload, options = {}) {
+    const key = keyOf(ref);
+    const prev = docs.get(key) || {};
+    const next = options && options.merge === true
+      ? { ...prev, ...(payload || {}) }
+      : { ...(payload || {}) };
+    docs.set(key, next);
+    const write = Object.freeze({
+      type: "set",
+      ref,
+      payload: Object.freeze({ ...(payload || {}) }),
+      options: Object.freeze({ ...(options || {}) }),
+    });
+    writes.push(write);
+    return write;
+  }
   const firestore = {
     collection(collectionName) {
       return {
         doc(docId) {
-          return Object.freeze({ collectionName, id: docId, path: `${collectionName}/${docId}` });
+          const ref = {
+            collectionName,
+            id: docId,
+            path: `${collectionName}/${docId}`,
+            async set(payload, options) {
+              writeDoc(ref, payload, options);
+            },
+            async get() {
+              const doc = docs.get(keyOf(ref));
+              return {
+                exists: !!doc,
+                data: () => (doc ? { ...doc } : null),
+              };
+            },
+          };
+          return Object.freeze(ref);
         },
         where(field, op, value) {
           return {
@@ -66,10 +102,35 @@ function createMemoryFirestore() {
         async commit() {
           const frozenOps = Object.freeze(ops.slice());
           commits.push(frozenOps);
-          writes.push(...frozenOps);
+          for (const op of frozenOps) {
+            writeDoc(op.ref, op.payload, op.options);
+          }
           return frozenOps.map((_, index) => Object.freeze({ writeTime: `MEMORY_WRITE_${commits.length}_${index}` }));
         },
       };
+    },
+    async runTransaction(fn) {
+      const txWrites = [];
+      const tx = {
+        async get(ref) {
+          const doc = docs.get(keyOf(ref));
+          return {
+            exists: !!doc,
+            data: () => (doc ? { ...doc } : null),
+          };
+        },
+        set(ref, payload, options) {
+          txWrites.push({ ref, payload, options });
+        },
+      };
+      const result = await fn(tx);
+      for (const op of txWrites) {
+        writeDoc(op.ref, op.payload, op.options);
+      }
+      return result;
+    },
+    __seedDoc(collectionName, docId, payload) {
+      docs.set(`${collectionName}/${docId}`, { ...(payload || {}) });
     },
     __v2_canary_writes: writes,
     __v2_canary_commits: commits,
@@ -124,7 +185,14 @@ function buildDefaultLiveEndpointBundle({ createdAt } = {}) {
       ok: true,
       reason: "V2_MARKET_DATA_QUALITY_PASS",
       blockers: [],
-      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+      metrics: { symbol: "ETHUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
+    },
+    signalCriteria: {
+      htf_regime: { regime: "LONG", alignment_score: 0.94 },
+      setup_gate: { setup_type: "PULLBACK_RECLAIM", setup_quality_score: 0.92 },
+      trigger_gate: { trigger_confirmed: true, volume_zscore: 2.1, rsi_entry_tf: 65 },
+      no_trade_gate: { market_quality_score: 1, spread_bps: 2, mark_index_gap_bps: 1, funding_penalty_bps: 1 },
+      expected_edge_gate: { expected_gross_r: 2.2, expected_net_r_after_cost: 0.5, cost_estimate_bps: 5, cost_r_equivalent: 1.7 },
     },
     createdAt,
   });
@@ -399,6 +467,11 @@ async function runV2ProductionEntryProtectedCanary({
   }
 
   const firestore = createMemoryFirestore();
+  firestore.__seedDoc(
+    resolveV2CollectionName("OPENCLAW_EXECUTION_PERMITS", canaryEnv),
+    request.executionPermit.openclaw_execution_permit_id,
+    request.executionPermit,
+  );
   const exchangeWriteLedger = {
     exchange_write_performed: false,
     entry_submit_called: false,

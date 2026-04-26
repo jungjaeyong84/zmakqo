@@ -18,7 +18,7 @@ async function run() {
       issue_codes: ["TP1_META_SYNC_MISSING", "TP1_META_SYNC_STATUS_NOT_OK"],
     },
   });
-  assert.strictEqual(payload.title, "[P0] ETHUSDT TP1 meta sync gap");
+  assert.strictEqual(payload.title, "[V2 긴급] ETHUSDT TP1 meta sync gap");
   assert.ok(payload.body.includes("reason: TP1_META_SYNC_GAP"));
   assert.ok(payload.body.includes("refresh_tp_order_id: tp1-order-1"));
 

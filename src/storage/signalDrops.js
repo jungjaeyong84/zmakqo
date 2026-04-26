@@ -1,13 +1,20 @@
+const crypto = require("crypto");
 const { getFirestore } = require("./firestore");
 const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
+const { tryLockSignal } = require("./signalsConsume");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { confirmSelfEvolutionRuntimeSignal } = require("../utils/selfEvolutionRuntimeState");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = require("../utils/liveExecutionPolicyTrace");
+const { normalizeRiskGovernorSurface } = require("../v2/riskGovernorSurface");
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function hash10(payload) {
+  return crypto.createHash("sha1").update(String(payload || "")).digest("hex").slice(0, 10);
 }
 
 function normalizeExecutionMode(v) {
@@ -60,10 +67,28 @@ function coalesceDefined(...values) {
   return null;
 }
 
+function extractRiskGovernorSurface(features = null) {
+  const src = features && typeof features === "object" ? features : {};
+  if (src.v2_discovery_risk_governor_surface && typeof src.v2_discovery_risk_governor_surface === "object") {
+    return normalizeRiskGovernorSurface(src.v2_discovery_risk_governor_surface);
+  }
+  if (src.v2_discovery_risk_governor_reason || src.v2_discovery_risk_governor_blockers) {
+    return normalizeRiskGovernorSurface({
+      ok: false,
+      reason: src.v2_discovery_risk_governor_reason,
+      blockers: Array.isArray(src.v2_discovery_risk_governor_blockers)
+        ? src.v2_discovery_risk_governor_blockers
+        : [src.v2_discovery_risk_governor_blockers].filter(Boolean),
+    });
+  }
+  return null;
+}
+
 function buildDropAlertPayload(drop = null) {
   const payload = drop && typeof drop === "object" ? drop : {};
   const features = resolveFeatureBag(payload);
   const authorityTrace = extractOpenClawAuthorityTrace(features);
+  const riskGovernor = extractRiskGovernorSurface(features);
   const bucket = resolveDropStageBucket(payload);
   return {
     exchange: payload.exchange,
@@ -86,6 +111,7 @@ function buildDropAlertPayload(drop = null) {
     authoritative: true,
     dropGroup: payload.event_group || bucket.group,
     dropSubtype: payload.event_subtype || bucket.subtype,
+    riskGovernor: riskGovernor && riskGovernor.present === true ? riskGovernor : null,
   };
 }
 
@@ -198,13 +224,148 @@ function pickDropStrategyId(payload = null) {
   return strategyId || null;
 }
 
+function boolLike(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return false;
+  return ["1", "true", "yes", "y", "on"].includes(text);
+}
+
+function isV2DiscoveryCanaryBridgePayload(payload = null) {
+  if (!payload || typeof payload !== "object") return false;
+  const features = resolveFeatureBag(payload);
+  const bridge = payload.bridge && typeof payload.bridge === "object" ? payload.bridge : {};
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : {};
+  return (
+    boolLike(payload.discovery_canary_bridge)
+    || boolLike(payload.discovery_canary_enabled)
+    || boolLike(payload.v2_discovery_canary_enabled)
+    || boolLike(payload.v2_discovery_signal_fan_in_handoff)
+    || boolLike(payload.v2_discovery_legacy_entry_filters_bypassed)
+    || boolLike(bridge.discovery_canary_enabled)
+    || boolLike(bridge.discovery_canary_bridge)
+    || boolLike(meta.discovery_canary_enabled)
+    || boolLike(meta.discovery_canary_bridge)
+    || boolLike(features.discovery_canary_bridge)
+    || boolLike(features.discovery_canary_enabled)
+    || boolLike(features.v2_discovery_canary_enabled)
+    || boolLike(features.v2_discovery_signal_fan_in_handoff)
+    || boolLike(features.v2_discovery_legacy_entry_filters_bypassed)
+    || upper(features.v2_discovery_entry_filter_authority) === "PRODUCTION_ENTRY_ROUTE"
+  );
+}
+
+function shouldShadowSelfEvolutionCanaryFromDrop(payload = null) {
+  if (!payload || typeof payload !== "object") return false;
+  const executionMode = normalizeExecutionMode(payload.execution_mode);
+  if (executionMode !== "LIVE") return false;
+  if (!String(payload.signal_id || "").trim()) return false;
+  if (!pickDropStrategyId(payload)) return false;
+  return isV2DiscoveryCanaryBridgePayload(payload);
+}
+
 function shouldConfirmSelfEvolutionFromDrop(payload = null) {
   if (!payload || typeof payload !== "object") return false;
   const executionMode = normalizeExecutionMode(payload.execution_mode);
   if (executionMode !== "LIVE") return false;
   if (!String(payload.signal_id || "").trim()) return false;
   if (!pickDropStrategyId(payload)) return false;
+  if (isV2DiscoveryCanaryBridgePayload(payload)) return false;
   return true;
+}
+
+function buildCanaryEvolutionShadowDoc({
+  payload,
+  exchange,
+  symbol,
+  tf,
+  requestId = null,
+  runId = null,
+  createdAt = null,
+} = {}) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const signalId = String(source.signal_id || "").trim();
+  const strategyId = pickDropStrategyId(source);
+  const at = createdAt || nowIso();
+  const shadowId = [
+    "CANARY_EVOLUTION_SHADOW",
+    signalId || source.drop_id || "",
+    strategyId || "",
+    hash10(JSON.stringify({
+      reason: source.reason || source.drop_reason_code || source.decision_reason || null,
+      event: source.event || null,
+      side: source.side || null,
+      bar_close_time_utc_ms: source.bar_close_time_utc_ms || null,
+    })),
+  ].join("__");
+  return Object.freeze({
+    canary_evolution_shadow_id: shadowId,
+    shadow_type: "V2_DISCOVERY_CANARY_SELF_EVOLUTION_SHADOW",
+    collection_reason: "DISCOVERY_CANARY_EXCLUDED_FROM_FORMAL_SELF_EVOLUTION",
+    signal_id: signalId || null,
+    strategy_id: strategyId || null,
+    exchange: String(source.exchange || exchange || "").trim().toUpperCase() || null,
+    symbol_or_pair_id: String(source.symbol_or_pair_id || symbol || "").trim() || null,
+    tf: String(source.tf || tf || "").trim() || null,
+    bar_close_time_utc_ms: Number.isFinite(Number(source.bar_close_time_utc_ms))
+      ? Number(source.bar_close_time_utc_ms)
+      : null,
+    event: source.event || null,
+    side: source.side || null,
+    reason: source.reason || source.drop_reason_code || source.decision_reason || null,
+    execution_mode: normalizeExecutionMode(source.execution_mode),
+    request_id: source.request_id || requestId || null,
+    run_id: source.run_id || runId || null,
+    source_collection: "signals_dropped",
+    source_drop_id: source.drop_id || null,
+    bridge_discovery_canary_enabled: true,
+    formal_self_evolution_confirmed: false,
+    original_drop: source,
+    created_at: at,
+    updated_at: at,
+  });
+}
+
+async function persistCanaryEvolutionShadowDrops({
+  db,
+  payloads = [],
+  exchange,
+  symbol,
+  tf,
+  requestId = null,
+  runId = null,
+  createdAt = null,
+} = {}) {
+  if (!Array.isArray(payloads) || payloads.length === 0) {
+    return Object.freeze({ ok: true, written: 0, failed: 0, docs: [] });
+  }
+  if (boolLike(process.env.DONBEOLJA_V2_CANARY_EVOLUTION_SHADOW_ENABLED ?? "1") !== true) {
+    return Object.freeze({ ok: true, written: 0, failed: 0, skipped: true, docs: [] });
+  }
+  const firestore = db || getFirestore();
+  const docs = payloads.map((payload) => buildCanaryEvolutionShadowDoc({
+    payload,
+    exchange,
+    symbol,
+    tf,
+    requestId,
+    runId,
+    createdAt,
+  }));
+  const writes = docs.map((doc) =>
+    firestore.collection("v2__signals_canary_evolution_shadow")
+      .doc(doc.canary_evolution_shadow_id)
+      .set(doc, { merge: true })
+  );
+  const settled = await Promise.allSettled(writes);
+  const failed = settled.filter((row) => row.status === "rejected").length;
+  return Object.freeze({
+    ok: failed === 0,
+    written: settled.length - failed,
+    failed,
+    docs,
+  });
 }
 
 function inferDropStageBucketFromReason(reasonRaw = null) {
@@ -278,13 +439,182 @@ function resolveDropStageBucket(payload = null) {
   return { group, subtype };
 }
 
-async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId = null, runId = null, decisionReason = null } = {}) {
+function resolveSignalIdFromDrop(drop = null) {
+  const payload = drop && typeof drop === "object" ? drop : {};
+  return String(
+    payload.signal_id
+    || (payload.features_json && payload.features_json.signal_id)
+    || (payload.features && payload.features.signal_id)
+    || ""
+  ).trim() || null;
+}
+
+function isSignalDropAlreadyHandled(lock = null) {
+  const reason = String(lock && lock.reason || "").trim().toUpperCase();
+  return reason === "ALREADY_CONSUMED" || reason === "LOCKED";
+}
+
+async function filterDropsForConsumedSignals({ drops = [], runId = null, tryLockSignalFn = tryLockSignal } = {}) {
+  if (!Array.isArray(drops) || drops.length === 0) {
+    return Object.freeze({ kept: [], suppressed: [] });
+  }
+  const kept = [];
+  const suppressed = [];
+  for (const drop of drops) {
+    const signalId = resolveSignalIdFromDrop(drop);
+    if (!signalId) {
+      kept.push(drop);
+      continue;
+    }
+    try {
+      const lock = await tryLockSignalFn({ signalId, runId });
+      if (lock && lock.ok === true) {
+        kept.push(drop);
+        continue;
+      }
+      if (isSignalDropAlreadyHandled(lock)) {
+        const reason = String(lock && lock.reason || "").trim().toUpperCase() || "ALREADY_HANDLED";
+        console.warn(`[SIGNAL_DROP_SUPPRESSED_ALREADY_CONSUMED] signal_id=${signalId} reason=${reason}`);
+        suppressed.push({ signal_id: signalId, reason, drop });
+        continue;
+      }
+      kept.push(drop);
+    } catch (error) {
+      console.warn(`[SIGNAL_DROP_SUPPRESS_CHECK_FAILED] signal_id=${signalId} error=${error && error.message ? error.message : String(error)}`);
+      kept.push(drop);
+    }
+  }
+  return Object.freeze({ kept, suppressed });
+}
+
+function buildSuppressedSignalDropDoc({
+  suppressed,
+  exchange,
+  symbol,
+  tf,
+  requestId = null,
+  runId = null,
+  createdAt = null,
+} = {}) {
+  const row = suppressed && typeof suppressed === "object" ? suppressed : {};
+  const drop = row.drop && typeof row.drop === "object" ? row.drop : {};
+  const signalId = resolveSignalIdFromDrop(drop) || trimString(row.signal_id);
+  const barCloseMs = drop.bar_close_time_utc_ms == null ? null : Number(drop.bar_close_time_utc_ms);
+  const event = drop.event || null;
+  const side = drop.side || null;
+  const reason = upper(row.reason) || "ALREADY_HANDLED";
+  const at = createdAt || nowIso();
+  const docId = [
+    "SUPPRESSED_DROP",
+    String(exchange || "").trim().toUpperCase(),
+    String(symbol || "").trim().toUpperCase(),
+    String(tf || "").trim(),
+    String(barCloseMs || ""),
+    String(event || "").trim().toUpperCase(),
+    String(side || "").trim().toUpperCase(),
+    hash10(`${signalId || ""}__${reason}__${JSON.stringify(drop)}`),
+  ].join("__");
+  return Object.freeze({
+    suppressed_drop_id: docId,
+    signal_id: signalId || null,
+    exchange: String(exchange || "").trim().toUpperCase() || null,
+    symbol_or_pair_id: String(symbol || "").trim() || null,
+    tf: String(tf || "").trim() || null,
+    bar_close_time_utc_ms: Number.isFinite(barCloseMs) ? barCloseMs : null,
+    event,
+    side,
+    suppress_reason: reason,
+    request_id: drop.request_id || requestId || null,
+    run_id: drop.run_id || runId || null,
+    original_drop: drop,
+    alert_suppressed: true,
+    collection_reason: "SIGNAL_CONSUME_LOCK_SUPPRESSED_DROP",
+    created_at: at,
+    updated_at: at,
+  });
+}
+
+async function persistSuppressedSignalDrops({
+  db,
+  suppressed = [],
+  exchange,
+  symbol,
+  tf,
+  requestId = null,
+  runId = null,
+  createdAt = null,
+} = {}) {
+  if (!Array.isArray(suppressed) || suppressed.length === 0) {
+    return Object.freeze({ ok: true, written: 0, failed: 0 });
+  }
+  const firestore = db || getFirestore();
+  const docs = suppressed.map((row) => buildSuppressedSignalDropDoc({
+    suppressed: row,
+    exchange,
+    symbol,
+    tf,
+    requestId,
+    runId,
+    createdAt,
+  }));
+  const writes = docs.map((doc) =>
+    firestore.collection("v2__signals_dropped_suppressed")
+      .doc(doc.suppressed_drop_id)
+      .set(doc, { merge: true })
+  );
+  const settled = await Promise.allSettled(writes);
+  const failed = settled.filter((row) => row.status === "rejected").length;
+  return Object.freeze({
+    ok: failed === 0,
+    written: settled.length - failed,
+    failed,
+    docs,
+  });
+}
+
+function trimString(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+async function recordSignalDrops({
+  exchange,
+  symbol,
+  tf,
+  drops = [],
+  requestId = null,
+  runId = null,
+  decisionReason = null,
+  db: injectedDb = null,
+  tryLockSignalFn = tryLockSignal,
+} = {}) {
   if (!Array.isArray(drops) || drops.length === 0) return { ok: true, written: 0 };
-  const db = getFirestore();
+  const filtered = await filterDropsForConsumedSignals({ drops, runId, tryLockSignalFn });
+  const effectiveDrops = filtered.kept;
+  const db = injectedDb || getFirestore();
   const now = nowIso();
+  const suppressedCommit = await persistSuppressedSignalDrops({
+    db,
+    suppressed: filtered.suppressed,
+    exchange,
+    symbol,
+    tf,
+    requestId,
+    runId,
+    createdAt: now,
+  });
+  if (!effectiveDrops.length) {
+    return {
+      ok: suppressedCommit.ok === true,
+      written: 0,
+      suppressed: filtered.suppressed.length,
+      suppressed_signal_drops: filtered.suppressed,
+      suppressed_commit: suppressedCommit,
+    };
+  }
 
   const normalizedDrops = [];
-  const writes = drops.map((d) => {
+  const writes = effectiveDrops.map((d) => {
     const { group, subtype } = resolveDropStageBucket(d);
     const id = dropId({
       exchange,
@@ -414,6 +744,18 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId =
   });
 
   await Promise.allSettled(writes);
+  const canaryEvolutionShadowPayloads = normalizedDrops
+    .filter((payload) => shouldShadowSelfEvolutionCanaryFromDrop(payload));
+  const canaryEvolutionShadowCommit = await persistCanaryEvolutionShadowDrops({
+    db,
+    payloads: canaryEvolutionShadowPayloads,
+    exchange,
+    symbol,
+    tf,
+    requestId,
+    runId,
+    createdAt: now,
+  });
   const confirmations = normalizedDrops
     .filter((payload) => shouldConfirmSelfEvolutionFromDrop(payload))
     .map((payload) =>
@@ -430,20 +772,40 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId =
   }
   const alerts = normalizedDrops.map((d) => sendSignalDroppedAlert(buildDropAlertPayload(d)));
   await Promise.allSettled(alerts);
-  return { ok: true, written: writes.length };
+  return {
+    ok: true,
+    written: writes.length,
+    suppressed: filtered.suppressed.length,
+    suppressed_signal_drops: filtered.suppressed,
+    suppressed_commit: suppressedCommit,
+    canary_evolution_shadow_n: canaryEvolutionShadowCommit.written || 0,
+    canary_evolution_shadow_commit: canaryEvolutionShadowCommit,
+    self_evolution_runtime_confirmed_n: confirmations.length,
+  };
 }
 
 module.exports = {
   recordSignalDrops,
   __test: {
     pickDropStrategyId,
+    boolLike,
+    isV2DiscoveryCanaryBridgePayload,
+    shouldShadowSelfEvolutionCanaryFromDrop,
     shouldConfirmSelfEvolutionFromDrop,
+    buildCanaryEvolutionShadowDoc,
+    persistCanaryEvolutionShadowDrops,
     resolveDropStageBucket,
     inferDropStageBucketFromReason,
     deriveReasonFamily,
     deriveCanonicalEventId,
     deriveEffectiveDropReason,
     extractOpenClawAuthorityTrace,
+    extractRiskGovernorSurface,
     buildDropAlertPayload,
+    resolveSignalIdFromDrop,
+    isSignalDropAlreadyHandled,
+    filterDropsForConsumedSignals,
+    buildSuppressedSignalDropDoc,
+    persistSuppressedSignalDrops,
   },
 };

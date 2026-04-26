@@ -12,6 +12,39 @@ function run() {
   };
   assert.strictEqual(__test.pickDropStrategyId(liveDrop), "donbeolja_v6.0.3.1");
   assert.strictEqual(__test.shouldConfirmSelfEvolutionFromDrop(liveDrop), true);
+  assert.strictEqual(__test.resolveSignalIdFromDrop(liveDrop), liveDrop.signal_id);
+
+  const discoveryCanaryDrop = {
+    ...liveDrop,
+    features_json: {
+      ...liveDrop.features_json,
+      discovery_canary_bridge: true,
+      v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+    },
+  };
+  assert.strictEqual(__test.isV2DiscoveryCanaryBridgePayload(discoveryCanaryDrop), true);
+  assert.strictEqual(__test.shouldShadowSelfEvolutionCanaryFromDrop(discoveryCanaryDrop), true);
+  assert.strictEqual(__test.shouldConfirmSelfEvolutionFromDrop(discoveryCanaryDrop), false);
+  const canaryShadowDoc = __test.buildCanaryEvolutionShadowDoc({
+    payload: discoveryCanaryDrop,
+    exchange: "BINANCEFUT",
+    symbol: "XRPUSDT",
+    tf: "15m",
+    createdAt: "2026-04-26T00:00:00.000Z",
+  });
+  assert.strictEqual(canaryShadowDoc.shadow_type, "V2_DISCOVERY_CANARY_SELF_EVOLUTION_SHADOW");
+  assert.strictEqual(canaryShadowDoc.formal_self_evolution_confirmed, false);
+  assert.strictEqual(canaryShadowDoc.bridge_discovery_canary_enabled, true);
+  assert.strictEqual(canaryShadowDoc.signal_id, liveDrop.signal_id);
+
+  assert.strictEqual(__test.resolveSignalIdFromDrop({
+    features_json: {
+      signal_id: "SIG__BINANCEFUT__SOLUSDT__15m__1777094100000__SHORT",
+    },
+  }), "SIG__BINANCEFUT__SOLUSDT__15m__1777094100000__SHORT");
+  assert.strictEqual(__test.isSignalDropAlreadyHandled({ reason: "ALREADY_CONSUMED" }), true);
+  assert.strictEqual(__test.isSignalDropAlreadyHandled({ reason: "LOCKED" }), true);
+  assert.strictEqual(__test.isSignalDropAlreadyHandled({ reason: "NO_SIGNAL" }), false);
 
   const paperDrop = {
     signal_id: liveDrop.signal_id,

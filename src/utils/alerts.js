@@ -39,6 +39,7 @@ const TELEGRAM_TOKEN_MAP = new Map([
   ["HOLD", "유지"],
   ["KEEP", "유지"],
   ["READY", "준비 완료"],
+  ["BLOCKED", "차단됨"],
   ["BLOCK", "차단"],
   ["APPLIED", "적용"],
   ["DRY", "참고용"],
@@ -128,14 +129,80 @@ async function sendSlack({ url, title, body, severity }) {
 
 function normalizeTelegramSeverity(severity) {
   const s = String(severity || "").trim().toUpperCase();
+  if (s === "CRITICAL" || s === "CRIT") return "긴급";
   if (s === "ERROR") return "오류";
   if (s === "WARN" || s === "WARNING") return "주의";
   if (s === "PASS" || s === "OK" || s === "SUCCESS") return "정상";
   return "알림";
 }
 
+function parseBool(value, fallback = false) {
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "y", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "n", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+function resolveV2TelegramRuntimeContext(env = process.env) {
+  const source = env && typeof env === "object" ? env : {};
+  if (!parseBool(source.DONBEOLJA_V2_ENABLED, false)) return null;
+  if (parseBool(source.DONBEOLJA_V2_TELEGRAM_CONTEXT_ENABLED, true) !== true) return null;
+
+  const discovery = parseBool(source.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, false);
+  const canaryOnly = parseBool(source.DONBEOLJA_V2_CANARY_ONLY, false);
+  const liveEndpoint = parseBool(source.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, false);
+  const dryRun = parseBool(source.DONBEOLJA_V2_DRY_RUN, false);
+  const mlLive = parseBool(source.ML_LIVE_SERVING_ARMED, false);
+  const agentApply = parseBool(source.OPENCLAW_AGENT_APPLY_ENABLED, false);
+  const blockLegacy = parseBool(source.DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, false);
+  const allowLegacy = parseBool(source.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, false);
+  const symbols = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || "").trim();
+  const maxNotional = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE || "").trim();
+  const symbolNotionalMap = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP || "").trim();
+  const maxPositionCount = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT || "").trim();
+  const maxTradesPerDay = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY || "").trim();
+  const dailyLossHalt = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE || "").trim();
+  const riskTotal = String(source.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE || "").trim();
+  const riskSymbol = String(source.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE || "").trim();
+  const riskGroup = String(source.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE || "").trim();
+
+  const mode = discovery
+    ? "DISCOVERY_CANARY"
+    : (canaryOnly ? "CANARY_ONLY" : "LIVE");
+  const formalLive = !dryRun && !canaryOnly && !discovery;
+  const risk = [
+    `dry_run=${dryRun ? "1" : "0"}`,
+    `canary_only=${canaryOnly ? "1" : "0"}`,
+    `formal_live=${formalLive ? "1" : "0"}`,
+    `live_endpoint=${liveEndpoint ? "1" : "0"}`,
+    `ml_live=${mlLive ? "1" : "0"}`,
+    `agent_apply=${agentApply ? "1" : "0"}`,
+    `legacy_webhook=${blockLegacy && !allowLegacy ? "BLOCKED" : "OPEN"}`,
+  ];
+  if (symbols) risk.push(`symbols=${symbols}`);
+  if (maxNotional) risk.push(`fallback_notional=${maxNotional}`);
+  if (symbolNotionalMap) risk.push(`symbol_notional=${symbolNotionalMap}`);
+  if (maxPositionCount) risk.push(`max_pos=${maxPositionCount}`);
+  if (maxTradesPerDay) risk.push(`max_trades=${maxTradesPerDay}`);
+  if (dailyLossHalt) risk.push(`daily_loss_halt=${dailyLossHalt}`);
+  if (riskTotal) risk.push(`risk_total=${riskTotal}`);
+  if (riskSymbol) risk.push(`risk_symbol=${riskSymbol}`);
+  if (riskGroup) risk.push(`risk_group=${riskGroup}`);
+  return Object.freeze({
+    label: `V2 ${mode}`,
+    line: `runtime=V2 ${mode} | ${risk.join(" | ")}`,
+  });
+}
+
+function normalizeLegacyPriorityTokens(text) {
+  return String(text || "")
+    .replace(/\[P0\]/gi, "[V2 긴급]")
+    .replace(/\bP0\b/g, "V2_CRITICAL");
+}
+
 function normalizeTelegramLine(line) {
-  let out = String(line || "");
+  let out = normalizeLegacyPriorityTokens(line);
   for (const [from, to] of TELEGRAM_LABEL_MAP.entries()) {
     const re = new RegExp(`(^|\\s)${from.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}`, "i");
     out = out.replace(re, (m, lead = "") => `${lead}${to}`);
@@ -162,9 +229,17 @@ function normalizeTelegramBody(body) {
     .join("\n");
 }
 
-function buildTelegramText({ title, body, severity }) {
-  const normalizedTitle = normalizeTelegramTitle(title, severity);
+function buildTelegramText({ title, body, severity, env = process.env }) {
+  const context = resolveV2TelegramRuntimeContext(env);
+  const titleWithContext = context && !String(title || "").toUpperCase().includes("V2")
+    ? `[${context.label}] ${String(title || "").trim()}`
+    : title;
+  const normalizedTitle = normalizeTelegramTitle(titleWithContext, severity);
   const normalizedBody = normalizeTelegramBody(body);
+  const contextLine = context ? normalizeTelegramLine(context.line) : "";
+  if (contextLine) {
+    return `${normalizedTitle}\n${contextLine}${normalizedBody ? `\n${normalizedBody}` : ""}`.trim();
+  }
   return `${normalizedTitle}\n${normalizedBody}`.trim();
 }
 
@@ -317,6 +392,8 @@ module.exports = {
     normalizeTelegramTitle,
     normalizeTelegramBody,
     normalizeTelegramLine,
+    normalizeLegacyPriorityTokens,
+    resolveV2TelegramRuntimeContext,
     buildTelegramText,
     resolveTelegramTransport,
     buildOpenClawSendArgs,

@@ -202,6 +202,72 @@ const { __test: runnerTest } = require("../engine/paperBinanceRunner");
     "external flat cleanup should not run without live credentials"
   );
 
+  const flatReconcileInput = runnerTest.buildFlatSyncReconcileInputMeta({
+    prevMeta: {
+      entry_event_id: "ENTRYV2__LINKUSDT__SHORT__1",
+      position_side: "SHORT",
+      tp_p1_done: true,
+      trail_active: true,
+      canonical_exit_stage: "TRAIL",
+      runner_remaining_qty_abs: 2.66,
+      native_protection_stop_order_id: "stop-link",
+      native_protection_stop_price: 9.552,
+      native_protection_tp_order_id: "tp-link",
+      native_protection_tp_qty_base: 2.66,
+    },
+    clearedMeta: {
+      external_sync: true,
+      tp_p1_done: false,
+      trail_active: false,
+    },
+  });
+  assert.strictEqual(flatReconcileInput.trail_active, true);
+  assert.strictEqual(flatReconcileInput.tp_p1_done, true);
+  assert.strictEqual(flatReconcileInput.native_protection_stop_order_id, "stop-link");
+
+  const flatReplayPlan = runnerTest.resolveV2FlatSyncExitReplayPlan({
+    exchange: "BINANCEFUT",
+    symbol: "LINKUSDT",
+    prevSide: "SHORT",
+    prevQtyBase: 2.66,
+    qtyBase: 0,
+    fillPrice: 9.55,
+    observedAtMs: 1777150004082,
+    prevMeta: flatReconcileInput,
+    meta: reconcileBinancePositionMetaWithExchange({
+      active: false,
+      meta: flatReconcileInput,
+    }).meta,
+  });
+  assert.strictEqual(flatReplayPlan.ok, true);
+  assert.strictEqual(flatReplayPlan.tp1.sourceOrderId, "tp-link");
+  assert.strictEqual(flatReplayPlan.trailActivation.sourceOrderId, "stop-link");
+  assert.strictEqual(flatReplayPlan.terminal.type, "TRAIL");
+
+  const slFlatReplayPlan = runnerTest.resolveV2FlatSyncExitReplayPlan({
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    prevSide: "LONG",
+    prevQtyBase: 1.5,
+    qtyBase: 0,
+    fillPrice: 122.4,
+    observedAtMs: 1777151004082,
+    prevMeta: {
+      entry_event_id: "ENTRYV2__SOLUSDT__LONG__1",
+      position_side: "LONG",
+      tp_p1_done: false,
+      trail_active: false,
+      native_protection_stop_order_id: "sl-sol",
+      native_protection_stop_price: 122.4,
+    },
+    meta: {
+      external_sync: true,
+    },
+  });
+  assert.strictEqual(slFlatReplayPlan.ok, true);
+  assert.strictEqual(slFlatReplayPlan.terminal.type, "STOP");
+  assert.strictEqual(slFlatReplayPlan.terminal.sourceOrderId, "sl-sol");
+
   if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
   else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
   console.log("BINANCE_LIVE_STATE_FLOW_INTEGRATION_TEST_OK");

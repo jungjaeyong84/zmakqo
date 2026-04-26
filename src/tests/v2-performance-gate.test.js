@@ -1,10 +1,15 @@
 "use strict";
 
 const assert = require("assert");
-const { evaluateV2PerformanceGate, normalizePerformanceMetrics } = require("../v2/performanceGate");
+const {
+  evaluateV2PerformanceGate,
+  normalizePerformanceMetrics,
+  resolvePerformanceGateThresholds,
+  evaluateV2PerformanceStageMatrix,
+} = require("../v2/performanceGate");
 
 const passMetrics = {
-  sample_n: 120,
+  sample_n: 220,
   win_rate_pct: 56,
   profit_factor: 1.42,
   expectancy: 0.018,
@@ -26,6 +31,7 @@ const passMetrics = {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PERFORMANCE_GATE_PASS");
   assert.deepStrictEqual(result.blockers, []);
+  assert.strictEqual(result.stage, "LIVE");
 }
 
 {
@@ -35,12 +41,62 @@ const passMetrics = {
 }
 
 {
-  const result = evaluateV2PerformanceGate({ metrics: { ...passMetrics, profit_factor: 0.8, expectancy: -0.01, net_pnl_pct: -0.2, mdd_pct: -3 } });
+  const result = evaluateV2PerformanceGate({ metrics: { ...passMetrics, profit_factor: 0.8, expectancy: -0.01, net_pnl_pct: -0.2, mdd_pct: -7 } });
   assert.strictEqual(result.ok, false);
   assert.ok(result.blockers.includes("PERFORMANCE_GATE:PROFIT_FACTOR_BELOW_FLOOR"));
   assert.ok(result.blockers.includes("PERFORMANCE_GATE:EXPECTANCY_NOT_POSITIVE"));
   assert.ok(result.blockers.includes("PERFORMANCE_GATE:NET_PNL_NOT_POSITIVE"));
   assert.ok(result.blockers.includes("PERFORMANCE_GATE:DRAWDOWN_LIMIT_EXCEEDED"));
+}
+
+{
+  const discoveryThresholds = resolvePerformanceGateThresholds({}, "DISCOVERY");
+  const canaryThresholds = resolvePerformanceGateThresholds({}, "CANARY");
+  const liveThresholds = resolvePerformanceGateThresholds({}, "LIVE");
+  assert.strictEqual(discoveryThresholds.min_sample_n, 20);
+  assert.strictEqual(canaryThresholds.min_sample_n, 50);
+  assert.strictEqual(liveThresholds.min_sample_n, 200);
+  assert.strictEqual(discoveryThresholds.max_drawdown_pct, -8);
+  assert.strictEqual(canaryThresholds.max_drawdown_pct, -6);
+  assert.strictEqual(liveThresholds.max_drawdown_pct, -5);
+  assert.strictEqual(liveThresholds.min_profit_factor, 1.15);
+}
+
+{
+  const matrix = evaluateV2PerformanceStageMatrix({
+    metrics: {
+      sample_n: 55,
+      win_rate_pct: 49,
+      profit_factor: 1.11,
+      expectancy: 0.01,
+      net_pnl_pct: 0.7,
+      mdd_pct: -4.5,
+      cost_ratio_pct: 0.12,
+      latest_error_count_24h: 0,
+    },
+  });
+  assert.strictEqual(matrix.discovery.ok, true);
+  assert.strictEqual(matrix.canary.ok, true);
+  assert.strictEqual(matrix.live.ok, false);
+  assert.strictEqual(matrix.highest_passed_stage, "CANARY");
+}
+
+{
+  const matrix = evaluateV2PerformanceStageMatrix({
+    metrics: {
+      sample_n: 199,
+      win_rate_pct: 52,
+      profit_factor: 1.2,
+      expectancy: 0.01,
+      net_pnl_pct: 0.9,
+      mdd_pct: -4.9,
+      cost_ratio_pct: 0.12,
+      latest_error_count_24h: 0,
+    },
+  });
+  assert.strictEqual(matrix.canary.ok, true);
+  assert.strictEqual(matrix.live.ok, false);
+  assert.ok(matrix.live.blockers.includes("PERFORMANCE_GATE:SAMPLE_INSUFFICIENT"));
 }
 
 console.log("V2_PERFORMANCE_GATE_TEST_OK");

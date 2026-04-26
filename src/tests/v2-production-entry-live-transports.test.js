@@ -9,6 +9,7 @@ const {
   validateLiveCfgForEntry,
   summarizeLiveCfg,
 } = require("../v2/productionEntryLiveTransports");
+const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSeed");
 
 function buildBundle(overrides = {}) {
   return buildOpenClawDecisionBundle({
@@ -44,8 +45,9 @@ function buildBundle(overrides = {}) {
       ok: true,
       reason: "V2_MARKET_DATA_QUALITY_PASS",
       blockers: [],
-      metrics: { symbol: "ETHUSDT", spread_bps: 2 },
+      metrics: { symbol: "ETHUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
     },
+    signalCriteria: buildPassSignalCriteriaSeed("LONG"),
     ...overrides,
   });
 }
@@ -117,6 +119,8 @@ async function buildsTransportsFromApprovedSizingAndLiveCfg() {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_TRANSPORTS_READY");
   assert.strictEqual(result.entry_qty_abs, 0.4);
+  assert.strictEqual(result.reference_price, 2500);
+  assert.strictEqual(result.notional_quote, 1000);
   assert.strictEqual(result.entryTransport, entryTransport);
   assert.strictEqual(result.protectionTransports, protectionTransports);
   assert.deepStrictEqual(calls.map((row) => row.type), ["liveCfg", "entryTransport", "protectionTransports"]);

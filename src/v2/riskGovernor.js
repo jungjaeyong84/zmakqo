@@ -1,5 +1,7 @@
 "use strict";
 
+const { normalizeRiskGovernorSurface } = require("./riskGovernorSurface");
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -18,6 +20,17 @@ function toNumberOrNull(value) {
 function numberWithDefault(value, fallback) {
   const n = toNumberOrNull(value);
   return n === null ? fallback : n;
+}
+
+function isUnlimitedLimit(value) {
+  const raw = String(value == null ? "" : value).trim().toUpperCase();
+  return raw === "UNLIMITED" || raw === "INF" || raw === "INFINITY" || raw === "*";
+}
+
+function tradeLimitWithDefault(value, fallback) {
+  if (isUnlimitedLimit(value)) return "UNLIMITED";
+  const n = numberWithDefault(value, fallback);
+  return Number.isFinite(n) ? Math.floor(n) : fallback;
 }
 
 function parseBool(value, fallback = false) {
@@ -48,7 +61,8 @@ function resolveRiskGovernorPolicy(env = process.env) {
     max_correlated_group_notional_quote: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, 150),
     daily_loss_halt_quote: numberWithDefault(env.DONBEOLJA_V2_RISK_DAILY_LOSS_HALT_QUOTE, 25),
     max_consecutive_loss_n: Math.floor(numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CONSECUTIVE_LOSS_N, 3)),
-    max_trades_per_day: Math.floor(numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY, 4)),
+    max_trades_per_day: tradeLimitWithDefault(env.DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY, 4),
+    max_trades_per_day_unlimited: isUnlimitedLimit(env.DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY),
     volatility_halt_bps: numberWithDefault(env.DONBEOLJA_V2_RISK_VOLATILITY_HALT_BPS, 250),
     correlation_groups: Object.freeze({
       BTC_BETA: Object.freeze(ensureArray(env.DONBEOLJA_V2_RISK_CORR_GROUP_BTC_BETA || "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,LINKUSDT")),
@@ -110,14 +124,20 @@ function evaluateV2RiskGovernor({
   if (equity <= 0) blockers.push("RISK_GOVERNOR:EQUITY_REQUIRED");
   if (dailyLoss >= policy.daily_loss_halt_quote) blockers.push("RISK_GOVERNOR:DAILY_LOSS_HALT");
   if (consecutiveLossN >= policy.max_consecutive_loss_n) blockers.push("RISK_GOVERNOR:CONSECUTIVE_LOSS_HALT");
-  if (trades24h >= policy.max_trades_per_day) blockers.push("RISK_GOVERNOR:MAX_TRADES_PER_DAY");
+  if (
+    policy.max_trades_per_day !== "UNLIMITED"
+    && Number.isFinite(policy.max_trades_per_day)
+    && trades24h >= policy.max_trades_per_day
+  ) {
+    blockers.push("RISK_GOVERNOR:MAX_TRADES_PER_DAY");
+  }
   if (totalAfter > policy.max_total_notional_quote) blockers.push("RISK_GOVERNOR:TOTAL_NOTIONAL_EXCEEDED");
   if (symbolAfter > policy.max_symbol_notional_quote) blockers.push("RISK_GOVERNOR:SYMBOL_NOTIONAL_EXCEEDED");
   if (groupAfter > policy.max_correlated_group_notional_quote) blockers.push("RISK_GOVERNOR:CORRELATED_GROUP_NOTIONAL_EXCEEDED");
   if (Number.isFinite(leverageAfter) && leverageAfter > policy.max_account_leverage) blockers.push("RISK_GOVERNOR:ACCOUNT_LEVERAGE_EXCEEDED");
   if (volatilityBps >= policy.volatility_halt_bps) blockers.push("RISK_GOVERNOR:VOLATILITY_HALT");
 
-  return Object.freeze({
+  const result = {
     ok: blockers.length === 0,
     reason: blockers.length === 0 ? "V2_RISK_GOVERNOR_PASS" : "V2_RISK_GOVERNOR_BLOCKED",
     blockers: Object.freeze(Array.from(new Set(blockers))),
@@ -138,7 +158,9 @@ function evaluateV2RiskGovernor({
       trade_count_24h: trades24h,
       volatility_bps: volatilityBps,
     }),
-  });
+  };
+  result.surface = normalizeRiskGovernorSurface(result);
+  return Object.freeze(result);
 }
 
 module.exports = {

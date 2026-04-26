@@ -51,7 +51,7 @@ const SELF_EVOLUTION_DEPLOYMENT_PLAN_LATEST = path.join(OPS_DAILY, "best_self_ev
 const WEBHOOK_SIGNAL_EXECUTION_PROBE_LATEST = path.join(OPS_DAILY, "webhook_signal_execution_probe_latest.json");
 const WEBHOOK_SIGNAL_EXECUTION_PROBE_HISTORY_LATEST = path.join(OPS_DAILY, "webhook_signal_execution_probe_history_latest.json");
 const WEBHOOK_SIGNAL_EXECUTION_PROBE_HISTORY_MAX = 2000;
-const DEFAULT_STRATEGY_ID = process.env.DONBEOLJA_STRATEGY_ID || "STRAT_v010";
+const DEFAULT_STRATEGY_ID = process.env.DONBEOLJA_STRATEGY_ID || "donbeolja_v2_openclaw";
 
 function readJsonSafe(filePath) {
   try {
@@ -200,7 +200,7 @@ function buildRuntimeStrategyGate({
   manualPasteAck = null,
   deploymentSummary = null,
 } = {}) {
-  const safeEnvDefaultStrategyId = String(envDefaultStrategyId || "").trim() || "STRAT_v010";
+  const safeEnvDefaultStrategyId = String(envDefaultStrategyId || "").trim() || "donbeolja_v2_openclaw";
   const safeEnvAllowedStrategyIds = Array.isArray(envAllowedStrategyIds)
     ? envAllowedStrategyIds.map((row) => String(row || "").trim()).filter(Boolean)
     : parseAllowedStrategyIds(envAllowedStrategyIds || safeEnvDefaultStrategyId);
@@ -311,7 +311,7 @@ function resolvePayloadStrategyIdentity({
 }
 
 async function resolveRuntimeStrategyGate() {
-  const envDefaultStrategyId = String(DEFAULT_STRATEGY_ID || "").trim() || "STRAT_v010";
+  const envDefaultStrategyId = String(DEFAULT_STRATEGY_ID || "").trim() || "donbeolja_v2_openclaw";
   const envAllowedStrategyIds = parseAllowedStrategyIds(process.env.WEBHOOK_ALLOWED_STRATEGY_IDS || envDefaultStrategyId);
   const runtimeState = await resolveSelfEvolutionRuntimeState({ ttlMs: 30_000 });
   const manualPasteAck = runtimeState && runtimeState.data

@@ -1,0 +1,896 @@
+# DONBEOLJA V2 Hardening Design
+
+| Field | Value |
+|---|---|
+| Document version | 1.3 current-progress |
+| Written at | 2026-04-26 KST |
+| Target period | 2026-04-26 ~ 2026-06-30, about 9 weeks |
+| Baseline commit | `8b5f46231239ee5ce03dc7cbec246cd2a3c1cc20` |
+| Baseline image | `gcr.io/donbeolja-dev/donbeolja:v2-8b5f4623` |
+| Baseline Cloud Run revision | `donbeolja-01530-dph` |
+| Baseline CloudBuild | `113166f5-d12a-4fe5-a2e2-36d1a8013bac` |
+| Target system | DONBEOLJA V2 Discovery Canary live-write |
+
+## 1. Purpose
+
+This plan hardens the existing V2 Discovery Canary live-write system until Formal LIVE promotion is blocked only by realized performance evidence, not by known infrastructure, safety, observability, V1-retirement, or operating-process gaps.
+
+The plan does not attempt to improve alpha. It is about not losing money because of infrastructure mistakes while enough live evidence is collected.
+
+## 2. Goals And Non-Goals
+
+### Goals
+
+- Close all current HIGH/MEDIUM safety findings.
+- Maintain Discovery Canary live-write with active protection reconciliation always green.
+- Accumulate at least 30 days of safety streak evidence.
+- Accumulate performance evidence toward `sample_n >= 200`.
+- Reach T3 / mid-tier prop-shop infrastructure maturity where Formal LIVE promotion is a statistical evidence decision only.
+
+### Non-Goals
+
+- No new alpha model.
+- No new ML training or live learner apply.
+- No new exchange, timeframe, or symbol universe beyond the current approved 8-symbol canary set.
+- No multi-region active-active.
+- No Formal LIVE promotion inside this plan.
+- No Claude/OpenAI/news reactivation.
+- No capital expansion before P0 is fully closed and 7-day post-P0 safety streak passes.
+
+## 3. Current Baseline Snapshot
+
+| Item | Current baseline |
+|---|---|
+| Mode | V2 `DISCOVERY_CANARY` live-write |
+| Formal LIVE | Disabled by `CANARY_ONLY=1` and performance gate |
+| Runtime manifest | PASS at baseline commit |
+| Active protection reconciliation | PASS, active=4, protected=4, unprotected=0 at 2026-04-26 post-deploy check |
+| Active symbols at baseline check | `BTCUSDT`, `BNBUSDT`, `XRPUSDT`, `SOLUSDT` |
+| `system_settings.live_enabled` | false, discovery enabled, canary-only true |
+| Scheduler health drift | PASS |
+| Entry route canary streak | BLOCKED by old unhealthy rows until approximately 2026-04-27 10:06 KST; do not delete or fake history |
+| Performance sample | `sample_n=0`, Formal LIVE blocked |
+| AI/news external cost paths | Disabled by env and manifest forbidden key checks |
+| V1 entry/add | hard-denied for V2 discovery path |
+| V1 exit/direct writer | hard-denied for V2 discovery bridge / legacy runtime disabled; transport regression test required in CI |
+
+## 4. Safety Principles
+
+1. Evidence absence means block.
+2. V2 protected entry is the only live-write entry path.
+3. V1 `paperBinanceRunner` must not directly write to exchange while V2 discovery live-write is enabled.
+4. `liveEnabled` is a transport capability, not proof that legacy V1 writers may write.
+5. Initial protection, repair protection, refresh, and cancel/replace all need bounded deadlines and abort propagation.
+6. Operator alerts must describe execution truth, not legacy lifecycle artifacts.
+7. Rollback flags cannot weaken protection guarantees unless explicitly scoped to local test or emergency rollback.
+8. Formal LIVE cannot be unlocked by operator intent alone; performance evidence and 30-day safety evidence are mandatory.
+
+## 5. Phase Overview
+
+```text
+P0  D+0  ~ D+5   Money-losing path closure
+  |
+  +-- 7-day post-P0 safety streak
+      |
+P1  D+6  ~ D+19  HA foundation, Firestore lease, risk policy consistency, V1 isolation stage A
+      |
+      +-- 7-day post-P1 safety streak
+          |
+P2  D+20 ~ D+38  V1 cleanup, exit-worker HA, alert escalation, incident drills
+          |
+          +-- 7-day post-P2 safety streak
+              |
+P3  D+39 ~ D+60  Evidence accumulation and Formal LIVE readiness gate
+```
+
+No phase may start until its entry gate passes.
+
+## 6. P0 Status And Scope
+
+P0 is about blocking paths that can immediately lose money or produce false operational truth.
+
+| P0 item | Current status at baseline | Remaining work |
+|---|---|---|
+| P0-1 Initial protection deadline/abort | Complete in code. Initial SL/TP1 use `withProtectionWriteDeadline`; late-placed reconciler evidence exists. | Keep in `test:v2-promotion` / runtime-chain regression. |
+| P0-2 Drop consumed-lock suppress | Complete in code. `recordSignalDrops` suppresses consumed/locked signals and persists forensic rows; riskGovernor reason surface is normalized. | Keep webhook/paperRunner race regression. |
+| P0-3 V1 direct exchange writer deny | Complete in code. `legacyV1ExchangeWriterEnabled` axis exists and V1 writer deny covers ENTRY/ADD/EXIT under V2 discovery / legacy runtime disabled. | Keep V2 transport unaffected regression in CI. |
+| P0-4 TP1 strict reconciliation | Complete in code. TP1 strict candidate validation and stale `tp_p1_pending` CRIT are implemented. | Keep exit integrity regression. |
+| P0-5 Telegram runtime context | Complete. Runtime alerts include `max_pos`, `max_trades`, `daily_loss_halt`, `risk_total`, `risk_symbol`, `risk_group`. | Keep in regression tests. |
+
+P0 code closure is complete at baseline. P0 phase closure still requires the entry-route canary streak to clear old unhealthy rows naturally, then a fresh gate run: `npm run test:v2-promotion`, runtime manifest PASS, active protection PASS, system settings live disabled PASS, scheduler drift PASS, and entry route canary streak PASS.
+
+## 7. P0 Detailed Design
+
+### P0-1. Initial Protection Late-Placed Reconciliation
+
+#### Problem
+
+Initial SL/TP1 placement now has deadline/abort, but Binance can still place an order after the client deadline. Without reconciliation, the system could attempt duplicate protection repair or incorrectly classify the position as unprotected.
+
+#### Current Baseline
+
+- `src/v2/binanceInitialProtectionTransport.js` wraps `placeInitialSl` and `placeInitialTp1` in `withProtectionWriteDeadline`.
+- `src/v2/productionRuntimeChainAudit.js` verifies initial SL/TP1 deadline coverage.
+- Tests cover abort signal forwarding.
+
+#### Remaining Change
+
+Add `src/v2/initialProtectionLatePlacedReconciler.js`.
+
+Responsibilities:
+
+- Poll Binance by `clientOrderId` / idempotency key for up to 60 seconds after `BINANCE_INITIAL_*_WRITE_DEADLINE_EXCEEDED`.
+- If late order exists and matches expected symbol, side, trigger, closePosition/reduceOnly/qty contract, mark evidence as `late_placed_after_abort=true`.
+- If late SL/TP1 is found, repair must not place a duplicate order for that leg.
+- If late order is not found, bubble `unprotected_position_possible=true` to endpoint and repair queue.
+
+#### Required Invariants
+
+- Every initial protection placement either gets an ack inside deadline or creates structured timeout evidence.
+- Late placement discovery must be idempotent.
+- Late placement evidence must be attached to protection runtime docs and repair request context.
+
+#### Tests
+
+Create `src/tests/v2-initial-protection-deadline.test.js`.
+
+Required cases:
+
+- Mock hanging SL transport -> `BINANCE_INITIAL_SL_WRITE_DEADLINE_EXCEEDED`.
+- Mock hanging TP1 transport -> `BINANCE_INITIAL_TP1_WRITE_DEADLINE_EXCEEDED`.
+- Deadline then late Binance order found -> `late_placed_after_abort=true`, no duplicate repair for that leg.
+- Deadline then no late order -> `unprotected_position_possible=true`, repair queued.
+- Endpoint returns post-fill critical if protection remains incomplete.
+
+#### Rollback
+
+No normal rollback flag. Do not allow an env flag that disables protection deadline in production. If an emergency rollback is needed, rollback Cloud Run revision.
+
+### P0-2. Suppressed Drop Forensic Ledger And RiskGovernor Reason Surface
+
+#### Problem
+
+Consumed/locked signal drops are now suppressed, but suppressed rows are not yet persisted in a dedicated forensic collection. Also, riskGovernor block reasons need the same shape in handoff details and Telegram.
+
+#### Current Baseline
+
+- `src/storage/signalDrops.js` filters consumed/locked drops before writing normal drop rows and sending alerts.
+- `SIGNAL_DROP_SUPPRESSED_ALREADY_CONSUMED` is observable in logs.
+
+#### Remaining Change
+
+- Add collection `v2__signals_dropped_suppressed`.
+- Persist every suppressed drop with `signal_id`, `run_id`, original drop payload subset, suppress reason, source call site if available, `created_at`.
+- Add normalized risk governor surface schema:
+
+```json
+{
+  "risk_governor": {
+    "ok": false,
+    "reason": "GROUP_NOTIONAL_EXCEEDED",
+    "blockers": ["RISK_GROUP_NOTIONAL_EXCEEDED"],
+    "policy": {
+      "risk_total": 300,
+      "risk_symbol": 155,
+      "risk_group": 300
+    }
+  }
+}
+```
+
+#### Required Invariants
+
+- `recordSignalDrops` is the single suppress point for all drop callers.
+- A consumed/locked signal cannot emit a later normal drop alert.
+- Suppressed drops are not discarded; forensic row is written.
+- Risk governor block reason is identical in route result, handoff detail, and Telegram body.
+
+#### Tests
+
+Create `src/tests/signal-drop-consume-lock-suppression.test.js`.
+
+Required cases:
+
+- Consumed signal -> normal drop rows 0, alerts 0, suppressed ledger 1.
+- Locked signal -> normal drop rows 0, alerts 0, suppressed ledger 1.
+- Free signal -> existing normal drop behavior.
+- Missing signal id -> existing normal drop behavior.
+- Webhook and paper runner simultaneous calls -> only one execution truth, no contradictory alert.
+
+Create `src/tests/handoff-risk-governor-reason-surface.test.js`.
+
+Required cases:
+
+- `V2_RISK_GOVERNOR_BLOCKED` includes normalized reason in handoff detail.
+- Telegram includes `riskGovernor: GROUP_NOTIONAL_EXCEEDED` or equivalent exact Korean line.
+
+#### Rollback
+
+`DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED=0` may be allowed only for local/integration testing. Production default must be enabled, and runtime manifest must fail if disabled.
+
+### P0-3. V1 PaperRunner Direct Exchange Writer Deny
+
+#### Problem
+
+The current baseline denies legacy EXIT under V2 bridge or legacy runtime disabled, but the design should be explicit and auditable: V1 writer identity must be denied separately from V2 transport capability.
+
+#### Required Change
+
+Introduce separate axes in `resolveLiveFuturesConfig`:
+
+- `liveEnabled`: V2 transport capability.
+- `legacyV1ExchangeWriterEnabled`: whether V1 paperRunner-originated exchange write is allowed.
+- `legacy_runtime_disabled`: env/runtime state.
+- `v2DiscoveryCanaryBridge`: active V2 handoff path.
+
+Expected logic:
+
+```js
+const legacyV1ExchangeWriterEnabled = liveEnabled
+  && legacyRuntimeDisabled !== true
+  && discoveryBridge.ok !== true;
+```
+
+All V1 direct exchange write call sites must check the V1 writer axis before any `placeFutures*` call.
+
+#### Required Invariants
+
+- If `DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1`, V1 paperRunner cannot write ENTRY, ADD, EXIT, reduceOnly, stop, or TP orders.
+- If `v2DiscoveryCanaryBridge=true`, V1 paperRunner cannot write any exchange order regardless of intent.
+- V2 transports are unaffected and may still place initial SL/TP1 and repair/refresh protection.
+
+#### Audit Scope
+
+Audit all `paperBinanceRunner` paths around:
+
+- direct entry market/maker orders
+- add orders
+- reduceOnly exits
+- stop/TP placement from V1 code paths
+- fallback live-enabled paths driven by Firestore `system_settings.live_enabled`
+
+#### Tests
+
+Create `src/tests/v1-legacy-exchange-writer-deny.test.js`.
+
+Required cases:
+
+- Bridge true, intent ENTRY -> denied.
+- Bridge true, intent ADD -> denied.
+- Bridge true, intent EXIT -> denied.
+- Legacy runtime disabled, bridge false -> denied.
+- V2 transports unaffected by V1 deny.
+
+Create `src/tests/v2-transports-unaffected-by-v1-gate.test.js`.
+
+Required cases:
+
+- Initial SL/TP1 transport still places under V2 route.
+- Repair protection transport still places under V2 repair.
+
+#### Rollback
+
+Do not add a broad production rollback flag that revives V1 writers. If rollback is needed, roll back the revision. A local-only env may exist for legacy tests, but production manifest must require V1 writer deny.
+
+### P0-4. TP1 Pending Expiry Escalation
+
+#### Problem
+
+A fresh `tp_p1_pending=true` can reasonably suppress TP1 missing alarms for a short window. A stale pending flag must not suppress missing TP1 detection.
+
+#### Required Change
+
+In `src/services/exitIntegrityAudit.js`:
+
+- Treat TP1 as done only when `tp_p1_done=true` or `trail_active=true`.
+- Treat TP1 pending as valid only when `tp_p1_pending=true` and `tp_p1_pending_until_ms > now`.
+- If pending is expired, emit `TP1_PENDING_EXPIRED_STILL_PENDING` as `CRIT`.
+- If pending is expired and no strict TP1 order exists, emit both expired pending and TP1 missing critical evidence.
+
+#### Required Invariants
+
+- Stale pending cannot hide missing TP1.
+- Fresh pending has bounded time window.
+- Done/trail-active states still suppress TP1 open-order requirement.
+
+#### Tests
+
+Create `src/tests/exit-integrity-tp1-pending-expired.test.js`.
+
+Required cases:
+
+- Fresh pending -> no TP1 missing critical.
+- Expired pending + missing TP1 -> CRIT.
+- `tp_p1_done=true` -> skip TP1 open-order requirement.
+- `trail_active=true` -> skip TP1 open-order requirement.
+
+### P0-5. Telegram Runtime Context Regression Lock
+
+#### Current Baseline
+
+Complete.
+
+Required fields in every V2 Telegram runtime context:
+
+- `dry_run`
+- `canary_only`
+- `formal_live`
+- `live_endpoint`
+- `ml_live`
+- `agent_apply`
+- `legacy_webhook`
+- `symbols`
+- `fallback_notional`
+- `symbol_notional`
+- `max_pos`
+- `max_trades`
+- `daily_loss_halt`
+- `risk_total`
+- `risk_symbol`
+- `risk_group`
+
+Regression test: `src/tests/telegram-alert-korean.test.js`.
+
+## 8. P1 Scope: HA Foundation And Policy Consistency
+
+P1 starts only after P0 completion and a 7-day post-P0 streak:
+
+- `unprotected_position_n=0`
+- `post_fill_critical_n=0`
+- no contradictory drop/executed alert
+- scheduler drift PASS
+- runtime manifest PASS
+
+### P1-1. Firestore-Backed Repair Lease
+
+Problem: in-process repair lease is not sufficient for multi-instance HA.
+
+Add Firestore transaction lock:
+
+- Collection/doc pattern: `runtime_locks/v2_protection_writer_lease__{position_cycle_id}`.
+- Fields: `lease_holder_instance_id`, `acquired_at`, `expires_at`, `position_cycle_id`, `placement_attempt_id`, `command_type`.
+- TTL: 60 seconds.
+- Heartbeat: 10 seconds.
+- Release in `finally`.
+
+Tests:
+
+- simultaneous acquire, only one succeeds
+- TTL expiry allows acquire
+- heartbeat extends lease
+- release clears lease
+- command/cycle mismatch denied
+
+### P1-2. Algo Endpoint Unavailable Escalation
+
+Current baseline escalates algo endpoint unavailable to CRIT in V2 live-write runtime. P1 adds duration-based persistence:
+
+- Track first seen timestamp in Firestore.
+- If endpoint unavailable exceeds `DONBEOLJA_V2_ALGO_ENDPOINT_DEGRADED_CRIT_AFTER_MS` default 600000 ms, alert CRIT repeatedly until recovery.
+- Recovery clears degraded state.
+
+### P1-3. Self-Evolution Data Hygiene
+
+Discovery Canary fills must not contaminate Formal LIVE learner datasets.
+
+Required change:
+
+- Route canary live-write outcome rows to a canary/shadow dataset namespace.
+- Formal LIVE learner/promotion datasets must require explicit `formal_live=true` source or equivalent signed promotion context.
+
+### P1-4. Discovery Notional And Risk Cap Consistency
+
+Current caps can conflict: BTC 230 plus group cap 250 can block other BTC-beta symbols after one BTC position. A lower BTC cap such as 80 is not viable because Binance step size makes the 50% TP1 quantity round to zero. The chosen map therefore uses the minimum notional that can still place entry plus 50% TP1 for each approved symbol, and raises risk total/group caps to 300 so riskGovernor does not create an accidental hidden blocker.
+
+Before changing caps, produce an artifact explaining the chosen map and expected group usage. Candidate map:
+
+```text
+BTCUSDT:155|ETHUSDT:42|LINKUSDT:41|BNBUSDT:13|XRPUSDT:11|SOLUSDT:11|AXSUSDT:12|DOGEUSDT:11
+```
+
+No cap change is allowed without:
+
+- active position count and symbol distribution evidence
+- group exposure simulation
+- riskGovernor dry-run showing intended symbols are not unexpectedly blocked
+
+### P1-5. RiskGovernor Reason Schema Unification
+
+Unify risk governor surface across:
+
+- production entry route response
+- discovery handoff detail
+- Telegram alert
+- audit ledger
+
+### P1-6. Active Protection Reconciliation Hourly
+
+Move active protection reconciliation to hourly scheduler if not already active.
+
+Required alert behavior:
+
+- unprotected position -> CRIT immediately
+- repeated same issue -> backoff after first CRIT but never suppress status artifact
+- daily summary -> active/protected/unprotected counts
+
+### P1-7. V1 PaperRunner Stage A Isolation
+
+After P0 V1 writer deny and 7-day V1 writer call count zero:
+
+- Move V1 direct exchange write helpers to `src/engine/legacy/`.
+- Add explicit `LEGACY_V1_DEAD_CODE` markers.
+- Add source audit preventing new direct V1 writer imports outside legacy module.
+
+No physical deletion in P1.
+
+## 9. P2 Scope: V1 Cleanup, HA, Escalation, Drills
+
+P2 starts only after P1 completion and a 7-day post-P1 safety streak.
+
+### P2-1. V1 Cleanup Stage B/C
+
+- Stage B: Mark dead code and add lint/source audit guard.
+- Stage C: Split `paperBinanceRunner` into smaller modules.
+- Physical deletion is deferred until 30-day `V1 placeFutures* call_n=0` evidence exists.
+
+### P2-2. Exit Worker HA
+
+Requires P1 Firestore repair lease.
+
+Target:
+
+- min instances: 2
+- max instances: 2
+
+Drill:
+
+- Kill one worker instance.
+- Verify lease takeover.
+- Verify no duplicate protection write.
+
+### P2-3. Alert Escalation Router
+
+Status: Module shipped as a standalone building block. Caller migration is intentionally deferred to a separate PR so that callers with their own dedup/backoff state (for example, `check-v2-active-protection-reconciliation.js`) are not forced into a double-state conflict.
+
+Module: `src/v2/alertEscalationRouter.js` provides:
+
+- `routeEscalatedAlert({ severity, title, body, fingerprint, fallbackChannel, env, db, sendAlertFn, now })`
+- `ackEscalation({ db, fingerprint, ackReason, source })`
+- `recoverEscalation({ db, fingerprint, recoverReason })`
+- Pure helpers: `evaluateCriticalDecision`, `buildEscalationFingerprint`, `buildPersistedState`, `resolveAlertEscalationPolicy`, `resolveAlertChannelMap`, `resolveTargetChannel`, `normalizeSeverityRoute`.
+
+Routing:
+
+- INFO/WARN -> canary channel (`DONBEOLJA_V2_ALERT_CANARY_CHANNEL`)
+- ERROR -> ops channel (`DONBEOLJA_V2_ALERT_OPS_CHANNEL`)
+- CRITICAL -> critical channel (`DONBEOLJA_V2_ALERT_CRITICAL_CHANNEL`, falls back to ops) and repeat every `DONBEOLJA_V2_ALERT_ESCALATION_REPEAT_INTERVAL_MS` (default 5 minutes) until acknowledged or recovered, capped at `DONBEOLJA_V2_ALERT_ESCALATION_MAX_REPEAT_N` (default 288 = 24 hours at 5 min cadence).
+
+Default flag policy:
+
+- `DONBEOLJA_V2_ALERT_ESCALATION_ROUTER_ENABLED` defaults to `false`. When false, `routeEscalatedAlert` becomes a passthrough to `sendAlertFn` with the supplied fallback channel, which keeps existing alert call sites unchanged.
+
+State storage:
+
+- `runtime_locks/v2_alert_escalation__{fingerprint}` Firestore documents.
+- Lifecycle statuses: `ACTIVE` -> `ACKNOWLEDGED` (operator) or `RECOVERED` (auto). Both terminal statuses suppress further repeats.
+
+Caller migration plan (separate PR after observation):
+
+- `scripts/check-v2-active-protection-reconciliation.js` should switch to `routeEscalatedAlert` only after its existing in-process backoff state is consolidated into the router's Firestore state, otherwise repeat counters double-count.
+- `signalLifecycleAlert.js` adoption requires per-call fingerprint design.
+- Any future CRITICAL alert source must pass a stable fingerprint to avoid noisy unique-row creation.
+
+Required regression tests:
+
+- `src/tests/v2-alert-escalation-router.test.js` covers severity routes, channel resolution, `evaluateCriticalDecision` transitions, full CRITICAL repeat lifecycle (first send -> cooldown suppress -> repeat -> max suppress -> ack suppress -> recovery suppress), no-channel and Firestore-unavailable paths, and disabled-flag passthrough.
+
+Required gate:
+
+- `npm run check:v2-alert-escalation-router` runs `scripts/check-v2-alert-escalation-router.js` to assert exports, defaults, channel map shape, decision contract, and fingerprint stability without any I/O. The gate is wired into `npm run check:v2-p2-phase-gate`.
+
+### P2-4. Incident Drills
+
+Required drills:
+
+- exit-worker instance failure
+- Firestore `system_settings.live_enabled=true` accidental toggle
+- Binance API / algo endpoint degraded for 5 minutes
+- Telegram delivery outage
+
+Each drill requires artifact and postmortem note.
+
+### P2-5. Signal Shadow Counterfactual Ledger (F0/F1)
+
+#### Problem
+
+The four shadow filters (BTC 1h trend, MTF 1h alignment, volatility chaos, cost-adjusted edge) currently produce a `would_block` verdict per signal but no counterfactual evidence. Without per-filter precision/recall and counterfactual PnL, promoting any filter to a hard-block is guesswork. Independent verification ("did the would-be-blocked signal actually lose money?") is missing.
+
+#### Building Block (shipped)
+
+Add `src/v2/signalShadowCounterfactualLedger.js` as a standalone module. Default OFF behind `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED` so this is purely additive and dormant in production until explicitly enabled per environment.
+
+Module API:
+
+- `resolveCounterfactualLedgerPolicy(env)` — reads `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED`, `_HORIZON_BARS` (default 24), `_BAR_INTERVAL_MS` (default 15m), `_MAX_AGE_MS` (default 7d), `_BATCH_LIMIT` (default 50).
+- `buildFilterCombinationHash({ would_block_filter_set, would_pass_filter_set, insufficient_evidence_filter_set })` — order-independent sha1 prefix. Enables leave-one-out attribution per filter combination.
+- `extractFilterSetsFromShadowDecision(decision)` — peels filter id sets out of `signalShadowFilters.buildSignalShadowFilters` output.
+- `buildPendingRecord({ symbol, side, candle_close_ms, ref_price, signal_verdict, shadow_filter_decision, horizon_bars, bar_interval_ms, now_ms })` — frozen record schema.
+- `evaluatePendingExpiry({ pending, now_ms, max_age_ms })` — returns `{action: WAIT|CLOSE|EXPIRE|SKIP}`.
+- `closeRecordFromKlines({ pending, klines, now_ms })` — pure: from kline array spanning entry candle through horizon, computes `mfe_pct`, `mae_pct`, `exit_close_pct`, `bar_n_observed` for the recorded side.
+- `recordCounterfactualEvaluation({ db, env, ... })` — idempotent Firestore set with merge. Already-CLOSED records are not overwritten.
+- `closeCounterfactualRecord({ db, doc_id, pending, fetchKlines, now_ms, max_age_ms })` — close-or-expire transition for one doc.
+- `walkPendingCounterfactuals({ db, env, fetchKlines, now_ms })` — finds PENDING records with `horizon_close_ms <= now_ms`, closes each by fetching klines and computing the update; expires records past `max_age_ms` without fetch.
+
+State storage:
+
+- Collection `v2__signal_shadow_counterfactuals`. Doc id `{SYMBOL}__{candle_close_ms}__{SIDE}__{filter_combination_hash}`. One record per filter-combination outcome per signal candle. Multiple signals on the same candle with the same outcome collapse to one record. The filter-combination hash is the key axis for downstream leave-one-out attribution.
+
+Schema fields:
+
+```json
+{
+  "record_type": "V2_SIGNAL_SHADOW_COUNTERFACTUAL",
+  "symbol": "BTCUSDT",
+  "side": "LONG",
+  "candle_close_ms": 1700000000000,
+  "ref_price": 50000.0,
+  "signal_verdict": "PASS|BLOCK|null",
+  "shadow_verdict": "WOULD_PASS|WOULD_BLOCK|null",
+  "would_block_filter_set": ["BTC_1H_TREND_ALT_LONG"],
+  "would_pass_filter_set": ["MULTI_TF_1H_ALIGNMENT", "COST_ADJUSTED_EDGE"],
+  "insufficient_evidence_filter_set": ["VOLATILITY_CHAOS_30M"],
+  "filter_combination_hash": "abc123...",
+  "status": "PENDING|CLOSED|EXPIRED",
+  "horizon_bars": 24,
+  "horizon_close_ms": 1700021600000,
+  "mfe_pct": 0.012,
+  "mae_pct": 0.005,
+  "exit_close_pct": -0.003,
+  "bar_n_observed": 24,
+  "close_reason": "HORIZON_KLINES|NO_KLINES|MAX_AGE_EXCEEDED"
+}
+```
+
+Tests: `src/tests/v2-signal-shadow-counterfactual-ledger.test.js` covers exports, policy defaults and env honoring, hash order independence, filter set extraction, pending record contract, expiry transitions (`WAIT|CLOSE|EXPIRE|SKIP`), close-from-klines for both LONG and SHORT, no-kline graceful close, disabled-flag passthrough, idempotent already-CLOSED skip, walker close-past-horizon, walker expire-stale.
+
+Required gate: `npm run check:v2-signal-shadow-counterfactual-ledger` runs `scripts/check-v2-signal-shadow-counterfactual-ledger.js` to assert exports, defaults, namespace, hash order independence, filter set extraction, pending record contract, expiry decision contract, and close-from-klines contract without any I/O. Wired into `npm run check:v2-p2-phase-gate`.
+
+#### Wire-Up Plan (deferred)
+
+Live integration is intentionally deferred to a separate PR (same conservative pattern as P2-3 alert escalation router) so this ships as a dormant building block with no risk to the live decision path.
+
+When activated:
+
+- Wire `recordCounterfactualEvaluation` at the persistence boundary that already captures `shadow_filter_decision` (likely the OpenClaw evidence write or the discovery handoff success path), fire-and-forget with try/catch wrapping.
+- Add a launchd / Cloud Scheduler job invoking a `scripts/walk-v2-signal-shadow-counterfactual-ledger.js` walker every bar interval (15m) or hourly to close pending records past their horizon.
+- Promote env flag `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED=1` per environment after wire-up lands.
+
+#### Roadmap Position
+
+This is **F0 + F1** of the Stage 1 filter promotion roadmap discussed with operator on 2026-04-26:
+
+- F0: shadow ledger schema + walker (shipped — `signalShadowCounterfactualLedger.js`)
+- F1: counterfactual tracker module ready, live wire-up deferred (shipped)
+- F2: leave-one-out analysis at `blocked_n ≥ 50` per filter (shipped — see P2-6 below)
+- F3: precision (true positive rate) `≥ 0.65` and counterfactual PnL drag `≥ +0.3` (i.e. `mean_exit_close_pct ≤ -0.003`) required to promote a filter from SHADOW_ONLY to hard-block
+- F4: funding/OI/liquidation/orderbook feature additions (separate PR after F3 promotion settles)
+
+#### Required Invariants
+
+- Default OFF — no live record writes until explicit env flag.
+- Pure decision logic isolated from Firestore I/O — `closeRecordFromKlines`, `evaluatePendingExpiry`, `buildPendingRecord`, `buildFilterCombinationHash` callable in unit tests with no fakes.
+- Idempotent writes — re-recording for the same `(symbol, candle_close_ms, side, filter_combination_hash)` does not overwrite a CLOSED record.
+- Walker is a no-op when disabled, never throws when `fetchKlines` returns empty.
+- No live decision (entry permit, signal authority) reads from this collection. Evidence-only.
+
+#### Rollback
+
+Set `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED=0` and the recorder/walker become no-ops. The Firestore collection can be left in place as historical evidence or dropped by the operator at will.
+
+### P2-6. Signal Shadow Counterfactual Analyzer (F2)
+
+#### Problem
+
+F0/F1 records counterfactual evidence but provides no aggregation. Without per-filter precision and PnL-drag metrics — and without leave-one-out attribution that isolates each filter's marginal contribution — there is no objective way to decide which filter qualifies for hard-block promotion.
+
+#### Building Block (shipped)
+
+Add `src/v2/signalShadowCounterfactualAnalyzer.js` plus:
+
+- `scripts/analyze-v2-signal-shadow-counterfactuals.js` — CLI that reads CLOSED records from `v2__signal_shadow_counterfactuals`, builds the analysis report, and writes `ops/daily/v2_signal_shadow_counterfactual_analysis_latest.json`. `--dry-run` produces an empty-record artifact for smoke tests.
+- `scripts/walk-v2-signal-shadow-counterfactual-ledger.js` — runtime walker entry point for cron / launchd / Cloud Scheduler. Default no-op when ledger flag is OFF.
+
+Module API:
+
+- `isClosedWithKlines(record)` — gating predicate. Records without `bar_n_observed > 0` and a full triplet of `mfe_pct / mae_pct / exit_close_pct` are excluded from analysis.
+- `summarizeNumericArray(values)` — n / mean / median / p25 / p75 / min / max / stddev for any numeric series.
+- `buildPerFilterSummary({ filterId, records })` — per-filter `would_block_n`, `would_pass_n`, `precision_proxy` (negative-or-zero exit fraction among blocked), `pnl_drag_proxy_r` (negation of mean exit_close_pct among blocked), and full distribution summaries for blocked exit / mfe / mae and passed exit.
+- `buildLeaveOneOutSummary({ filterId, records })` — splits records into "filter is the SOLE blocker" vs "filter co-occurs with other blockers" so the marginal contribution of the filter alone can be observed.
+- `buildFilterCombinationSummary({ records })` — buckets every CLOSED record by its `would_block_filter_set` so the operator can see which filter combinations actually fire and what return distribution each produces.
+- `buildAnalyzerReport({ records, generated_at_ms })` — top-level frozen report combining all of the above. Default filter id list is `REQUIRED_FILTER_IDS` plus any new filter id discovered in the data.
+- `loadCounterfactualRecords({ db, batchLimit })` — Firestore read helper; not used by pure-logic tests.
+
+Sign convention:
+
+- `pnl_drag_proxy_r = -mean(exit_close_pct)` among blocked-and-closed records. A filter that would have removed losing trades produces a *positive* drag value. A filter that would have removed profitable trades produces a *negative* drag value (i.e. it is hurting performance and must not be promoted).
+- `precision_proxy` is the fraction of blocked records with `exit_close_pct ≤ 0`. This is a proxy because it does not model the actual TP1 / SL strategy exit; it is suitable for filter promotion screening, not for live PnL projection.
+
+Tests: `src/tests/v2-signal-shadow-counterfactual-analyzer.test.js` covers exports, closed-with-klines guard, numeric summary basics, per-filter precision and drag math, leave-one-out separation, filter combination grouping, empty records shape, status counting (PENDING / EXPIRED / CLOSED), and discovery of new filter ids.
+
+Required gate: `npm run check:v2-signal-shadow-counterfactual-analyzer` runs `scripts/check-v2-signal-shadow-counterfactual-analyzer.js` to assert exports, predicate correctness, sign convention, leave-one-out separation, and report shape without any I/O. Wired into `npm run check:v2-p2-phase-gate`.
+
+#### F3 Promotion Gate (deferred, scaffolded)
+
+Once `blocked_closed_n ≥ 50` per filter, the F3 promotion gate (separate PR) will:
+
+1. Read `ops/daily/v2_signal_shadow_counterfactual_analysis_latest.json`.
+2. For each filter, require `precision_proxy ≥ 0.65` AND `pnl_drag_proxy_r ≥ 0.003` AND `leave_one_out.sole_blocker_pnl_drag_proxy_r ≥ 0` (filter must not lose money on its own).
+3. Emit a per-filter promotion verdict.
+4. The operator hand-promotes a passing filter from SHADOW_ONLY to hard-block by toggling its `hard_block_enabled` flag in `signalShadowFilters.js` policy.
+
+#### Rollback
+
+The analyzer is read-only. No rollback required. To suppress the artifact, simply stop scheduling the analyzer script.
+
+## 10. P3 Scope: Evidence And Formal LIVE Readiness
+
+P3 starts only after P2 completion and a 7-day post-P2 safety streak.
+
+### P3-1. Daily Evidence Snapshot
+
+Add `scripts/collect-v2-evidence-snapshot-daily.js`.
+
+Output path: `ops/daily/v2_evidence_streak.jsonl`.
+
+Required fields:
+
+```json
+{
+  "date": "2026-05-15",
+  "sample_n_total": 38,
+  "sample_n_30d": 38,
+  "profit_factor_30d": 1.05,
+  "expectancy_30d_quote": 0.18,
+  "net_pnl_30d_quote": 6.84,
+  "win_rate_30d": 0.42,
+  "max_drawdown_30d_quote": 4.2,
+  "active_protection_streak_days": 21,
+  "post_fill_critical_30d": 0,
+  "v1_place_futures_call_n_30d": 0,
+  "performance_gate_status": "ACCUMULATING"
+}
+```
+
+### P3-2. 30-Day Safety Streak Evaluation
+
+All conditions must pass daily:
+
+- active protection reconciliation PASS
+- `unprotected_position_n=0`
+- repair queue lag p95 < 60 seconds
+- `post_fill_critical_n=0`
+- algo endpoint degraded duration < 10 min/day
+- V1 direct exchange writer calls = 0
+- no contradictory alert/fill reconciliation issue
+- Cloud Run revision drift = 0
+
+### P3-3. Daily Performance Gate Evaluation
+
+Run `node scripts/check-v2-performance-gate.js` daily and summarize:
+
+- `sample_n`
+- `profit_factor`
+- `expectancy_r`
+- `net_pnl_pct`
+- fee/funding/slippage inclusion status
+- current stage: DISCOVERY/CANARY/LIVE blocked/pass
+
+### P3-4. Formal LIVE Promotion Readiness Script
+
+Add `scripts/check-v2-formal-live-promotion-readiness.js`.
+
+Required AND conditions:
+
+| Condition | Threshold |
+|---|---:|
+| `sample_n_30d` | >= 200 |
+| `profit_factor_30d` | >= 1.15 |
+| bootstrap PF lower CI | > 1.0 |
+| `expectancy_r_30d` | > 0 |
+| `net_pnl_30d` | > 0 |
+| `win_rate_30d` | >= 0.40 |
+| max drawdown / equity | < 0.05 |
+| active protection streak | >= 30 days |
+| `post_fill_critical_30d` | 0 |
+| repair queue lag p95 | < 60 seconds |
+| V1 direct exchange writer calls | 0 |
+| Cloud Run revision drift | 0 |
+| fee/funding/slippage included | true |
+| symbol/regime breakdown present | true |
+| tail loss / MAE report present | true |
+
+Even if all pass, Formal LIVE still requires operator multi-eye approval and a 24-hour cooldown. This plan does not perform Formal LIVE promotion.
+
+## 11. Phase Gates
+
+### P0 -> P1 Required Gate
+
+```bash
+node scripts/check-v2-runtime-discovery-canary-manifest.js
+node scripts/check-v2-active-protection-reconciliation.js
+node scripts/check-v2-system-settings-live-disabled.js
+node scripts/check-v2-scheduler-health-drift.js
+node scripts/check-v2-production-runtime-chain.js
+npm run test:v2-promotion
+```
+
+Plus P0-specific tests:
+
+```bash
+node src/tests/v2-initial-protection-deadline.test.js
+node src/tests/signal-drop-consume-lock-suppression.test.js
+node src/tests/handoff-risk-governor-reason-surface.test.js
+node src/tests/v1-legacy-exchange-writer-deny.test.js
+node src/tests/v2-transports-unaffected-by-v1-gate.test.js
+node src/tests/exit-integrity-tp1-pending-expired.test.js
+```
+
+### P1 -> P2 Required Gate
+
+All P0 -> P1 gates plus:
+
+```bash
+node scripts/check-v2-repair-lease-firestore-tx.js
+node scripts/check-v2-algo-endpoint-escalation.js
+node scripts/check-v2-v1-writer-deny-streak.js
+```
+
+### P2 -> P3 Required Gate
+
+All previous gates plus:
+
+```bash
+node scripts/check-v2-exit-worker-ha-streak.js
+node scripts/check-v2-incident-drill-evidence.js
+```
+
+### P3 End Gate
+
+```bash
+node scripts/check-v2-formal-live-promotion-readiness.js
+```
+
+Expected result before enough data: `FORMAL_LIVE_PROMOTION_BLOCKED`.
+
+## 12. Fast Gate And Full Gate
+
+To avoid operator bypass due to test runtime, gates are split:
+
+### Fast Required Gate
+
+Runs before any production deploy:
+
+```bash
+node scripts/check-v2-runtime-discovery-canary-manifest.js
+node scripts/check-v2-active-protection-reconciliation.js
+node scripts/check-v2-system-settings-live-disabled.js
+node scripts/check-v2-scheduler-health-drift.js
+node scripts/check-v2-production-runtime-chain.js
+npm run test:v2-promotion
+```
+
+### Full Nightly Gate
+
+Runs daily or before phase transition:
+
+```bash
+npm test
+npm run test:v2-promotion
+node scripts/check-v2-firestore-cost-guard.js
+node scripts/check-v2-performance-gate.js || true
+node scripts/check-v2-live-evidence-readiness.js || true
+```
+
+A failing full nightly gate freezes phase advancement but does not automatically stop current protected canary unless the failure is safety-critical.
+
+## 13. Rollback Policy
+
+### Code Rollback
+
+Preferred rollback is Cloud Run revision rollback:
+
+```bash
+gcloud run services update-traffic donbeolja --region=asia-northeast3 --to-revisions=PREVIOUS_REVISION=100
+```
+
+### Safety Flag Policy
+
+- Flags may disable non-critical observability features.
+- Flags must not disable protection placement deadline, V1 writer deny, active protection reconciliation, or legacy webhook block in production.
+- Any flag that weakens a safety invariant must be local-test-only or require an emergency runbook.
+
+### Phase Freeze
+
+Any of the following freezes phase advancement:
+
+- unprotected position observed
+- post-fill protection critical
+- contradictory drop/executed alert
+- V1 direct exchange writer call
+- scheduler drift blocker
+- manifest mismatch
+- performance artifact corruption
+
+Unfreeze requires fix, root cause note, and a fresh 7-day safety streak.
+
+## 14. KPI
+
+### Safety KPI
+
+| Metric | Threshold |
+|---|---:|
+| `unprotected_position_n` | 0 always |
+| `post_fill_critical_30d` | 0 |
+| `algo_endpoint_degraded_duration` | < 10 min/day |
+| repair queue lag p95 | < 60 seconds |
+| repair lease tx success rate 30d | >= 99.9% |
+| contradictory drop/executed alert | 0 |
+| V1 direct exchange writer calls 30d | 0 |
+
+### Evidence KPI
+
+| Metric | Threshold |
+|---|---:|
+| `sample_n_30d` | >= 200 |
+| `profit_factor_30d` | >= 1.15 |
+| bootstrap PF lower CI | > 1.0 |
+| `expectancy_r_30d` | > 0 |
+| `net_pnl_30d` | > 0 |
+| `win_rate_30d` | >= 0.40 |
+| active protection streak | >= 30 days |
+
+### Runtime KPI
+
+| Metric | Threshold |
+|---|---:|
+| Cloud Run revision drift | 0 |
+| forbidden AI/news env keys | 0 |
+| OTel error rate | < 0.5% |
+| Firestore cost guard | PASS |
+| scheduler health drift | PASS |
+
+## 15. T3 Readiness Checklist
+
+- [ ] P0 remaining findings closed.
+- [ ] P1 repair lease Firestore transaction completed.
+- [ ] P1 risk/notional policy consistency artifact exists.
+- [ ] P2 exit-worker HA drill passed.
+- [ ] P2 alert escalation drill passed.
+- [ ] 30-day active protection streak passed.
+- [ ] `sample_n_30d >= 200`.
+- [ ] `profit_factor_30d >= 1.15`.
+- [ ] bootstrap PF lower CI > 1.0.
+- [ ] `expectancy_r_30d > 0`.
+- [ ] `net_pnl_30d > 0`.
+- [ ] fee/funding/slippage included in performance artifact.
+- [ ] symbol/regime breakdown exists.
+- [ ] `post_fill_critical_30d = 0`.
+- [ ] V1 direct exchange writer calls 30d = 0.
+- [ ] Cloud Run revision drift = 0.
+- [ ] forbidden AI/news env keys = 0.
+
+All items must pass before Formal LIVE decision is even discussed.
+
+## 16. Immediate Next Work
+
+1. Keep current bounded Discovery Canary running while entry-route unhealthy rows age out naturally.
+2. Re-run the full P0 gate after approximately 2026-04-27 10:06 KST.
+3. Do not start P2 code or exit-worker HA until P0/P1 gates and the required safety streaks pass.
+4. Continue adding regression locks for already-closed P0/P1 invariants.
+5. Keep Formal LIVE blocked until performance evidence reaches the documented thresholds.
+
+## 17. Final Position
+
+The current V2 Discovery Canary can continue only at current bounded live-write scale while P0 is completed. It should not expand position count, notional, symbol set, or Formal LIVE exposure until P0 is closed and a 7-day safety streak passes.
+
+Formal LIVE remains blocked by evidence. This plan does not unlock it; it makes the system strong enough that future Formal LIVE debate is about performance statistics, not avoidable infrastructure risk.

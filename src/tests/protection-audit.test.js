@@ -16,6 +16,8 @@ const {
   classifyStatus,
   pickSlOrder,
   pickTpOrder,
+  shouldRequireTpOrder,
+  buildProtectionPhase,
 } = __test;
 
 (function run() {
@@ -141,6 +143,54 @@ const {
       position: {},
     });
     assert.strictEqual(issues.length, 0, `expected no issues, got ${JSON.stringify(issues)}`);
+    assert.strictEqual(classifyStatus(issues), "GREEN");
+  }
+
+  // buildIssues — after TP1 is done, missing TP order is expected because the
+  // partial TP has filled; the runner must be protected by SL/trailing.
+  {
+    assert.strictEqual(shouldRequireTpOrder({ tp_p1_done: true, trail_active: true }), false);
+    assert.strictEqual(shouldRequireTpOrder({ tp_p1_done: false, trail_active: false }), true);
+    assert.deepStrictEqual(buildProtectionPhase({
+      meta: { tp_p1_done: true, trail_active: true, refresh_status: "OK" },
+      exchange: { sl_order: { orderId: "S1" }, tp_order: null },
+    }), {
+      phase: "POST_TP1_TRAILING_RUNNER",
+      tp_required_on_exchange: false,
+      runner_mode: true,
+      runner_trailing_active: true,
+      runner_native_refresh_ok: true,
+      runner_sl_present_on_exchange: true,
+      runner_protection_active: true,
+    });
+    const issues = buildIssues({
+      meta: {
+        sl_order_id: "S1",
+        sl_price: 99.6,
+        entry_price: 100,
+        tp_order_id: "T1",
+        tp_price: 103,
+        refresh_at_iso: new Date().toISOString(),
+        tp_p1_done: true,
+        trail_active: true,
+      },
+      exchange: {
+        sl_order: { orderId: "S1", stopPrice: 99.6 },
+        tp_order: null,
+      },
+      match: {
+        sl_present_on_exchange: true,
+        tp_present_on_exchange: false,
+        sl_id_matches: true,
+        tp_id_matches: false,
+        sl_price_matches: true,
+        tp_price_matches: false,
+      },
+      position: { qty_base: 1, position_side: "SHORT" },
+    });
+    const codes = issues.map((i) => i.code);
+    assert.ok(!codes.includes("TP_MISSING_ON_EXCHANGE"),
+      "post-TP1 runner must not require a still-open TP order");
     assert.strictEqual(classifyStatus(issues), "GREEN");
   }
 

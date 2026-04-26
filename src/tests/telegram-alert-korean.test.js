@@ -37,6 +37,48 @@ function run() {
   assert.ok(openclawText.includes("AI 판단 유지"));
   assert.ok(openclawText.includes("사유: 오늘 거래가 없음"));
 
+  const v2Text = __test.buildTelegramText({
+    title: "[P0] SOLUSDT live exit exception",
+    body: "reason: LIVE_EXCEPTION",
+    severity: "ERROR",
+    env: {
+      DONBEOLJA_V2_ENABLED: "1",
+      DONBEOLJA_V2_CANARY_ONLY: "1",
+      DONBEOLJA_V2_DRY_RUN: "0",
+      DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "25",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "5",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
+      DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
+      DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "400",
+      DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: "155",
+      DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE: "300",
+      DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "1",
+      DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "0",
+      ML_LIVE_SERVING_ARMED: "0",
+      OPENCLAW_AGENT_APPLY_ENABLED: "0",
+    },
+  });
+  assert.ok(v2Text.includes("[오류] [V2 DISCOVERY_CANARY] [V2 긴급] SOLUSDT live exit exception"));
+  assert.ok(v2Text.includes("runtime=V2 DISCOVERY_CANARY"));
+  assert.ok(v2Text.includes("canary_only=1"));
+  assert.ok(v2Text.includes("formal_live=0"));
+  assert.ok(v2Text.includes("legacy_webhook=차단됨"));
+  assert.ok(v2Text.includes("symbols=SOLUSDT|XRPUSDT"));
+  assert.ok(v2Text.includes("fallback_notional=25"));
+  assert.ok(!v2Text.includes("max_notional=25"));
+  assert.ok(v2Text.includes("symbol_notional=SOLUSDT:15|XRPUSDT:15"));
+  assert.ok(v2Text.includes("max_pos=5"));
+  assert.ok(v2Text.includes("max_trades=UNLIMITED"));
+  assert.ok(v2Text.includes("daily_loss_halt=10"));
+  assert.ok(v2Text.includes("risk_total=400"));
+  assert.ok(v2Text.includes("risk_symbol=155"));
+  assert.ok(v2Text.includes("risk_group=300"));
+  assert.ok(!v2Text.includes("[P0]"));
+
   delete process.env.TELEGRAM_ALERT_TRANSPORT;
   assert.strictEqual(__test.resolveTelegramTransport({ token: "" }), "auto");
   assert.strictEqual(__test.resolveTelegramTransport({ token: "inline-token" }), "api");

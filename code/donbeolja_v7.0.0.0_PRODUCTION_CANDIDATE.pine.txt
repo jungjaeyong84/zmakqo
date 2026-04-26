@@ -1,0 +1,524 @@
+//@version=6
+// Experimental branch only. Canonical production signal system is donbeolja_v6.1.1.0.
+indicator("돈벌자 :) Ω Full v7.0.0.0", overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// V7 objective:
+// - Translate the current V2 signal criteria into a chart-native overlay.
+// - Keep alert surface small and operator-facing visualization rich.
+// - Treat missing/weak proxy evidence as BLOCK instead of silently passing.
+
+//────────────────────────────────────
+// Inputs
+//────────────────────────────────────
+grp_regime = "═══ V7 Regime / Setup ═══"
+grp_quality = "═══ V7 Market Quality / Evidence ═══"
+grp_risk = "═══ V7 Edge / Risk ═══"
+grp_webhook = "═══ V7 Webhook / Payload ═══"
+grp_display = "═══ V7 Visualization ═══"
+grp_dev = "═══ V7 Debug / Trace ═══"
+
+htf_tf = input.timeframe("240", "HTF regime timeframe", group = grp_regime)
+trend_min_adx = input.float(20.0, "Trend ADX min", minval = 1.0, maxval = 60.0, step = 0.5, group = grp_regime)
+trend_min_alignment = input.float(0.55, "HTF alignment min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
+range_compression_min = input.float(0.72, "Range compression min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
+setup_quality_min = input.float(0.50, "Setup quality min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_regime)
+trigger_body_min = input.float(0.45, "Trigger body ratio min", minval = 0.05, maxval = 1.0, step = 0.01, group = grp_regime)
+min_rsi_long = input.float(52.0, "LONG RSI min", minval = 40.0, maxval = 70.0, step = 0.5, group = grp_regime)
+max_rsi_short = input.float(48.5, "SHORT RSI max", minval = 30.0, maxval = 60.0, step = 0.5, group = grp_regime)
+volume_trigger_z_min = input.float(0.35, "Trigger volume z min", minval = -1.0, maxval = 5.0, step = 0.05, group = grp_regime)
+
+market_quality_min = input.float(0.50, "Market quality min", minval = 0.0, maxval = 1.0, step = 0.01, group = grp_quality)
+max_spread_bps = input.float(14.0, "Spread proxy max (bps)", minval = 0.1, maxval = 30.0, step = 0.1, group = grp_quality)
+max_mark_gap_bps = input.float(10.0, "Mark/index gap proxy max (bps)", minval = 0.1, maxval = 50.0, step = 0.1, group = grp_quality)
+max_funding_penalty_bps = input.float(3.0, "Funding penalty max (bps)", minval = 0.0, maxval = 30.0, step = 0.1, group = grp_quality)
+manual_funding_penalty_bps = input.float(0.0, "Funding penalty input (bps)", minval = 0.0, maxval = 30.0, step = 0.1, group = grp_quality)
+spread_proxy_weight = input.float(0.08, "Spread proxy weight", minval = 0.01, maxval = 1.0, step = 0.01, group = grp_quality)
+
+stop_atr = input.float(1.6, "Stop ATR multiple", minval = 0.5, maxval = 5.0, step = 0.1, group = grp_risk)
+base_target_atr = input.float(2.5, "Base target ATR multiple", minval = 0.5, maxval = 8.0, step = 0.1, group = grp_risk)
+min_expected_gross_r = input.float(1.6, "Expected gross R min", minval = 0.5, maxval = 5.0, step = 0.05, group = grp_risk)
+min_expected_net_r = input.float(0.25, "Expected net R after cost min", minval = -1.0, maxval = 2.0, step = 0.01, group = grp_risk)
+fee_bps = input.float(4.0, "Fee estimate (bps)", minval = 0.0, maxval = 50.0, step = 0.1, group = grp_risk)
+early_score_min = input.float(45.0, "EARLY score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
+core_score_min = input.float(60.0, "CORE score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
+watch_score_min = input.float(35.0, "WATCH score min", minval = 0.0, maxval = 100.0, step = 0.5, group = grp_risk)
+same_dir_cooldown_bars = input.int(8, "Same direction cooldown bars", minval = 0, maxval = 50, group = grp_risk)
+
+provider_id = input.string("BINANCEFUT", "Webhook provider", options = ["BINANCEFUT", "UPBIT"], group = grp_webhook)
+webhook_qty_pct = input.float(1.0, "Webhook qtyPct", minval = 0.01, maxval = 1.0, step = 0.01, group = grp_webhook)
+
+show_trend_ribbon = input.bool(true, "EMA ribbon", group = grp_display)
+show_signal_shapes = input.bool(true, "Signal markers", group = grp_display)
+show_candidate_markers = input.bool(true, "Watch / probe markers", group = grp_display)
+show_quality_lines = input.bool(false, "Score / edge lines", group = grp_display)
+show_state_bg = input.bool(true, "Regime background", group = grp_display)
+show_status_panel = input.bool(true, "Signal dashboard", group = grp_display)
+show_latest_card = input.bool(true, "Latest status card", group = grp_display)
+show_gate_labels = input.bool(false, "Pulse labels on signals", group = grp_display)
+show_block_reason = input.bool(true, "Block reason", group = grp_dev)
+
+//────────────────────────────────────
+// Helpers
+//────────────────────────────────────
+f_clamp(float v, float lo, float hi) => math.max(lo, math.min(hi, v))
+f_clamp01(float v) => f_clamp(v, 0.0, 1.0)
+f_safe_div(float a, float b) => math.abs(b) > 1e-10 ? a / b : 0.0
+f_json_escape(string src) =>
+    string txt = str.tostring(src)
+    txt := str.replace_all(txt, "\\", "\\\\")
+    txt := str.replace_all(txt, '"', '\\"')
+    txt := str.replace_all(txt, "\n", "\\n")
+    txt := str.replace_all(txt, "\r", "\\r")
+    txt := str.replace_all(txt, "\t", "\\t")
+    txt
+f_json_pair_s(string key, string val) => ',"' + key + '":"' + f_json_escape(val) + '"'
+f_json_pair_n(string key, float val) => ',"' + key + '":' + str.tostring(val)
+f_json_pair_b(string key, bool val) => ',"' + key + '":' + (val ? "true" : "false")
+f_score_color(float score) => score >= core_score_min ? color.lime : score >= early_score_min ? color.yellow : color.orange
+f_gate_text(bool pass) => pass ? "PASS" : "BLOCK"
+f_append_reason(string current, string reason) => current == "" ? reason : current + " | " + reason
+f_bucket_signal_score(float score) => score >= 85 ? "S85" : score >= 75 ? "S75" : score >= 65 ? "S65" : score >= 50 ? "S50" : "S00"
+f_shape_text(string direction, string grade) => direction == "LONG" ? (grade == "CORE" ? "LC" : "LE") : (grade == "CORE" ? "SC" : "SE")
+f_regime_emoji(string regime) => regime == "TREND" ? "🌊" : regime == "TRANSITION" ? "🌀" : "🧊"
+f_setup_emoji(string setupType) => setupType == "PULLBACK_RECLAIM" ? "🧲" : setupType == "BREAKOUT_RETEST" ? "💥" : setupType == "MOMENTUM_CONTINUATION" ? "🏄" : "·"
+f_state_emoji(string direction, string state) =>
+    direction == "NONE" ? "⚪" : direction == "LONG" ? (
+         state == "CORE" ? "🚀" :
+         state == "EARLY" ? "🟢" :
+         state == "WATCH" ? "👀" :
+         state == "PROBE" ? "🧪" : "⚪"
+    ) : (
+         state == "CORE" ? "🪂" :
+         state == "EARLY" ? "🔴" :
+         state == "WATCH" ? "👀" :
+         state == "PROBE" ? "🧪" : "⚪"
+    )
+f_quality_emoji(bool pass) => pass ? "✅" : "⚠️"
+
+//────────────────────────────────────
+// Constants
+//────────────────────────────────────
+string STRATEGY_ID = "donbeolja_v7.0.0.0"
+string ENGINE_MODE = "SIGNAL_CRITERIA_V7_VISUAL"
+string QTY_PROFILE = "FIXED"
+
+plot(close, title = "dummy", display = display.none)
+
+//────────────────────────────────────
+// Base series
+//────────────────────────────────────
+ema_fast = ta.ema(close, 8)
+ema_mid = ta.ema(close, 21)
+ema_slow = ta.ema(close, 55)
+ema_anchor = ta.ema(close, 144)
+atr = ta.atr(14)
+atr_ratio = f_safe_div(atr, close)
+
+rsi_val = ta.rsi(close, 14)
+[macd_line, macd_signal, macd_hist] = ta.macd(close, 12, 26, 9)
+[_di_plus, _di_minus, adx_val] = ta.dmi(14, 14)
+vol_sma = ta.sma(volume, 20)
+vol_stdev = ta.stdev(volume, 20)
+volume_zscore = vol_stdev > 0 ? (volume - vol_sma) / vol_stdev : 0.0
+
+range_high = ta.highest(high, 20)
+range_low = ta.lowest(low, 20)
+range_span = math.max(range_high - range_low, syminfo.mintick)
+price_position = f_clamp01((close - range_low) / range_span)
+bar_range = math.max(high - low, syminfo.mintick)
+body_ratio = math.abs(close - open) / bar_range
+close_pos_in_bar = f_clamp01((close - low) / bar_range)
+upper_wick_ratio = (high - math.max(open, close)) / bar_range
+lower_wick_ratio = (math.min(open, close) - low) / bar_range
+trend_alignment_local = f_clamp01(math.abs(ema_fast - ema_slow) / math.max(ema_slow, syminfo.mintick) * 120.0)
+compression_score = f_clamp01(1.0 - f_safe_div(range_span, math.max(atr * 12.0, syminfo.mintick)))
+atr_ratio_sma = ta.sma(atr_ratio, 20)
+atr_ratio_stdev = ta.stdev(atr_ratio, 20)
+volatility_zscore = atr_ratio_stdev > 0 ? (atr_ratio - atr_ratio_sma) / atr_ratio_stdev : 0.0
+
+session_vwap = ta.vwap(hlc3)
+spread_proxy_bps = ((bar_range / math.max(close, syminfo.mintick)) * 10000.0) * spread_proxy_weight
+mark_index_gap_proxy_bps = math.abs(close - session_vwap) / math.max(close, syminfo.mintick) * 10000.0
+market_quality_score = f_clamp01(
+    0.25 * f_clamp01(1.0 - spread_proxy_bps / math.max(max_spread_bps, 0.1)) +
+    0.25 * f_clamp01(1.0 - math.abs(volatility_zscore) / 3.0) +
+    0.30 * f_clamp01((volume_zscore + 1.5) / 3.0) +
+    0.20 * f_clamp01(body_ratio / 0.65)
+)
+
+htf_fast = request.security(syminfo.tickerid, htf_tf, ta.ema(close, 21))
+htf_slow = request.security(syminfo.tickerid, htf_tf, ta.ema(close, 55))
+htf_slope = request.security(syminfo.tickerid, htf_tf, ta.ema(close, 21) - ta.ema(close, 21)[5])
+htf_regime = htf_fast > htf_slow and htf_slope > 0 ? "LONG" : htf_fast < htf_slow and htf_slope < 0 ? "SHORT" : "NEUTRAL"
+
+structural_regime = adx_val >= trend_min_adx and trend_alignment_local >= 0.55 ? "TREND" : compression_score >= range_compression_min and adx_val < trend_min_adx ? "RANGE" : "TRANSITION"
+volatility_regime = volatility_zscore >= 1.5 ? "HIGH_VOL" : volatility_zscore <= -0.5 ? "LOW_VOL" : "NORMAL_VOL"
+liquidity_regime = market_quality_score >= market_quality_min and spread_proxy_bps <= max_spread_bps ? "ADEQUATE" : "THIN"
+regime_cohort = structural_regime + "__" + volatility_regime + "__" + liquidity_regime
+regime_score = 100.0 * (
+    0.40 * (structural_regime == "TREND" ? 1.0 : structural_regime == "TRANSITION" ? 0.7 : 0.35) +
+    0.20 * (volatility_regime == "NORMAL_VOL" ? 1.0 : volatility_regime == "LOW_VOL" ? 0.8 : 0.65) +
+    0.25 * (liquidity_regime == "ADEQUATE" ? 1.0 : 0.2) +
+    0.15 * (htf_regime == "NEUTRAL" ? 0.5 : 1.0)
+)
+
+p_fast = plot(show_trend_ribbon ? ema_fast : na, "EMA Fast", color = color.new(color.aqua, 0), linewidth = 1)
+p_mid = plot(show_trend_ribbon ? ema_mid : na, "EMA Mid", color = color.new(color.yellow, 0), linewidth = 1)
+p_slow = plot(show_trend_ribbon ? ema_slow : na, "EMA Slow", color = color.new(color.orange, 0), linewidth = 1)
+p_anchor = plot(show_trend_ribbon ? ema_anchor : na, "EMA Anchor", color = color.new(color.fuchsia, 20), linewidth = 1)
+fill(p_fast, p_mid, color = color.new(ema_fast >= ema_mid ? color.lime : color.red, 86))
+fill(p_mid, p_slow, color = color.new(ema_mid >= ema_slow ? color.lime : color.red, 90))
+
+bgcolor(show_state_bg ? (structural_regime == "TREND" ? color.new(color.teal, 95) : structural_regime == "TRANSITION" ? color.new(color.orange, 96) : color.new(color.gray, 97)) : na)
+
+//────────────────────────────────────
+// Setup engine
+//────────────────────────────────────
+recent_high = ta.highest(high, 10)[1]
+recent_low = ta.lowest(low, 10)[1]
+recent_high_3 = ta.highest(high, 3)
+recent_low_3 = ta.lowest(low, 3)
+recent_high_5 = ta.highest(high, 5)
+recent_low_5 = ta.lowest(low, 5)
+low_touch_fast_3 = ta.lowest(low, 3) <= ema_fast + atr * 0.18
+high_touch_fast_3 = ta.highest(high, 3) >= ema_fast - atr * 0.18
+close_to_fast_long = math.abs(close - ema_fast) <= atr * 0.55 or math.abs(low - ema_fast) <= atr * 0.45
+close_to_fast_short = math.abs(close - ema_fast) <= atr * 0.55 or math.abs(high - ema_fast) <= atr * 0.45
+mid_reclaim_long = ta.lowest(low, 5) <= ema_mid + atr * 0.10 and close >= ema_fast
+mid_reclaim_short = ta.highest(high, 5) >= ema_mid - atr * 0.10 and close <= ema_fast
+breakout_window_long = ta.highest(high, 4) >= recent_high - atr * 0.10
+breakout_window_short = ta.lowest(low, 4) <= recent_low + atr * 0.10
+momentum_continue_long = htf_regime != "SHORT" and ema_fast >= ema_mid and ema_mid >= ema_slow * 0.992 and close >= ema_fast and close >= close[1] and recent_low_5 <= ema_fast + atr * 0.35 and macd_hist >= macd_hist[1] - 0.02 and price_position >= 0.42
+momentum_continue_short = htf_regime != "LONG" and ema_fast <= ema_mid and ema_mid <= ema_slow * 1.008 and close <= ema_fast and close <= close[1] and recent_high_5 >= ema_fast - atr * 0.35 and macd_hist <= macd_hist[1] + 0.02 and price_position <= 0.58
+
+reclaim_strength_long = f_clamp01(0.45 * (low <= ema_fast ? 1.0 : 0.0) + 0.30 * close_pos_in_bar + 0.25 * (close > ema_fast ? 1.0 : 0.0))
+reclaim_strength_short = f_clamp01(0.45 * (high >= ema_fast ? 1.0 : 0.0) + 0.30 * (1.0 - close_pos_in_bar) + 0.25 * (close < ema_fast ? 1.0 : 0.0))
+
+pullback_reclaim_long = htf_regime != "SHORT" and close > ema_fast and ema_fast >= ema_mid * 0.995 and (low <= ema_fast or low_touch_fast_3 or close_to_fast_long or mid_reclaim_long) and price_position >= 0.18 and price_position <= 0.86 and reclaim_strength_long >= 0.48
+pullback_reclaim_short = htf_regime != "LONG" and close < ema_fast and ema_fast <= ema_mid * 1.005 and (high >= ema_fast or high_touch_fast_3 or close_to_fast_short or mid_reclaim_short) and price_position <= 0.82 and price_position >= 0.14 and reclaim_strength_short >= 0.48
+
+breakout_retest_long = htf_regime != "SHORT" and breakout_window_long and close >= recent_high - atr * 0.15 and body_ratio >= trigger_body_min * 0.65 and close > ema_fast
+breakout_retest_short = htf_regime != "LONG" and breakout_window_short and close <= recent_low + atr * 0.15 and body_ratio >= trigger_body_min * 0.65 and close < ema_fast
+
+setup_type_long = pullback_reclaim_long ? "PULLBACK_RECLAIM" : breakout_retest_long ? "BREAKOUT_RETEST" : momentum_continue_long ? "MOMENTUM_CONTINUATION" : "NONE"
+setup_type_short = pullback_reclaim_short ? "PULLBACK_RECLAIM" : breakout_retest_short ? "BREAKOUT_RETEST" : momentum_continue_short ? "MOMENTUM_CONTINUATION" : "NONE"
+
+setup_quality_long = pullback_reclaim_long ? f_clamp01(0.50 * reclaim_strength_long + 0.30 * trend_alignment_local + 0.20 * f_clamp01((volume_zscore + 1.0) / 3.0)) : breakout_retest_long ? f_clamp01(0.45 * body_ratio + 0.25 * f_clamp01((volume_zscore + 1.0) / 3.0) + 0.30 * trend_alignment_local) : momentum_continue_long ? f_clamp01(0.35 * trend_alignment_local + 0.25 * market_quality_score + 0.20 * body_ratio + 0.20 * close_pos_in_bar) : 0.0
+setup_quality_short = pullback_reclaim_short ? f_clamp01(0.50 * reclaim_strength_short + 0.30 * trend_alignment_local + 0.20 * f_clamp01((volume_zscore + 1.0) / 3.0)) : breakout_retest_short ? f_clamp01(0.45 * body_ratio + 0.25 * f_clamp01((volume_zscore + 1.0) / 3.0) + 0.30 * trend_alignment_local) : momentum_continue_short ? f_clamp01(0.35 * trend_alignment_local + 0.25 * market_quality_score + 0.20 * body_ratio + 0.20 * (1.0 - close_pos_in_bar)) : 0.0
+
+//────────────────────────────────────
+// Trigger engine
+//────────────────────────────────────
+trigger_level_long = setup_type_long == "PULLBACK_RECLAIM" ? ema_fast : setup_type_long == "BREAKOUT_RETEST" ? recent_high : recent_high_3
+trigger_level_short = setup_type_short == "PULLBACK_RECLAIM" ? ema_fast : setup_type_short == "BREAKOUT_RETEST" ? recent_low : recent_low_3
+
+trigger_confirmed_long = setup_type_long != "NONE" and (
+    (close > trigger_level_long and body_ratio >= trigger_body_min * 0.75 and close_pos_in_bar >= 0.52) or
+    (close > ema_fast and reclaim_strength_long >= 0.58 and close_pos_in_bar >= 0.50 and macd_hist >= macd_hist[1]) or
+    (setup_type_long == "MOMENTUM_CONTINUATION" and close >= recent_high_3 - atr * 0.05 and body_ratio >= 0.32 and close_pos_in_bar >= 0.56 and macd_hist >= 0)
+)
+trigger_confirmed_short = setup_type_short != "NONE" and (
+    (close < trigger_level_short and body_ratio >= trigger_body_min * 0.75 and close_pos_in_bar <= 0.48) or
+    (close < ema_fast and reclaim_strength_short >= 0.58 and close_pos_in_bar <= 0.50 and macd_hist <= macd_hist[1]) or
+    (setup_type_short == "MOMENTUM_CONTINUATION" and close <= recent_low_3 + atr * 0.05 and body_ratio >= 0.32 and close_pos_in_bar <= 0.44 and macd_hist <= 0)
+)
+
+volume_trigger_ok = volume_zscore >= volume_trigger_z_min or body_ratio >= 0.58
+
+trigger_strength_long = f_clamp01(0.60 * f_clamp01((volume_zscore - 1.0) / 2.0) + 0.40 * f_clamp01((rsi_val - 55.0) / 15.0))
+trigger_strength_short = f_clamp01(0.60 * f_clamp01((volume_zscore - 1.0) / 2.0) + 0.40 * f_clamp01((45.0 - rsi_val) / 15.0))
+
+trigger_type_long = setup_type_long == "PULLBACK_RECLAIM" ? "RECLAIM" : setup_type_long == "BREAKOUT_RETEST" ? "BREAKOUT" : setup_type_long == "MOMENTUM_CONTINUATION" ? "CONTINUATION" : "NONE"
+trigger_type_short = setup_type_short == "PULLBACK_RECLAIM" ? "RECLAIM" : setup_type_short == "BREAKOUT_RETEST" ? "BREAKDOWN" : setup_type_short == "MOMENTUM_CONTINUATION" ? "CONTINUATION" : "NONE"
+
+//────────────────────────────────────
+// Edge / expected value engine
+//────────────────────────────────────
+base_stop_distance = atr * stop_atr
+long_target_distance = atr * (base_target_atr + (structural_regime == "TREND" ? 0.35 : structural_regime == "TRANSITION" ? 0.10 : -0.20))
+short_target_distance = atr * (base_target_atr + (structural_regime == "TREND" ? 0.35 : structural_regime == "TRANSITION" ? 0.10 : -0.20))
+
+long_stop = close - base_stop_distance
+short_stop = close + base_stop_distance
+long_target = close + long_target_distance
+short_target = close - short_target_distance
+
+expected_gross_r_long = f_safe_div(long_target_distance, base_stop_distance)
+expected_gross_r_short = f_safe_div(short_target_distance, base_stop_distance)
+
+cost_estimate_bps_long = fee_bps + spread_proxy_bps + manual_funding_penalty_bps
+cost_estimate_bps_short = fee_bps + spread_proxy_bps + manual_funding_penalty_bps
+cost_quote_long = close * cost_estimate_bps_long / 10000.0
+cost_quote_short = close * cost_estimate_bps_short / 10000.0
+cost_r_equivalent_long = f_safe_div(cost_quote_long, base_stop_distance)
+cost_r_equivalent_short = f_safe_div(cost_quote_short, base_stop_distance)
+expected_net_r_long = expected_gross_r_long - cost_r_equivalent_long
+expected_net_r_short = expected_gross_r_short - cost_r_equivalent_short
+
+friction_penalty_long = f_clamp01(0.45 * cost_estimate_bps_long / 25.0 + 0.35 * spread_proxy_bps / 12.0 + 0.20 * manual_funding_penalty_bps / 5.0 + (liquidity_regime == "THIN" ? 0.30 : 0.0))
+friction_penalty_short = f_clamp01(0.45 * cost_estimate_bps_short / 25.0 + 0.35 * spread_proxy_bps / 12.0 + 0.20 * manual_funding_penalty_bps / 5.0 + (liquidity_regime == "THIN" ? 0.30 : 0.0))
+
+tp1_reach_probability_long = f_clamp01(0.15 + 0.20 * trend_alignment_local + 0.20 * setup_quality_long + 0.20 * trigger_strength_long + 0.10 * market_quality_score + 0.10 * (regime_score / 100.0) + 0.10 * f_clamp01(expected_gross_r_long / 2.5) - 0.15 * friction_penalty_long)
+tp1_reach_probability_short = f_clamp01(0.15 + 0.20 * trend_alignment_local + 0.20 * setup_quality_short + 0.20 * trigger_strength_short + 0.10 * market_quality_score + 0.10 * (regime_score / 100.0) + 0.10 * f_clamp01(expected_gross_r_short / 2.5) - 0.15 * friction_penalty_short)
+continuation_probability_long = f_clamp01(0.10 + 0.25 * trend_alignment_local + 0.20 * setup_quality_long + 0.15 * market_quality_score + 0.20 * (regime_score / 100.0) + 0.10 * trigger_strength_long - 0.15 * friction_penalty_long)
+continuation_probability_short = f_clamp01(0.10 + 0.25 * trend_alignment_local + 0.20 * setup_quality_short + 0.15 * market_quality_score + 0.20 * (regime_score / 100.0) + 0.10 * trigger_strength_short - 0.15 * friction_penalty_short)
+stop_hit_probability_long = f_clamp01(0.75 - 0.20 * setup_quality_long - 0.15 * trend_alignment_local - 0.10 * trigger_strength_long - 0.10 * market_quality_score - 0.10 * (regime_score / 100.0) + 0.10 * friction_penalty_long)
+stop_hit_probability_short = f_clamp01(0.75 - 0.20 * setup_quality_short - 0.15 * trend_alignment_local - 0.10 * trigger_strength_short - 0.10 * market_quality_score - 0.10 * (regime_score / 100.0) + 0.10 * friction_penalty_short)
+
+edge_score_long = f_clamp01(0.30 * f_clamp01(expected_net_r_long / 0.60) + 0.15 * f_clamp01((expected_gross_r_long - 1.2) / 1.2) + 0.20 * tp1_reach_probability_long + 0.15 * continuation_probability_long + 0.15 * (regime_score / 100.0) - 0.10 * stop_hit_probability_long - 0.05 * f_clamp01(cost_estimate_bps_long / 25.0))
+edge_score_short = f_clamp01(0.30 * f_clamp01(expected_net_r_short / 0.60) + 0.15 * f_clamp01((expected_gross_r_short - 1.2) / 1.2) + 0.20 * tp1_reach_probability_short + 0.15 * continuation_probability_short + 0.15 * (regime_score / 100.0) - 0.10 * stop_hit_probability_short - 0.05 * f_clamp01(cost_estimate_bps_short / 25.0))
+
+edge_cohort_long = expected_net_r_long <= 0 ? "NEGATIVE_EDGE" : edge_score_long >= 0.75 and expected_net_r_long >= 0.40 ? "STRONG_EDGE" : edge_score_long >= 0.60 and expected_net_r_long >= 0.25 ? "BUILDABLE_EDGE" : "MARGINAL_EDGE"
+edge_cohort_short = expected_net_r_short <= 0 ? "NEGATIVE_EDGE" : edge_score_short >= 0.75 and expected_net_r_short >= 0.40 ? "STRONG_EDGE" : edge_score_short >= 0.60 and expected_net_r_short >= 0.25 ? "BUILDABLE_EDGE" : "MARGINAL_EDGE"
+
+//────────────────────────────────────
+// Gate evaluation
+//────────────────────────────────────
+no_trade_pass = market_quality_score >= market_quality_min and spread_proxy_bps <= max_spread_bps and mark_index_gap_proxy_bps <= max_mark_gap_bps and manual_funding_penalty_bps <= max_funding_penalty_bps
+effective_htf_alignment_min = structural_regime == "TRANSITION" ? trend_min_alignment * 0.70 : structural_regime == "RANGE" ? trend_min_alignment * 0.65 : trend_min_alignment
+local_long_bias = ema_fast >= ema_mid and macd_hist >= -0.02
+local_short_bias = ema_fast <= ema_mid and macd_hist <= 0.02
+htf_gate_long = (htf_regime == "LONG" or (htf_regime == "NEUTRAL" and local_long_bias) or (setup_type_long != "NONE" and local_long_bias)) and trend_alignment_local >= effective_htf_alignment_min
+htf_gate_short = (htf_regime == "SHORT" or (htf_regime == "NEUTRAL" and local_short_bias) or (setup_type_short != "NONE" and local_short_bias)) and trend_alignment_local >= effective_htf_alignment_min
+setup_gate_long = setup_type_long != "NONE" and setup_quality_long >= setup_quality_min
+setup_gate_short = setup_type_short != "NONE" and setup_quality_short >= setup_quality_min
+rsi_long_ok = rsi_val >= min_rsi_long or macd_hist > 0
+rsi_short_ok = rsi_val <= max_rsi_short or macd_hist < 0
+trigger_gate_long = trigger_confirmed_long and volume_trigger_ok and rsi_long_ok
+trigger_gate_short = trigger_confirmed_short and volume_trigger_ok and rsi_short_ok
+expected_edge_gate_long = expected_gross_r_long >= min_expected_gross_r and expected_net_r_long >= min_expected_net_r and edge_cohort_long != "NEGATIVE_EDGE"
+expected_edge_gate_short = expected_gross_r_short >= min_expected_gross_r and expected_net_r_short >= min_expected_net_r and edge_cohort_short != "NEGATIVE_EDGE"
+
+signal_score_long = 15.0 * market_quality_score + 25.0 * trend_alignment_local + 20.0 * setup_quality_long + 20.0 * trigger_strength_long + 20.0 * edge_score_long
+signal_score_short = 15.0 * market_quality_score + 25.0 * trend_alignment_local + 20.0 * setup_quality_short + 20.0 * trigger_strength_short + 20.0 * edge_score_short
+
+long_gate_pass = no_trade_pass and htf_gate_long and setup_gate_long and trigger_gate_long and expected_edge_gate_long
+short_gate_pass = no_trade_pass and htf_gate_short and setup_gate_short and trigger_gate_short and expected_edge_gate_short
+
+long_core_raw = long_gate_pass and signal_score_long >= core_score_min
+short_core_raw = short_gate_pass and signal_score_short >= core_score_min
+long_early_raw = long_gate_pass and signal_score_long >= early_score_min and not long_core_raw
+short_early_raw = short_gate_pass and signal_score_short >= early_score_min and not short_core_raw
+candidate_score_min = math.max(watch_score_min * 0.80, 28.0)
+long_candidate_raw = htf_gate_long and setup_gate_long and expected_edge_gate_long and signal_score_long >= candidate_score_min and not trigger_gate_long and not long_early_raw and not long_core_raw
+short_candidate_raw = htf_gate_short and setup_gate_short and expected_edge_gate_short and signal_score_short >= candidate_score_min and not trigger_gate_short and not short_early_raw and not short_core_raw
+long_watch_raw = no_trade_pass and long_candidate_raw
+short_watch_raw = no_trade_pass and short_candidate_raw
+long_probe_raw = not no_trade_pass and long_candidate_raw
+short_probe_raw = not no_trade_pass and short_candidate_raw
+
+f_gate_reason(string side, bool noTradePass, bool htfPass, bool setupPass, bool triggerPass, bool edgePass, string setupType, string triggerType, float score, bool coreRaw, bool earlyRaw) =>
+    string reason = ""
+    if not noTradePass
+        reason := f_append_reason(reason, "NO_TRADE_GATE")
+    if not htfPass
+        reason := f_append_reason(reason, "HTF_REGIME_BLOCK")
+    if not setupPass
+        reason := f_append_reason(reason, setupType == "NONE" ? "SETUP_MISSING" : "SETUP_QUALITY_LOW")
+    if not triggerPass
+        reason := f_append_reason(reason, triggerType == "NONE" ? "TRIGGER_MISSING" : "TRIGGER_NOT_CONFIRMED")
+    if not edgePass
+        reason := f_append_reason(reason, "EXPECTED_EDGE_BLOCK")
+    if reason == "" and not coreRaw and not earlyRaw
+        reason := f_append_reason(reason, score < early_score_min ? "SIGNAL_SCORE_SHORT" : "WAIT_COOLDOWN")
+    reason == "" ? "PASS" : reason
+
+block_reason_long = f_gate_reason("LONG", no_trade_pass, htf_gate_long, setup_gate_long, trigger_gate_long, expected_edge_gate_long, setup_type_long, trigger_type_long, signal_score_long, long_core_raw, long_early_raw)
+block_reason_short = f_gate_reason("SHORT", no_trade_pass, htf_gate_short, setup_gate_short, trigger_gate_short, expected_edge_gate_short, setup_type_short, trigger_type_short, signal_score_short, short_core_raw, short_early_raw)
+
+var int last_long_signal_bar = na
+var int last_short_signal_bar = na
+var string last_long_trigger = "NONE"
+var string last_short_trigger = "NONE"
+
+long_can_fire = na(last_long_signal_bar) or bar_index - last_long_signal_bar > same_dir_cooldown_bars or trigger_type_long != last_long_trigger
+short_can_fire = na(last_short_signal_bar) or bar_index - last_short_signal_bar > same_dir_cooldown_bars or trigger_type_short != last_short_trigger
+
+long_core_pulse = long_core_raw and long_can_fire
+long_early_pulse = long_early_raw and long_can_fire
+short_core_pulse = short_core_raw and short_can_fire
+short_early_pulse = short_early_raw and short_can_fire
+
+if long_core_pulse or long_early_pulse
+    last_long_signal_bar := bar_index
+    last_long_trigger := trigger_type_long
+if short_core_pulse or short_early_pulse
+    last_short_signal_bar := bar_index
+    last_short_trigger := trigger_type_short
+
+long_live_grade = long_core_pulse or long_core_raw ? "CORE" : long_early_pulse or long_early_raw ? "EARLY" : long_watch_raw ? "WATCH" : long_probe_raw ? "PROBE" : "NONE"
+short_live_grade = short_core_pulse or short_core_raw ? "CORE" : short_early_pulse or short_early_raw ? "EARLY" : short_watch_raw ? "WATCH" : short_probe_raw ? "PROBE" : "NONE"
+primary_direction = long_live_grade != "NONE" ? "LONG" : short_live_grade != "NONE" ? "SHORT" : long_watch_raw or long_probe_raw ? "LONG" : short_watch_raw or short_probe_raw ? "SHORT" : htf_gate_long ? "LONG" : htf_gate_short ? "SHORT" : "NONE"
+primary_state = primary_direction == "LONG" ? long_live_grade : primary_direction == "SHORT" ? short_live_grade : "NONE"
+primary_setup = primary_direction == "LONG" ? setup_type_long : primary_direction == "SHORT" ? setup_type_short : "NONE"
+primary_trigger = primary_direction == "LONG" ? trigger_type_long : primary_direction == "SHORT" ? trigger_type_short : "NONE"
+primary_edge = primary_direction == "LONG" ? edge_cohort_long : primary_direction == "SHORT" ? edge_cohort_short : "NEGATIVE_EDGE"
+primary_score = primary_direction == "LONG" ? signal_score_long : primary_direction == "SHORT" ? signal_score_short : 0.0
+primary_block = primary_direction == "LONG" ? block_reason_long : primary_direction == "SHORT" ? block_reason_short : "NO_SIGNAL"
+
+//────────────────────────────────────
+// Payload builders
+//────────────────────────────────────
+f_entry_payload(string direction, string grade, float signalScore, string setupType, string triggerType, string blockReason, float expectedGrossR, float expectedNetR, float stopPrice, float targetPrice, string edgeCohort, float tp1ReachProbability, float stopHitProbability) =>
+    string side = direction == "LONG" ? "BUY" : "SELL"
+    string features = "{"
+    features += '"strategy_id":"' + STRATEGY_ID + '"'
+    features += f_json_pair_s("engine_mode", ENGINE_MODE)
+    features += f_json_pair_s("entry_grade", grade)
+    features += f_json_pair_s("qty_profile", QTY_PROFILE)
+    features += f_json_pair_s("structural_regime", structural_regime)
+    features += f_json_pair_s("volatility_regime", volatility_regime)
+    features += f_json_pair_s("liquidity_regime", liquidity_regime)
+    features += f_json_pair_s("regime_cohort", regime_cohort)
+    features += f_json_pair_s("setup_type", setupType)
+    features += f_json_pair_s("trigger_type", triggerType)
+    features += f_json_pair_s("edge_cohort", edgeCohort)
+    features += f_json_pair_n("market_quality_score", market_quality_score)
+    features += f_json_pair_n("spread_bps", spread_proxy_bps)
+    features += f_json_pair_n("mark_index_gap_bps", mark_index_gap_proxy_bps)
+    features += f_json_pair_n("funding_penalty_bps", manual_funding_penalty_bps)
+    features += f_json_pair_n("signal_score", signalScore)
+    features += f_json_pair_n("expected_gross_r", expectedGrossR)
+    features += f_json_pair_n("expected_net_r_after_cost", expectedNetR)
+    features += f_json_pair_n("tp1_reach_probability", tp1ReachProbability)
+    features += f_json_pair_n("stop_hit_probability", stopHitProbability)
+    features += f_json_pair_b("no_trade_gate", no_trade_pass)
+    features += f_json_pair_b("htf_gate", direction == "LONG" ? htf_gate_long : htf_gate_short)
+    features += f_json_pair_b("setup_gate", direction == "LONG" ? setup_gate_long : setup_gate_short)
+    features += f_json_pair_b("trigger_gate", direction == "LONG" ? trigger_gate_long : trigger_gate_short)
+    features += f_json_pair_b("expected_edge_gate", direction == "LONG" ? expected_edge_gate_long : expected_edge_gate_short)
+    features += f_json_pair_s("block_reason", blockReason)
+    features += f_json_pair_s("_event_intent", "ENTRY")
+    features += f_json_pair_s("signal_family", direction)
+    features += f_json_pair_s("source_band", grade)
+    features += "}"
+    string json = "{"
+    json += '"exchange":"' + f_json_escape(provider_id) + '"'
+    json += f_json_pair_s("symbol", syminfo.ticker)
+    json += f_json_pair_s("market", syminfo.ticker)
+    json += f_json_pair_s("ticker", syminfo.ticker)
+    json += f_json_pair_s("tf", timeframe.period)
+    json += f_json_pair_s("strategy_id", STRATEGY_ID)
+    json += f_json_pair_s("engine_mode", ENGINE_MODE)
+    json += f_json_pair_s("action", "ENTRY")
+    json += f_json_pair_s("event_intent", "ENTRY")
+    json += f_json_pair_s("event", direction)
+    json += f_json_pair_s("side", side)
+    json += f_json_pair_s("direction", direction)
+    json += f_json_pair_s("entry_grade", grade)
+    json += f_json_pair_s("qty_profile", QTY_PROFILE)
+    json += f_json_pair_s("structural_regime", structural_regime)
+    json += f_json_pair_s("regime_cohort", regime_cohort)
+    json += f_json_pair_s("setup_type", setupType)
+    json += f_json_pair_s("trigger_type", triggerType)
+    json += f_json_pair_s("edge_cohort", edgeCohort)
+    json += f_json_pair_n("qtyPct", webhook_qty_pct)
+    json += f_json_pair_n("price", close)
+    json += f_json_pair_n("signal_score", signalScore)
+    json += f_json_pair_n("expected_gross_r", expectedGrossR)
+    json += f_json_pair_n("expected_net_r_after_cost", expectedNetR)
+    json += f_json_pair_n("stop_price", stopPrice)
+    json += f_json_pair_n("target_price", targetPrice)
+    json += f_json_pair_n("tp1_reach_probability", tp1ReachProbability)
+    json += f_json_pair_n("stop_hit_probability", stopHitProbability)
+    json += f_json_pair_n("bar_close_time_utc_ms", time_close)
+    json += f_json_pair_n("bar_time", time_close)
+    json += ",\"features\":" + features
+    json += "}"
+    json
+
+long_core_payload = f_entry_payload("LONG", "CORE", signal_score_long, setup_type_long, trigger_type_long, block_reason_long, expected_gross_r_long, expected_net_r_long, long_stop, long_target, edge_cohort_long, tp1_reach_probability_long, stop_hit_probability_long)
+long_early_payload = f_entry_payload("LONG", "EARLY", signal_score_long, setup_type_long, trigger_type_long, block_reason_long, expected_gross_r_long, expected_net_r_long, long_stop, long_target, edge_cohort_long, tp1_reach_probability_long, stop_hit_probability_long)
+short_core_payload = f_entry_payload("SHORT", "CORE", signal_score_short, setup_type_short, trigger_type_short, block_reason_short, expected_gross_r_short, expected_net_r_short, short_stop, short_target, edge_cohort_short, tp1_reach_probability_short, stop_hit_probability_short)
+short_early_payload = f_entry_payload("SHORT", "EARLY", signal_score_short, setup_type_short, trigger_type_short, block_reason_short, expected_gross_r_short, expected_net_r_short, short_stop, short_target, edge_cohort_short, tp1_reach_probability_short, stop_hit_probability_short)
+
+//────────────────────────────────────
+// Visualization
+//────────────────────────────────────
+plotshape(show_signal_shapes and long_core_pulse, title = "V7 Long Core", style = shape.labelup, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 0), text = "🚀", textcolor = color.black)
+plotshape(show_signal_shapes and long_early_pulse, title = "V7 Long Early", style = shape.labelup, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 20), text = "🟢", textcolor = color.black)
+plotshape(show_signal_shapes and short_core_pulse, title = "V7 Short Core", style = shape.labeldown, location = location.abovebar, size = size.tiny, color = color.new(color.red, 0), text = "🪂", textcolor = color.white)
+plotshape(show_signal_shapes and short_early_pulse, title = "V7 Short Early", style = shape.labeldown, location = location.abovebar, size = size.tiny, color = color.new(color.red, 20), text = "🔴", textcolor = color.white)
+plotshape(show_candidate_markers and long_watch_raw, title = "V7 Long Watch", style = shape.square, location = location.belowbar, size = size.tiny, color = color.new(color.aqua, 0), text = "👀", textcolor = color.black)
+plotshape(show_candidate_markers and short_watch_raw, title = "V7 Short Watch", style = shape.square, location = location.abovebar, size = size.tiny, color = color.new(color.orange, 0), text = "👀", textcolor = color.black)
+plotshape(show_candidate_markers and long_probe_raw, title = "V7 Long Probe", style = shape.diamond, location = location.belowbar, size = size.tiny, color = color.new(color.blue, 0), text = "🧪", textcolor = color.white)
+plotshape(show_candidate_markers and short_probe_raw, title = "V7 Short Probe", style = shape.diamond, location = location.abovebar, size = size.tiny, color = color.new(color.purple, 0), text = "🧪", textcolor = color.white)
+
+plot(show_quality_lines ? signal_score_long : na, title = "Long Signal Score", color = color.new(color.lime, 0), linewidth = 2)
+plot(show_quality_lines ? -signal_score_short : na, title = "Short Signal Score (-)", color = color.new(color.red, 0), linewidth = 2)
+plot(show_quality_lines ? early_score_min : na, title = "EARLY Score", color = color.new(color.yellow, 0), linewidth = 1, style = plot.style_linebr)
+plot(show_quality_lines ? core_score_min : na, title = "CORE Score", color = color.new(color.aqua, 0), linewidth = 1, style = plot.style_linebr)
+plot(show_quality_lines ? expected_net_r_long : na, title = "Expected Net R Long", color = color.new(color.green, 40), linewidth = 1, style = plot.style_line)
+plot(show_quality_lines ? -expected_net_r_short : na, title = "Expected Net R Short (-)", color = color.new(color.maroon, 40), linewidth = 1, style = plot.style_line)
+
+if show_gate_labels and long_core_pulse
+    label.new(bar_index, low, "🚀 " + setup_type_long + " | " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.lime, 5), textcolor = color.black, size = size.small)
+if show_gate_labels and long_early_pulse
+    label.new(bar_index, low, "🟢 " + setup_type_long + " | " + str.tostring(signal_score_long, "#.0"), style = label.style_label_up, color = color.new(color.lime, 20), textcolor = color.black, size = size.small)
+if show_gate_labels and short_core_pulse
+    label.new(bar_index, high, "🪂 " + setup_type_short + " | " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.red, 5), textcolor = color.white, size = size.small)
+if show_gate_labels and short_early_pulse
+    label.new(bar_index, high, "🔴 " + setup_type_short + " | " + str.tostring(signal_score_short, "#.0"), style = label.style_label_down, color = color.new(color.red, 20), textcolor = color.white, size = size.small)
+
+var label latest_status_card = na
+if barstate.islast and show_latest_card
+    if not na(latest_status_card)
+        label.delete(latest_status_card)
+    float card_y = ta.highest(high, 30) + atr * 0.90
+    string card_text = "Ω " + f_regime_emoji(structural_regime) + " " + structural_regime + " / " + htf_regime + "\n" +
+         f_quality_emoji(no_trade_pass) + " Q " + str.tostring(market_quality_score, "#.00") + " | spread " + str.tostring(spread_proxy_bps, "#.0") + "\n" +
+         f_state_emoji(primary_direction, primary_state) + " " + primary_direction + " " + primary_state + " | " + f_setup_emoji(primary_setup) + " " + primary_setup + "\n" +
+         "score " + str.tostring(primary_score, "#.0") + " | " + primary_edge + "\n" +
+         (show_block_reason ? "⚠️ " + primary_block : "")
+    color card_bg = primary_direction == "SHORT" ? color.new(color.red, 65) : primary_direction == "LONG" ? color.new(color.lime, 72) : color.new(color.blue, 78)
+    color card_txt = primary_direction == "SHORT" ? color.white : color.black
+    latest_status_card := label.new(bar_index + 1, card_y, card_text, xloc = xloc.bar_index, yloc = yloc.price, style = label.style_label_left, color = card_bg, textcolor = card_txt, size = size.small)
+
+//────────────────────────────────────
+// Diagnostics table
+//────────────────────────────────────
+var table diag = table.new(position.bottom_left, 2, 10, bgcolor = color.new(color.black, 88), border_width = 1)
+if barstate.islast
+    if show_status_panel
+        table.cell(diag, 0, 0, "돈벌자 Ω", text_color = color.white, bgcolor = color.rgb(24, 52, 92))
+        table.cell(diag, 1, 0, "v7.0.0.0", text_color = color.white, bgcolor = color.rgb(24, 52, 92))
+        table.cell(diag, 0, 1, "Regime", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 1, f_regime_emoji(structural_regime) + " " + structural_regime + " / " + htf_regime, text_color = structural_regime == "TREND" ? color.lime : structural_regime == "TRANSITION" ? color.orange : color.gray)
+        table.cell(diag, 0, 2, "Cohort", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 2, regime_cohort, text_color = color.white)
+        table.cell(diag, 0, 3, "Market", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 3, f_quality_emoji(no_trade_pass) + " Q " + str.tostring(market_quality_score, "#.##") + " | sp " + str.tostring(spread_proxy_bps, "#.0"), text_color = no_trade_pass ? color.lime : color.orange)
+        table.cell(diag, 0, 4, "Long", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 4, f_state_emoji("LONG", long_live_grade) + " " + long_live_grade + " | " + f_setup_emoji(setup_type_long) + " " + setup_type_long + " | " + str.tostring(signal_score_long, "#.0"), text_color = f_score_color(signal_score_long))
+        table.cell(diag, 0, 5, "Short", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 5, f_state_emoji("SHORT", short_live_grade) + " " + short_live_grade + " | " + f_setup_emoji(setup_type_short) + " " + setup_type_short + " | " + str.tostring(signal_score_short, "#.0"), text_color = f_score_color(signal_score_short))
+        table.cell(diag, 0, 6, "Trigger", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 6, "L " + trigger_type_long + " / S " + trigger_type_short + " | z " + str.tostring(volume_zscore, "#.##"), text_color = trigger_gate_long or trigger_gate_short ? color.white : color.orange)
+        table.cell(diag, 0, 7, "Edge", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 7, "L " + edge_cohort_long + " " + str.tostring(expected_net_r_long, "#.##") + "R / S " + edge_cohort_short + " " + str.tostring(expected_net_r_short, "#.##") + "R", text_color = color.white)
+        table.cell(diag, 0, 8, "Block", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 8, show_block_reason ? (primary_block == "PASS" ? "PASS" : "⚠️ " + primary_block) : "-", text_color = primary_block == "PASS" ? color.lime : color.orange)
+        table.cell(diag, 0, 9, "Prob", text_color = color.new(color.gray, 5))
+        table.cell(diag, 1, 9, "TP1 " + str.tostring(tp1_reach_probability_long, "#.##") + " / Stop " + str.tostring(stop_hit_probability_long, "#.##"), text_color = color.white)
+    else
+        for row = 0 to 9
+            table.cell(diag, 0, row, "", text_color = color.new(color.white, 100), bgcolor = color.new(color.black, 100))
+            table.cell(diag, 1, row, "", text_color = color.new(color.white, 100), bgcolor = color.new(color.black, 100))
+
+//────────────────────────────────────
+// Alerts
+//────────────────────────────────────
+alertcondition(long_core_pulse, title = "LONG CORE Alert", message = "LONG CORE pulse")
+alertcondition(long_early_pulse, title = "LONG EARLY Alert", message = "LONG EARLY pulse")
+alertcondition(short_core_pulse, title = "SHORT CORE Alert", message = "SHORT CORE pulse")
+alertcondition(short_early_pulse, title = "SHORT EARLY Alert", message = "SHORT EARLY pulse")
+
+if barstate.isconfirmed
+    if long_core_pulse
+        alert(long_core_payload, alert.freq_once_per_bar_close)
+    if long_early_pulse
+        alert(long_early_payload, alert.freq_once_per_bar_close)
+    if short_core_pulse
+        alert(short_core_payload, alert.freq_once_per_bar_close)
+    if short_early_pulse
+        alert(short_early_payload, alert.freq_once_per_bar_close)

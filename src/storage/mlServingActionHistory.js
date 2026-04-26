@@ -67,7 +67,10 @@ async function listRecentMlServingActions({
       .get();
     return snap.docs.map((doc) => doc.data() || {});
   } catch (_) {
-    const snap = await db.collection("ml_serving_action_history").get();
+    const fallbackLimit = Math.min(500, Math.max(1, Math.trunc(Number(limit) || 20) * 10));
+    const snap = await db.collection("ml_serving_action_history")
+      .limit(fallbackLimit)
+      .get();
     return snap.docs
       .map((doc) => doc.data() || {})
       .filter((row) => upper(row.exchange) === ex)

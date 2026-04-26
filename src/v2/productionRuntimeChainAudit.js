@@ -53,13 +53,16 @@ function buildFunctionCallEvidence(source, functionName, callees = []) {
   });
 }
 
-function hasProtectionDeadlineStructure(source) {
+function hasProtectionDeadlineStructure(source, initialSource = "") {
   const deadlineBlock = sliceFunctionBlock(source, "withProtectionWriteDeadline");
   const refreshBlock = sliceFunctionBlock(source, "buildBinanceRefreshNativeStopTransport");
   const tp1Block = sliceFunctionBlock(source, "buildBinancePlaceOrReplaceTp1Transport");
   const fullProtectionBlock = sliceFunctionBlock(source, "buildBinancePlaceOrReplaceFullProtectionTransport");
+  const initialProtectionBlock = sliceFunctionBlock(initialSource, "buildBinanceInitialProtectionTransports");
   const slDeadlineN = (fullProtectionBlock.match(/BINANCE_FULL_PROTECTION_SL_DEADLINE_EXCEEDED/g) || []).length;
   const tp1DeadlineN = (fullProtectionBlock.match(/BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED/g) || []).length;
+  const initialSlDeadlineN = (initialProtectionBlock.match(/BINANCE_INITIAL_SL_WRITE_DEADLINE_EXCEEDED/g) || []).length;
+  const initialTp1DeadlineN = (initialProtectionBlock.match(/BINANCE_INITIAL_TP1_WRITE_DEADLINE_EXCEEDED/g) || []).length;
   return (
     hasCodePattern(deadlineBlock, /\bnew\s+AbortController\s*\(/) &&
     hasCallExpression(deadlineBlock, "Promise.race") &&
@@ -76,15 +79,21 @@ function hasProtectionDeadlineStructure(source) {
     /placeStopMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(fullProtectionBlock) &&
     /placeTakeProfitMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(fullProtectionBlock) &&
     slDeadlineN >= 1 &&
-    tp1DeadlineN >= 1
+    tp1DeadlineN >= 1 &&
+    functionCallsAll(initialSource, "buildBinanceInitialProtectionTransports", ["withProtectionWriteDeadline", "placeStopMarketOrder", "placeTakeProfitMarketOrder"]) &&
+    /placeStopMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(initialProtectionBlock) &&
+    /placeTakeProfitMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(initialProtectionBlock) &&
+    initialSlDeadlineN >= 1 &&
+    initialTp1DeadlineN >= 1
   );
 }
 
-function buildProtectionDeadlineEvidence(source) {
+function buildProtectionDeadlineEvidence(source, initialSource = "") {
   const deadlineBlock = sliceFunctionBlock(source, "withProtectionWriteDeadline");
   const refreshBlock = sliceFunctionBlock(source, "buildBinanceRefreshNativeStopTransport");
   const tp1Block = sliceFunctionBlock(source, "buildBinancePlaceOrReplaceTp1Transport");
   const fullProtectionBlock = sliceFunctionBlock(source, "buildBinancePlaceOrReplaceFullProtectionTransport");
+  const initialProtectionBlock = sliceFunctionBlock(initialSource, "buildBinanceInitialProtectionTransports");
   return Object.freeze({
     withProtectionWriteDeadline_has_abort_controller: hasCodePattern(deadlineBlock, /\bnew\s+AbortController\s*\(/),
     withProtectionWriteDeadline_races_timeout: hasCallExpression(deadlineBlock, "Promise.race") && hasCallExpression(deadlineBlock, "setTimeout"),
@@ -98,6 +107,12 @@ function buildProtectionDeadlineEvidence(source) {
       && /placeStopMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(fullProtectionBlock),
     full_protection_tp1_wrapped_and_signal_forwarded: functionCallsAll(source, "buildBinancePlaceOrReplaceFullProtectionTransport", ["withProtectionWriteDeadline", "placeTakeProfitMarketOrder"])
       && /placeTakeProfitMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(fullProtectionBlock),
+    initial_protection_sl_wrapped_and_signal_forwarded: functionCallsAll(initialSource, "buildBinanceInitialProtectionTransports", ["withProtectionWriteDeadline", "placeStopMarketOrder"])
+      && /placeStopMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(initialProtectionBlock)
+      && initialProtectionBlock.includes("BINANCE_INITIAL_SL_WRITE_DEADLINE_EXCEEDED"),
+    initial_protection_tp1_wrapped_and_signal_forwarded: functionCallsAll(initialSource, "buildBinanceInitialProtectionTransports", ["withProtectionWriteDeadline", "placeTakeProfitMarketOrder"])
+      && /placeTakeProfitMarketOrder\s*\(\s*\{[\s\S]{0,900}signal\s*,/.test(initialProtectionBlock)
+      && initialProtectionBlock.includes("BINANCE_INITIAL_TP1_WRITE_DEADLINE_EXCEEDED"),
   });
 }
 
@@ -159,6 +174,7 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
   const repairDelegatedExecutor = readRepoFile("src/v2/repairDelegatedExecutor.js", sourceOverrides);
   const repairExecutionLedger = readRepoFile("src/v2/repairExecutionLedger.js", sourceOverrides);
   const binanceProtectionTransport = readRepoFile("src/v2/binanceProtectionTransport.js", sourceOverrides);
+  const binanceInitialProtectionTransport = readRepoFile("src/v2/binanceInitialProtectionTransport.js", sourceOverrides);
   const watchdogRepairRuntime = readRepoFile("src/v2/watchdogRepairRuntime.js", sourceOverrides);
   const deployDecision = readRepoFile("scripts/check-v2-promotion-deploy-decision.js", sourceOverrides);
   const statusDoc = readRepoFile("docs/DONBEOLJA_V2_IMPLEMENTATION_STATUS_2026-04-21.md", sourceOverrides);
@@ -290,7 +306,12 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
         && openclawControlPlane.includes("buildOpenClawDecisionBundleLedgerDoc")
         && openclawControlPlane.includes("OPENCLAW_DECISION_BUNDLE_LEDGER_WRITTEN")
         && productionEntryRoute.includes("findExistingDecisionBundleExecution")
+        && productionEntryRoute.includes("claimOpenClawExecution")
+        && productionEntryRoute.includes("finalizeOpenClawExecutionClaim")
+        && productionEntryRoute.includes("OPENCLAW_EXECUTION_CLAIMS")
+        && productionEntryRoute.includes("OPENCLAW_EXECUTION_PERMIT_ALREADY_CLAIMED")
         && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_BLOCKED")
+        && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_REPLAY_BLOCKED")
         && productionEntryRoute.includes("openclaw_decision_bundle_hash")
         && openclawShadowWriter.includes("OPENCLAW_DECISION_BUNDLES"),
       "OpenClaw ML proposal verdict must gate entry, ML size ratio must cap sizing, and decision bundles must be ledgered and replay-guarded",
@@ -301,6 +322,13 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
         decision_bundle_hash: openclawControlPlane.includes("openclawDecisionBundleHash") && openclawControlPlane.includes("openclaw_decision_bundle_hash"),
         decision_bundle_ledger: openclawControlPlane.includes("buildOpenClawDecisionBundleLedgerDoc") && openclawShadowWriter.includes("OPENCLAW_DECISION_BUNDLES"),
         decision_bundle_replay_guard: productionEntryRoute.includes("findExistingDecisionBundleExecution") && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_DECISION_BUNDLE_REPLAY_BLOCKED"),
+        atomic_execution_claim_guard: productionEntryRoute.includes("claimOpenClawExecution")
+          && productionEntryRoute.includes("OPENCLAW_EXECUTION_CLAIMS")
+          && productionEntryRoute.includes("OPENCLAW_EXECUTION_PERMIT_ALREADY_CLAIMED")
+          && productionEntryRoute.includes("V2_PRODUCTION_ENTRY_EXECUTION_CLAIM_REPLAY_BLOCKED"),
+        execution_claim_finalization: productionEntryRoute.includes("finalizeOpenClawExecutionClaim")
+          && productionEntryRoute.includes("EXECUTED_PROTECTED_AUDIT_PENDING")
+          && productionEntryRoute.includes("EXECUTED_PROTECTED"),
       }
     ),
     buildCheck(
@@ -347,9 +375,9 @@ function auditV2ProductionRuntimeChain({ sourceOverrides = {} } = {}) {
     ),
     buildCheck(
       "V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED",
-      hasProtectionDeadlineStructure(binanceProtectionTransport),
-      "Binance native protection writes must fail closed at execution time when REST calls exceed the protection write deadline",
-      buildProtectionDeadlineEvidence(binanceProtectionTransport)
+      hasProtectionDeadlineStructure(binanceProtectionTransport, binanceInitialProtectionTransport),
+      "Binance native protection writes, including initial SL/TP1, must fail closed at execution time when REST calls exceed the protection write deadline",
+      buildProtectionDeadlineEvidence(binanceProtectionTransport, binanceInitialProtectionTransport)
     ),
     buildCheck(
       "V2_PRODUCTION_CHAIN_REPAIR_WRITER_LEASE_REQUIRED",

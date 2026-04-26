@@ -361,6 +361,7 @@ function seedBoundedSubmitArtifacts(
         latest_age_minutes: 15,
         coverage_minutes: 1440,
         max_observed_gap_minutes: 120,
+        active_position_n: 5,
         tp1_missing_n: 0,
         native_refresh_unhealthy_n: 0,
         unprotected_window_violation_n: 0,
@@ -383,16 +384,20 @@ function seedBoundedSubmitArtifacts(
           latest_age_minutes: 15,
           coverage_minutes: 1440,
           max_observed_gap_minutes: 120,
+          active_position_evidence_required: true,
+          active_position_n: 5,
           blockers: [],
         },
         long_run_quality_summary: {
           status: "PASS",
           history_source: "FIRESTORE",
           firestore_source_required: true,
+          active_position_evidence_required: true,
           coverage_minutes: 1440,
           latest_age_minutes: 15,
           max_observed_gap_minutes: 120,
           defect_counts: {
+            active_position_n: 5,
             tp1_missing_n: 0,
             native_refresh_unhealthy_n: 0,
             unprotected_window_violation_n: 0,
@@ -669,10 +674,12 @@ function buildSchedulerTrafficCutoverReadinessSummaryFixture(filePath = null) {
       "openclaw_daily_cycle",
       "openclaw_hourly_cycle",
       "v2_repair_queue_service",
+      "openclaw_server_primary_tick",
     ],
     missing_openclaw_job_ids: [],
     active_legacy_scheduler_job_n: 0,
     openclaw_cloud_scheduler_jobs: [
+      { job_id: "openclaw_server_primary_tick", enabled: true, path_match: true, schedule_match: true, time_zone_match: true },
       { job_id: "v2_production_entry_route_canary", enabled: true, path_match: true, schedule_match: true, time_zone_match: true },
       { job_id: "v2_exit_runtime_canary", enabled: true, path_match: true, schedule_match: true, time_zone_match: true },
     ],
@@ -793,6 +800,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_COLLECTION_PREFIX, "v2__");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
@@ -844,6 +854,8 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_evidence_sources.candidate_selection.file, "promotion-deploy-decision.json");
   assert.strictEqual(request.approval_evidence_sources.candidate_selection.field, "candidate_selection_summary.selection_contract");
   assert.strictEqual(request.substitutions._V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED, "1");
+  assert.ok(typeof request.substitutions._COMMIT_SHA === "string");
+  assert.ok(request.substitutions._COMMIT_SHA.length >= 7);
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_OPENCLAW_EXECUTION_AUDIT_LEDGER_WRITE_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "1");
@@ -851,6 +863,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_READ_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_SOURCE, "FIRESTORE");
@@ -1053,11 +1068,16 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.approval_contract.live_cutover_readiness_summary_required, true);
   assert.strictEqual(request.approval_contract.live_evidence_readiness_summary_required, true);
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ENABLED, "1");
+  assert.ok(typeof request.substitutions._COMMIT_SHA === "string");
+  assert.ok(request.substitutions._COMMIT_SHA.length >= 7);
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DRY_RUN, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_CANARY_ONLY, "0");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_COLLECTION_PREFIX, "v2__");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");
@@ -1072,8 +1092,15 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
   assert.strictEqual(request.substitutions._V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "0");
-  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "1");
-  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "8");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE, "6");
+  assert.strictEqual(
+    request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP,
+    "BTCUSDT:155|ETHUSDT:42|LINKUSDT:41|BNBUSDT:13|XRPUSDT:11|SOLUSDT:11|AXSUSDT:12|DOGEUSDT:11"
+  );
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "5");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "UNLIMITED");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY, "UNLIMITED");
   assert.strictEqual(
     request.approval_evidence_sources.repair_firestore_canary_streak.field,
     "bounded_runtime_summary.repair_firestore_canary_streak"
@@ -1149,6 +1176,9 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, "0");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, "1");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE, "OPENCLAW_CRON");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED, "1");

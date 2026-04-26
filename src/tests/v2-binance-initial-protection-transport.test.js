@@ -65,6 +65,8 @@ function liveCfg(extra = {}) {
   assert.strictEqual(calls[0].workingType, "MARK_PRICE");
   assert.strictEqual(calls[0].priceProtect, true);
   assert.strictEqual(calls[0].clientOrderId, "SL__PRATTV2__1");
+  assert.ok(calls[0].signal, "initial SL write must receive an abort signal");
+  assert.strictEqual(typeof calls[0].signal.aborted, "boolean");
 })();
 
 (async function placeInitialTp1UsesReduceOnlyPartialTakeProfitContract() {
@@ -105,6 +107,8 @@ function liveCfg(extra = {}) {
   assert.strictEqual(calls[0].workingType, "MARK_PRICE");
   assert.strictEqual(calls[0].priceProtect, true);
   assert.strictEqual(calls[0].clientOrderId, "TP1__PRATTV2__2");
+  assert.ok(calls[0].signal, "initial TP1 write must receive an abort signal");
+  assert.strictEqual(typeof calls[0].signal.aborted, "boolean");
 })();
 
 (async function dryRunReturnsFailedAckWithoutExchangeWrite() {

@@ -1,9 +1,11 @@
 "use strict";
 
 const {
+  fetchFuturesOrder,
   placeFuturesStopMarketOrder,
   placeFuturesTakeProfitMarketOrder,
 } = require("../exchanges/binanceFuturesPrivate");
+const { withProtectionWriteDeadline } = require("./binanceProtectionTransport");
 
 const DEFAULT_WORKING_TYPE = "MARK_PRICE";
 const DEFAULT_PRICE_PROTECT = true;
@@ -98,6 +100,7 @@ function assertCommandType(command, expectedType) {
 
 function buildBinanceInitialProtectionTransports({
   liveCfg,
+  fetchOrder = fetchFuturesOrder,
   placeStopMarketOrder = placeFuturesStopMarketOrder,
   placeTakeProfitMarketOrder = placeFuturesTakeProfitMarketOrder,
   now = () => new Date().toISOString(),
@@ -109,14 +112,30 @@ function buildBinanceInitialProtectionTransports({
   if (typeof placeTakeProfitMarketOrder !== "function") {
     throw new Error("BINANCE_INITIAL_TP1_ORDER_FN_REQUIRED");
   }
+  if (typeof fetchOrder !== "function") {
+    throw new Error("BINANCE_INITIAL_FETCH_ORDER_FN_REQUIRED");
+  }
 
   return Object.freeze({
+    async fetchOrderByClientOrderId({ command } = {}) {
+      const row = command && typeof command === "object" ? command : {};
+      const clientOrderId = trimOrNull(row.client_order_key);
+      if (!clientOrderId) throw new Error("BINANCE_INITIAL_CLIENT_ORDER_KEY_REQUIRED");
+      if (cfg.liveDryRun === true || cfg.liveEnabled !== true) return null;
+      return fetchOrder({
+        apiKey: cfg.apiKey,
+        apiSecret: cfg.apiSecret,
+        symbol: upper(row.symbol),
+        origClientOrderId: clientOrderId,
+      });
+    },
+
     async placeInitialSl({ command } = {}) {
       const row = assertCommandType(command, "PLACE_INITIAL_SL");
       if (cfg.liveDryRun === true || cfg.liveEnabled !== true) {
         return buildDryRunAck({ command: row, name: "SL" });
       }
-      const order = await placeStopMarketOrder({
+      const order = await withProtectionWriteDeadline(({ signal }) => placeStopMarketOrder({
         apiKey: cfg.apiKey,
         apiSecret: cfg.apiSecret,
         symbol: upper(row.symbol),
@@ -127,6 +146,9 @@ function buildBinanceInitialProtectionTransports({
         priceProtect: DEFAULT_PRICE_PROTECT,
         clientOrderId: trimOrNull(row.client_order_key),
         idempotencyKey: trimOrNull(row.client_order_key) || trimOrNull(row.placement_attempt_id),
+        signal,
+      }), {
+        errorCode: "BINANCE_INITIAL_SL_WRITE_DEADLINE_EXCEEDED",
       });
       return normalizeOrderAck({
         name: "SL",
@@ -151,7 +173,7 @@ function buildBinanceInitialProtectionTransports({
           ack_at: null,
         });
       }
-      const order = await placeTakeProfitMarketOrder({
+      const order = await withProtectionWriteDeadline(({ signal }) => placeTakeProfitMarketOrder({
         apiKey: cfg.apiKey,
         apiSecret: cfg.apiSecret,
         symbol: upper(row.symbol),
@@ -164,6 +186,9 @@ function buildBinanceInitialProtectionTransports({
         priceProtect: DEFAULT_PRICE_PROTECT,
         clientOrderId: trimOrNull(row.client_order_key),
         idempotencyKey: trimOrNull(row.client_order_key) || trimOrNull(row.placement_attempt_id),
+        signal,
+      }), {
+        errorCode: "BINANCE_INITIAL_TP1_WRITE_DEADLINE_EXCEEDED",
       });
       return normalizeOrderAck({
         name: "TP1",

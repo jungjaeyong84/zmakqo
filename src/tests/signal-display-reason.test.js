@@ -95,25 +95,25 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   assert.strictEqual(evReason.reason_ko, 'TP0/TP1/시간청산을 함께 반영한 기대값 하한이 기준보다 낮아 진입을 보류했습니다.');
 
   const waitStage = classifySignalReasonStage('DROP_WAIT_ONE_BAR_TIMING');
-  assert.strictEqual(waitStage.step, 5);
-  assert.strictEqual(waitStage.key, 'TIMING');
-  assert.strictEqual(waitStage.text, '5차 WAIT 타이밍층');
+  assert.strictEqual(waitStage.step, null);
+  assert.strictEqual(waitStage.key, 'LEGACY_RETIRED');
+  assert.strictEqual(waitStage.text, 'Retired legacy timing guard');
 
   const waitReason = buildSignalDisplayReason(
     { reason: 'DROP_WAIT_ONE_BAR_TIMING' },
     {}
   );
-  assert.strictEqual(waitReason.reason_ko, '현재 봉이 과열된 추격봉으로 보여 다음 봉까지 진입을 연기했습니다.');
+  assert.match(waitReason.reason_ko, /은퇴된 wait-one-bar/);
 
   const chaseStage = classifySignalReasonStage('DROP_CHASE_ENTRY_QUALITY');
-  assert.strictEqual(chaseStage.step, 5);
-  assert.strictEqual(chaseStage.key, 'TIMING');
+  assert.strictEqual(chaseStage.step, null);
+  assert.strictEqual(chaseStage.key, 'LEGACY_RETIRED');
 
   const chaseReason = buildSignalDisplayReason(
     { reason: 'DROP_CHASE_ENTRY_QUALITY' },
     {}
   );
-  assert.strictEqual(chaseReason.reason_ko, '최근 봉이 과확장 추격 구간으로 판단되어 진입을 보류했습니다.');
+  assert.match(chaseReason.reason_ko, /은퇴된 chase-entry/);
 
   const rescueAddBlocked = buildSignalDisplayReason(
     { reason: 'LIVE_RESCUE_ADD_LOSS_WINDOW_BLOCKED' },
@@ -167,6 +167,19 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
   assert.strictEqual(tp1FailClosedBlocked.stage_key, 'TP1_FAIL_CLOSED');
   assert.strictEqual(tp1FailClosedBlocked.stage_text, 'TP1 보호 격리');
   assert.strictEqual(tp1FailClosedBlocked.reason_ko, 'TP1 보호주문 또는 메타 동기화 실패가 반복되어 해당 시장을 일시 격리하고 신규 진입을 보류했습니다.');
+
+  const v2Routed = buildSignalDisplayReason(
+    { reason: 'SERVER_NATIVE_SIGNAL' },
+    {
+      status: 'SUPERSEDED_BY_V2_PROTECTED_ENTRY',
+      status_reason: 'V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE',
+      cancel_reason: 'V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE',
+      cancel_note: 'not a drop/cancel',
+    }
+  );
+  assert.strictEqual(v2Routed.stage_key, 'LIVE_CONFIG');
+  assert.match(v2Routed.reason_ko, /드롭\/취소가 아니라/);
+  assert.strictEqual(v2Routed.detail, 'not a drop/cancel');
 
   console.log('SIGNAL_DISPLAY_REASON_TEST_OK');
 })();

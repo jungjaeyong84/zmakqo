@@ -4,6 +4,7 @@ const assert = require("assert");
 const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
 const { resolveEntryIntentFromOpenClaw } = require("../v2/signalAuthorityRouter");
 const { runV2EntrySubmitter, normalizeEntryFillReceipt } = require("../v2/entrySubmitter");
+const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSeed");
 
 function buildEntryIntent({ decisionMode = "CANARY" } = {}) {
   const bundle = buildOpenClawDecisionBundle({
@@ -35,6 +36,16 @@ function buildEntryIntent({ decisionMode = "CANARY" } = {}) {
     featuresHash: `feat_hash_entry_submitter_${decisionMode}`,
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "entry submitter canary long approved",
+    marketDataQuality: {
+      ok: true,
+      reason: "ENTRY_SUBMITTER_TEST_MARKET_OK",
+      blockers: [],
+      metrics: {
+        spread_bps: 3,
+        mark_index_gap_bps: 2,
+      },
+    },
+    signalCriteria: buildPassSignalCriteriaSeed("LONG"),
   });
   return resolveEntryIntentFromOpenClaw(bundle).entryIntent;
 }
@@ -112,6 +123,38 @@ async function submitterRunsProtectionOnlyAfterFilledEntryReceipt() {
   assert.strictEqual(result.executedEntry.protectionPlan.tp1_qty_abs, 0.4);
 }
 
+async function acceptedButUnfilledEntryReceiptReturnsStructuredPostSubmitFailure() {
+  const calls = [];
+  const result = await runV2EntrySubmitter({
+    entryIntent: buildEntryIntent(),
+    entryTransport: {
+      submitEntryOrder: async () => {
+        calls.push("entry-submit");
+        return {
+          status: "NEW",
+          symbol: "ETHUSDT",
+          side: "LONG",
+          entry_order_id: "ORDER__ETH__ACK_ONLY",
+          submitted_order_id: "CLIENT__ETH__ACK_ONLY",
+          exchange_order_id: "ORDER__ETH__ACK_ONLY",
+          error_code: "BINANCE_ENTRY_NEW",
+        };
+      },
+    },
+    protectionTransports: buildProtectionTransports(),
+    runProtectionActivation: async () => {
+      calls.push("protection");
+      return buildProtectionActivationFixture({});
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "ENTRY_SUBMITTED_FILL_RECEIPT_INVALID");
+  assert.strictEqual(result.fill.status, "NEW");
+  assert.strictEqual(result.fill.entry_order_id, "ORDER__ETH__ACK_ONLY");
+  assert.strictEqual(result.protectionResult, null);
+  assert.deepStrictEqual(calls, ["entry-submit"]);
+}
+
 async function fakeProtectionOkWithoutEvidenceIsBlockedAfterEntrySubmit() {
   const calls = [];
   const result = await runV2EntrySubmitter({
@@ -142,7 +185,9 @@ async function fakeProtectionOkWithoutEvidenceIsBlockedAfterEntrySubmit() {
   assert.strictEqual(result.protectionEvidence.reason, "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_INVALID");
   assert.ok(result.protectionEvidence.failed_check_ids.includes("ENTRY_PROTECTION_ACTIVATION_COMMIT_OK"));
   assert.ok(result.protectionEvidence.failed_check_ids.includes("ENTRY_PROTECTION_WRITE_DECISION_OK"));
-  assert.deepStrictEqual(calls, ["entry-submit", "protection"]);
+  assert.strictEqual(result.recoveryResult.ok, false);
+  assert.strictEqual(result.recoveryResult.reason, "ENTRY_PROTECTION_RECOVERY_BLOCKED");
+  assert.deepStrictEqual(calls, ["entry-submit", "protection", "protection"]);
 }
 
 async function missingProtectionTransportBlocksBeforeEntrySubmit() {
@@ -267,7 +312,84 @@ async function protectionActivationThrowReturnsStructuredPostFillFailure() {
   assert.strictEqual(result.protectionResult.error_code, "FIRESTORE_UNAVAILABLE_AFTER_FILL");
   assert.strictEqual(result.protectionEvidence.ok, false);
   assert.ok(result.protectionEvidence.failed_check_ids.includes("ENTRY_PROTECTION_RESULT_OK"));
-  assert.deepStrictEqual(calls, ["entry-submit", "protection"]);
+  assert.strictEqual(result.recoveryResult.ok, false);
+  assert.strictEqual(result.recoveryResult.reason, "ENTRY_PROTECTION_RECOVERY_THROWN");
+  assert.deepStrictEqual(calls, ["entry-submit", "protection", "protection"]);
+}
+
+async function failedInitialProtectionRetriesBeforeReturningBlocked() {
+  const calls = [];
+  const result = await runV2EntrySubmitter({
+    entryIntent: buildEntryIntent(),
+    entryTransport: {
+      submitEntryOrder: async () => {
+        calls.push("entry-submit");
+        return {
+          status: "FILLED",
+          symbol: "ETHUSDT",
+          side: "LONG",
+          entry_event_id: "ENTRY__ETH__PROTECTION_RECOVERY",
+          entry_order_id: "ORDER__ETH__PROTECTION_RECOVERY",
+          entry_fill_group_id: "FILL_GROUP__ETH__PROTECTION_RECOVERY",
+          avg_price: 2500,
+          executed_qty_abs: 0.8,
+        };
+      },
+    },
+    protectionTransports: buildProtectionTransports(),
+    runProtectionActivation: async ({ executedEntry, placementRetryId }) => {
+      calls.push(`protection:${placementRetryId}`);
+      if (placementRetryId === "R0") {
+        return { ok: false, reason: "ENTRY_PROTECTION_ACTIVATION_BLOCKED" };
+      }
+      return buildProtectionActivationFixture(executedEntry);
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "ENTRY_SUBMITTED_AND_PROTECTED");
+  assert.strictEqual(result.recoveryResult.ok, true);
+  assert.strictEqual(result.recoveryResult.reason, "ENTRY_PROTECTION_RECOVERY_ACTIVE");
+  assert.strictEqual(result.protectionEvidence.ok, true);
+  assert.deepStrictEqual(calls, ["entry-submit", "protection:R0", "protection:R0_RECOVERY"]);
+}
+
+async function partialProtectionAckDefersToRepairQueueWithoutBlindRetry() {
+  const calls = [];
+  const result = await runV2EntrySubmitter({
+    entryIntent: buildEntryIntent(),
+    entryTransport: {
+      submitEntryOrder: async () => {
+        calls.push("entry-submit");
+        return {
+          status: "FILLED",
+          symbol: "ETHUSDT",
+          side: "LONG",
+          entry_event_id: "ENTRY__ETH__PARTIAL_PROTECTION",
+          entry_order_id: "ORDER__ETH__PARTIAL_PROTECTION",
+          entry_fill_group_id: "FILL_GROUP__ETH__PARTIAL_PROTECTION",
+          avg_price: 2500,
+          executed_qty_abs: 0.8,
+        };
+      },
+    },
+    protectionTransports: buildProtectionTransports(),
+    runProtectionActivation: async ({ placementRetryId }) => {
+      calls.push(`protection:${placementRetryId}`);
+      return {
+        ok: false,
+        reason: "ENTRY_PROTECTION_ACTIVATION_BLOCKED",
+        slAck: { status: "PLACED", order_id: "SL__PARTIAL" },
+        tp1Ack: { status: "FAILED", error_code: "TP1_TRANSPORT_FAILED" },
+        repairQueueCommit: { ok: true, repair_request_n: 1 },
+      };
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "ENTRY_SUBMITTED_PROTECTION_BLOCKED");
+  assert.strictEqual(result.recoveryResult.attempted, false);
+  assert.strictEqual(result.recoveryResult.reason, "ENTRY_PROTECTION_RECOVERY_DEFERRED_TO_REPAIR_QUEUE");
+  assert.deepStrictEqual(result.recoveryResult.repairQueueCommit, { ok: true, repair_request_n: 1 });
+  assert.deepStrictEqual(calls, ["entry-submit", "protection:R0"]);
 }
 
 (function normalizeEntryFillReceiptRejectsPartialFill() {
@@ -296,11 +418,14 @@ async function protectionActivationThrowReturnsStructuredPostFillFailure() {
 
 async function main() {
   await submitterRunsProtectionOnlyAfterFilledEntryReceipt();
+  await acceptedButUnfilledEntryReceiptReturnsStructuredPostSubmitFailure();
   await fakeProtectionOkWithoutEvidenceIsBlockedAfterEntrySubmit();
   await missingProtectionTransportBlocksBeforeEntrySubmit();
   await shadowIntentBlocksBeforeEntrySubmit();
   await missingFillLineageBlocksProtectionAfterEntrySubmit();
   await protectionActivationThrowReturnsStructuredPostFillFailure();
+  await failedInitialProtectionRetriesBeforeReturningBlocked();
+  await partialProtectionAckDefersToRepairQueueWithoutBlindRetry();
 }
 
 main()

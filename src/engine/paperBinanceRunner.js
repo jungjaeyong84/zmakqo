@@ -11,7 +11,15 @@ const {
 } = require("./signalEngine");
 const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 
-const { listPendingIntentsForExec, listPendingIntentsOverdue, cancelExpiredPendingIntents, markIntentStatus, upsertIntent, patchIntent } = require("../storage/orderIntentsPaper");
+const {
+  listPendingIntentsForExec,
+  listPendingIntentsOverdue,
+  claimPendingIntentForExecution,
+  cancelExpiredPendingIntents,
+  markIntentStatus,
+  upsertIntent,
+  patchIntent,
+} = require("../storage/orderIntentsPaper");
 const { upsertFill } = require("../storage/fillsPaper");
 const { upsertPosition, upsertPositionMetaOnly, getPosition } = require("../storage/positionsPaper");
 const { upsertExitOrderContract } = require("../storage/exitOrderContracts");
@@ -78,6 +86,12 @@ const {
 const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../services/tradeExecutionAlert");
 const { sendSignalReceivedAlert, sendSignalProgressAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
+const { runV2DiscoveryCanaryServerSignalHandoff } = require("../v2/discoveryCanaryServerSignalBridge");
+const { normalizeRiskGovernorSurface } = require("../v2/riskGovernorSurface");
+const {
+  resolveDiscoverySymbolNotionalQuote,
+  resolveDiscoverySymbolNotionalQuoteMap,
+} = require("../v2/discoveryCanaryNotionalPolicy");
 const { estimateTp1ReachProbability } = require("../services/evTp1Probability");
 const { resolveWaitOneBarConfig, evaluateWaitOneBarTiming } = require("../services/waitOneBarPolicy");
 const {
@@ -89,10 +103,6 @@ const { getBinanceFuturesAccountSummary } = require("../services/binanceFuturesA
 const { fetchRecentNewFills, buildTradesFromFills } = require("../services/tradesFromFills");
 const {
   fetchFuturesExchangeInfo,
-  placeFuturesMarketOrder,
-  placeFuturesStopMarketOrder,
-  placeFuturesTakeProfitMarketOrder,
-  cancelFuturesOpenOrders,
   fetchFuturesOpenOrders,
   fetchFuturesAlgoOpenOrders,
   fetchFuturesOrder,
@@ -105,10 +115,22 @@ const {
 const { triggerExitWorkerRun } = require("../services/exitWorkerClient");
 const { reconcileBinancePositionMetaWithExchange } = require("../services/binancePositionReconciler");
 const {
+  placeFuturesMarketOrder,
+  placeFuturesStopMarketOrder,
+  placeFuturesTakeProfitMarketOrder,
+  cancelFuturesOpenOrders,
   placeFuturesEntryMakerFirst,
+} = require("./legacy/v1ExchangeWriters");
+const {
   isMakerFirstEnabled: isEntryMakerFirstEnabled,
 } = require("../services/binanceMakerFirstEntry");
 const { writeOpenClawShadowEntryBootstrap } = require("../v2/openclawShadowPositionWriter");
+const {
+  writeOpenClawShadowTp1Transition,
+  writeOpenClawShadowTrailActivation,
+  writeOpenClawShadowStopExit,
+  writeOpenClawShadowExternalClose,
+} = require("../v2/openclawShadowExitWriter");
 
 const POS_SIZE_EPSILON = (() => {
   const raw = Number(process.env.POS_SIZE_EPSILON);
@@ -1235,12 +1257,13 @@ async function consumeDroppedSignals({ drops, runId, execBarCloseMs, execBarClos
   if (!Array.isArray(drops) || drops.length === 0) return;
   const consumedAtIso = new Date().toISOString();
   for (const d of drops) {
-    if (!d || !d.signal_id) continue;
+    const signalId = resolveSignalIdFromSignalLike(d);
+    if (!d || !signalId) continue;
     try {
-      const lock = await tryLockSignal({ signalId: d.signal_id, runId });
+      const lock = await tryLockSignal({ signalId, runId });
       if (lock && lock.ok) {
         await markSignalConsumed({
-          signalId: d.signal_id,
+          signalId,
           runId,
           consumedAtIso,
           execBarCloseMs,
@@ -1250,6 +1273,114 @@ async function consumeDroppedSignals({ drops, runId, execBarCloseMs, execBarClos
       }
     } catch (_) {}
   }
+}
+
+function resolveSignalIdFromSignalLike(row = null) {
+  return String(
+    (row && row.signal_id) ||
+    (row && row.signal_doc_id) ||
+    (row && row.features_json && row.features_json.signal_id) ||
+    (row && row.features_json && row.features_json.signal_doc_id) ||
+    (row && row.features && row.features.signal_id) ||
+    (row && row.features && row.features.signal_doc_id) ||
+    ""
+  ).trim() || null;
+}
+
+async function markSignalConsumedIfClaimed({
+  signalId = null,
+  runId = null,
+  consumedAtIso = null,
+  execBarCloseMs = null,
+  execBarCloseUtc = null,
+  reason = null,
+  meta = null,
+} = {}) {
+  const id = String(signalId || "").trim();
+  if (!id) return { ok: false, reason: "SIGNAL_ID_MISSING" };
+  const lock = await tryLockSignal({ signalId: id, runId });
+  if (!lock || lock.ok !== true) return lock || { ok: false, reason: "LOCK_FAILED" };
+  await markSignalConsumed({
+    signalId: id,
+    runId,
+    consumedAtIso: consumedAtIso || new Date().toISOString(),
+    execBarCloseMs,
+    execBarCloseUtc,
+    reason,
+    meta,
+  });
+  return { ok: true };
+}
+
+function isSignalClaimAlreadyHandled(result = null) {
+  const reason = String(result && result.reason || "").trim().toUpperCase();
+  return reason === "ALREADY_CONSUMED" || reason === "LOCKED";
+}
+
+async function claimSignalForProgressAlert({
+  signalId = null,
+  runId = null,
+  consumedAtIso = null,
+  execBarCloseMs = null,
+  execBarCloseUtc = null,
+  reason = null,
+  meta = null,
+  critical = false,
+} = {}) {
+  const id = String(signalId || "").trim();
+  if (!id) return { ok: true, signal_id: null, reason: "SIGNAL_ID_MISSING" };
+  const claim = await markSignalConsumedIfClaimed({
+    signalId: id,
+    runId,
+    consumedAtIso,
+    execBarCloseMs,
+    execBarCloseUtc,
+    reason,
+    meta,
+  }).catch((err) => ({
+    ok: false,
+    reason: "SIGNAL_CLAIM_ERROR",
+    error_message: err && err.message ? String(err.message) : String(err),
+  }));
+  if (claim && claim.ok === true) return { ok: true, signal_id: id, reason: "CLAIMED" };
+  if (critical === true) {
+    console.warn(`[SIGNAL_PROGRESS_CLAIM_FAILED_CRITICAL_ALERT_ALLOWED] signal_id=${id} reason=${claim && claim.reason ? claim.reason : "UNKNOWN"}`);
+    return { ok: true, signal_id: id, reason: claim && claim.reason ? claim.reason : "CLAIM_FAILED" };
+  }
+  if (isSignalClaimAlreadyHandled(claim)) {
+    console.warn(`[SIGNAL_PROGRESS_SUPPRESSED_ALREADY_CONSUMED] signal_id=${id} reason=${String(claim && claim.reason || "").toUpperCase()}`);
+    return { ok: false, signal_id: id, reason: claim && claim.reason ? claim.reason : "ALREADY_HANDLED" };
+  }
+  return { ok: true, signal_id: id, reason: claim && claim.reason ? claim.reason : "CLAIM_NOT_REQUIRED" };
+}
+
+async function filterSignalDropsForRecording({ drops = [], runId = null } = {}) {
+  if (!Array.isArray(drops) || drops.length === 0) return [];
+  const kept = [];
+  for (const d of drops) {
+    const signalId = resolveSignalIdFromSignalLike(d);
+    if (!signalId) {
+      kept.push(d);
+      continue;
+    }
+    try {
+      const lock = await tryLockSignal({ signalId, runId });
+      if (lock && lock.ok === true) {
+        kept.push({ ...d, signal_id: signalId });
+        continue;
+      }
+      const reason = String(lock && lock.reason || "LOCK_FAILED").toUpperCase();
+      if (reason === "ALREADY_CONSUMED" || reason === "LOCKED") {
+        console.warn(`[SIGNAL_DROP_SUPPRESSED_ALREADY_CONSUMED] signal_id=${signalId} reason=${reason}`);
+        continue;
+      }
+      kept.push({ ...d, signal_id: signalId });
+    } catch (err) {
+      console.warn(`[SIGNAL_DROP_CONSUME_CHECK_FAIL] signal_id=${signalId} err=${err && err.message ? err.message : String(err)}`);
+      kept.push({ ...d, signal_id: signalId });
+    }
+  }
+  return kept;
 }
 
 function buildEntryEventId({ exchange, symbol, tf, signalBarCloseMs, event }) {
@@ -4587,6 +4718,263 @@ function mergeMeta(base, patch) {
   return out;
 }
 
+function trimTextOrNull(value) {
+  const text = String(value == null ? "" : value).trim();
+  return text || null;
+}
+
+function numOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function buildSyntheticV2ExitEvidenceId({ kind, exchange, symbol, entryEventId, observedAtMs }) {
+  const resolvedKind = String(kind || "EXIT").trim().toUpperCase() || "EXIT";
+  const resolvedExchange = String(exchange || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+  const resolvedSymbol = String(symbol || "UNKNOWN").trim().toUpperCase() || "UNKNOWN";
+  const resolvedEntry = String(entryEventId || "NO_ENTRY_EVENT").trim() || "NO_ENTRY_EVENT";
+  const resolvedAt = Number.isFinite(Number(observedAtMs)) ? Number(observedAtMs) : Date.now();
+  return `${resolvedKind}__${resolvedExchange}__${resolvedSymbol}__${resolvedEntry}__${resolvedAt}`;
+}
+
+const FLAT_SYNC_PRESERVE_FOR_RECONCILE_FIELDS = Object.freeze([
+  "canonical_exit_stage",
+  "canonical_exit_chain_key",
+  "canonical_primary_transition_event",
+  "trail_active",
+  "trail_high",
+  "trail_high_at_ms",
+  "trail_low",
+  "trail_low_at_ms",
+  "trail_stop_by_r",
+  "trail_stop_by_pct",
+  "runner_remaining_qty_abs",
+  "tp_p1_done",
+  "tp_p1_at",
+  "tp_p1_bar_ms",
+  "tp_p1_price",
+  "tp_p1_source",
+  "tp_p1_entry_event_id",
+  "tp_p1_entry_exec_bar_ms",
+  "tp_p1_recovery_trigger",
+  "tp_p1_recovery_observed_at",
+  "tp_p1_recovery_seeded_price",
+  "entry_event_id",
+  "entry_exec_bar_ms",
+  "entry_qty_abs",
+  "entry_qty_base",
+  "position_side",
+  "native_protection_stop_order_id",
+  "native_protection_stop_price",
+  "native_protection_tp_order_id",
+  "native_protection_tp_price",
+  "native_protection_tp_qty_base",
+]);
+
+function buildFlatSyncReconcileInputMeta({ prevMeta, clearedMeta } = {}) {
+  const previous = prevMeta && typeof prevMeta === "object" ? prevMeta : {};
+  const next = clearedMeta && typeof clearedMeta === "object" ? { ...clearedMeta } : {};
+  for (const field of FLAT_SYNC_PRESERVE_FOR_RECONCILE_FIELDS) {
+    if (previous[field] !== undefined && previous[field] !== null && previous[field] !== "") {
+      next[field] = previous[field];
+    }
+  }
+  return next;
+}
+
+function resolveV2FlatSyncExitReplayPlan({
+  exchange,
+  symbol,
+  prevMeta,
+  meta,
+  prevSide,
+  prevQtyBase,
+  qtyBase,
+  fillPrice,
+  observedAtMs,
+} = {}) {
+  const previous = prevMeta && typeof prevMeta === "object" ? prevMeta : {};
+  const current = meta && typeof meta === "object" ? meta : {};
+  const entryEventId = trimTextOrNull(previous.entry_event_id || current.entry_event_id || previous.origin_entry_event_id);
+  const positionSide = normalizePositionSide(
+    previous.position_side || current.position_side || previous.external_side || current.external_side || prevSide,
+  );
+  if (!entryEventId || !positionSide) {
+    return { ok: false, reason: "V2_FLAT_SYNC_ENTRY_CONTEXT_MISSING" };
+  }
+
+  const observedMs = Number.isFinite(Number(observedAtMs)) ? Number(observedAtMs) : Date.now();
+  const priorQty = numOrNull(prevQtyBase);
+  const afterQty = numOrNull(qtyBase);
+  const tpQty = numOrNull(previous.native_protection_tp_qty_base)
+    || numOrNull(current.native_protection_tp_qty_base);
+  const tpOrderId = trimTextOrNull(previous.native_protection_tp_order_id || current.native_protection_tp_order_id);
+  const stopOrderId = trimTextOrNull(previous.native_protection_stop_order_id || current.native_protection_stop_order_id);
+  const stopPrice = numOrNull(previous.native_protection_stop_price)
+    || numOrNull(current.native_protection_stop_price)
+    || numOrNull(previous.trail_stop_by_r)
+    || numOrNull(previous.trail_stop_by_pct)
+    || numOrNull(fillPrice);
+  const resolvedFillPrice = numOrNull(fillPrice)
+    || numOrNull(previous.native_protection_stop_price)
+    || numOrNull(previous.tp_p1_recovery_seeded_price);
+  const tp1Recovered = previous.tp_p1_done === true
+    || current.tp_p1_done === true
+    || !!trimTextOrNull(previous.tp_p1_recovery_trigger || current.tp_p1_recovery_trigger);
+  const trailWasActive = previous.trail_active === true
+    || current.frozen_trail_active === true
+    || current.trail_active === true
+    || String(previous.canonical_exit_stage || current.frozen_canonical_exit_stage || "").toUpperCase() === "TRAIL";
+  const stopWasArmed = !!stopOrderId;
+  const tp1FillQtyAbs = Number.isFinite(tpQty) && tpQty > 0
+    ? tpQty
+    : (Number.isFinite(priorQty) && Number.isFinite(afterQty)
+      ? Math.max(0, Number((priorQty - afterQty).toFixed(8)))
+      : null);
+
+  return {
+    ok: true,
+    reason: "V2_FLAT_SYNC_REPLAY_READY",
+    exchange: String(exchange || "BINANCEFUT").toUpperCase(),
+    symbol: String(symbol || "").toUpperCase(),
+    entryEventId,
+    positionSide,
+    observedAtMs: observedMs,
+    tp1: tp1Recovered && tpOrderId && Number.isFinite(tp1FillQtyAbs) && tp1FillQtyAbs > 0
+      ? {
+        sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "TP1RECOVERY", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+        sourceOrderId: tpOrderId,
+        fillQtyAbs: tp1FillQtyAbs,
+        fillPrice: numOrNull(previous.tp_p1_recovery_seeded_price) || numOrNull(previous.native_protection_tp_price) || resolvedFillPrice,
+      }
+      : null,
+    trailActivation: trailWasActive && stopOrderId && Number.isFinite(stopPrice) && stopPrice > 0
+      ? {
+        sourceOrderId: stopOrderId,
+        nextStopPrice: stopPrice,
+        nativeStopPrice: stopPrice,
+      }
+      : null,
+    terminal: trailWasActive && stopOrderId && Number.isFinite(resolvedFillPrice) && resolvedFillPrice > 0
+      ? {
+        type: "TRAIL",
+        sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "TRAILFLATSYNC", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+        sourceOrderId: stopOrderId,
+        fillPrice: resolvedFillPrice,
+      }
+      : (stopWasArmed && Number.isFinite(resolvedFillPrice) && resolvedFillPrice > 0
+        ? {
+          type: "STOP",
+          sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "SLFLATSYNC", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+          sourceOrderId: stopOrderId,
+          fillPrice: resolvedFillPrice,
+        }
+        : null)
+      || {
+        type: "EXTERNAL",
+        sourceFillId: buildSyntheticV2ExitEvidenceId({ kind: "EXTERNALFLATSYNC", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+        sourceOrderId: stopOrderId || buildSyntheticV2ExitEvidenceId({ kind: "EXTERNALORDER", exchange, symbol, entryEventId, observedAtMs: observedMs }),
+      },
+  };
+}
+
+async function replayV2FlatSyncExitArtifacts({
+  exchange,
+  symbol,
+  plan,
+  fillPrice,
+  observedAtMs,
+} = {}) {
+  if (!plan || plan.ok !== true) return { ok: true, skipped: true, reason: plan && plan.reason || "V2_FLAT_SYNC_REPLAY_NOT_READY" };
+  const results = [];
+  const common = {
+    exchange: plan.exchange || exchange,
+    symbol: plan.symbol || symbol,
+    entryEventId: plan.entryEventId,
+    positionSide: plan.positionSide,
+    observedAtMs: plan.observedAtMs || observedAtMs,
+    exchangeEvidence: {
+      event: "BINANCE_POSITION_FLAT_SYNC",
+      execution_type: "TRADE",
+      full_exit: true,
+      position_qty_after: 0,
+      position_closed: true,
+    },
+  };
+  if (plan.tp1) {
+    results.push(await writeOpenClawShadowTp1Transition({
+      ...common,
+      sourceFillId: plan.tp1.sourceFillId,
+      sourceOrderId: plan.tp1.sourceOrderId,
+      fillQtyAbs: plan.tp1.fillQtyAbs,
+      fillPrice: plan.tp1.fillPrice,
+    }));
+  }
+  if (plan.trailActivation) {
+    results.push(await writeOpenClawShadowTrailActivation({
+      ...common,
+      sourceOrderId: plan.trailActivation.sourceOrderId,
+      nextStopPrice: plan.trailActivation.nextStopPrice,
+      nativeStopPrice: plan.trailActivation.nativeStopPrice,
+      nativeRefreshStatus: "OK",
+      exchangeEvidence: {
+        ...common.exchangeEvidence,
+        event: "TRAIL_ACTIVATION_RECOVERED_FROM_FLAT_SYNC",
+        stop_price: plan.trailActivation.nativeStopPrice,
+      },
+    }));
+  }
+  if (plan.terminal && plan.terminal.type === "TRAIL") {
+    results.push(await writeOpenClawShadowStopExit({
+      ...common,
+      sourceFillId: plan.terminal.sourceFillId,
+      sourceOrderId: plan.terminal.sourceOrderId,
+      fillPrice: plan.terminal.fillPrice || fillPrice,
+      event: "EXIT_TRAIL",
+      fullExit: true,
+      exchangeEvidence: {
+        ...common.exchangeEvidence,
+        event: "EXIT_TRAIL",
+        event_type: "EXIT_TRAIL",
+        order_type: "STOP_MARKET",
+        stop_price: plan.trailActivation && plan.trailActivation.nativeStopPrice || plan.terminal.fillPrice,
+      },
+    }));
+  } else if (plan.terminal && plan.terminal.type === "STOP") {
+    results.push(await writeOpenClawShadowStopExit({
+      ...common,
+      sourceFillId: plan.terminal.sourceFillId,
+      sourceOrderId: plan.terminal.sourceOrderId,
+      fillPrice: plan.terminal.fillPrice || fillPrice,
+      event: "EXIT_SL",
+      fullExit: true,
+      exchangeEvidence: {
+        ...common.exchangeEvidence,
+        event: "EXIT_SL",
+        event_type: "EXIT_SL",
+        order_type: "STOP_MARKET",
+        stop_price: plan.terminal.fillPrice || fillPrice,
+      },
+    }));
+  } else if (plan.terminal) {
+    results.push(await writeOpenClawShadowExternalClose({
+      ...common,
+      sourceFillId: plan.terminal.sourceFillId,
+      sourceOrderId: plan.terminal.sourceOrderId,
+      event: "EXIT_EXTERNAL_SYNC",
+      closeKind: "EXTERNAL",
+      fullExit: true,
+      exchangeEvidence: common.exchangeEvidence,
+    }));
+  }
+  return {
+    ok: results.every((row) => row && row.ok !== false),
+    reason: "V2_FLAT_SYNC_REPLAY_ATTEMPTED",
+    results,
+  };
+}
+
 function metaValueEquals(a, b) {
   if (Object.is(a, b)) return true;
   const aObj = !!a && typeof a === "object";
@@ -5500,9 +5888,416 @@ function normalizeBool(value, fallback) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === "boolean") return value;
   const raw = String(value).trim().toLowerCase();
-  if (raw === "1" || raw === "true" || raw === "yes") return true;
-  if (raw === "0" || raw === "false" || raw === "no") return false;
+  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") return true;
+  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return false;
   return fallback;
+}
+
+function splitRuntimeList(raw) {
+  return String(raw || "")
+    .split(/[,\|\s]+/)
+    .map((item) => String(item || "").trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function positiveNumberOrNull(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function isUnlimitedRuntimeLimit(value) {
+  const raw = String(value == null ? "" : value).trim().toUpperCase();
+  return raw === "UNLIMITED" || raw === "INF" || raw === "INFINITY" || raw === "*";
+}
+
+function positiveNumberOrUnlimited(value) {
+  if (isUnlimitedRuntimeLimit(value)) return "UNLIMITED";
+  return positiveNumberOrNull(value);
+}
+
+function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null, executionMode = null } = {}) {
+  const mode = String(executionMode || "").trim().toUpperCase();
+  const sym = String(symbol || "").trim().toUpperCase();
+  const policy = Object.freeze({
+    v2_enabled: normalizeBool(env.DONBEOLJA_V2_ENABLED, false),
+    dry_run: normalizeBool(env.DONBEOLJA_V2_DRY_RUN, true),
+    canary_only: normalizeBool(env.DONBEOLJA_V2_CANARY_ONLY, false),
+    live_endpoint_enabled: normalizeBool(env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, false),
+    discovery_enabled: normalizeBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, false),
+    ml_live_serving_armed: normalizeBool(env.ML_LIVE_SERVING_ARMED, false),
+    agent_apply_enabled: normalizeBool(env.OPENCLAW_AGENT_APPLY_ENABLED, false),
+    risk_governor_required: normalizeBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, true),
+    legacy_webhook_blocked: normalizeBool(env.DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL, false),
+    legacy_webhook_allowed: normalizeBool(env.DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL, false),
+    legacy_runtime_disabled: normalizeBool(env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, false),
+    legacy_entry_filters_disabled: normalizeBool(env.DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED, false),
+    legacy_wait_one_bar_hard_drop_disabled: normalizeBool(env.DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED, false),
+    allowed_symbols: Object.freeze(splitRuntimeList(env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS)),
+    max_notional_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE),
+    symbol_notional_quote_map: resolveDiscoverySymbolNotionalQuoteMap(env),
+    max_position_count: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT),
+    max_trades_per_day: positiveNumberOrUnlimited(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY),
+    max_trades_per_day_unlimited: isUnlimitedRuntimeLimit(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY),
+    daily_loss_halt_quote: positiveNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE),
+  });
+
+  const blockers = [];
+  if (mode !== "LIVE") blockers.push("V2_DISCOVERY_CANARY_BRIDGE:EXECUTION_MODE_NOT_LIVE");
+  if (!sym) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_REQUIRED");
+  if (policy.v2_enabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:V2_NOT_ENABLED");
+  if (policy.dry_run === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DRY_RUN_BLOCKED");
+  if (policy.canary_only !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:CANARY_ONLY_REQUIRED");
+  if (policy.live_endpoint_enabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LIVE_ENDPOINT_REQUIRED");
+  if (policy.discovery_enabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DISCOVERY_NOT_ENABLED");
+  if (policy.allowed_symbols.length < 1) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_ALLOWLIST_REQUIRED");
+  if (sym && policy.allowed_symbols.length > 0 && !policy.allowed_symbols.includes(sym)) {
+    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED");
+  }
+  if (policy.max_notional_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_NOTIONAL_REQUIRED");
+  if (policy.max_position_count == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_REQUIRED");
+  if (policy.max_position_count != null && policy.max_position_count > 5) {
+    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_5");
+  }
+  if (policy.max_trades_per_day == null) {
+    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_REQUIRED");
+  }
+  if (policy.daily_loss_halt_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:DAILY_LOSS_HALT_REQUIRED");
+  if (policy.ml_live_serving_armed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED");
+  if (policy.agent_apply_enabled === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:AGENT_APPLY_ENABLED");
+  if (policy.risk_governor_required !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED");
+  if (policy.legacy_webhook_blocked !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_NOT_BLOCKED");
+  if (policy.legacy_webhook_allowed === true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WEBHOOK_ALLOWED");
+  if (policy.legacy_runtime_disabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_RUNTIME_NOT_RETIRED");
+  if (policy.legacy_entry_filters_disabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_ENTRY_FILTERS_NOT_RETIRED");
+  if (policy.legacy_wait_one_bar_hard_drop_disabled !== true) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WAIT_ONE_BAR_HARD_DROP_NOT_RETIRED");
+
+  return Object.freeze({
+    ok: blockers.length === 0,
+    reason: blockers.length === 0
+      ? "V2_DISCOVERY_CANARY_LIVE_BRIDGE_ENABLED"
+      : "V2_DISCOVERY_CANARY_LIVE_BRIDGE_BLOCKED",
+    blockers: Object.freeze(blockers),
+    symbol: sym || null,
+    max_notional_quote: resolveDiscoverySymbolNotionalQuote({
+      env,
+      symbol: sym,
+      fallback: policy.max_notional_quote,
+    }),
+    policy,
+  });
+}
+
+function clampDiscoveryCanaryMaxOrderQuote(currentMaxOrderQuote, bridge) {
+  const discoveryMax = positiveNumberOrNull(bridge && bridge.max_notional_quote);
+  const currentMax = positiveNumberOrNull(currentMaxOrderQuote);
+  if (discoveryMax == null) return currentMaxOrderQuote;
+  if (currentMax == null) return discoveryMax;
+  return Math.min(currentMax, discoveryMax);
+}
+
+function isV2DiscoveryCanaryLegacyExchangeWriteBlocked({ liveCfg = null } = {}) {
+  if (!normalizeBool(process.env.DONBEOLJA_V2_LEGACY_V1_WRITER_DENY_ENABLED, true)) return false;
+  if (!liveCfg) return false;
+  if (liveCfg.legacy_runtime_disabled === true) return true;
+  if (liveCfg.v2DiscoveryCanaryBridge === true) return true;
+  if (liveCfg.v2DiscoveryCanaryConfigured === true && liveCfg.legacyV1ExchangeWriterEnabled !== true) return true;
+  return false;
+}
+
+function isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg = null, intent = null } = {}) {
+  const entryIntent = String(intent || "").toUpperCase();
+  return !!(
+    liveCfg &&
+    liveCfg.v2DiscoveryCanaryBridge === true &&
+    (entryIntent === "ENTRY" || entryIntent === "ADD")
+  );
+}
+
+function shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery({ liveCfg = null, intent = null } = {}) {
+  return isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent });
+}
+
+function shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg = null, intent = null } = {}) {
+  return isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent });
+}
+
+function collectReasonBlockers(...sources) {
+  const out = [];
+  for (const source of sources) {
+    if (!Array.isArray(source)) continue;
+    for (const item of source) {
+      const token = String(item || "").trim().toUpperCase();
+      if (token && !out.includes(token)) out.push(token);
+    }
+  }
+  return out;
+}
+
+function resolveV2DiscoveryHandoffDetail(handoff = null) {
+  const endpointResult = handoff && handoff.endpoint_result && typeof handoff.endpoint_result === "object"
+    ? handoff.endpoint_result
+    : null;
+  const routeResult = endpointResult && endpointResult.route_result && typeof endpointResult.route_result === "object"
+    ? endpointResult.route_result
+    : null;
+  const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+  const routeRoutedDecision = routeResult && (routeResult.routedDecision || routeResult.routed_decision);
+  const discoveryContract = endpointResult && endpointResult.discovery_canary_contract
+    ? endpointResult.discovery_canary_contract
+    : null;
+  const riskGovernor = endpointResult && endpointResult.risk_governor && typeof endpointResult.risk_governor === "object"
+    ? endpointResult.risk_governor
+    : (routeResult && routeResult.risk_governor && typeof routeResult.risk_governor === "object"
+      ? routeResult.risk_governor
+      : null);
+  const marketDataQuality = handoff && handoff.marketDataQuality && typeof handoff.marketDataQuality === "object"
+    ? handoff.marketDataQuality
+    : (endpointResult && endpointResult.market_data_quality && typeof endpointResult.market_data_quality === "object"
+      ? endpointResult.market_data_quality
+      : null);
+  const routeBlockers = collectReasonBlockers(
+    routeResult && routeResult.blockers,
+    routeResult && routeResult.detail && routeResult.detail.blockers,
+    routeRoutedDecision && routeRoutedDecision.blockers,
+    routeRoutedDecision && routeRoutedDecision.detail && routeRoutedDecision.detail.blockers,
+  );
+  const routerBlockers = collectReasonBlockers(
+    routedDecision && routedDecision.blockers,
+    routedDecision && routedDecision.detail && routedDecision.detail.blockers,
+    routeRoutedDecision && routeRoutedDecision.blockers,
+    routeRoutedDecision && routeRoutedDecision.detail && routeRoutedDecision.detail.blockers,
+  );
+  const discoveryContractBlockers = collectReasonBlockers(discoveryContract && discoveryContract.blockers);
+  const marketDataQualityBlockers = collectReasonBlockers(marketDataQuality && marketDataQuality.blockers);
+  const riskGovernorBlockers = collectReasonBlockers(riskGovernor && riskGovernor.blockers);
+  const riskGovernorSurface = riskGovernor && riskGovernor.surface
+    ? normalizeRiskGovernorSurface(riskGovernor.surface)
+    : normalizeRiskGovernorSurface(riskGovernor);
+  return {
+    bridge_reason: handoff && handoff.reason ? String(handoff.reason).trim().toUpperCase() : null,
+    bridge_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
+    endpoint_reason: endpointResult && endpointResult.reason ? String(endpointResult.reason).trim().toUpperCase() : null,
+    route_reason: routeResult && routeResult.reason ? String(routeResult.reason).trim().toUpperCase() : null,
+    route_blockers: routeBlockers,
+    router_reason: routedDecision && routedDecision.reason
+      ? String(routedDecision.reason).trim().toUpperCase()
+      : (routeRoutedDecision && routeRoutedDecision.reason ? String(routeRoutedDecision.reason).trim().toUpperCase() : null),
+    router_blockers: routerBlockers,
+    discovery_contract_reason: discoveryContract && discoveryContract.reason
+      ? String(discoveryContract.reason).trim().toUpperCase()
+      : null,
+    discovery_contract_blockers: discoveryContractBlockers,
+    market_data_quality_reason: marketDataQuality && marketDataQuality.reason
+      ? String(marketDataQuality.reason).trim().toUpperCase()
+      : null,
+    market_data_quality_blockers: marketDataQualityBlockers,
+    risk_governor_reason: riskGovernor && riskGovernor.reason
+      ? String(riskGovernor.reason).trim().toUpperCase()
+      : null,
+    risk_governor_blockers: riskGovernorBlockers,
+    risk_governor_surface: riskGovernorSurface.present === true ? riskGovernorSurface : null,
+    risk_governor_primary_code: riskGovernorSurface.primary_code,
+    risk_governor_primary_blocker: riskGovernorSurface.primary_blocker,
+    risk_governor_blocker_codes: riskGovernorSurface.blocker_codes,
+  };
+}
+
+function buildV2DiscoveryHandoffFeaturePatch(handoff = null) {
+  const detail = resolveV2DiscoveryHandoffDetail(handoff);
+  const sideEffect = resolveV2DiscoveryPostFillSideEffect(handoff);
+  return {
+    v2_discovery_bridge_reason: detail.bridge_reason,
+    v2_discovery_bridge_error: detail.bridge_error,
+    v2_discovery_endpoint_reason: detail.endpoint_reason,
+    v2_discovery_route_reason: detail.route_reason,
+    v2_discovery_route_blockers: detail.route_blockers,
+    v2_discovery_router_reason: detail.router_reason,
+    v2_discovery_router_blockers: detail.router_blockers,
+    v2_discovery_canary_contract_reason: detail.discovery_contract_reason,
+    v2_discovery_canary_contract_blockers: detail.discovery_contract_blockers,
+    v2_discovery_market_data_quality_reason: detail.market_data_quality_reason,
+    v2_discovery_market_data_quality_blockers: detail.market_data_quality_blockers,
+    v2_discovery_risk_governor_reason: detail.risk_governor_reason,
+    v2_discovery_risk_governor_blockers: detail.risk_governor_blockers,
+    v2_discovery_risk_governor_surface: detail.risk_governor_surface,
+    v2_discovery_risk_governor_primary_code: detail.risk_governor_primary_code,
+    v2_discovery_risk_governor_primary_blocker: detail.risk_governor_primary_blocker,
+    v2_discovery_risk_governor_blocker_codes: detail.risk_governor_blocker_codes,
+    v2_discovery_post_fill_exchange_write: sideEffect ? sideEffect.exchange_write_performed === true : false,
+    v2_discovery_post_fill_unprotected_possible: sideEffect ? sideEffect.unprotected_position_possible === true : false,
+    v2_discovery_post_fill_entry_order_id: sideEffect ? (sideEffect.entry_order_id || null) : null,
+    v2_discovery_post_fill_position_cycle_id: sideEffect ? (sideEffect.position_cycle_id || null) : null,
+  };
+}
+
+function resolveV2DiscoveryPostFillSideEffect(handoff = null) {
+  const endpointResult = handoff && handoff.endpoint_result && typeof handoff.endpoint_result === "object"
+    ? handoff.endpoint_result
+    : null;
+  const routeResult = endpointResult && endpointResult.route_result && typeof endpointResult.route_result === "object"
+    ? endpointResult.route_result
+    : null;
+  const sideEffect = routeResult && routeResult.post_fill_side_effect && typeof routeResult.post_fill_side_effect === "object"
+    ? routeResult.post_fill_side_effect
+    : null;
+  return sideEffect || null;
+}
+
+function classifyV2DiscoveryPostFillHandoff(handoff = null) {
+  const sideEffect = resolveV2DiscoveryPostFillSideEffect(handoff);
+  if (!sideEffect || sideEffect.exchange_write_performed !== true) {
+    return {
+      exchange_write_performed: false,
+      unprotected_position_possible: false,
+      reason: null,
+      status: null,
+      note: null,
+      side_effect: sideEffect,
+    };
+  }
+  const unprotected = sideEffect.unprotected_position_possible === true;
+  return {
+    exchange_write_performed: true,
+    unprotected_position_possible: unprotected,
+    reason: unprotected
+      ? "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTION_CRITICAL"
+      : "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED",
+    status: unprotected
+      ? "FAILED_INTERNAL"
+      : "SUPERSEDED_BY_V2_PROTECTED_ENTRY",
+    note: unprotected
+      ? "V2 route submitted an exchange entry but protection was not confirmed. This is not a signal drop; repair protection immediately."
+      : "V2 route submitted an exchange entry and protection was confirmed, but route/kernel audit did not fully pass. This is not a signal drop; reconcile internal evidence.",
+    side_effect: sideEffect,
+  };
+}
+
+function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE") {
+  const postFill = classifyV2DiscoveryPostFillHandoff(handoff);
+  if (postFill.exchange_write_performed === true && postFill.reason) return postFill.reason;
+  const detail = resolveV2DiscoveryHandoffDetail(handoff);
+  if (detail.router_reason) return detail.router_reason;
+  if (detail.router_blockers.length) return detail.router_blockers[0];
+  if (detail.route_reason) return detail.route_reason;
+  if (detail.route_blockers.length) return detail.route_blockers[0];
+  if (
+    detail.endpoint_reason === "V2_DISCOVERY_CANARY_CONTRACT_BLOCKED"
+    && detail.discovery_contract_blockers.length
+  ) {
+    return detail.discovery_contract_blockers[0];
+  }
+  if (detail.market_data_quality_blockers.length) return detail.market_data_quality_blockers[0];
+  if (detail.market_data_quality_reason) return detail.market_data_quality_reason;
+  if (detail.endpoint_reason === "V2_RISK_GOVERNOR_BLOCKED" && detail.risk_governor_blockers.length) {
+    return detail.risk_governor_blockers[0];
+  }
+  if (detail.risk_governor_blockers.length) return detail.risk_governor_blockers[0];
+  if (detail.risk_governor_reason) return detail.risk_governor_reason;
+  if (detail.endpoint_reason) return detail.endpoint_reason;
+  if (detail.discovery_contract_reason) return detail.discovery_contract_reason;
+  if (detail.bridge_reason) return detail.bridge_reason;
+  return fallback;
+}
+
+function sendV2DiscoveryPostFillHandoffProgressAlert({
+  exchange = null,
+  symbol = null,
+  event = null,
+  side = null,
+  tf = null,
+  qtyPct = null,
+  executionMode = null,
+  signalId = null,
+  scheduledExecBarCloseUtc = null,
+  blockReason = null,
+  handoff = null,
+  postFillHandoff = null,
+} = {}) {
+  const classified = postFillHandoff || classifyV2DiscoveryPostFillHandoff(handoff);
+  if (classified.exchange_write_performed !== true) return;
+  sendSignalProgressAlert({
+    exchange,
+    symbol,
+    event,
+    side,
+    tf,
+    qtyPct,
+    executionMode,
+    source: "SERVER",
+    authoritative: true,
+    progressReason: blockReason || classified.reason || "V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTED_RECONCILE_REQUIRED",
+    pendingReason: classified.unprotected_position_possible === true
+      ? "PROTECTION_REPAIR_REQUIRED"
+      : "POST_FILL_RECONCILE",
+    signalId,
+    scheduledExecBarCloseUtc,
+    meta: {
+      ...buildV2DiscoveryHandoffFeaturePatch(handoff),
+      post_fill_note: classified.note || null,
+    },
+  }).catch((err) => {
+    console.warn("[V2_DISCOVERY_POST_FILL_HANDOFF_ALERT_FAIL]", err && err.message ? err.message : String(err));
+  });
+}
+
+function buildV2DiscoverySignalFanInIntentRow({
+  exchange = null,
+  symbol = null,
+  tf = null,
+  signal = null,
+  features = null,
+  qtyFraction = null,
+  intentExecutionMode = null,
+  signalBarCloseUtcForIntent = null,
+  signalBarCloseMsForIntent = null,
+  intentSignalBarCloseUtc = null,
+  intentSignalBarCloseMs = null,
+  execBarCloseUtcForIntent = null,
+  execBarCloseMsForIntent = null,
+  signalDocId = null,
+  signalPrice = null,
+  runId = null,
+} = {}) {
+  const rowFeatures = features && typeof features === "object" && !Array.isArray(features)
+    ? { ...features }
+    : {};
+  const sig = signal && typeof signal === "object" ? signal : {};
+  const resolvedSignalId = sig.signal_id || rowFeatures.signal_id || null;
+  const resolvedSignalDocId = sig.signal_doc_id || signalDocId || rowFeatures.signal_doc_id || resolvedSignalId || null;
+  const requestId = resolvedSignalId || resolvedSignalDocId || [
+    "V2_DISCOVERY_SIGNAL_FAN_IN",
+    String(exchange || "EX").toUpperCase(),
+    String(symbol || "SYMBOL").toUpperCase(),
+    String(tf || "TF"),
+    String(signalBarCloseMsForIntent || intentSignalBarCloseMs || Date.now()),
+    String(sig.event || "EVENT").toUpperCase(),
+  ].join("__");
+  if (resolvedSignalId && !rowFeatures.signal_id) rowFeatures.signal_id = resolvedSignalId;
+  if (resolvedSignalDocId && !rowFeatures.signal_doc_id) rowFeatures.signal_doc_id = resolvedSignalDocId;
+  return {
+    intent_id: requestId,
+    request_id: requestId,
+    exchange,
+    symbol,
+    symbol_or_pair_id: symbol,
+    tf,
+    event: sig.event,
+    side: sig.side,
+    qty_pct: qtyFraction,
+    reason: sig.reason || "SIGNAL",
+    features_json: rowFeatures,
+    signal_id: resolvedSignalId,
+    signal_doc_id: resolvedSignalDocId,
+    signal_price: Number.isFinite(Number(signalPrice)) ? Number(signalPrice) : null,
+    signal_bar_close_time_utc: intentSignalBarCloseUtc || signalBarCloseUtcForIntent || null,
+    signal_bar_close_time_utc_ms: Number.isFinite(Number(intentSignalBarCloseMs))
+      ? Number(intentSignalBarCloseMs)
+      : (Number.isFinite(Number(signalBarCloseMsForIntent)) ? Number(signalBarCloseMsForIntent) : null),
+    scheduled_exec_bar_close_time_utc: execBarCloseUtcForIntent || null,
+    scheduled_exec_bar_close_time_utc_ms: Number.isFinite(Number(execBarCloseMsForIntent)) ? Number(execBarCloseMsForIntent) : null,
+    execution_mode: intentExecutionMode,
+    run_id: runId || null,
+  };
 }
 
 function resolveForceAllSignalsAdd(sysCfg = {}, exchange = "") {
@@ -7531,7 +8326,7 @@ async function resolveLiveKiwoomConfig({ exchange, symbol } = {}) {
   return resolveUnsupportedLiveConfig({ exchange, symbol, provider: "REMOVED_STOCK" });
 }
 
-async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
+async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } = {}) {
   const sys = await getSystemSettingsForProvider(exchange || "BINANCEFUT", 5000);
   const cfg = (sys && sys.data) ? sys.data : {};
   const execMode = normalizeExecutionMode(cfg.execution_mode);
@@ -7540,7 +8335,14 @@ async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
   const maxOrderQuote = Number(cfg.live_max_order_krw ?? 0);
   const executionMode = execMode;
   const liveDryRun = Boolean(cfg.live_dry_run) || execMode === "LIVE_DRY_RUN";
-  let liveEnabled = executionMode === "LIVE" && cfg.live_enabled === true;
+  const discoveryBridge = evaluateV2DiscoveryCanaryLiveBridge({ env, symbol, executionMode });
+  const discoveryCanaryConfigured = discoveryBridge.policy.discovery_enabled === true;
+  const legacyRuntimeDisabled = discoveryBridge.policy.legacy_runtime_disabled === true;
+  let liveEnabled = executionMode === "LIVE" && (
+    discoveryCanaryConfigured
+      ? discoveryBridge.ok === true
+      : cfg.live_enabled === true
+  );
   let reason = null;
 
   const ex = String(exchange || "").toUpperCase();
@@ -7549,9 +8351,13 @@ async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
     reason = "EXCHANGE_NOT_BINANCE";
   }
 
-  if (allowList.length && !allowList.includes(String(symbol || ""))) {
+  if (allowList.length && !allowList.includes(String(symbol || "")) && discoveryBridge.ok !== true) {
     liveEnabled = false;
     reason = "MARKET_NOT_ALLOWED";
+  }
+
+  if (executionMode === "LIVE" && discoveryBridge.ok !== true && discoveryCanaryConfigured && !reason) {
+    reason = discoveryBridge.blockers[0] || "V2_DISCOVERY_CANARY_LIVE_BRIDGE_BLOCKED";
   }
 
   const keys = await resolveBinanceKeys();
@@ -7567,19 +8373,31 @@ async function resolveLiveFuturesConfig({ exchange, symbol } = {}) {
     cfg.futures_exit_profile_mode ?? process.env.FUTURES_EXIT_PROFILE_MODE ?? "",
     null
   );
+  const legacyV1ExchangeWriterEnabled = liveEnabled === true
+    && legacyRuntimeDisabled !== true
+    && discoveryBridge.ok !== true;
 
   return {
     executionMode,
     liveEnabled,
+    legacyV1ExchangeWriterEnabled,
+    legacy_runtime_disabled: legacyRuntimeDisabled,
     liveDryRun,
     minOrderQuote: Number.isFinite(minOrderQuote) ? minOrderQuote : 5,
-    maxOrderQuote: Number.isFinite(maxOrderQuote) ? maxOrderQuote : 0,
+    maxOrderQuote: discoveryBridge.ok === true
+      ? clampDiscoveryCanaryMaxOrderQuote(Number.isFinite(maxOrderQuote) ? maxOrderQuote : 0, discoveryBridge)
+      : (Number.isFinite(maxOrderQuote) ? maxOrderQuote : 0),
     apiKey: keys.apiKey,
     apiSecret: keys.apiSecret,
     leverage,
     marginType,
     exitProfileMode,
     reason,
+    v2DiscoveryCanaryBridge: discoveryBridge.ok === true,
+    v2DiscoveryCanaryBridgeReason: discoveryBridge.reason,
+    v2DiscoveryCanaryBridgeBlockers: discoveryBridge.blockers,
+    v2DiscoveryCanaryConfigured: discoveryCanaryConfigured,
+    v2DiscoveryCanaryLegacyEntryWriteBlocked: legacyV1ExchangeWriterEnabled !== true,
   };
 }
 
@@ -8574,9 +9392,12 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
       console.warn("[BINANCE_SYNC_ALGO_ORDERS_FAIL]", symbol, e && e.message ? e.message : String(e));
     }
   }
+  const reconcileInputMeta = (!active && prevActive)
+    ? buildFlatSyncReconcileInputMeta({ prevMeta, clearedMeta: meta })
+    : meta;
   const reconciledProjection = reconcileBinancePositionMetaWithExchange({
     active,
-    meta,
+    meta: reconcileInputMeta,
     positionSide: active ? side : null,
     qtyBase,
     previousQtyBase: prevActive ? prevQtyBase : null,
@@ -8589,6 +9410,7 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     markPrice: Number.isFinite(markPrice) ? markPrice : (Number.isFinite(priceRef) ? priceRef : null),
   });
   meta = reconciledProjection.meta;
+  let v2FlatSyncExitReplay = null;
 
   // ── Recovery-path trade alert (Fix #1, 2026-04-18) ────────────────
   // When the reconciler flips tp_p1_done=false → true via the qty-reduction
@@ -8641,6 +9463,43 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
   } catch (recoveryAlertErr) {
     console.warn("[TP1_RECOVERY_ALERT_GUARD]",
       recoveryAlertErr && recoveryAlertErr.message ? recoveryAlertErr.message : recoveryAlertErr);
+  }
+  if (!active && prevActive) {
+    try {
+      const replayPlan = resolveV2FlatSyncExitReplayPlan({
+        exchange,
+        symbol,
+        prevMeta,
+        meta,
+        prevSide,
+        prevQtyBase,
+        qtyBase,
+        fillPrice: Number.isFinite(markPrice) ? markPrice : priceRef,
+        observedAtMs: syncEventMs,
+      });
+      v2FlatSyncExitReplay = await replayV2FlatSyncExitArtifacts({
+        exchange,
+        symbol,
+        plan: replayPlan,
+        fillPrice: Number.isFinite(markPrice) ? markPrice : priceRef,
+        observedAtMs: syncEventMs,
+      });
+      meta = mergeMeta(meta, {
+        v2_flat_sync_exit_replay_attempted_at: new Date().toISOString(),
+        v2_flat_sync_exit_replay_ok: v2FlatSyncExitReplay && v2FlatSyncExitReplay.ok === true,
+        v2_flat_sync_exit_replay_reason: v2FlatSyncExitReplay && v2FlatSyncExitReplay.reason || null,
+        v2_flat_sync_exit_replay_result_n: Array.isArray(v2FlatSyncExitReplay && v2FlatSyncExitReplay.results)
+          ? v2FlatSyncExitReplay.results.length
+          : 0,
+      });
+    } catch (replayErr) {
+      console.warn("[V2_FLAT_SYNC_EXIT_REPLAY_FAIL]", symbol, replayErr && replayErr.message ? replayErr.message : String(replayErr));
+      meta = mergeMeta(meta, {
+        v2_flat_sync_exit_replay_attempted_at: new Date().toISOString(),
+        v2_flat_sync_exit_replay_ok: false,
+        v2_flat_sync_exit_replay_reason: String(replayErr && replayErr.message || replayErr).slice(0, 160),
+      });
+    }
   }
   if (Array.isArray(reconciledProjection.invariants) && reconciledProjection.invariants.length) {
     meta = mergeMeta(meta, {
@@ -9425,7 +10284,7 @@ async function sendNativeProtectionWarningAlert({
   try {
     const channel = await resolveNativeProtectionAlertChannel(exchange);
     if (!channel) return { ok: false, skipped: true, reason: "NO_ALERT_CHANNEL" };
-    const title = `${String(symbol || "").toUpperCase() || "UNKNOWN"} native protection 경고`;
+    const title = `[V2 Native Protection] ${String(symbol || "").toUpperCase() || "UNKNOWN"} native protection 경고`;
     const lines = [
       `reason: ${String(reason || "UNKNOWN")}`,
       `attempts: ${Number.isFinite(Number(attempts)) ? Number(attempts) : 1}`,
@@ -9566,7 +10425,7 @@ function buildLiveExitExceptionIntegrityAlertPayload({
   ];
   if (error) lines.push(`error: ${String(error).slice(0, 240)}`);
   return {
-    title: `[P0] ${normalizedSymbol} live exit exception`,
+    title: `[V2 긴급] ${normalizedSymbol} live exit exception`,
     body: lines.join("\n"),
     severity: "ERROR",
   };
@@ -11029,8 +11888,25 @@ async function executeLiveFuturesOrder({
     return { ok: false, mode: "LIVE", reason: "BAD_PRICE" };
   }
 
-  const isExit = String(intent || "").toUpperCase() === "EXIT";
+  const normalizedIntent = String(intent || "").toUpperCase();
+  const isExit = normalizedIntent === "EXIT";
   const isTpP1Exit = isExit && isTpP1EventLocal(event);
+  if (isV2DiscoveryCanaryLegacyExchangeWriteBlocked({ liveCfg, intent })) {
+    const reason = liveCfg.legacy_runtime_disabled === true
+      ? "V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED"
+      : (isExit
+        ? "V2_DISCOVERY_CANARY_LEGACY_EXIT_WRITE_DENIED"
+        : "V2_DISCOVERY_CANARY_LEGACY_ENTRY_WRITE_DENIED");
+    return {
+      ok: false,
+      mode: "LIVE",
+      reason,
+      note: isExit
+        ? "V2 live-write exits must be handled by the V2 exit worker/canonical reducer path, not the legacy futures order path."
+        : "Discovery canary entries must be executed only by productionEntryLiveEndpoint/productionEntryRoute.",
+      intent_observed: normalizedIntent || null,
+    };
+  }
   const manualRetryEntry = !isExit && (manualRetry === true || isManualRetryFeatures(features));
   const orderIntentId = String(intentId || "").trim() || null;
   const manualQtyBase = manualRetryEntry
@@ -12311,19 +13187,171 @@ async function runPaperBinanceForBar({
   const attemptAt = new Date().toISOString();
   const executeIntentList = async (intentsList) => {
     for (const it of intentsList) {
-    const schedMs = Number(it.scheduled_exec_bar_close_time_utc_ms);
-    const isOverdue = Number.isFinite(schedMs) && Number.isFinite(execBarCloseMs) && schedMs < execBarCloseMs;
-    await patchIntent(it.intent_id, {
-      last_attempt_at: attemptAt,
-      last_attempt_bar_close_time_utc: execBarCloseUtc,
-      last_attempt_bar_close_time_utc_ms: execBarCloseMs,
-      ...(isOverdue ? { pending_reason: "LATE_EXEC", pending_note: `late_exec_from=${msToUtcZ(schedMs)}` } : {}),
-    });
+      const schedMs = Number(it.scheduled_exec_bar_close_time_utc_ms);
+      const isOverdue = Number.isFinite(schedMs) && Number.isFinite(execBarCloseMs) && schedMs < execBarCloseMs;
+      await patchIntent(it.intent_id, {
+        last_attempt_at: attemptAt,
+        last_attempt_bar_close_time_utc: execBarCloseUtc,
+        last_attempt_bar_close_time_utc_ms: execBarCloseMs,
+        ...(isOverdue ? {
+          pending_reason: "LATE_EXEC",
+          pending_note: `late_exec_from=${msToUtcZ(schedMs)}`,
+        } : {}),
+      });
 
     const intent = intentFromSignal({ event: it.event, side: it.side, features: it.features_json });
     it.features_json = buildSignalStageFeatures({ ...(it || {}), features: it.features_json }, intent);
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
     const manualRetryIntent = intentIsEntry && isManualRetryFeatures(it.features_json);
+    const v2DiscoveryLegacyEntryFilterBypass = shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent });
+    if (v2DiscoveryLegacyEntryFilterBypass) {
+      it.features_json = {
+        ...(it.features_json || {}),
+        v2_discovery_legacy_entry_filters_bypassed: true,
+        v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+      };
+      await patchIntent(it.intent_id, { features_json: it.features_json }).catch(() => {});
+      const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+        env: process.env,
+        intentRow: it,
+        liveCfg,
+        referencePrice: Number(bar && (bar.open ?? bar.o)) || Number(it.signal_price) || Number(bar && (bar.close ?? bar.c)),
+        requestId: it.request_id || it.intent_id || it.signal_id || (it.features_json && it.features_json.signal_id),
+      }).catch((error) => ({
+        ok: false,
+        reason: "V2_DISCOVERY_BRIDGE_THROWN",
+        error_message: error && error.message ? String(error.message) : String(error),
+      }));
+      if (handoff && handoff.ok === true) {
+        const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+        const requestBundle = requestBody.bundle || {};
+        const requestPermit = requestBody.executionPermit || {};
+        const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        const handoffSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
+        await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
+          cancel_reason: routeReason,
+          status_reason: routeReason,
+          cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters; not a drop/cancel.",
+          v2_discovery_bridge_reason: handoff.reason || null,
+          v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+          v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+        });
+        const handoffSignalClaim = await claimSignalForProgressAlert({
+          signalId: handoffSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs,
+          execBarCloseUtc,
+          reason: routeReason,
+          meta: {
+            intent,
+            order_intent_id: it.intent_id || null,
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        });
+        if (handoffSignalClaim.ok !== true) {
+          continue;
+        }
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: normalizeSideValue(it.side),
+          tf: signalTf,
+          qtyPct: Number(it.qty_pct),
+          executionMode: liveCfg.executionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: routeReason,
+          pendingReason: "IMMEDIATE_EXEC",
+          signalId: handoffSignalId,
+        }).catch((e) => {
+          console.warn("[V2_DISCOVERY_EARLY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
+        });
+        continue;
+      }
+      const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+      const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+      const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+      const endpointPostFillCritical = postFillHandoff.unprotected_position_possible === true
+        || String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
+      let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+      if (routedDecision && routedDecision.reason) {
+        blockReason = String(routedDecision.reason).trim().toUpperCase();
+      } else if (endpointReason) {
+        blockReason = String(endpointReason).trim().toUpperCase();
+      } else if (handoff && handoff.reason) {
+        blockReason = String(handoff.reason).trim().toUpperCase();
+      }
+      if (postFillHandoff.exchange_write_performed === true && postFillHandoff.reason) {
+        blockReason = postFillHandoff.reason;
+      }
+      await markIntentStatus(it.intent_id, postFillHandoff.status || (endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED"), {
+        cancel_reason: blockReason,
+        status_reason: blockReason,
+        cancel_note: JSON.stringify({
+          note: postFillHandoff.note || (endpointPostFillCritical
+            ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
+            : "V2 discovery entry was handed to productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters."),
+          bridge_reason: handoff && handoff.reason ? handoff.reason : null,
+          bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
+          endpoint_reason: endpointReason,
+          router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
+          post_fill_exchange_write_performed: postFillHandoff.exchange_write_performed === true,
+          post_fill_unprotected_position_possible: postFillHandoff.unprotected_position_possible === true,
+          post_fill_side_effect: postFillHandoff.side_effect || null,
+        }),
+      });
+      if (postFillHandoff.exchange_write_performed === true) {
+        const postFillSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
+        const postFillSignalClaim = await claimSignalForProgressAlert({
+          signalId: postFillSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs,
+          execBarCloseUtc,
+          reason: blockReason,
+          critical: postFillHandoff.unprotected_position_possible === true,
+          meta: {
+            intent,
+            order_intent_id: it.intent_id || null,
+            v2_discovery_post_fill_exchange_write: true,
+            v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+          },
+        });
+        if (postFillSignalClaim.ok !== true) {
+          continue;
+        }
+        sendV2DiscoveryPostFillHandoffProgressAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: normalizeSideValue(it.side),
+          tf: signalTf,
+          qtyPct: Number(it.qty_pct),
+          executionMode: liveCfg.executionMode,
+          signalId: postFillSignalId,
+          blockReason,
+          handoff,
+          postFillHandoff,
+        });
+        continue;
+      }
+      notifyTradeExitFailureAlert({
+        exchange,
+        symbol,
+        event: it.event,
+        side: normalizeSideValue(it.side),
+        intent,
+        executionMode: liveCfg.executionMode,
+        reason: blockReason,
+        qtyPct: Number(it.qty_pct),
+        positionSideBefore: resolveFailureAlertPositionSide(pos),
+      });
+      continue;
+    }
     const manualRetryQtyBase = manualRetryIntent ? resolveManualRetryQtyBase(it.features_json) : null;
     let preQtyScale = 1;
     if (backfillExitOnly && intentIsEntry) {
@@ -12768,6 +13796,14 @@ async function runPaperBinanceForBar({
         });
         continue;
       }
+      const claim = await claimPendingIntentForExecution(it.intent_id, {
+        runId,
+        attemptAt,
+        execBarCloseUtc,
+        execBarCloseMs,
+      });
+      if (!claim || claim.ok !== true) continue;
+      Object.assign(it, claim.doc || {});
       const liveResult = await executeLiveOrder({
         liveCfg,
         symbol,
@@ -13595,6 +14631,7 @@ async function runPaperBinanceForBar({
     stage: "BAR_SIGNAL_FANIN",
   });
   const signalDrops = [];
+  let recordedSignalDrops = [];
   const metaUpdates = pendingMetaPatch ? { ...pendingMetaPatch } : {};
   const posSideNow = normalizePositionSide(
     pos.position_side ||
@@ -13631,6 +14668,14 @@ async function runPaperBinanceForBar({
     const signalBarCloseUtcForIntent = Number.isFinite(signalBarCloseMsForIntent)
       ? msToUtcZ(signalBarCloseMsForIntent)
       : (s.signal_bar_close_time_utc || barCloseUtc);
+    const v2DiscoveryLegacyEntryFilterBypass = shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent });
+    if (v2DiscoveryLegacyEntryFilterBypass) {
+      s.features = {
+        ...(s.features || {}),
+        v2_discovery_legacy_entry_filters_bypassed: true,
+        v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+      };
+    }
     if (backfillExitOnly && intentIsEntry && backfillAllowEntry !== true) {
       if (String(trading_mode || "").toUpperCase() === "EXIT_ONLY") {
         // EXIT_ONLY pass should not consume live entry signals.
@@ -13661,13 +14706,12 @@ async function runPaperBinanceForBar({
       if (riskBudget.onExceed === "SKIP") continue;
       qtyFraction = 1;
     }
-
     const normalizedEvent = normalizeTpP1EventForExchange(s.event, exchange);
     if (normalizedEvent && normalizedEvent !== s.event) s.event = normalizedEvent;
     const eventUpper = String(normalizedEvent || s.event || "").toUpperCase();
     const actionTag = normalizeActionValue(s.features && s.features.action);
     const allowTrailEntry = forceAllSignalsAdd || allowEntryDuringTrail({ event: s.event, features: s.features, posMeta });
-    if (intentIsEntry && (posMeta && (posMeta.trail_active === true || posMeta.tp_p1_done === true)) && !allowTrailEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && (posMeta && (posMeta.trail_active === true || posMeta.tp_p1_done === true)) && !allowTrailEntry) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: Number(barCloseMs),
@@ -13679,7 +14723,7 @@ async function runPaperBinanceForBar({
       });
       continue;
     }
-    if (intentIsEntry && !actionAllowsEntry(actionTag)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !actionAllowsEntry(actionTag)) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: Number(barCloseMs),
@@ -13691,7 +14735,7 @@ async function runPaperBinanceForBar({
       });
       continue;
     }
-    if (intentIsEntry && !isTradeableEventAllowed({ eventUpper, intentDir, allowlist: tradeableSignalTypes })) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !isTradeableEventAllowed({ eventUpper, intentDir, allowlist: tradeableSignalTypes })) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: Number(barCloseMs),
@@ -13705,7 +14749,7 @@ async function runPaperBinanceForBar({
     }
     const bypassOppositeEntryCooldown = intentIsEntry
       && shouldBypassOppositeEntryCooldown({ features: s.features, intentDir, posMeta });
-    if (intentIsEntry && oppositeCooldownBars > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && oppositeCooldownBars > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
       const lastExitMs = Number(posMeta && posMeta.last_exit_bar_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitMs) && lastExitDir && Number.isFinite(signalTfMs)) {
@@ -13733,7 +14777,7 @@ async function runPaperBinanceForBar({
       }
     }
     // ── 시간 기반 절대 쿨다운: 방향 반전 시 최소 대기 시간 (타임프레임 무관) ──
-    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && oppositeTimeCooldownMs > 0 && !hasPositionSize(pos.size_pct) && !bypassOppositeEntryCooldown) {
       const lastExitWallMs = Number(posMeta && posMeta.last_exit_wall_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitWallMs) && lastExitDir && intentDir && lastExitDir !== intentDir) {
@@ -13759,7 +14803,7 @@ async function runPaperBinanceForBar({
         }
       }
     }
-    if (intentIsEntry && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionSize(pos.size_pct)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionSize(pos.size_pct)) {
       const sameDirectionCooldown = resolveSameDirectionTrailProfitCooldownBlock({
         cfg: sameDirectionTrailProfitCooldownCfg,
         posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
@@ -13815,7 +14859,7 @@ async function runPaperBinanceForBar({
       continue;
     }
 
-    if (spikeLock && spikeLock.active && (intent === "ENTRY" || intent === "ADD")) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && spikeLock && spikeLock.active && (intent === "ENTRY" || intent === "ADD")) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -13828,7 +14872,7 @@ async function runPaperBinanceForBar({
       continue;
     }
 
-    if (signalOverlapEnabled && (intent === "ENTRY" || intent === "ADD") && intentDir && Number.isFinite(signalTfMs) && signalOverlapBars > 0) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && signalOverlapEnabled && (intent === "ENTRY" || intent === "ADD") && intentDir && Number.isFinite(signalTfMs) && signalOverlapBars > 0) {
       const lastKey = `last_entry_bar_ms_${String(intentDir).toLowerCase()}`;
       const lastBarMs = Number(posMeta && posMeta[lastKey]);
       const currentTier = resolveSignalTierFromEvent(s.event, s.features);
@@ -13853,7 +14897,7 @@ async function runPaperBinanceForBar({
       }
     }
 
-    if (autoScore && autoScore.enabled && Number.isFinite(autoScore.scoreMin) && (intent === "ENTRY" || intent === "ADD")) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && autoScore && autoScore.enabled && Number.isFinite(autoScore.scoreMin) && (intent === "ENTRY" || intent === "ADD")) {
       const score = pickSignalScore(s.features);
       if (Number.isFinite(score) && score < autoScore.scoreMin) {
         signalDrops.push({
@@ -13869,7 +14913,7 @@ async function runPaperBinanceForBar({
       }
     }
 
-    if (intentIsEntry && shortGateCfg && shortGateCfg.enabled) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && shortGateCfg && shortGateCfg.enabled) {
       const shortGate = evaluateShortEntryGate({
         intent,
         intentDir,
@@ -13895,7 +14939,7 @@ async function runPaperBinanceForBar({
     }
 
     const features = (s.features && typeof s.features === "object") ? { ...s.features } : {};
-    if (intentIsEntry && !manualRetryIntent) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !manualRetryIntent) {
       const canonical = evaluateCanonicalEntryGate({
         intent,
         intentDir,
@@ -13943,7 +14987,7 @@ async function runPaperBinanceForBar({
     }
 
     // Commission Gate v2 soft mode + MDD reduction gate — signal processing
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       try {
         const perfGate = await loadPerformanceGate(exchange);
         const gateEvidence = logCommissionGateEvidence({ phase: "signal_proc", exchange, symbol, event: s.event, perfGate, intentId: s.signal_id || s.id });
@@ -14059,7 +15103,7 @@ async function runPaperBinanceForBar({
     const isPreRealEvent = signalTimingTier === "PRE_REAL";
     const isCoreEvent = signalTimingTier === "CORE";
     const isEarlyEvent = signalTimingTier === "EARLY";
-    if (intentIsEntry && isAiRequired(exchange) && !hasAiSignal(s.features)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && isAiRequired(exchange) && !hasAiSignal(s.features)) {
       const aiMissing = resolveAiMissingPolicy({ qtyFraction, features: s.features, sysCfg });
       if (aiMissing.drop) {
         const reason = aiMissing.reason || "DROP_AI_MISSING";
@@ -14084,7 +15128,7 @@ async function runPaperBinanceForBar({
       }
     }
 
-    if (intentIsEntry && aiBiasGateCfg && aiBiasGateCfg.enabled) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && aiBiasGateCfg && aiBiasGateCfg.enabled) {
       const aiBiasGate = evaluateAiBiasEntryGate({
         intent,
         intentDir,
@@ -14127,7 +15171,7 @@ async function runPaperBinanceForBar({
       }
     }
 
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       const signalFloor = await applyEntryBudgetSignalFloor({
         exchange,
         symbol,
@@ -14184,7 +15228,7 @@ async function runPaperBinanceForBar({
     }
 
     const evGateBypass = shouldBypassEvEntryGate({ intent, features: s.features });
-    if (intentIsEntry && evGateCfg && evGateCfg.enabled && evGateBypass) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg && evGateCfg.enabled && evGateBypass) {
       const evGateDetail = {
         ev_gate_enabled: true,
         ev_gate_skipped: true,
@@ -14195,7 +15239,7 @@ async function runPaperBinanceForBar({
       s.features = { ...(s.features || {}), ...evGateDetail };
       Object.assign(features, evGateDetail);
     }
-    if (intentIsEntry && evGateCfg && evGateCfg.enabled && !evGateBypass) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg && evGateCfg.enabled && !evGateBypass) {
       let evExitProfile = null;
       try {
         evExitProfile = await resolveAdaptiveFuturesExitProfile({
@@ -14316,7 +15360,17 @@ async function runPaperBinanceForBar({
         s.features = { ...(s.features || {}), ...(waitOneBar.detail || {}), wait_one_bar_enabled: true };
         Object.assign(features, waitOneBar.detail || {});
       }
-      if (!waitOneBar.ok) {
+      const waitOneBarV2DiscoveryAdvisoryOnly = shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery({ liveCfg, intent });
+      if (!waitOneBar.ok && waitOneBarV2DiscoveryAdvisoryOnly) {
+        const advisoryDetail = {
+          wait_one_bar_v2_discovery_advisory_only: true,
+          wait_one_bar_legacy_hard_drop_bypassed: true,
+          wait_one_bar_legacy_reason: waitOneBar.reason || "DROP_WAIT_ONE_BAR_TIMING",
+          wait_one_bar_legacy_action: waitOneBar.action || null,
+        };
+        s.features = { ...(s.features || {}), ...advisoryDetail };
+        Object.assign(features, advisoryDetail);
+      } else if (!waitOneBar.ok) {
         signalDrops.push({
           ...s,
           bar_close_time_utc_ms: effectiveBarMs,
@@ -14560,6 +15614,145 @@ async function runPaperBinanceForBar({
       metaUpdates.tp_p1_pending_event = s.event;
     }
 
+    if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+      features.v2_discovery_signal_fan_in_handoff = true;
+      features.v2_discovery_entry_filter_authority = "PRODUCTION_ENTRY_ROUTE";
+      const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
+        exchange,
+        symbol,
+        tf,
+        signal: s,
+        features,
+        qtyFraction,
+        intentExecutionMode,
+        signalBarCloseUtcForIntent,
+        signalBarCloseMsForIntent,
+        intentSignalBarCloseUtc,
+        intentSignalBarCloseMs,
+        execBarCloseUtcForIntent,
+        execBarCloseMsForIntent,
+        signalDocId,
+        signalPrice: Number(bar && (bar.close ?? bar.c)),
+        runId,
+      });
+      const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+        env: process.env,
+        intentRow: handoffIntentRow,
+        liveCfg,
+        referencePrice: Number(bar && (bar.open ?? bar.o)) || handoffIntentRow.signal_price || Number(bar && (bar.close ?? bar.c)),
+        requestId: handoffIntentRow.request_id,
+      }).catch((error) => ({
+        ok: false,
+        reason: "V2_DISCOVERY_BRIDGE_THROWN",
+        error_message: error && error.message ? String(error.message) : String(error),
+      }));
+      if (handoff && handoff.ok === true) {
+        const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+        const requestBundle = requestBody.bundle || {};
+        const requestPermit = requestBody.executionPermit || {};
+        const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        const handoffSignalId = s.signal_id || (features && features.signal_id) || null;
+        const handoffSignalClaim = await claimSignalForProgressAlert({
+          signalId: handoffSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs: execBarCloseMsForIntent,
+          execBarCloseUtc: execBarCloseUtcForIntent,
+          reason: routeReason,
+          meta: {
+            intent: intent || null,
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        });
+        if (handoffSignalClaim.ok !== true) {
+          continue;
+        }
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          signalId: handoffSignalId,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: routeReason,
+          pendingReason: "IMMEDIATE_EXEC",
+          scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+          meta: {
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        }).catch((err) => {
+          console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_HANDOFF_ALERT_FAIL]", err?.message || err);
+        });
+        continue;
+      }
+      const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+      const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+      if (postFillHandoff.exchange_write_performed === true) {
+        const postFillSignalId = s.signal_id || (features && features.signal_id) || null;
+        const postFillSignalClaim = await claimSignalForProgressAlert({
+          signalId: postFillSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs: execBarCloseMsForIntent,
+          execBarCloseUtc: execBarCloseUtcForIntent,
+          reason: blockReason,
+          critical: postFillHandoff.unprotected_position_possible === true,
+          meta: {
+            intent: intent || null,
+            v2_discovery_post_fill_exchange_write: true,
+            v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+          },
+        });
+        if (postFillSignalClaim.ok !== true) {
+          continue;
+        }
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          signalId: postFillSignalId,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: blockReason,
+          pendingReason: "POST_FILL_RECONCILE",
+          scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+          meta: {
+            ...buildV2DiscoveryHandoffFeaturePatch(handoff),
+            post_fill_note: postFillHandoff.note || null,
+          },
+        }).catch((err) => {
+          console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_POST_FILL_ALERT_FAIL]", err?.message || err);
+        });
+        continue;
+      }
+      signalDrops.push({
+        ...s,
+        bar_close_time_utc_ms: effectiveBarMs,
+        qty_pct: qtyFraction,
+        reason: blockReason,
+        drop_reason_code: blockReason,
+        features_json: {
+          ...(features || {}),
+          v2_discovery_signal_fan_in_blocked: true,
+          ...buildV2DiscoveryHandoffFeaturePatch(handoff),
+        },
+        event_intent: intent,
+      });
+      continue;
+    }
+
     if (isImmediateEntry || immediateReason === "CORE_CONFIRM_NEXT_BAR") {
       console.log(
         `[immediate_entry] ex=${exchange} sym=${symbol} tf=${tf} ev=${s.event} side=${s.side} qty=${qtyFraction} reason=${execOnCurrentBar ? "EXEC_CURRENT_BAR" : (immediateReason || "IMMEDIATE_ENTRY")} sched=${execBarCloseUtcForIntent}`
@@ -14638,12 +15831,15 @@ async function runPaperBinanceForBar({
     if (isImmediateEntry) immediateIntentsCreated += 1;
   }
   if (signalDrops.length) {
+    recordedSignalDrops = await filterSignalDropsForRecording({ drops: signalDrops, runId });
+  }
+  if (recordedSignalDrops.length) {
     await recordSignalDrops({
       exchange,
       symbol,
       tf: signalTf,
       runId,
-      drops: signalDrops.map((d) => ({
+      drops: recordedSignalDrops.map((d) => ({
         ...d,
         execution_mode: intentExecutionMode,
         signal_id: d.signal_id || (d.features_json && d.features_json.signal_id) || (d.features && d.features.signal_id) || null,
@@ -14651,7 +15847,7 @@ async function runPaperBinanceForBar({
       })),
     });
     await consumeDroppedSignals({
-      drops: signalDrops,
+      drops: recordedSignalDrops,
       runId,
       execBarCloseMs,
       execBarCloseUtc,
@@ -14709,14 +15905,15 @@ async function runPaperBinanceForBar({
     signals_external: externalSignals.length,
     signals_internal: internalSignals.length,
     signals_external_late: lateSignals,
-    signal_drop_n: signalDrops.length,
-    signal_drop_reason_counts: signalDrops.reduce((acc, row) => {
+    signal_drop_n: recordedSignalDrops.length,
+    signal_drop_suppressed_n: Math.max(0, signalDrops.length - recordedSignalDrops.length),
+    signal_drop_reason_counts: recordedSignalDrops.reduce((acc, row) => {
       const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
       acc[reason] = (acc[reason] || 0) + 1;
       return acc;
     }, {}),
-    top_signal_drop_reason: signalDrops.length
-      ? Object.entries(signalDrops.reduce((acc, row) => {
+    top_signal_drop_reason: recordedSignalDrops.length
+      ? Object.entries(recordedSignalDrops.reduce((acc, row) => {
         const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
         acc[reason] = (acc[reason] || 0) + 1;
         return acc;
@@ -14908,14 +16105,17 @@ async function runPaperFuturesForBar({
 
   const executeIntentList = async (intentsList) => {
     for (const it of intentsList) {
-    const schedMs = Number(it.scheduled_exec_bar_close_time_utc_ms);
-    const isOverdue = Number.isFinite(schedMs) && Number.isFinite(execBarCloseMs) && schedMs < execBarCloseMs;
-    await patchIntent(it.intent_id, {
-      last_attempt_at: attemptAt,
-      last_attempt_bar_close_time_utc: execBarCloseUtc,
-      last_attempt_bar_close_time_utc_ms: execBarCloseMs,
-      ...(isOverdue ? { pending_reason: "LATE_EXEC", pending_note: `late_exec_from=${msToUtcZ(schedMs)}` } : {}),
-    });
+      const schedMs = Number(it.scheduled_exec_bar_close_time_utc_ms);
+      const isOverdue = Number.isFinite(schedMs) && Number.isFinite(execBarCloseMs) && schedMs < execBarCloseMs;
+      await patchIntent(it.intent_id, {
+        last_attempt_at: attemptAt,
+        last_attempt_bar_close_time_utc: execBarCloseUtc,
+        last_attempt_bar_close_time_utc_ms: execBarCloseMs,
+        ...(isOverdue ? {
+          pending_reason: "LATE_EXEC",
+          pending_note: `late_exec_from=${msToUtcZ(schedMs)}`,
+        } : {}),
+      });
 
     const intent = intentFromSignal({ event: it.event, side: it.side, features: it.features_json });
     if (!intent) {
@@ -14925,6 +16125,155 @@ async function runPaperFuturesForBar({
 
     const intentIsEntry = intent === "ENTRY" || intent === "ADD";
     const manualRetryIntent = intentIsEntry && isManualRetryFeatures(it.features_json);
+    const v2DiscoveryLegacyEntryFilterBypass = shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent });
+    if (v2DiscoveryLegacyEntryFilterBypass) {
+      it.features_json = {
+        ...(it.features_json || {}),
+        v2_discovery_legacy_entry_filters_bypassed: true,
+        v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+      };
+      await patchIntent(it.intent_id, { features_json: it.features_json }).catch(() => {});
+      const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+        env: process.env,
+        intentRow: it,
+        liveCfg,
+        referencePrice: Number(bar && (bar.open ?? bar.o)) || Number(it.signal_price) || Number(bar && (bar.close ?? bar.c)),
+        requestId: it.request_id || it.intent_id || it.signal_id || (it.features_json && it.features_json.signal_id),
+      }).catch((error) => ({
+        ok: false,
+        reason: "V2_DISCOVERY_BRIDGE_THROWN",
+        error_message: error && error.message ? String(error.message) : String(error),
+      }));
+      if (handoff && handoff.ok === true) {
+        const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+        const requestBundle = requestBody.bundle || {};
+        const requestPermit = requestBody.executionPermit || {};
+        const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        const handoffSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
+        await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
+          cancel_reason: routeReason,
+          status_reason: routeReason,
+          cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters; not a drop/cancel.",
+          v2_discovery_bridge_reason: handoff.reason || null,
+          v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+          v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+        });
+        const handoffSignalClaim = await claimSignalForProgressAlert({
+          signalId: handoffSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs,
+          execBarCloseUtc,
+          reason: routeReason,
+          meta: {
+            intent,
+            order_intent_id: it.intent_id || null,
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        });
+        if (handoffSignalClaim.ok !== true) {
+          continue;
+        }
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: normalizeSideValue(it.side),
+          tf: signalTf,
+          qtyPct: Number(it.qty_pct),
+          executionMode: liveCfg.executionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: routeReason,
+          pendingReason: "IMMEDIATE_EXEC",
+          signalId: handoffSignalId,
+        }).catch((e) => {
+          console.warn("[V2_DISCOVERY_EARLY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
+        });
+        continue;
+      }
+      const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+      const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+      const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+      const endpointPostFillCritical = postFillHandoff.unprotected_position_possible === true
+        || String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
+      let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+      if (routedDecision && routedDecision.reason) {
+        blockReason = String(routedDecision.reason).trim().toUpperCase();
+      } else if (endpointReason) {
+        blockReason = String(endpointReason).trim().toUpperCase();
+      } else if (handoff && handoff.reason) {
+        blockReason = String(handoff.reason).trim().toUpperCase();
+      }
+      if (postFillHandoff.exchange_write_performed === true && postFillHandoff.reason) {
+        blockReason = postFillHandoff.reason;
+      }
+      await markIntentStatus(it.intent_id, postFillHandoff.status || (endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED"), {
+        cancel_reason: blockReason,
+        status_reason: blockReason,
+        cancel_note: JSON.stringify({
+          note: postFillHandoff.note || (endpointPostFillCritical
+            ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
+            : "V2 discovery entry was handed to productionEntryLiveEndpoint/productionEntryRoute before legacy entry filters."),
+          bridge_reason: handoff && handoff.reason ? handoff.reason : null,
+          bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
+          endpoint_reason: endpointReason,
+          router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
+          post_fill_exchange_write_performed: postFillHandoff.exchange_write_performed === true,
+          post_fill_unprotected_position_possible: postFillHandoff.unprotected_position_possible === true,
+          post_fill_side_effect: postFillHandoff.side_effect || null,
+        }),
+      });
+        if (postFillHandoff.exchange_write_performed === true) {
+          const postFillSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
+          const postFillSignalClaim = await claimSignalForProgressAlert({
+            signalId: postFillSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: blockReason,
+            critical: postFillHandoff.unprotected_position_possible === true,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_post_fill_exchange_write: true,
+              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+            },
+          });
+          if (postFillSignalClaim.ok !== true) {
+            continue;
+          }
+          sendV2DiscoveryPostFillHandoffProgressAlert({
+            exchange,
+            symbol,
+            event: it.event,
+            side: normalizeSideValue(it.side),
+            tf: signalTf,
+            qtyPct: Number(it.qty_pct),
+            executionMode: liveCfg.executionMode,
+            signalId: postFillSignalId,
+            blockReason,
+            handoff,
+            postFillHandoff,
+          });
+        continue;
+      }
+      notifyTradeExitFailureAlert({
+        exchange,
+        symbol,
+        event: it.event,
+        side: normalizeSideValue(it.side),
+        intent,
+        executionMode: liveCfg.executionMode,
+        reason: blockReason,
+        qtyPct: Number(it.qty_pct),
+        positionSideBefore: resolveFailureAlertPositionSide(pos),
+      });
+      continue;
+    }
     const manualRetryQtyBase = manualRetryIntent ? resolveManualRetryQtyBase(it.features_json) : null;
     let preQtyScale = 1;
     if (backfillExitOnly && intentIsEntry) {
@@ -14945,7 +16294,7 @@ async function runPaperFuturesForBar({
       continue;
     }
     // Commission Gate v2 soft mode — 시그널 품질 필터 이전에 평가 (intent execution)
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       try {
         const signalScaleFlags = resolveSignalScaledFlags(it.features_json);
         const perfGate = await loadPerformanceGate(exchange);
@@ -15618,7 +16967,178 @@ async function runPaperFuturesForBar({
           ? Math.min(1, maxFractionAllowed / liveExitCurrentQtyPct)
           : liveQtyFraction;
       }
+      if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+        const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+          env: process.env,
+          intentRow: it,
+          liveCfg,
+          referencePrice: fillPrice || nextOpen || (it.features_json && it.features_json.signal_price) || it.signal_price,
+          requestId: it.request_id || it.intent_id || liveSignalId,
+        }).catch((error) => ({
+          ok: false,
+          reason: "V2_DISCOVERY_BRIDGE_THROWN",
+          error_message: error && error.message ? error.message : String(error),
+        }));
+        if (handoff && handoff.ok === true) {
+          const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+          const requestBundle = requestBody.bundle || {};
+          const requestPermit = requestBody.executionPermit || {};
+          const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+          const handoffSignalId = liveSignalId;
+          await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
+            cancel_reason: routeReason,
+            status_reason: routeReason,
+            cancel_note: "Legacy order intent was superseded by V2 productionEntryLiveEndpoint/productionEntryRoute; not a drop/cancel.",
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          });
+          const handoffSignalClaim = await claimSignalForProgressAlert({
+            signalId: handoffSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: routeReason,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_bridge_reason: handoff.reason || null,
+              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+            },
+          });
+          if (handoffSignalClaim.ok !== true) {
+            continue;
+          }
+          sendSignalProgressAlert({
+            exchange,
+            symbol,
+            event: it.event,
+            side: actionSide,
+            tf: signalTf,
+            qtyPct: qtyFraction,
+            executionMode: liveCfg.executionMode,
+            source: "SERVER",
+            authoritative: true,
+            progressReason: routeReason,
+            pendingReason: "IMMEDIATE_EXEC",
+            signalId: handoffSignalId,
+          }).catch((e) => {
+            console.warn("[V2_DISCOVERY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
+          });
+          continue;
+        }
+        const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+        const signalCriteriaGate = routedDecision && routedDecision.signal_criteria_gate;
+        const marketDataQualityGate = routedDecision && routedDecision.market_data_quality_gate;
+        const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
+        const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+        const endpointPostFillCritical = postFillHandoff.unprotected_position_possible === true
+          || String(endpointReason || "").trim().toUpperCase() === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL";
+        let blockReason = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE";
+        if (routedDecision && routedDecision.reason) {
+          blockReason = String(routedDecision.reason).trim().toUpperCase();
+        } else if (endpointReason) {
+          blockReason = String(endpointReason).trim().toUpperCase();
+        } else if (handoff && handoff.reason) {
+          blockReason = String(handoff.reason).trim().toUpperCase();
+        }
+        if (postFillHandoff.exchange_write_performed === true && postFillHandoff.reason) {
+          blockReason = postFillHandoff.reason;
+        }
+        await markIntentStatus(it.intent_id, postFillHandoff.status || (endpointPostFillCritical ? "FAILED_INTERNAL" : "CANCELED"), {
+          cancel_reason: blockReason,
+          status_reason: blockReason,
+          cancel_note: JSON.stringify({
+            note: postFillHandoff.note || (endpointPostFillCritical
+              ? "V2 productionEntryLiveEndpoint reported post-fill protection critical state. Actual exchange entry may exist and requires protection repair verification."
+              : "Discovery canary entry writes must execute through V2 productionEntryLiveEndpoint/productionEntryRoute, not paperBinanceRunner live order path."),
+            bridge_reason: handoff && handoff.reason ? handoff.reason : null,
+            bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
+            endpoint_reason: endpointReason,
+            endpoint_post_fill_critical: endpointPostFillCritical,
+            post_fill_exchange_write_performed: postFillHandoff.exchange_write_performed === true,
+            post_fill_unprotected_position_possible: postFillHandoff.unprotected_position_possible === true,
+            post_fill_side_effect: postFillHandoff.side_effect || null,
+            router_reason: routedDecision && routedDecision.reason ? routedDecision.reason : null,
+            router_detail: routedDecision && routedDecision.detail ? routedDecision.detail : null,
+            signal_criteria_blockers: signalCriteriaGate && Array.isArray(signalCriteriaGate.blockers) ? signalCriteriaGate.blockers : [],
+            market_data_quality_blockers: marketDataQualityGate && Array.isArray(marketDataQualityGate.blockers) ? marketDataQualityGate.blockers : [],
+          }),
+        });
+        if (postFillHandoff.exchange_write_performed === true) {
+          const postFillSignalId = liveSignalId;
+          const postFillSignalClaim = await claimSignalForProgressAlert({
+            signalId: postFillSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: blockReason,
+            critical: postFillHandoff.unprotected_position_possible === true,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_post_fill_exchange_write: true,
+              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+            },
+          });
+          if (postFillSignalClaim.ok !== true) {
+            continue;
+          }
+          sendV2DiscoveryPostFillHandoffProgressAlert({
+            exchange,
+            symbol,
+            event: it.event,
+            side: actionSide,
+            tf: signalTf,
+            qtyPct: qtyFraction,
+            executionMode: liveCfg.executionMode,
+            signalId: postFillSignalId,
+            blockReason,
+            handoff,
+            postFillHandoff,
+          });
+          continue;
+        }
+        notifyTradeExitFailureAlert({
+          exchange,
+          symbol,
+          event: it.event,
+          side: actionSide,
+          intent,
+          executionMode: liveCfg.executionMode,
+          reason: blockReason,
+          note: endpointPostFillCritical
+            ? "V2 production entry filled but protection was not confirmed; repair protection before any new entry."
+            : "V2 discovery entry blocked before legacy live order submit",
+          qtyPct: qtyFraction,
+          positionSideBefore: resolveFailureAlertPositionSide(pos),
+          appliedLeverage: Number.isFinite(appliedLeverage) ? appliedLeverage : null,
+          leverageReason: appliedLeverageReason,
+          exitRules: appliedExitRules || null,
+          ...buildFailureExitAlertPayload({
+            event: it.event,
+            pos,
+            posMeta,
+            exitRules: appliedExitRules || null,
+            qtyFraction,
+            prevSize,
+            useBudget,
+          }),
+        });
+        continue;
+      }
       let liveResult = null;
+      const claim = await claimPendingIntentForExecution(it.intent_id, {
+        runId,
+        attemptAt,
+        execBarCloseUtc,
+        execBarCloseMs,
+      });
+      if (!claim || claim.ok !== true) continue;
+      Object.assign(it, claim.doc || {});
       const trackLiveSubmit = shouldTrackLiveSubmitEvidence({
         intent,
         event: it.event,
@@ -16674,6 +18194,7 @@ async function runPaperFuturesForBar({
   });
   const signals = [];
   const signalDrops = [];
+  let recordedSignalDrops = [];
   const metaUpdates = pendingMetaPatch ? { ...pendingMetaPatch } : {};
   let injectedOppExit = false;
   const posSizeNowRaw = Number(pos.size_pct || 0);
@@ -16960,6 +18481,14 @@ async function runPaperFuturesForBar({
     const signalBarCloseUtcForIntent = Number.isFinite(signalBarCloseMsForIntent)
       ? msToUtcZ(signalBarCloseMsForIntent)
       : (s.signal_bar_close_time_utc || barCloseUtc);
+    const v2DiscoveryLegacyEntryFilterBypass = shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg, intent });
+    if (v2DiscoveryLegacyEntryFilterBypass) {
+      s.features = {
+        ...(s.features || {}),
+        v2_discovery_legacy_entry_filters_bypassed: true,
+        v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+      };
+    }
     if (backfillExitOnly && intentIsEntry && backfillAllowEntry !== true) {
       if (String(trading_mode || "").toUpperCase() === "EXIT_ONLY") {
         // EXIT_ONLY pass should not consume live entry signals.
@@ -16980,7 +18509,7 @@ async function runPaperFuturesForBar({
 
     // Commission Gate v2 soft mode — 시그널 품질 필터 이전에 평가하여 모든 진입 시그널에 대해 증빙 생성
     let _commGateResult = null;
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       try {
         const perfGate = await loadPerformanceGate(exchange);
         const gateEvidence = logCommissionGateEvidence({ phase: "signal_proc_fut", exchange, symbol, event: s.event, perfGate, intentId: s.signal_id || s.id });
@@ -17017,7 +18546,7 @@ async function runPaperFuturesForBar({
       continue;
     }
 
-    if (spikeLock && spikeLock.active && (intent === "ENTRY" || intent === "ADD")) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && spikeLock && spikeLock.active && (intent === "ENTRY" || intent === "ADD")) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -17030,7 +18559,7 @@ async function runPaperFuturesForBar({
       continue;
     }
 
-    if (signalOverlapEnabled && (intent === "ENTRY" || intent === "ADD") && intentDir && Number.isFinite(signalTfMs) && signalOverlapBars > 0) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && signalOverlapEnabled && (intent === "ENTRY" || intent === "ADD") && intentDir && Number.isFinite(signalTfMs) && signalOverlapBars > 0) {
       const lastKey = `last_entry_bar_ms_${String(intentDir).toLowerCase()}`;
       const lastBarMs = Number(posMeta && posMeta[lastKey]);
       const currentTier = resolveSignalTierFromEvent(s.event, s.features);
@@ -17069,7 +18598,7 @@ async function runPaperFuturesForBar({
     const eventUpper = String(normalizedEvent || s.event || "").toUpperCase();
     const actionTag = normalizeActionValue(s.features && s.features.action);
     const allowTrailEntry = forceAllSignalsAdd || allowEntryDuringTrail({ event: s.event, features: s.features, posMeta });
-    if (intentIsEntry && (posMeta && (posMeta.trail_active === true || posMeta.tp_p1_done === true)) && !allowTrailEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && (posMeta && (posMeta.trail_active === true || posMeta.tp_p1_done === true)) && !allowTrailEntry) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -17081,7 +18610,7 @@ async function runPaperFuturesForBar({
       });
       continue;
     }
-    if (intentIsEntry && !actionAllowsEntry(actionTag)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !actionAllowsEntry(actionTag)) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -17093,7 +18622,7 @@ async function runPaperFuturesForBar({
       });
       continue;
     }
-    if (intentIsEntry && !isTradeableEventAllowed({ eventUpper, intentDir, allowlist: tradeableSignalTypes })) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && !isTradeableEventAllowed({ eventUpper, intentDir, allowlist: tradeableSignalTypes })) {
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -17107,7 +18636,7 @@ async function runPaperFuturesForBar({
     }
     const bypassOppositeEntryCooldown = intentIsEntry
       && shouldBypassOppositeEntryCooldown({ features: s.features, intentDir, posMeta });
-    if (intentIsEntry && oppositeCooldownBars > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && oppositeCooldownBars > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
       const lastExitMs = Number(posMeta && posMeta.last_exit_bar_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitMs) && lastExitDir && Number.isFinite(signalTfMs)) {
@@ -17135,7 +18664,7 @@ async function runPaperFuturesForBar({
       }
     }
     // ── 시간 기반 절대 쿨다운: 방향 반전 시 최소 대기 시간 (타임프레임 무관) ──
-    if (intentIsEntry && oppositeTimeCooldownMs > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && oppositeTimeCooldownMs > 0 && !hasPositionNow && !bypassOppositeEntryCooldown) {
       const lastExitWallMs = Number(posMeta && posMeta.last_exit_wall_ms);
       const lastExitDir = String(posMeta && posMeta.last_exit_dir || "");
       if (Number.isFinite(lastExitWallMs) && lastExitDir && intentDir && lastExitDir !== intentDir) {
@@ -17161,7 +18690,7 @@ async function runPaperFuturesForBar({
         }
       }
     }
-    if (intentIsEntry && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionNow) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && sameDirectionTrailProfitCooldownCfg.enabled && !hasPositionNow) {
       const sameDirectionCooldown = resolveSameDirectionTrailProfitCooldownBlock({
         cfg: sameDirectionTrailProfitCooldownCfg,
         posMeta: resolveSameDirectionTrailProfitCooldownSnapshot({
@@ -17240,7 +18769,7 @@ async function runPaperFuturesForBar({
       metaUpdates.tp_p1_pending_event = null;
     }
 
-    if (autoScore && autoScore.enabled && Number.isFinite(autoScore.scoreMin) && (intent === "ENTRY" || intent === "ADD")) {
+    if (!v2DiscoveryLegacyEntryFilterBypass && autoScore && autoScore.enabled && Number.isFinite(autoScore.scoreMin) && (intent === "ENTRY" || intent === "ADD")) {
       const score = pickSignalScore(s.features);
       if (Number.isFinite(score) && score < autoScore.scoreMin) {
         signalDrops.push({
@@ -17256,7 +18785,7 @@ async function runPaperFuturesForBar({
       }
     }
 
-    if (intentIsEntry && shortGateCfg && shortGateCfg.enabled) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && shortGateCfg && shortGateCfg.enabled) {
       const shortGate = evaluateShortEntryGate({
         intent,
         intentDir,
@@ -17282,7 +18811,7 @@ async function runPaperFuturesForBar({
     }
 
     const features = (s.features && typeof s.features === "object") ? { ...s.features } : {};
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       const canonical = evaluateCanonicalEntryGate({
         intent,
         intentDir,
@@ -17330,7 +18859,7 @@ async function runPaperFuturesForBar({
     }
 
     // Commission/MDD soft reduction gate — 커미션 게이트 캐시 결과 사용
-    if (intentIsEntry && _commGateResult) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && _commGateResult) {
       const { perfGate, commScale, gateId } = _commGateResult;
       if (commScale && commScale.blocked && commScale.scale < 0.9999) {
         const before = qtyFraction;
@@ -17390,7 +18919,7 @@ async function runPaperFuturesForBar({
     const isPreRealEvent = signalTimingTier === "PRE_REAL";
     const isCoreEvent = signalTimingTier === "CORE";
     const isEarlyEvent = signalTimingTier === "EARLY";
-    if (intentIsEntry && isAiRequired(exchange) && !hasAiSignal(s.features)) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && isAiRequired(exchange) && !hasAiSignal(s.features)) {
       const aiMissing = resolveAiMissingPolicy({ qtyFraction, features: s.features, sysCfg });
       if (aiMissing.drop) {
         const reason = aiMissing.reason || "DROP_AI_MISSING";
@@ -17415,7 +18944,7 @@ async function runPaperFuturesForBar({
       }
     }
 
-    if (intentIsEntry && aiBiasGateCfg && aiBiasGateCfg.enabled) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && aiBiasGateCfg && aiBiasGateCfg.enabled) {
       const aiBiasGate = evaluateAiBiasEntryGate({
         intent,
         intentDir,
@@ -17459,7 +18988,7 @@ async function runPaperFuturesForBar({
     }
 
     const evGateBypass = shouldBypassEvEntryGate({ intent, features: s.features });
-    if (intentIsEntry && evGateCfg && evGateCfg.enabled && evGateBypass) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg && evGateCfg.enabled && evGateBypass) {
       const evGateDetail = {
         ev_gate_enabled: true,
         ev_gate_skipped: true,
@@ -17470,7 +18999,7 @@ async function runPaperFuturesForBar({
       s.features = { ...(s.features || {}), ...evGateDetail };
       Object.assign(features, evGateDetail);
     }
-    if (intentIsEntry && evGateCfg && evGateCfg.enabled && !evGateBypass) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass && evGateCfg && evGateCfg.enabled && !evGateBypass) {
       let evExitProfile = null;
       try {
         evExitProfile = await resolveAdaptiveFuturesExitProfile({
@@ -17591,7 +19120,17 @@ async function runPaperFuturesForBar({
         s.features = { ...(s.features || {}), ...(waitOneBar.detail || {}), wait_one_bar_enabled: true };
         Object.assign(features, waitOneBar.detail || {});
       }
-      if (!waitOneBar.ok) {
+      const waitOneBarV2DiscoveryAdvisoryOnly = shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery({ liveCfg, intent });
+      if (!waitOneBar.ok && waitOneBarV2DiscoveryAdvisoryOnly) {
+        const advisoryDetail = {
+          wait_one_bar_v2_discovery_advisory_only: true,
+          wait_one_bar_legacy_hard_drop_bypassed: true,
+          wait_one_bar_legacy_reason: waitOneBar.reason || "DROP_WAIT_ONE_BAR_TIMING",
+          wait_one_bar_legacy_action: waitOneBar.action || null,
+        };
+        s.features = { ...(s.features || {}), ...advisoryDetail };
+        Object.assign(features, advisoryDetail);
+      } else if (!waitOneBar.ok) {
         signalDrops.push({
           ...s,
           bar_close_time_utc_ms: effectiveBarMs,
@@ -17605,7 +19144,7 @@ async function runPaperFuturesForBar({
       }
     }
 
-    if (intentIsEntry) {
+    if (intentIsEntry && !v2DiscoveryLegacyEntryFilterBypass) {
       const signalFloor = await applyEntryBudgetSignalFloor({
         exchange,
         symbol,
@@ -17903,6 +19442,145 @@ async function runPaperFuturesForBar({
       metaUpdates.tp_p1_pending_event = s.event;
     }
 
+    if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+      features.v2_discovery_signal_fan_in_handoff = true;
+      features.v2_discovery_entry_filter_authority = "PRODUCTION_ENTRY_ROUTE";
+      const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
+        exchange,
+        symbol,
+        tf,
+        signal: s,
+        features,
+        qtyFraction,
+        intentExecutionMode,
+        signalBarCloseUtcForIntent,
+        signalBarCloseMsForIntent,
+        intentSignalBarCloseUtc,
+        intentSignalBarCloseMs,
+        execBarCloseUtcForIntent,
+        execBarCloseMsForIntent,
+        signalDocId: s.signal_doc_id || null,
+        signalPrice: Number(bar && (bar.close ?? bar.c)),
+        runId,
+      });
+      const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+        env: process.env,
+        intentRow: handoffIntentRow,
+        liveCfg,
+        referencePrice: Number(bar && (bar.open ?? bar.o)) || handoffIntentRow.signal_price || Number(bar && (bar.close ?? bar.c)),
+        requestId: handoffIntentRow.request_id,
+      }).catch((error) => ({
+        ok: false,
+        reason: "V2_DISCOVERY_BRIDGE_THROWN",
+        error_message: error && error.message ? String(error.message) : String(error),
+      }));
+      if (handoff && handoff.ok === true) {
+        const requestBody = handoff.request && handoff.request.body ? handoff.request.body : {};
+        const requestBundle = requestBody.bundle || {};
+        const requestPermit = requestBody.executionPermit || {};
+        const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        const handoffSignalId = s.signal_id || (features && features.signal_id) || null;
+        const handoffSignalClaim = await claimSignalForProgressAlert({
+          signalId: handoffSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs: execBarCloseMsForIntent,
+          execBarCloseUtc: execBarCloseUtcForIntent,
+          reason: routeReason,
+          meta: {
+            intent: intent || null,
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        });
+        if (handoffSignalClaim.ok !== true) {
+          continue;
+        }
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          signalId: handoffSignalId,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: routeReason,
+          pendingReason: "IMMEDIATE_EXEC",
+          scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+          meta: {
+            v2_discovery_bridge_reason: handoff.reason || null,
+            v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+            v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+          },
+        }).catch((err) => {
+          console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_HANDOFF_ALERT_FAIL]", err?.message || err);
+        });
+        continue;
+      }
+      const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+      const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+      if (postFillHandoff.exchange_write_performed === true) {
+        const postFillSignalId = s.signal_id || (features && features.signal_id) || null;
+        const postFillSignalClaim = await claimSignalForProgressAlert({
+          signalId: postFillSignalId,
+          runId,
+          consumedAtIso: new Date().toISOString(),
+          execBarCloseMs: execBarCloseMsForIntent,
+          execBarCloseUtc: execBarCloseUtcForIntent,
+          reason: blockReason,
+          critical: postFillHandoff.unprotected_position_possible === true,
+          meta: {
+            intent: intent || null,
+            v2_discovery_post_fill_exchange_write: true,
+            v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+          },
+        });
+        if (postFillSignalClaim.ok !== true) {
+          continue;
+        }
+        sendSignalProgressAlert({
+          exchange,
+          symbol,
+          tf,
+          event: s.event,
+          side: s.side,
+          qtyPct: qtyFraction,
+          signalId: postFillSignalId,
+          executionMode: intentExecutionMode,
+          source: "SERVER",
+          authoritative: true,
+          progressReason: blockReason,
+          pendingReason: "POST_FILL_RECONCILE",
+          scheduledExecBarCloseUtc: execBarCloseUtcForIntent,
+          meta: {
+            ...buildV2DiscoveryHandoffFeaturePatch(handoff),
+            post_fill_note: postFillHandoff.note || null,
+          },
+        }).catch((err) => {
+          console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_POST_FILL_ALERT_FAIL]", err?.message || err);
+        });
+        continue;
+      }
+      signalDrops.push({
+        ...s,
+        bar_close_time_utc_ms: effectiveBarMs,
+        qty_pct: qtyFraction,
+        reason: blockReason,
+        drop_reason_code: blockReason,
+        features_json: {
+          ...(features || {}),
+          v2_discovery_signal_fan_in_blocked: true,
+          ...buildV2DiscoveryHandoffFeaturePatch(handoff),
+        },
+        event_intent: intent,
+      });
+      continue;
+    }
+
     if (isImmediateEntry || immediateReason === "CORE_CONFIRM_NEXT_BAR") {
       console.log(
         `[immediate_entry] ex=${exchange} sym=${symbol} tf=${tf} ev=${s.event} side=${s.side} qty=${qtyFraction} reason=${execOnCurrentBar ? "EXEC_CURRENT_BAR" : (immediateReason || "IMMEDIATE_ENTRY")} sched=${execBarCloseUtcForIntent}`
@@ -18015,15 +19693,18 @@ async function runPaperFuturesForBar({
     if (isImmediateEntry) immediateIntentsCreated += 1;
   }
   if (signalDrops.length) {
+    recordedSignalDrops = await filterSignalDropsForRecording({ drops: signalDrops, runId });
+  }
+  if (recordedSignalDrops.length) {
     await recordSignalDrops({
       exchange,
       symbol,
       tf: signalTf,
       runId,
-      drops: signalDrops.map((d) => ({ ...d, execution_mode: intentExecutionMode })),
+      drops: recordedSignalDrops.map((d) => ({ ...d, execution_mode: intentExecutionMode })),
     });
     await consumeDroppedSignals({
-      drops: signalDrops,
+      drops: recordedSignalDrops,
       runId,
       execBarCloseMs,
       execBarCloseUtc,
@@ -18087,14 +19768,15 @@ async function runPaperFuturesForBar({
     signals_external: externalSignals.length,
     signals_internal: internalSignals.length,
     signals_external_late: lateSignals,
-    signal_drop_n: signalDrops.length,
-    signal_drop_reason_counts: signalDrops.reduce((acc, row) => {
+    signal_drop_n: recordedSignalDrops.length,
+    signal_drop_suppressed_n: Math.max(0, signalDrops.length - recordedSignalDrops.length),
+    signal_drop_reason_counts: recordedSignalDrops.reduce((acc, row) => {
       const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
       acc[reason] = (acc[reason] || 0) + 1;
       return acc;
     }, {}),
-    top_signal_drop_reason: signalDrops.length
-      ? Object.entries(signalDrops.reduce((acc, row) => {
+    top_signal_drop_reason: recordedSignalDrops.length
+      ? Object.entries(recordedSignalDrops.reduce((acc, row) => {
         const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
         acc[reason] = (acc[reason] || 0) + 1;
         return acc;
@@ -18261,6 +19943,20 @@ module.exports = {
     sendRescueAddRepriceAlert,
     notifyNativeProtectionResult,
     normalizeSignalStateToken,
+    splitRuntimeList,
+    evaluateV2DiscoveryCanaryLiveBridge,
+    clampDiscoveryCanaryMaxOrderQuote,
+    isV2DiscoveryCanaryLegacyExchangeWriteBlocked,
+    isV2DiscoveryCanaryLegacyEntryWriteBlocked,
+    shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery,
+    shouldBypassLegacyEntryFiltersForV2Discovery,
+    resolveV2DiscoveryHandoffDetail,
+    buildV2DiscoveryHandoffFeaturePatch,
+    resolveV2DiscoveryPostFillSideEffect,
+    classifyV2DiscoveryPostFillHandoff,
+    deriveV2DiscoveryHandoffBlockReason,
+    resolveSignalIdFromSignalLike,
+    filterSignalDropsForRecording,
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,
@@ -18269,6 +19965,8 @@ module.exports = {
     resolveConfiguredFuturesExitProfileMode,
     resolveRecentExternalFlatSyncGuard,
     normalizeEntryLineage,
+    buildFlatSyncReconcileInputMeta,
+    resolveV2FlatSyncExitReplayPlan,
     buildEntryLineageMetaPatch,
     shouldProbeRecoveredEntryTransition,
     shouldTreatRecoveredLineageAsEntryTransition,

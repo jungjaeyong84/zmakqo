@@ -9,6 +9,9 @@ const submitContractCheck = require("./check-v2-promotion-submit-contract");
 const deployDecisionCheck = require("./check-v2-promotion-deploy-decision");
 const runbookCheck = require("./check-v2-canary-runbook");
 const productionRuntimeConfigAudit = require("../src/v2/productionRuntimeConfigAudit");
+const {
+  DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT,
+} = require("../src/v2/discoveryCanaryNotionalPolicy");
 const operatorAlertPreview = require("./lib/v2-promotion-submit-operator-alert");
 const operatorSummary = require("./lib/v2-promotion-operator-summary");
 const submitTrace = require("./lib/v2-promotion-submit-trace");
@@ -365,6 +368,23 @@ function resolveCloudBuildSourceDir(env = process.env) {
   return trimOrNull(env.V2_PROMOTION_CLOUDBUILD_SOURCE_DIR) || ".";
 }
 
+function resolveCommitSha(env = process.env) {
+  const explicit = trimOrNull(env.COMMIT_SHA)
+    || trimOrNull(env._COMMIT_SHA)
+    || trimOrNull(env.BUILD_SOURCEVERSION)
+    || trimOrNull(env.REVISION_ID);
+  if (explicit) return explicit;
+  try {
+    return trimOrNull(execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+    })) || "unknown";
+  } catch (_error) {
+    return "unknown";
+  }
+}
+
 function buildEvidenceRef({ file, field, expectedValue = null, note = null }) {
   return Object.freeze({
     file: trimOrNull(file),
@@ -389,6 +409,9 @@ function buildV2RuntimeCutoverSubstitutions(plan) {
     _DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER: live ? "1" : envOrDefault(row, "DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER", "0"),
     _DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "1",
     _DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "0",
+    _DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "1",
+    _DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED: "1",
+    _DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED: "1",
     _DONBEOLJA_V2_COLLECTION_PREFIX: envOrDefault(row, "DONBEOLJA_V2_COLLECTION_PREFIX", "v2__"),
     _DONBEOLJA_V2_SCHEDULER_CUTOVER_MODE: "OPENCLAW_CRON",
   });
@@ -401,6 +424,7 @@ function buildSubstitutions(plan) {
   const enablesProductionEntryRouteCanaryFirestore = ["CANARY", "LIVE"].includes(row.promotionMode);
   const requiresCanaryStreakFirestore = enablesProductionEntryRouteCanaryFirestore;
   return Object.freeze({
+    _COMMIT_SHA: resolveCommitSha(row.effectiveEnv || process.env) || "unknown",
     _V2_PROMOTION_CANARY_FLOW_ENABLED: row.mode === "CANARY_FLOW" ? "1" : "0",
     _V2_PROMOTION_CANARY_AUTO_SELECT_ENABLED: row.canaryAutoSelectEnabled ? "1" : "0",
     _V2_PROMOTION_PIPELINE_ENABLED: row.mode === "PIPELINE" ? "1" : "0",
@@ -417,12 +441,18 @@ function buildSubstitutions(plan) {
     ...buildV2RuntimeCutoverSubstitutions(row),
     _DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: row.promotionMode === "LIVE" ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED) || "0"),
     _DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "1",
+    _DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_ENABLED) || "1",
+    _DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_BARS: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_BARS) || "8",
+    _DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY) || "UNLIMITED",
     _V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC: row.promotionMode === "LIVE" ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC) || "0"),
     _DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED) || "0",
     _DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS) || "",
-    _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE) || "25",
-    _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT) || "1",
-    _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY) || "1",
+    _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT) || "8",
+    _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE) || "6",
+    _DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP)
+      || DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT,
+    _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT) || "5",
+    _DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY) || "UNLIMITED",
     _DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE) || "10",
     _DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON: trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON) || "",
     _DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED: enablesProductionEntryRouteCanaryFirestore ? "1" : (trimOrNull(row.effectiveEnv && row.effectiveEnv.DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED) || "0"),

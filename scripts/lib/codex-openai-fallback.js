@@ -30,7 +30,7 @@ function summarizeCliFailure({ cliResult = null, cliMissing = false } = {}) {
 }
 
 function shouldUseOpenAICodexFallback({ cliResult = null, cliMissing = false } = {}) {
-  if (String(process.env.OPENAI_CODEX_FALLBACK_ENABLED || "1").trim() === "0") return false;
+  if (String(process.env.OPENAI_CODEX_FALLBACK_ENABLED || "0").trim() !== "1") return false;
   if (!String(process.env.OPENAI_API_KEY || "").trim()) return false;
   if (cliMissing) return true;
   if (!cliResult || cliResult.parsed) return false;

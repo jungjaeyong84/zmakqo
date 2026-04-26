@@ -10,6 +10,7 @@ const { buildProtectionRuntimeWriteResult } = require("../v2/protectionRuntimeWr
 const { reduceCanonicalExit } = require("../v2/canonicalExitReducer");
 const { prepareExitTransitionAlert } = require("../v2/alertWorker");
 const runtimeChain = require("../v2/runtimeExecutionChain");
+const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSeed");
 
 function buildHappyPath() {
   const bundle = buildOpenClawDecisionBundle({
@@ -41,6 +42,17 @@ function buildHappyPath() {
     featuresHash: "feat_hash_eth_chain",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "runtime chain happy path approved",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: {
+        symbol: "ETHUSDT",
+        spread_bps: 2,
+        mark_index_gap_bps: 1,
+      },
+    },
+    signalCriteria: buildPassSignalCriteriaSeed("LONG"),
   });
   const routed = resolveEntryIntentFromOpenClaw(bundle);
   const executed = buildV2ExecutedEntryFromIntent({

@@ -68,6 +68,13 @@ const STAGE_ORDER = Object.freeze({
   EV: 4,
   TIMING: 5,
 });
+const V2_TELEGRAM_TITLE_PREFIX = "[V2 OpenClaw 학습 점검]";
+const V2_STAGE_LABELS = Object.freeze({
+  QUALITY: "V2 신호 기준/서버 정본",
+  AI: "V2 진입 품질/시장 데이터",
+  MARKET: "V2 리스크 거버너/사이징",
+  EV: "V2 기대값 게이트",
+});
 
 function toNum(v) {
   if (v === null || v === undefined || v === "") return null;
@@ -552,10 +559,10 @@ function bestFebtGuardReason(bestFebtContract = null) {
   if (!bestFebtContract || typeof bestFebtContract !== "object") return null;
   const marketPrefix = bestFebtContract.market ? `[${bestFebtContract.market}] ` : "";
   if (bestFebtContract.tightening_allowed === false) {
-    return `${marketPrefix}BEST/FEBT count 보존 기준(count_ratio_global < 1.00)에서는 tightening 자동 권고를 차단합니다.`;
+    return `${marketPrefix}V2 Discovery 계약의 체결 기회 보존 기준(count_ratio_global < 1.00)에서는 강화 자동 권고를 차단합니다.`;
   }
   if (bestFebtContract.recovery_priority === true) {
-    return `${marketPrefix}BEST/FEBT replacement 회복 우선 상태에서는 tightening보다 recovery 우선입니다.`;
+    return `${marketPrefix}V2 Discovery 계약의 replacement 회복 우선 상태에서는 강화보다 복구 우선입니다.`;
   }
   return null;
 }
@@ -606,7 +613,7 @@ function applySharedObjectiveGuard(recommendations = {}, settings = {}, sharedOb
   const currentMid = Number(settings.ev_gate_qty_scale_mid || 0.70);
 
   if (sharedObjectiveFailing(sharedObjective)) {
-    const blockReason = `공통 목표(${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW/월 포함) 미달 상태에서는 완화안을 자동 권고하지 않습니다.`;
+    const blockReason = `정식 LIVE 성과 게이트(${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW/월 목표 포함) 미달 상태에서는 자동 완화를 금지합니다.`;
     next.QUALITY = next.QUALITY.map((row) => {
       if (String(row && row.action || "").toUpperCase() !== "REVIEW_LOOSEN") return row;
       return { action: "HOLD", reason: blockReason, blocked_action: row.action, blocked_key: row.key || null };
@@ -758,33 +765,38 @@ function buildMlSelfValidation({ validation, metrics, recommendations, stageSamp
 function describeQualityRecommendationKeyForUser(key) {
   const raw = String(key || "").trim();
   if (!raw) return "";
-  if (raw === "gate_early_score_abs") return "LONG/SHORT 기본 진입 점수 기준";
-  if (raw === "gate_core_score_abs") return "LONG/SHORT 확장 진입 점수 기준";
-  if (raw === "gate_early_conf_min") return "LONG/SHORT 기본 진입 confidence 기준";
-  if (raw === "gate_core_conf_min") return "LONG/SHORT 확장 진입 confidence 기준";
-  if (raw === "gate_regime_allowlist") return "LONG/SHORT 1차 regime 기준";
+  if (raw === "gate_early_score_abs") return "V2 기본 신호 점수 기준";
+  if (raw === "gate_core_score_abs") return "V2 확정 신호 점수 기준";
+  if (raw === "gate_early_conf_min") return "V2 기본 신호 confidence 기준";
+  if (raw === "gate_core_conf_min") return "V2 확정 신호 confidence 기준";
+  if (raw === "gate_regime_allowlist") return "V2 regime allowlist 기준";
   return raw;
 }
 
 function rewriteQualityRecommendationReasonForUser(reason) {
   let out = String(reason || "");
-  out = out.replace(/\bEARLY\b score/g, "LONG/SHORT 기본 진입 점수 기준");
-  out = out.replace(/\bCORE\b score/g, "LONG/SHORT 확장 진입 점수 기준");
-  out = out.replace(/\bEARLY\b confidence/g, "LONG/SHORT 기본 진입 confidence 기준");
-  out = out.replace(/\bCORE\b confidence/g, "LONG/SHORT 확장 진입 confidence 기준");
-  out = out.replace(/\bEARLY\b/g, "LONG/SHORT 기본 진입");
-  out = out.replace(/\bCORE\b/g, "LONG/SHORT 확장 진입");
+  out = out.replace(/\bEARLY\b score/g, "V2 기본 신호 점수 기준");
+  out = out.replace(/\bCORE\b score/g, "V2 확정 신호 점수 기준");
+  out = out.replace(/\bEARLY\b confidence/g, "V2 기본 신호 confidence 기준");
+  out = out.replace(/\bCORE\b confidence/g, "V2 확정 신호 confidence 기준");
+  out = out.replace(/\bEARLY\b/g, "V2 기본 신호");
+  out = out.replace(/\bCORE\b/g, "V2 확정 신호");
   out = out.replace(/\bPRE_REAL\b/g, "레거시 진단 B(비활성)");
   out = out.replace(/\bREAL\b/g, "레거시 진단 C(비활성)");
   return out;
 }
 
+function describeV2StageForUser(stage) {
+  const key = String(stage || "").trim().toUpperCase();
+  return V2_STAGE_LABELS[key] || describeStageForUser(key);
+}
+
 function buildStageSampleRows(stageSamples = {}) {
   return [
-    { stage: "QUALITY", display_stage: describeStageForUser("QUALITY"), sample_n: Number(stageSamples.quality_n || 0) },
-    { stage: "AI", display_stage: describeStageForUser("AI"), sample_n: Number(stageSamples.ai_n || 0) },
-    { stage: "MARKET", display_stage: describeStageForUser("MARKET"), sample_n: Number(stageSamples.market_n || 0) },
-    { stage: "EV", display_stage: describeStageForUser("EV"), sample_n: Number(stageSamples.ev_n || 0) },
+    { stage: "QUALITY", display_stage: describeV2StageForUser("QUALITY"), sample_n: Number(stageSamples.quality_n || 0) },
+    { stage: "AI", display_stage: describeV2StageForUser("AI"), sample_n: Number(stageSamples.ai_n || 0) },
+    { stage: "MARKET", display_stage: describeV2StageForUser("MARKET"), sample_n: Number(stageSamples.market_n || 0) },
+    { stage: "EV", display_stage: describeV2StageForUser("EV"), sample_n: Number(stageSamples.ev_n || 0) },
   ];
 }
 
@@ -793,7 +805,7 @@ function buildRecommendationRows(recommendations = {}) {
   for (const row of Array.isArray(recommendations.QUALITY) ? recommendations.QUALITY : []) {
     rows.push({
       stage: "QUALITY",
-      display_stage: describeStageForUser("QUALITY"),
+      display_stage: describeV2StageForUser("QUALITY"),
       action: row.action || null,
       key: row.key || null,
       display_key: row.display_key || describeQualityRecommendationKeyForUser(row.key),
@@ -810,7 +822,7 @@ function buildRecommendationRows(recommendations = {}) {
     if (!row || typeof row !== "object") continue;
     rows.push({
       stage,
-      display_stage: describeStageForUser(stage),
+      display_stage: describeV2StageForUser(stage),
       action: row.action || null,
       key: row.key || row.blocked_key || null,
       display_key: row.key || row.blocked_key || null,
@@ -823,12 +835,89 @@ function buildRecommendationRows(recommendations = {}) {
   return rows;
 }
 
+function buildV2MlFilterTelegramSummary({
+  provider = PROVIDER,
+  examples = [],
+  executedExamples = [],
+  dropExamples = [],
+  split = {},
+  trainingRows = [],
+  metrics = {},
+  selfValidation = {},
+  sharedObjective = null,
+  bestFebtContract = null,
+  latePenalty = {},
+  recommendations = {},
+  mdPath = "",
+  jsonPath = "",
+} = {}) {
+  const currentObjective = sharedObjective && sharedObjective.currentObjective ? sharedObjective.currentObjective : null;
+  const targetMonthly = Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW);
+  const discoveryMode = bestFebtContract && bestFebtContract.mode || "정보 없음";
+  const objectiveVerdict = currentObjective ? currentObjective.verdict : "정보 없음";
+  const monthlyRunRate = currentObjective && Number.isFinite(Number(currentObjective.monthly_run_rate_krw))
+    ? `${Number(currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW`
+    : "정보 없음";
+  const qualityRecommendations = Array.isArray(recommendations.QUALITY) ? recommendations.QUALITY : [];
+  const aiRecommendation = recommendations.AI || { action: "HOLD", reason: "recommendation missing" };
+  const marketRecommendation = recommendations.MARKET || { action: "HOLD", reason: "recommendation missing" };
+  const evRecommendation = recommendations.EV || { action: "HOLD", reason: "recommendation missing" };
+  const late1 = latePenalty && latePenalty.late_1_plus ? latePenalty.late_1_plus : {};
+  const onTime = latePenalty && latePenalty.on_time ? latePenalty.on_time : {};
+  const selfChecks = Array.isArray(selfValidation.checks) ? selfValidation.checks : [];
+
+  return {
+    title: `${V2_TELEGRAM_TITLE_PREFIX} ${provider}`,
+    severity: split.mode === "HOLDOUT"
+      && metrics && metrics.ok
+      && metrics.brier != null && metrics.brier < 0.24
+      && selfValidation.ok
+      && currentObjective
+      && currentObjective.verdict === "PASS"
+      ? "INFO"
+      : "WARN",
+    provider,
+    sections: [
+      {
+        header: "V2 OpenClaw 학습 상태",
+        lines: [
+          `학습 표본 ${examples.length}건 / 실제 체결 ${executedExamples.length}건 / 드롭 반사실 ${dropExamples.length}건입니다.`,
+          `검증 방식은 ${split.mode || "정보 없음"}, 학습 ${trainingRows.length}건, 평가 ${Array.isArray(split.eval) ? split.eval.length : 0}건입니다.`,
+          `정식 LIVE 성과 게이트는 ${objectiveVerdict} / 월간 페이스 ${monthlyRunRate} / 목표 ${targetMonthly.toLocaleString("ko-KR")} KRW 입니다.`,
+          `V2 Discovery 계약은 ${discoveryMode} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "정보 없음"} / 기회 수 ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "정보 없음"} 입니다.`,
+          `평가 결과는 정확도 ${pct(metrics.accuracy)}, Brier ${metrics.brier == null ? "정보 없음" : metrics.brier.toFixed(4)}, logloss ${metrics.logloss == null ? "정보 없음" : metrics.logloss.toFixed(4)} 입니다.`,
+          `자체 검증 ${selfValidation.result || "정보 없음"} / ${selfChecks.join(" ; ") || "정보 없음"}`,
+          `V2 타이밍 증거: 1봉 이상 지연 성공률 ${pct(late1.labelRate)} / 제시간 성공률 ${pct(onTime.labelRate)} / 차이 ${signedPct(latePenalty.penalty_1_plus)}`,
+        ],
+      },
+      {
+        header: "V2 운영 권고",
+        lines: [
+          ...qualityRecommendations.slice(0, 2).map((row) => {
+            const keyText = row.display_key || describeQualityRecommendationKeyForUser(row.key);
+            const reasonText = row.display_reason || rewriteQualityRecommendationReasonForUser(row.reason);
+            return `${describeV2StageForUser("QUALITY")} ${row.action}${keyText ? ` ${keyText} ${row.current} -> ${row.next}` : ""} / ${reasonText}`;
+          }),
+          `${describeV2StageForUser("AI")} ${aiRecommendation.action} / ${aiRecommendation.reason}`,
+          `${describeV2StageForUser("MARKET")} ${marketRecommendation.action}${marketRecommendation.key ? ` ${marketRecommendation.key} ${marketRecommendation.current} -> ${marketRecommendation.next}` : ""} / ${marketRecommendation.reason}`,
+          `${describeV2StageForUser("EV")} ${evRecommendation.action} / ${evRecommendation.reason}`,
+        ],
+      },
+      {
+        header: "보고서",
+        lines: [mdPath, jsonPath],
+      },
+    ],
+  };
+}
+
 function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, trainMetrics, validation, latePenalty, recommendations, coverage, stageSamples, selfValidation, artifacts, sharedObjective, bestFebtContract, bestFebtMarketGuard }) {
   const lines = [];
-  lines.push("# ML Filter Policy");
+  lines.push("# V2 OpenClaw Learning Policy");
   lines.push("");
   lines.push(`- 실행 시각: ${nowMeta.kst}`);
   lines.push(`- 대상: ${provider} ${tf}`);
+  lines.push("- 운영 범위: V2 Discovery/OpenClaw advisory, 정식 LIVE 자동 승격 없음");
   lines.push(`- 평가 윈도우: 최근 ${lookbackDays}일`);
   lines.push(`- 학습 표본: ${model.sample_n}`);
   lines.push(`- executed: ${model.executed_n}`);
@@ -836,8 +925,8 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   lines.push(`- positive rate: ${pct(model.positive_rate)}`);
   lines.push(`- 검증 방식: ${validation.mode}`);
   lines.push(`- train/eval: ${validation.train_n}/${validation.eval_n}`);
-  lines.push(`- 공통 목표 월간 순수익: ${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW`);
-  lines.push(`- 공통 목표 상태: ${sharedObjective && sharedObjective.currentObjective ? sharedObjective.currentObjective.verdict : "N/A"}`);
+  lines.push(`- 정식 LIVE 목표 월간 순수익: ${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW`);
+  lines.push(`- 정식 LIVE 성과 게이트: ${sharedObjective && sharedObjective.currentObjective ? sharedObjective.currentObjective.verdict : "N/A"}`);
   lines.push(`- 월간 페이스: ${sharedObjective && sharedObjective.currentObjective && Number.isFinite(Number(sharedObjective.currentObjective.monthly_run_rate_krw)) ? `${Number(sharedObjective.currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW` : "N/A"}`);
   lines.push(`- holdout accuracy: ${pct(metrics.accuracy)}`);
   lines.push(`- holdout brier: ${metrics.brier == null ? "N/A" : metrics.brier.toFixed(4)}`);
@@ -849,7 +938,7 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
     selfValidation.checks.forEach((row) => lines.push(`  - ${row}`));
   }
   lines.push("");
-  lines.push("## BEST/FEBT 공통 계약");
+  lines.push("## V2 Discovery / OpenClaw 계약");
   lines.push(`- mode: ${bestFebtContract && bestFebtContract.mode || "N/A"}`);
   lines.push(`- tightening allowed: ${bestFebtContract && bestFebtContract.tightening_allowed ? "YES" : "NO"} / recovery priority: ${bestFebtContract && bestFebtContract.recovery_priority ? "YES" : "NO"}`);
   lines.push(`- projected replacement ratio: ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"}`);
@@ -857,7 +946,7 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   lines.push(`- fire / late / disagree: ${bestFebtContract && bestFebtContract.fire_n != null ? bestFebtContract.fire_n : "N/A"} / ${bestFebtContract && bestFebtContract.late_n != null ? bestFebtContract.late_n : "N/A"} / ${bestFebtContract && bestFebtContract.disagreement_n != null ? bestFebtContract.disagreement_n : "N/A"}`);
   lines.push(`- market guard: ${bestFebtMarketGuard && bestFebtMarketGuard.market ? `${bestFebtMarketGuard.market} / ${bestFebtMarketGuard.mode}` : "N/A"}`);
   lines.push("");
-  lines.push("## late-entry penalty");
+  lines.push("## V2 timing evidence");
   lines.push(`- on-time: n=${latePenalty.on_time.n} / success=${pct(latePenalty.on_time.labelRate)} / avg_ret_net=${signedPct(latePenalty.on_time.avgRetNet)}`);
   lines.push(`- late 1+: n=${latePenalty.late_1_plus.n} / success=${pct(latePenalty.late_1_plus.labelRate)} / avg_ret_net=${signedPct(latePenalty.late_1_plus.avgRetNet)} / delta=${signedPct(latePenalty.penalty_1_plus)}`);
   lines.push(`- late 2+: n=${latePenalty.late_2_plus.n} / success=${pct(latePenalty.late_2_plus.labelRate)} / avg_ret_net=${signedPct(latePenalty.late_2_plus.avgRetNet)} / delta=${signedPct(latePenalty.penalty_2_plus)}`);
@@ -867,21 +956,21 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   lines.push(`- bar context coverage: ${coverage.bar_context_n}/${coverage.total_n} (${pct(coverage.bar_context_rate)})`);
   lines.push(`- late marker coverage: ${coverage.late_marker_n}/${coverage.total_n} (${pct(coverage.late_marker_rate)})`);
   lines.push("");
-  lines.push("## stage sample scope");
-  lines.push(`- 1차 상태/무결성 표본: ${stageSamples.quality_n}`);
-  lines.push(`- 2차 진입 품질 표본: ${stageSamples.ai_n}`);
-  lines.push(`- 3차 상태 기반 Soft Sizing 표본: ${stageSamples.market_n}`);
-  lines.push(`- 4차 EV/시간가치층 표본: ${stageSamples.ev_n}`);
+  lines.push("## V2 gate sample scope");
+  lines.push(`- ${describeV2StageForUser("QUALITY")} 표본: ${stageSamples.quality_n}`);
+  lines.push(`- ${describeV2StageForUser("AI")} 표본: ${stageSamples.ai_n}`);
+  lines.push(`- ${describeV2StageForUser("MARKET")} 표본: ${stageSamples.market_n}`);
+  lines.push(`- ${describeV2StageForUser("EV")} 표본: ${stageSamples.ev_n}`);
   lines.push("");
-  lines.push("## stage recommendations");
+  lines.push("## V2 gate recommendations");
   for (const row of recommendations.QUALITY) {
     const keyText = row.display_key || describeQualityRecommendationKeyForUser(row.key);
     const reasonText = row.display_reason || rewriteQualityRecommendationReasonForUser(row.reason);
-    lines.push(`- 1차 상태/무결성: ${row.action}${keyText ? ` / ${keyText} ${row.current} -> ${row.next}` : ""} / ${reasonText}`);
+    lines.push(`- ${describeV2StageForUser("QUALITY")}: ${row.action}${keyText ? ` / ${keyText} ${row.current} -> ${row.next}` : ""} / ${reasonText}`);
   }
-  lines.push(`- 2차 진입 품질: ${recommendations.AI.action}${recommendations.AI.key ? ` / ${recommendations.AI.key} ${recommendations.AI.current} -> ${recommendations.AI.next}` : ""} / ${recommendations.AI.reason}`);
-  lines.push(`- 3차 상태 기반 Soft Sizing: ${recommendations.MARKET.action}${recommendations.MARKET.key ? ` / ${recommendations.MARKET.key} ${recommendations.MARKET.current} -> ${recommendations.MARKET.next}` : ""} / ${recommendations.MARKET.reason}`);
-  lines.push(`- 4차 EV/시간가치층: ${recommendations.EV.action} / ${recommendations.EV.reason}`);
+  lines.push(`- ${describeV2StageForUser("AI")}: ${recommendations.AI.action}${recommendations.AI.key ? ` / ${recommendations.AI.key} ${recommendations.AI.current} -> ${recommendations.AI.next}` : ""} / ${recommendations.AI.reason}`);
+  lines.push(`- ${describeV2StageForUser("MARKET")}: ${recommendations.MARKET.action}${recommendations.MARKET.key ? ` / ${recommendations.MARKET.key} ${recommendations.MARKET.current} -> ${recommendations.MARKET.next}` : ""} / ${recommendations.MARKET.reason}`);
+  lines.push(`- ${describeV2StageForUser("EV")}: ${recommendations.EV.action} / ${recommendations.EV.reason}`);
   if (recommendations.EV && recommendations.EV.next) {
     lines.push(`  - ev_gate_tp1_prob_min: ${recommendations.EV.next.ev_gate_tp1_prob_min}`);
     lines.push(`  - ev_gate_qty_scale_mid: ${recommendations.EV.next.ev_gate_qty_scale_mid}`);
@@ -1082,49 +1171,22 @@ async function main() {
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.md"));
 
-  await sendKoreanTelegramSummary({
-    title: `[학습 기반 필터 점검] ${PROVIDER}`,
-    severity: split.mode === "HOLDOUT"
-      && metrics && metrics.ok
-      && metrics.brier != null && metrics.brier < 0.24
-      && selfValidation.ok
-      && sharedObjective && sharedObjective.currentObjective
-      && sharedObjective.currentObjective.verdict === "PASS"
-      ? "INFO"
-      : "WARN",
+  await sendKoreanTelegramSummary(buildV2MlFilterTelegramSummary({
     provider: PROVIDER,
-    sections: [
-      {
-        header: "학습 상태 요약",
-        lines: [
-          `학습에 쓴 전체 표본은 ${examples.length}건이고, 실제 체결 ${executedExamples.length}건, 드롭 반사실 ${dropExamples.length}건입니다.`,
-          `검증 방식은 ${split.mode}, 학습 ${trainingRows.length}건, 평가 ${split.eval.length}건입니다.`,
-          `공통 목표 상태는 ${sharedObjective && sharedObjective.currentObjective ? sharedObjective.currentObjective.verdict : "정보 없음"} / 월간 예상 ${sharedObjective && sharedObjective.currentObjective && Number.isFinite(Number(sharedObjective.currentObjective.monthly_run_rate_krw)) ? `${Number(sharedObjective.currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW` : "정보 없음"} / 목표 ${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW 입니다.`,
-          `BEST/FEBT 계약은 ${bestFebtContract && bestFebtContract.mode || "정보 없음"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "정보 없음"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "정보 없음"} 입니다.`,
-          `평가 결과는 정확도 ${pct(metrics.accuracy)}, Brier ${metrics.brier == null ? "정보 없음" : metrics.brier.toFixed(4)}, logloss ${metrics.logloss == null ? "정보 없음" : metrics.logloss.toFixed(4)} 입니다.`,
-          `자체 검증 ${selfValidation.result} / ${selfValidation.checks.join(" ; ")}`,
-          `늦은 진입 1봉 이상 지연 성공률 ${pct(latePenalty.late_1_plus.labelRate)} / 제시간 진입 성공률 ${pct(latePenalty.on_time.labelRate)} / 차이 ${signedPct(latePenalty.penalty_1_plus)}`,
-        ],
-      },
-      {
-        header: "권고",
-        lines: [
-          ...recommendations.QUALITY.slice(0, 2).map((row) => {
-            const keyText = row.display_key || describeQualityRecommendationKeyForUser(row.key);
-            const reasonText = row.display_reason || rewriteQualityRecommendationReasonForUser(row.reason);
-            return `1차 상태/무결성 ${row.action}${keyText ? ` ${keyText} ${row.current} -> ${row.next}` : ""} / ${reasonText}`;
-          }),
-          `2차 진입 품질 ${recommendations.AI.action} / ${recommendations.AI.reason}`,
-          `3차 상태 기반 Soft Sizing ${recommendations.MARKET.action}${recommendations.MARKET.key ? ` ${recommendations.MARKET.key} ${recommendations.MARKET.current} -> ${recommendations.MARKET.next}` : ""} / ${recommendations.MARKET.reason}`,
-          `4차 EV/시간가치층 ${recommendations.EV.action} / ${recommendations.EV.reason}`,
-        ],
-      },
-      {
-        header: "보고서",
-        lines: [mdPath, jsonPath],
-      },
-    ],
-  });
+    examples,
+    executedExamples,
+    dropExamples,
+    split,
+    trainingRows,
+    metrics,
+    selfValidation,
+    sharedObjective,
+    bestFebtContract,
+    latePenalty,
+    recommendations,
+    mdPath,
+    jsonPath,
+  }));
 
   console.log(JSON.stringify({
     ok: true,
@@ -1167,5 +1229,9 @@ module.exports = {
     bestFebtGuardReason,
     isAiHardeningRecommendation,
     isEvHardeningRecommendation,
+    buildV2MlFilterTelegramSummary,
+    describeV2StageForUser,
+    describeQualityRecommendationKeyForUser,
+    rewriteQualityRecommendationReasonForUser,
   },
 };

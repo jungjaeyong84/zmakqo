@@ -432,4 +432,52 @@ function buildFullProtectionDelegatedRepair() {
   assert.strictEqual(registry.size, 0);
 })();
 
+(async function concurrentSameCycleDifferentCommandRepairIsFailClosed() {
+  const tp1DelegatedRepair = buildTp1DelegatedRepair();
+  const fullDelegatedRepair = JSON.parse(JSON.stringify(buildFullProtectionDelegatedRepair()).replaceAll("PCY__EXEC__FULL", "PCY__EXEC__TP1"));
+  const registry = new Set();
+  const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: registry,
+    recordedAt: "2026-04-21T05:40:02.000Z",
+    transports: {
+      placeOrReplaceTp1: async ({ command }) => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return {
+          status: "PLACED",
+          order_id: `TP1__${command.placement_attempt_id}`,
+          trigger_price: command.trigger_price,
+          ack_at: "2026-04-21T05:40:01.000Z",
+        };
+      },
+      placeOrReplaceFullProtection: async ({ command }) => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return {
+          slAck: {
+            status: "PLACED",
+            order_id: `STOP__${command.placement_attempt_id}`,
+            stop_price: command.stop_price,
+            ack_at: "2026-04-21T05:40:01.000Z",
+          },
+          tp1Ack: {
+            status: "PLACED",
+            order_id: `TP1__${command.placement_attempt_id}`,
+            trigger_price: command.tp1_target_price,
+            ack_at: "2026-04-21T05:40:01.000Z",
+          },
+        };
+      },
+    },
+  });
+  const results = await Promise.all([
+    executor({ delegatedRepair: tp1DelegatedRepair }),
+    executor({ delegatedRepair: fullDelegatedRepair }),
+  ]);
+  const reasons = results.map((row) => row.writeDecision.runtime_write_reason).sort();
+  assert.deepStrictEqual(reasons, [
+    "PROTECTION_WRITER_LEASE_CONCURRENT_WRITE",
+    "TP1_REPAIRED",
+  ]);
+  assert.strictEqual(registry.size, 0);
+})();
+
 console.log("V2_REPAIR_DELEGATED_EXECUTOR_TEST_OK");

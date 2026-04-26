@@ -142,6 +142,40 @@ router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken, 
   }
 });
 
+// v2-active-protection-reconciliation: live exchange/order reconciliation
+// for active positions. Any unprotected active position must make this
+// endpoint fail so Cloud Scheduler status reflects the safety problem.
+router.post("/api/openclaw/cron/v2-active-protection-reconciliation", requireSchedulerToken, async (req, res) => {
+  try {
+    const { run } = require("../../scripts/check-v2-active-protection-reconciliation");
+    const outcome = await runWithShortTimeout("v2_active_protection_reconciliation", () => run(), 120000);
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
+// openclaw-server-primary-tick: authoritative server-native paper tick that
+// refreshes bars_snapshots and generates server-primary paper signals under
+// the OpenClaw scheduler SOT. This replaces the old legacy tick path for V2.
+router.post("/api/openclaw/cron/openclaw-server-primary-tick", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/run-openclaw-server-primary-tick");
+    const outcome = await runWithShortTimeout("openclaw_server_primary_tick", () => main({ setProcessExitCode: false }), 180000);
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // v2-production-entry-live: deliberately disabled by default. When enabled,
 // this endpoint still delegates only to the V2 production entry route.
 router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, express.json({ type: "*/*", limit: "128kb" }), async (req, res) => {
@@ -173,6 +207,8 @@ router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
       "POST /api/openclaw/cron/retrospect",
       "POST /api/openclaw/cron/v2-production-entry-route-canary",
       "POST /api/openclaw/cron/v2-exit-runtime-canary",
+      "POST /api/openclaw/cron/v2-active-protection-reconciliation",
+      "POST /api/openclaw/cron/openclaw-server-primary-tick",
       "POST /api/openclaw/cron/v2-production-entry-live",
     ],
     now_iso: new Date().toISOString(),

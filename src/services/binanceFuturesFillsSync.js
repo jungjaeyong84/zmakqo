@@ -413,7 +413,7 @@ async function sendImmediateProjectionMismatchAlert({
     };
   }
   return sendKoreanTelegramSummary({
-    title: `[경고] ${sym} fill-projection 불일치`,
+    title: `[V2 Fill Sync 경고] ${sym} fill-projection 불일치`,
     severity: "WARN",
     provider: "BINANCEFUT",
     dedupeKey: `fill_projection_mismatch:${dedupe.key}`,
@@ -1737,8 +1737,8 @@ async function sendExternalCloseAlert({
     : null;
   const isAfterTp1 = Number.isFinite(afterTp1Sec) && afterTp1Sec <= (Number(process.env.BINANCEFUT_EXTERNAL_CLOSE_AFTER_TP1_WINDOW_MS) || 120);
   const title = isAfterTp1
-    ? `${String(symbol || "").toUpperCase() || "UNKNOWN"} TP1 직후 외부 전량청산 감지`
-    : `${String(symbol || "").toUpperCase() || "UNKNOWN"} 외부 전량청산 감지`;
+    ? `[V2 Fill Sync] ${String(symbol || "").toUpperCase() || "UNKNOWN"} TP1 직후 외부 전량청산 감지`
+    : `[V2 Fill Sync] ${String(symbol || "").toUpperCase() || "UNKNOWN"} 외부 전량청산 감지`;
   const lines = [
     `order_id: ${Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : "NA"}`,
     `client_order_id: ${String(orderMeta && orderMeta.clientOrderId || "").trim() || "NA"}`,

@@ -10,9 +10,10 @@ const {
 const env = {
   DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1",
   DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "ETHUSDT",
-  DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "20",
-  DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "1",
-  DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "1",
+  DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
+  DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "ETHUSDT:50",
+  DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "5",
+  DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
   DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "5",
 };
 
@@ -20,10 +21,117 @@ const env = {
   const policy = resolveDiscoveryCanaryPolicy({ DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1", DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "BTCUSDT" });
   assert.strictEqual(policy.enabled, true);
   assert.deepStrictEqual(policy.allowed_symbols, ["BTCUSDT"]);
+  assert.strictEqual(policy.max_symbol_count, 2);
   assert.strictEqual(policy.max_notional_quote, 25);
-  assert.strictEqual(policy.max_position_count, 1);
-  assert.strictEqual(policy.max_trades_per_day, 1);
+  assert.strictEqual(policy.symbol_notional_quote_map.BTCUSDT, 155);
+  assert.strictEqual(policy.max_position_count, 5);
+  assert.strictEqual(policy.max_trades_per_day, "UNLIMITED");
   assert.strictEqual(policy.daily_loss_halt_quote, 10);
+})();
+
+(function policyCanAllowTwoDiscoverySymbolsWithGlobalCaps() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "XRPUSDT",
+        side: "LONG",
+        notional_quote: 15,
+        entry_qty_abs: 8,
+        reference_price: 1.44,
+        min_notional_quote: 5,
+        step_size: 0.1,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(result.policy.allowed_symbols, ["SOLUSDT", "XRPUSDT"]);
+  assert.strictEqual(result.policy.max_position_count, 5);
+  assert.strictEqual(result.policy.max_trades_per_day, "UNLIMITED");
+})();
+
+(function blocksTooManyDiscoverySymbols() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "BTCUSDT,ETHUSDT,SOLUSDT",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "BTCUSDT",
+        side: "LONG",
+        notional_quote: 12,
+        entry_qty_abs: 0.001,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.blockers.includes("DISCOVERY_CANARY:MAX_SYMBOL_COUNT_EXCEEDED"));
+})();
+
+(function policyCanAllowFullDiscoverySymbolUniverseWithGlobalCaps() {
+  const symbols = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT";
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: symbols,
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:155|ETHUSDT:42|LINKUSDT:41|BNBUSDT:13|XRPUSDT:11|SOLUSDT:11|AXSUSDT:12|DOGEUSDT:11",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "DOGEUSDT",
+        side: "LONG",
+        notional_quote: 11,
+        entry_qty_abs: 111,
+        reference_price: 0.099,
+        min_notional_quote: 5,
+        step_size: 1,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.policy.allowed_symbols.length, 8);
+  assert.strictEqual(result.policy.max_symbol_count, 8);
+  assert.strictEqual(result.policy.max_notional_quote, 6);
+  assert.strictEqual(result.effective_symbol_notional_quote, 11);
+  assert.strictEqual(result.policy.max_position_count, 5);
+  assert.strictEqual(result.policy.max_trades_per_day, "UNLIMITED");
 })();
 
 (function passRequiresOneSymbolOnePositionOneTradeAndHardNotional() {
@@ -43,14 +151,50 @@ const env = {
         status: "APPROVED",
         symbol: "ETHUSDT",
         side: "LONG",
-        notional_quote: 12,
-        entry_qty_abs: 0.005,
+        notional_quote: 50,
+        entry_qty_abs: 0.022,
+        reference_price: 2315,
+        min_notional_quote: 20,
+        step_size: 0.001,
       },
     },
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_CONTRACT_PASS");
   assert.strictEqual(result.blocker_n, 0);
+})();
+
+(function allowsStepSafeNotionalBelowPolicyWhenTp1MinNotionalPasses() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "LINKUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "LINKUSDT:50",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "LINKUSDT",
+        side: "LONG",
+        notional_quote: 49.9680721017,
+        entry_qty_abs: 5.31,
+        reference_price: 9.41018307,
+        min_notional_quote: 20,
+        step_size: 0.01,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_CONTRACT_PASS");
 })();
 
 (function blocksUnsafeDiscoveryInputs() {
@@ -61,8 +205,8 @@ const env = {
     decisionMode: "CANARY",
     body: {
       discoveryCanaryState: {
-        active_position_n: 1,
-        trade_count_24h: 1,
+        active_position_n: 5,
+        trade_count_24h: 5,
         daily_loss_quote: 6,
       },
       entrySizingDecision: {
@@ -70,7 +214,7 @@ const env = {
         status: "APPROVED",
         symbol: "BTCUSDT",
         side: "LONG",
-        notional_quote: 30,
+        notional_quote: 130,
         entry_qty_abs: 0.001,
       },
     },
@@ -78,9 +222,73 @@ const env = {
   assert.strictEqual(result.ok, false);
   assert.ok(result.blockers.includes("DISCOVERY_CANARY:SYMBOL_NOT_ALLOWED"));
   assert.ok(result.blockers.includes("DISCOVERY_CANARY:MAX_POSITION_COUNT_REACHED"));
-  assert.ok(result.blockers.includes("DISCOVERY_CANARY:MAX_TRADES_PER_DAY_REACHED"));
   assert.ok(result.blockers.includes("DISCOVERY_CANARY:DAILY_LOSS_HALT_REACHED"));
   assert.ok(result.blockers.includes("DISCOVERY_CANARY:MAX_NOTIONAL_EXCEEDED"));
+})();
+
+(function finiteTradeLimitStillBlocksWhenConfigured() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "5",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 5,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "ETHUSDT",
+        side: "LONG",
+        notional_quote: 50,
+        entry_qty_abs: 0.022,
+        reference_price: 2315,
+        min_notional_quote: 20,
+        step_size: 0.001,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.blockers.includes("DISCOVERY_CANARY:MAX_TRADES_PER_DAY_REACHED"));
+})();
+
+(function blocksBelowPartialTp1MinimumNotional() {
+  const result = evaluateDiscoveryCanaryContract({
+    env: {
+      ...env,
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "DOGEUSDT",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "DOGEUSDT:10",
+    },
+    confirm: DISCOVERY_CONFIRM_PHRASE,
+    runtime: { enabled: true, dry_run: false, canary_only: true },
+    decisionMode: "CANARY",
+    body: {
+      discoveryCanaryState: {
+        active_position_n: 0,
+        trade_count_24h: 0,
+        daily_loss_quote: 0,
+      },
+      entrySizingDecision: {
+        ok: true,
+        status: "APPROVED",
+        symbol: "DOGEUSDT",
+        side: "LONG",
+        notional_quote: 6,
+        entry_qty_abs: 60,
+        reference_price: 0.098,
+        min_notional_quote: 5,
+        step_size: 1,
+      },
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.ok(result.blockers.includes("DISCOVERY_CANARY:PARTIAL_TP1_MIN_NOTIONAL_REQUIRED"));
 })();
 
 (function blocksWhenEvidenceMissingOrNotCanaryOnly() {

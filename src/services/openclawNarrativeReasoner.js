@@ -24,10 +24,9 @@
 const crypto = require("crypto");
 
 // Phase C: live LLM backend. Defaults to the Codex CLI subprocess adapter
-// (user's already-authenticated `codex` binary; no plaintext API keys) with
-// Claude CLI as automatic fallback when the Codex quota is exhausted. The
-// Anthropic HTTP client is still reachable via `OPENCLAW_NARRATIVE_PROVIDER_MODE=API`
-// and the legacy Codex-via-OpenAI-HTTP path via `OPENCLAW_NARRATIVE_PROVIDER_MODE=CODEX_FIRST`.
+// (user's already-authenticated `codex` binary; no plaintext API keys and no
+// Claude fallback). Claude API / CLI providers remain explicit opt-in modes
+// for local experiments only; production V2 pins CODEX_CLI_ONLY.
 // All clients are lazy-required so the test suite stays offline.
 let cachedApiClient = null;
 let cachedCliClient = null;
@@ -79,16 +78,17 @@ function liveCallEnabled() {
 }
 
 function providerMode() {
-  // Default: CODEX CLI → CLAUDE CLI fallback. The user explicitly wanted
-  // openclaw to burn Codex quota first and only lean on Claude when Codex
-  // is exhausted. To revert to Claude-only, set OPENCLAW_NARRATIVE_PROVIDER_MODE=CLI.
-  const mode = String(process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "CODEX_CLI_FIRST").trim().toUpperCase();
-  if (mode === "AUTO") return "CODEX_CLI_FIRST";
-  if (mode === "CODEX_CLI" || mode === "CODEX_CLI_FIRST" || mode === "CODEX_CLAUDE") return "CODEX_CLI_FIRST";
-  if (mode === "OPENAI" || mode === "CODEX" || mode === "CODEX_FIRST") return "CODEX_FIRST";
+  // Default is Codex CLI only. Fallbacks to Claude CLI / Anthropic API must be
+  // explicit so V2 runtime cannot silently create Claude spend.
+  const mode = String(process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "CODEX_CLI_ONLY").trim().toUpperCase();
+  if (mode === "AUTO" || mode === "CODEX" || mode === "CODEX_CLI" || mode === "CODEX_ONLY" || mode === "CODEX_CLI_ONLY") {
+    return "CODEX_CLI_ONLY";
+  }
+  if (mode === "CODEX_CLI_FIRST" || mode === "CODEX_CLAUDE") return "CODEX_CLI_FIRST";
+  if (mode === "OPENAI" || mode === "CODEX_FIRST") return "CODEX_FIRST";
   if (mode === "API" || mode === "HTTP") return "API";
   if (mode === "CLI" || mode === "CLAUDE_CLI" || mode === "CLAUDE") return "CLI";
-  return "CODEX_CLI_FIRST";
+  return "CODEX_CLI_ONLY";
 }
 
 function narrativeModel() {
@@ -256,10 +256,10 @@ function tryParseJsonFromText(text) {
 
 function resolveProviderSequence(mode = providerMode()) {
   switch (String(mode || "").trim().toUpperCase()) {
+    case "CODEX_CLI_ONLY":
+      return ["CODEX_CLI"];
     case "CODEX_CLI_FIRST":
-      // Default: try Codex CLI first, fall through to Claude CLI when Codex
-      // is exhausted / auth-blocked / missing. Both providers talk to their
-      // respective already-authenticated local CLIs — no plaintext API keys.
+      // Explicit fallback mode: Codex CLI first, then Claude CLI.
       return ["CODEX_CLI", "CLI"];
     case "CODEX_FIRST":
       // Legacy: OpenAI HTTP (Codex model) → Claude CLI. Only used when
@@ -271,7 +271,7 @@ function resolveProviderSequence(mode = providerMode()) {
     case "CLI":
       return ["CLI"];
     default:
-      return ["CODEX_CLI", "CLI"];
+      return ["CODEX_CLI"];
   }
 }
 

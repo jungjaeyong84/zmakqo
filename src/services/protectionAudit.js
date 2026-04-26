@@ -152,6 +152,32 @@ function pickTpOrder(orders) {
   return reduce[0] || tps[0];
 }
 
+function shouldRequireTpOrder(meta = {}) {
+  // Before TP1, the partial take-profit order is mandatory. After TP1 is
+  // filled, that native TP order is expected to disappear; runner protection
+  // is then enforced by the stop/trailing invariants below.
+  return meta.tp_p1_done !== true && meta.trail_active !== true;
+}
+
+function buildProtectionPhase({ meta = {}, exchange = {} } = {}) {
+  const tpRequired = shouldRequireTpOrder(meta);
+  const refreshOk = String(meta.refresh_status || "").trim().toUpperCase() === "OK";
+  const runnerMode = meta.tp_p1_done === true;
+  const runnerProtectionActive = runnerMode
+    && meta.trail_active === true
+    && refreshOk
+    && !!exchange.sl_order;
+  return {
+    phase: runnerMode ? "POST_TP1_TRAILING_RUNNER" : "PRE_TP1_PARTIAL_TP",
+    tp_required_on_exchange: tpRequired,
+    runner_mode: runnerMode,
+    runner_trailing_active: meta.trail_active === true,
+    runner_native_refresh_ok: refreshOk,
+    runner_sl_present_on_exchange: !!exchange.sl_order,
+    runner_protection_active: runnerProtectionActive,
+  };
+}
+
 function buildIssues({ meta, exchange, match, position }) {
   const issues = [];
   const push = (severity, code, message) => issues.push({ severity, code, message });
@@ -169,13 +195,16 @@ function buildIssues({ meta, exchange, match, position }) {
       `거래소 SL 주문(id=${exchange.sl_order.orderId})은 존재하지만 DB 메타에 기록되지 않음 — reconciler 가 아직 동기화 안 됨.`);
   }
 
-  if (!exchange.tp_order) {
+  const requireTpOrder = match && typeof match.tp_required_on_exchange === "boolean"
+    ? match.tp_required_on_exchange
+    : shouldRequireTpOrder(meta);
+  if (requireTpOrder && !exchange.tp_order) {
     push("RED", "TP_MISSING_ON_EXCHANGE",
       "Binance 에 TAKE_PROFIT 주문이 없음 — 이익 실현 주문이 없음.");
-  } else if (meta.tp_order_id && meta.tp_order_id !== exchange.tp_order.orderId) {
+  } else if (exchange.tp_order && meta.tp_order_id && meta.tp_order_id !== exchange.tp_order.orderId) {
     push("RED", "TP_ORDER_ID_MISMATCH",
       `DB 는 TP id=${meta.tp_order_id} 를 기대하지만 거래소에는 id=${exchange.tp_order.orderId} 만 있음.`);
-  } else if (!meta.tp_order_id && exchange.tp_order) {
+  } else if (requireTpOrder && !meta.tp_order_id && exchange.tp_order) {
     push("AMBER", "TP_DB_MISSING_ID",
       `거래소 TP 주문(id=${exchange.tp_order.orderId})은 존재하지만 DB 메타에 기록되지 않음.`);
   }
@@ -264,7 +293,9 @@ async function auditActivePositions({ liveCfg } = {}) {
     const slOrder = pickSlOrder(allOrders);
     const tpOrder = pickTpOrder(allOrders);
 
+    const phase = buildProtectionPhase({ meta, exchange: { sl_order: slOrder, tp_order: tpOrder } });
     const match = {
+      ...phase,
       sl_present_on_exchange: !!slOrder,
       tp_present_on_exchange: !!tpOrder,
       sl_id_matches: !!(slOrder && meta.sl_order_id && String(slOrder.orderId) === meta.sl_order_id),
@@ -343,6 +374,8 @@ module.exports = {
     classifyStatus,
     pickSlOrder,
     pickTpOrder,
+    shouldRequireTpOrder,
+    buildProtectionPhase,
     evaluateBreakEvenFloor,
   },
 };
