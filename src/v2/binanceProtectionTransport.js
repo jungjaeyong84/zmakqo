@@ -543,6 +543,7 @@ module.exports = {
   normalizePlaceOrReplaceTp1Ack,
   normalizePlaceOrReplaceSlAck,
   resolveTransportContext,
+  withProtectionWriteDeadline,
   validateProtectionRepairLiveCfg,
   validateTp1LiveCfg,
   __test: {

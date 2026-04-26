@@ -11844,6 +11844,20 @@ async function executeLiveFuturesOrder({
 
   const isExit = String(intent || "").toUpperCase() === "EXIT";
   const isTpP1Exit = isExit && isTpP1EventLocal(event);
+  if (
+    isExit
+    && (
+      liveCfg.v2DiscoveryCanaryBridge === true
+      || normalizeBool(process.env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED, false) === true
+    )
+  ) {
+    return {
+      ok: false,
+      mode: "LIVE",
+      reason: "V2_DISCOVERY_CANARY_LEGACY_EXIT_WRITE_DENIED",
+      note: "V2 live-write exits must be handled by the V2 exit worker/canonical reducer path, not the legacy futures order path.",
+    };
+  }
   if (!isExit && isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
     return {
       ok: false,

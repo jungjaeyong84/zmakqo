@@ -12,6 +12,15 @@ function run() {
   };
   assert.strictEqual(__test.pickDropStrategyId(liveDrop), "donbeolja_v6.0.3.1");
   assert.strictEqual(__test.shouldConfirmSelfEvolutionFromDrop(liveDrop), true);
+  assert.strictEqual(__test.resolveSignalIdFromDrop(liveDrop), liveDrop.signal_id);
+  assert.strictEqual(__test.resolveSignalIdFromDrop({
+    features_json: {
+      signal_id: "SIG__BINANCEFUT__SOLUSDT__15m__1777094100000__SHORT",
+    },
+  }), "SIG__BINANCEFUT__SOLUSDT__15m__1777094100000__SHORT");
+  assert.strictEqual(__test.isSignalDropAlreadyHandled({ reason: "ALREADY_CONSUMED" }), true);
+  assert.strictEqual(__test.isSignalDropAlreadyHandled({ reason: "LOCKED" }), true);
+  assert.strictEqual(__test.isSignalDropAlreadyHandled({ reason: "NO_SIGNAL" }), false);
 
   const paperDrop = {
     signal_id: liveDrop.signal_id,

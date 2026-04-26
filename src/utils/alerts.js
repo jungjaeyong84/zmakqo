@@ -159,6 +159,12 @@ function resolveV2TelegramRuntimeContext(env = process.env) {
   const symbols = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || "").trim();
   const maxNotional = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE || "").trim();
   const symbolNotionalMap = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP || "").trim();
+  const maxPositionCount = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT || "").trim();
+  const maxTradesPerDay = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY || "").trim();
+  const dailyLossHalt = String(source.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE || "").trim();
+  const riskTotal = String(source.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE || "").trim();
+  const riskSymbol = String(source.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE || "").trim();
+  const riskGroup = String(source.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE || "").trim();
 
   const mode = discovery
     ? "DISCOVERY_CANARY"
@@ -176,6 +182,12 @@ function resolveV2TelegramRuntimeContext(env = process.env) {
   if (symbols) risk.push(`symbols=${symbols}`);
   if (maxNotional) risk.push(`fallback_notional=${maxNotional}`);
   if (symbolNotionalMap) risk.push(`symbol_notional=${symbolNotionalMap}`);
+  if (maxPositionCount) risk.push(`max_pos=${maxPositionCount}`);
+  if (maxTradesPerDay) risk.push(`max_trades=${maxTradesPerDay}`);
+  if (dailyLossHalt) risk.push(`daily_loss_halt=${dailyLossHalt}`);
+  if (riskTotal) risk.push(`risk_total=${riskTotal}`);
+  if (riskSymbol) risk.push(`risk_symbol=${riskSymbol}`);
+  if (riskGroup) risk.push(`risk_group=${riskGroup}`);
   return Object.freeze({
     label: `V2 ${mode}`,
     line: `runtime=V2 ${mode} | ${risk.join(" | ")}`,

@@ -111,10 +111,42 @@ function normalizeOrderTriggerPrice(order) {
   return Number(order && (order.stopPrice || order.activatePrice || order.triggerPrice));
 }
 
+function normalizeOrderId(order) {
+  return String(order && (order.orderId || order.order_id || order.algoId || order.algo_id) || "").trim() || null;
+}
+
+function normalizeOrderQuantity(order) {
+  return toNum(order && (
+    order.origQty
+    ?? order.orig_qty
+    ?? order.quantity
+    ?? order.qty
+    ?? order.executedQty
+    ?? order.executed_qty
+  ));
+}
+
+function isStrictTp1OrderCandidate(order, closeSide) {
+  const type = normalizeOrderType(order);
+  const side = String(order && order.side || "").toUpperCase();
+  const reduceOnly = toBool(order && order.reduceOnly, false);
+  const closePosition = toBool(order && order.closePosition, false);
+  return (type === "TAKE_PROFIT_MARKET" || type === "TAKE_PROFIT")
+    && side === String(closeSide || "").toUpperCase()
+    && reduceOnly === true
+    && closePosition !== true;
+}
+
 function resolveExpectedNativeTrigger({ meta, fallbackExpected } = {}) {
   const tracked = Number(meta);
   if (Number.isFinite(tracked) && tracked > 0) return tracked;
   return Number.isFinite(Number(fallbackExpected)) ? Number(fallbackExpected) : null;
+}
+
+function isV2LiveWriteRuntime(env = process.env) {
+  return toBool(env && env.DONBEOLJA_V2_ENABLED, false)
+    && toBool(env && env.DONBEOLJA_V2_DRY_RUN, false) !== true
+    && toBool(env && env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, false) === true;
 }
 
 // 2026-04-19 PR #12: same-class boundary-value guard.  trail watermark
@@ -298,10 +330,11 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
         algoEndpointUnavailable = normalized.endpointUnavailable === true;
         if (algoEndpointUnavailable) {
           const metaTracked = hasTrackedNativeProtectionMeta(meta);
+          const severity = isV2LiveWriteRuntime(process.env) ? "CRIT" : "WARN";
           marketIssues.push(makeIssue({
             symbol: sym,
             code: "NATIVE_ALGO_ORDER_VERIFY_UNAVAILABLE",
-            severity: "WARN",
+            severity,
             detail: metaTracked
               ? "Binance algo 주문 조회를 사용할 수 없어 메타 기준 보호주문만 확인함"
               : "Binance algo 주문 조회를 사용할 수 없어 보호주문 실존을 완전 검증하지 못함",
@@ -366,13 +399,7 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
         const meta = (internal && typeof internal.meta === "object") ? internal.meta : {};
         const tp1Done = meta.tp_p1_done === true || meta.trail_active === true || meta.tp_p1_pending === true;
         if (!tp1Done && toBool(process.env.BINANCE_NATIVE_TP_ENABLED, false)) {
-          const tpCandidates = allOrders.filter((o) => {
-            const type = normalizeOrderType(o);
-            const side = String(o && o.side || "").toUpperCase();
-            const reduceOnly = toBool(o && o.reduceOnly, false);
-            const closePosition = toBool(o && o.closePosition, false);
-            return (type === "TAKE_PROFIT_MARKET" || type === "TAKE_PROFIT") && side === closeSide && (reduceOnly || closePosition);
-          });
+          const tpCandidates = allOrders.filter((o) => isStrictTp1OrderCandidate(o, closeSide));
           if (!tpCandidates.length) {
             marketIssues.push(makeIssue({
               symbol: sym,
@@ -380,7 +407,35 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
               severity: "CRIT",
               detail: "실포지션은 있는데 Binance 보호주문 TP1이 없음",
             }));
-          } else if (rules && entryPrice && leverage) {
+          } else {
+            const tpOrder = tpCandidates[0];
+            const expectedTpOrderId = String(meta.native_protection_tp_order_id || "").trim() || null;
+            const actualTpOrderId = normalizeOrderId(tpOrder);
+            if (expectedTpOrderId && actualTpOrderId && String(expectedTpOrderId) !== String(actualTpOrderId)) {
+              marketIssues.push(makeIssue({
+                symbol: sym,
+                code: "NATIVE_TP1_ORDER_ID_MISMATCH",
+                severity: "CRIT",
+                detail: `기대=${expectedTpOrderId}, 실제=${actualTpOrderId}`,
+              }));
+            }
+            const expectedQty = toNum(meta.tp1_target_qty_abs)
+              ?? toNum(meta.tp_p1_target_qty_abs)
+              ?? toNum(meta.simplified_exit_v2_shadow && meta.simplified_exit_v2_shadow.tp1_target_qty_abs);
+            const actualQty = normalizeOrderQuantity(tpOrder);
+            if (Number.isFinite(expectedQty) && expectedQty > 0 && Number.isFinite(actualQty) && actualQty > 0) {
+              const tolerance = Math.max(1e-9, Math.abs(expectedQty) * 0.005);
+              if (Math.abs(actualQty - expectedQty) > tolerance) {
+                marketIssues.push(makeIssue({
+                  symbol: sym,
+                  code: "NATIVE_TP1_QTY_MISMATCH",
+                  severity: "CRIT",
+                  detail: `기대=${expectedQty}, 실제=${actualQty}`,
+                }));
+              }
+            }
+          }
+          if (rules && entryPrice && leverage && tpCandidates.length) {
             const expectedTp = resolveExpectedNativeTrigger({
               meta: meta.native_protection_tp_price,
               fallbackExpected: computeExpectedNativeTpPx({ positionSide: externalSide, entryPrice, leverage, rules }),
@@ -435,6 +490,10 @@ module.exports = {
     hasTrackedNativeProtectionMeta,
     normalizeOrderType,
     normalizeOrderTriggerPrice,
+    normalizeOrderId,
+    normalizeOrderQuantity,
+    isStrictTp1OrderCandidate,
+    isV2LiveWriteRuntime,
     resolveExpectedNativeTrigger,
     isValidTrailReference,
   },

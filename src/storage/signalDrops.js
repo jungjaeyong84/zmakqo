@@ -1,5 +1,6 @@
 const { getFirestore } = require("./firestore");
 const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
+const { tryLockSignal } = require("./signalsConsume");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { confirmSelfEvolutionRuntimeSignal } = require("../utils/selfEvolutionRuntimeState");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
@@ -278,13 +279,71 @@ function resolveDropStageBucket(payload = null) {
   return { group, subtype };
 }
 
+function resolveSignalIdFromDrop(drop = null) {
+  const payload = drop && typeof drop === "object" ? drop : {};
+  return String(
+    payload.signal_id
+    || (payload.features_json && payload.features_json.signal_id)
+    || (payload.features && payload.features.signal_id)
+    || ""
+  ).trim() || null;
+}
+
+function isSignalDropAlreadyHandled(lock = null) {
+  const reason = String(lock && lock.reason || "").trim().toUpperCase();
+  return reason === "ALREADY_CONSUMED" || reason === "LOCKED";
+}
+
+async function filterDropsForConsumedSignals({ drops = [], runId = null } = {}) {
+  if (!Array.isArray(drops) || drops.length === 0) {
+    return Object.freeze({ kept: [], suppressed: [] });
+  }
+  const kept = [];
+  const suppressed = [];
+  for (const drop of drops) {
+    const signalId = resolveSignalIdFromDrop(drop);
+    if (!signalId) {
+      kept.push(drop);
+      continue;
+    }
+    try {
+      const lock = await tryLockSignal({ signalId, runId });
+      if (lock && lock.ok === true) {
+        kept.push(drop);
+        continue;
+      }
+      if (isSignalDropAlreadyHandled(lock)) {
+        const reason = String(lock && lock.reason || "").trim().toUpperCase() || "ALREADY_HANDLED";
+        console.warn(`[SIGNAL_DROP_SUPPRESSED_ALREADY_CONSUMED] signal_id=${signalId} reason=${reason}`);
+        suppressed.push({ signal_id: signalId, reason });
+        continue;
+      }
+      kept.push(drop);
+    } catch (error) {
+      console.warn(`[SIGNAL_DROP_SUPPRESS_CHECK_FAILED] signal_id=${signalId} error=${error && error.message ? error.message : String(error)}`);
+      kept.push(drop);
+    }
+  }
+  return Object.freeze({ kept, suppressed });
+}
+
 async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId = null, runId = null, decisionReason = null } = {}) {
   if (!Array.isArray(drops) || drops.length === 0) return { ok: true, written: 0 };
+  const filtered = await filterDropsForConsumedSignals({ drops, runId });
+  const effectiveDrops = filtered.kept;
+  if (!effectiveDrops.length) {
+    return {
+      ok: true,
+      written: 0,
+      suppressed: filtered.suppressed.length,
+      suppressed_signal_drops: filtered.suppressed,
+    };
+  }
   const db = getFirestore();
   const now = nowIso();
 
   const normalizedDrops = [];
-  const writes = drops.map((d) => {
+  const writes = effectiveDrops.map((d) => {
     const { group, subtype } = resolveDropStageBucket(d);
     const id = dropId({
       exchange,
@@ -430,7 +489,12 @@ async function recordSignalDrops({ exchange, symbol, tf, drops = [], requestId =
   }
   const alerts = normalizedDrops.map((d) => sendSignalDroppedAlert(buildDropAlertPayload(d)));
   await Promise.allSettled(alerts);
-  return { ok: true, written: writes.length };
+  return {
+    ok: true,
+    written: writes.length,
+    suppressed: filtered.suppressed.length,
+    suppressed_signal_drops: filtered.suppressed,
+  };
 }
 
 module.exports = {
@@ -445,5 +509,8 @@ module.exports = {
     deriveEffectiveDropReason,
     extractOpenClawAuthorityTrace,
     buildDropAlertPayload,
+    resolveSignalIdFromDrop,
+    isSignalDropAlreadyHandled,
+    filterDropsForConsumedSignals,
   },
 };

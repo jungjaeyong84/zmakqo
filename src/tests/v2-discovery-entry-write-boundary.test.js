@@ -18,6 +18,10 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   assert.ok(reasonIndex > -1, "V2 production route blocker reason is missing");
   assert.ok(routedIndex > -1, "V2 production route handoff reason is missing");
   assert.ok(finalGuardIndex > -1, "executeLiveFuturesOrder must have a final V2 discovery legacy entry hard-deny");
+  assert.ok(
+    source.includes("V2_DISCOVERY_CANARY_LEGACY_EXIT_WRITE_DENIED"),
+    "executeLiveFuturesOrder must hard-deny legacy futures EXIT writes under V2 live-write runtime"
+  );
   assert.ok(submitIndex > -1, "live futures submit call is missing from source audit fixture");
   assert.ok(guardIndex < submitIndex, "discovery entry guard must run before executeLiveFuturesOrder");
   assert.ok(finalGuardIndex < submitIndex, "final V2 discovery hard-deny must run before executeLiveFuturesOrder");

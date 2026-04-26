@@ -50,6 +50,12 @@ function run() {
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "25",
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "5",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
+      DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
+      DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "400",
+      DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: "230",
+      DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE: "250",
       DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "1",
       DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "0",
       ML_LIVE_SERVING_ARMED: "0",
@@ -65,6 +71,12 @@ function run() {
   assert.ok(v2Text.includes("fallback_notional=25"));
   assert.ok(!v2Text.includes("max_notional=25"));
   assert.ok(v2Text.includes("symbol_notional=SOLUSDT:15|XRPUSDT:15"));
+  assert.ok(v2Text.includes("max_pos=5"));
+  assert.ok(v2Text.includes("max_trades=UNLIMITED"));
+  assert.ok(v2Text.includes("daily_loss_halt=10"));
+  assert.ok(v2Text.includes("risk_total=400"));
+  assert.ok(v2Text.includes("risk_symbol=230"));
+  assert.ok(v2Text.includes("risk_group=250"));
   assert.ok(!v2Text.includes("[P0]"));
 
   delete process.env.TELEGRAM_ALERT_TRANSPORT;

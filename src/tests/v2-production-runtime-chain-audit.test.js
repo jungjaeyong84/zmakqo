@@ -101,6 +101,15 @@ function auditWithOverride(relPath, replacer) {
   assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED"));
 })();
 
+(function missingInitialProtectionWriteDeadlineFailsClosed() {
+  const audit = auditWithOverride("src/v2/binanceInitialProtectionTransport.js", (source) => source.replace(
+    /withProtectionWriteDeadline/g,
+    "initialProtectionDeadlineRemoved"
+  ));
+  assert.strictEqual(audit.ok, false);
+  assert.ok(audit.failed_check_ids.includes("V2_PRODUCTION_CHAIN_PROTECTION_WRITE_DEADLINE_ENFORCED"));
+})();
+
 (function stringOnlyProtectionDeadlineTokensFailClosed() {
   const audit = auditV2ProductionRuntimeChain({
     sourceOverrides: {
