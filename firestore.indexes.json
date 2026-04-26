@@ -73,6 +73,14 @@
         { "fieldPath": "exchange", "order": "ASCENDING" },
         { "fieldPath": "ts_ms", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "v2__signal_shadow_counterfactuals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "horizon_close_ms", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

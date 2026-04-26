@@ -42,6 +42,42 @@ const analyzer = require("../../scripts/analyze-v2-signal-shadow-counterfactuals
   );
   assert.strictEqual(walkerDryRun.processed_n, 0, "walker dry-run must process 0 records");
 
+  const failingDb = {
+    collection() {
+      return {
+        where() {
+          return {
+            where() {
+              return {
+                limit() {
+                  return {
+                    get: async () => {
+                      throw new Error("FAILED_PRECONDITION_INDEX_REQUIRED");
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  const walkerQueryFail = await walker.main({
+    env: { DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED: "1" },
+    argv: [],
+    db: failingDb,
+    fetchKlines: async () => [],
+    setProcessExitCode: false,
+  });
+  assert.strictEqual(walkerQueryFail.ok, false, "walker must fail when Firestore query throws");
+  assert.strictEqual(walkerQueryFail.reason, "WALK_QUERY_FAILED");
+  assert.ok(
+    typeof walkerQueryFail.error_message === "string"
+      && walkerQueryFail.error_message.includes("FAILED_PRECONDITION_INDEX_REQUIRED"),
+    "walker emit must forward underlying error_message for diagnosis"
+  );
+
   assert.strictEqual(typeof analyzer.main, "function", "analyzer.main must be exported");
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "v2-shadow-cron-test-"));
   const tmpOutput = path.join(tmpDir, "analysis.json");
