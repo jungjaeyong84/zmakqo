@@ -126,7 +126,8 @@
     "check:v2-algo-endpoint-escalation": "node scripts/check-v2-algo-endpoint-escalation.js",
     "check:v2-v1-writer-deny-streak": "node scripts/check-v2-v1-writer-deny-streak.js",
     "check:v2-discovery-notional-cap-consistency": "node scripts/check-v2-discovery-notional-cap-consistency.js",
-    "check:v2-p1-phase-gate": "npm run check:v2-repair-lease-firestore-tx && npm run check:v2-algo-endpoint-escalation && npm run check:v2-v1-writer-deny-streak && npm run check:v2-discovery-notional-cap-consistency",
+    "check:v2-active-protection-reconciliation-streak": "node scripts/check-v2-active-protection-reconciliation-streak.js",
+    "check:v2-p1-phase-gate": "npm run check:v2-repair-lease-firestore-tx && npm run check:v2-algo-endpoint-escalation && npm run check:v2-v1-writer-deny-streak && npm run check:v2-discovery-notional-cap-consistency && npm run check:v2-active-protection-reconciliation-streak",
     "collect:v2-v1-writer-deny-streak": "node scripts/collect-v2-v1-writer-deny-streak.js",
     "collect:v2-algo-endpoint-degradation-state": "node scripts/collect-v2-algo-endpoint-degradation-state.js"
   },
