@@ -8,12 +8,17 @@ const {
   fetchFuturesBookTicker,
   fetchFuturesExchangeInfo,
 } = require("../exchanges/binanceFuturesPrivate");
-const { buildOpenClawDecisionBundle } = require("./openclawControlPlane");
+const {
+  buildOpenClawDecisionBundle,
+  persistOpenClawDecisionBundleLedger,
+} = require("./openclawControlPlane");
 const { buildV2ProductionEntryLiveRequest } = require("./productionEntryLiveRequest");
+const { persistOpenClawWorldState } = require("./openclawWorldState");
 const { resolveDiscoverySymbolNotionalQuote } = require("./discoveryCanaryNotionalPolicy");
 const { runV2ProductionEntryLiveEndpoint } = require("./productionEntryLiveEndpoint");
 const { DISCOVERY_CONFIRM_PHRASE } = require("./discoveryCanaryContract");
 const { evaluateMarketDataQualityGate } = require("./marketDataQualityGate");
+const { resolveV2CollectionRef } = require("./storage");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -106,6 +111,115 @@ function stableJson(value) {
 
 function hash12(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 12);
+}
+
+async function persistDiscoveryExecutionPermitLedger({
+  db = null,
+  env = process.env,
+  executionPermit = null,
+} = {}) {
+  const permit = asObject(executionPermit);
+  const permitId = trimOrNull(permit && permit.openclaw_execution_permit_id);
+  if (!permit || !permitId) {
+    return Object.freeze({
+      ok: false,
+      reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_DOC_REQUIRED",
+      openclaw_execution_permit_id: permitId,
+    });
+  }
+  const permits = resolveV2CollectionRef({ db, env, collectionKey: "OPENCLAW_EXECUTION_PERMITS" });
+  const ref = permits.ref.doc(permitId);
+  const snap = await ref.get();
+  if (snap && snap.exists === true) {
+    const existing = snap.data ? (snap.data() || {}) : {};
+    const status = upper(existing.permit_status);
+    if (status !== "ISSUED") {
+      return Object.freeze({
+        ok: false,
+        reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_ALREADY_USED",
+        openclaw_execution_permit_id: permitId,
+        permit_status: status,
+      });
+    }
+    return Object.freeze({
+      ok: true,
+      reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_ALREADY_ISSUED",
+      openclaw_execution_permit_id: permitId,
+      collectionName: permits.collectionName,
+    });
+  }
+  await ref.set(permit, { merge: false });
+  return Object.freeze({
+    ok: true,
+    reason: "OPENCLAW_EXECUTION_PERMIT_LEDGER_WRITTEN",
+    openclaw_execution_permit_id: permitId,
+    collectionName: permits.collectionName,
+  });
+}
+
+async function persistDiscoveryBridgeLedgers({
+  db = null,
+  env = process.env,
+  built = null,
+  nowIso = null,
+} = {}) {
+  const row = asObject(built);
+  const request = asObject(row && row.request);
+  const body = asObject(request && request.body);
+  const worldState = asObject(request && request.worldState) || asObject(body && body.worldState);
+  const executionPermit = asObject(request && request.executionPermit) || asObject(body && body.executionPermit);
+  const bundle = asObject(row && row.bundle) || asObject(body && body.bundle);
+  const result = {
+    ok: true,
+    reason: "V2_DISCOVERY_BRIDGE_LEDGER_PERSISTED",
+    world_state: null,
+    decision_bundle: null,
+    execution_permit: null,
+  };
+  try {
+    result.world_state = await persistOpenClawWorldState({
+      db,
+      env,
+      worldState,
+      merge: true,
+    });
+  } catch (error) {
+    result.ok = false;
+    result.reason = "V2_DISCOVERY_BRIDGE_WORLD_STATE_LEDGER_WRITE_FAILED";
+    result.world_state = {
+      ok: false,
+      reason: trimOrNull(error && error.message) || "WORLD_STATE_LEDGER_WRITE_FAILED",
+    };
+    return Object.freeze(result);
+  }
+  try {
+    result.decision_bundle = await persistOpenClawDecisionBundleLedger({
+      db,
+      env,
+      bundle,
+      source: "V2_DISCOVERY_CANARY_SERVER_SIGNAL_BRIDGE",
+      createdAt: nowIso,
+    });
+  } catch (error) {
+    result.ok = false;
+    result.reason = "V2_DISCOVERY_BRIDGE_DECISION_BUNDLE_LEDGER_WRITE_FAILED";
+    result.decision_bundle = {
+      ok: false,
+      reason: trimOrNull(error && error.message) || "DECISION_BUNDLE_LEDGER_WRITE_FAILED",
+    };
+    return Object.freeze(result);
+  }
+  result.execution_permit = await persistDiscoveryExecutionPermitLedger({
+    db,
+    env,
+    executionPermit,
+  });
+  if (!result.execution_permit || result.execution_permit.ok !== true) {
+    result.ok = false;
+    result.reason = "V2_DISCOVERY_BRIDGE_EXECUTION_PERMIT_LEDGER_WRITE_FAILED";
+    return Object.freeze(result);
+  }
+  return Object.freeze(result);
 }
 
 function normalizeAccountPositions(accountSummary = null) {
@@ -520,6 +634,22 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
     nowMs,
   });
   if (!built.ok) return built;
+  const ledgerPersistence = await persistDiscoveryBridgeLedgers({
+    db,
+    env,
+    built,
+    nowIso: new Date(nowMs).toISOString(),
+  });
+  if (!ledgerPersistence || ledgerPersistence.ok !== true) {
+    return Object.freeze({
+      ok: false,
+      reason: "V2_DISCOVERY_BRIDGE_LEDGER_PERSIST_BLOCKED",
+      request: built.request,
+      ledger_persistence: ledgerPersistence || null,
+      market_data_quality: built.market_data_quality,
+      discovery_canary_state: built.discovery_canary_state,
+    });
+  }
   const candidateNotional = built.request && built.request.entrySizingDecision
     ? built.request.entrySizingDecision.notional_quote
     : null;
@@ -552,6 +682,7 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
       ok: false,
       reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED",
       request: built.request,
+      ledger_persistence: ledgerPersistence,
       endpoint_result: result || null,
       market_data_quality: built.market_data_quality,
       discovery_canary_state: built.discovery_canary_state,
@@ -561,6 +692,7 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
     ok: true,
     reason: "V2_DISCOVERY_BRIDGE_EXECUTED",
     request: built.request,
+    ledger_persistence: ledgerPersistence,
     endpoint_result: result,
     market_data_quality: built.market_data_quality,
     discovery_canary_state: built.discovery_canary_state,
@@ -585,5 +717,7 @@ module.exports = {
     buildStrategyFilterResultFromIntent,
     normalizeAccountPositions,
     mergeDiscoveryCanaryStateWithAccount,
+    persistDiscoveryExecutionPermitLedger,
+    persistDiscoveryBridgeLedgers,
   },
 };

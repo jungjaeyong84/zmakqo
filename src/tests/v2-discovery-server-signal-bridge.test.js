@@ -6,6 +6,8 @@ const {
   buildSignalCriteriaSeedFromIntent,
   __test,
 } = require("../v2/discoveryCanaryServerSignalBridge");
+const { resolveV2CollectionName } = require("../v2/storage");
+const protectedCanary = require("../v2/productionEntryProtectedCanary");
 
 function buildEnv(overrides = {}) {
   return {
@@ -242,6 +244,109 @@ async function serverSignalRoutesToV2ProductionEntryLiveRequest() {
   assert.ok(result.request.entrySizingDecision.notional_quote <= 15);
 }
 
+async function bridgePersistsRouteRequiredLedgersBeforeEndpoint() {
+  const db = protectedCanary.__test.createMemoryFirestore();
+  const env = buildEnv();
+  const built = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env,
+    db,
+    intentRow: buildIntent(),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
+    referencePrice: 600,
+    nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
+    marketDataQuality: marketDataQuality(),
+    exchangeInfo: {
+      minNotional: 5,
+      minQty: 0.01,
+      stepSize: 0.01,
+    },
+    discoveryState: {
+      active_position_n: 0,
+      trade_count_24h: 0,
+      daily_realized_pnl_quote: 0,
+    },
+  });
+  assert.strictEqual(built.ok, true);
+  const persisted = await __test.persistDiscoveryBridgeLedgers({
+    db,
+    env,
+    built,
+    nowIso: "2026-04-24T07:16:00.000Z",
+  });
+  assert.strictEqual(persisted.ok, true);
+  assert.strictEqual(persisted.reason, "V2_DISCOVERY_BRIDGE_LEDGER_PERSISTED");
+
+  const permitCollection = resolveV2CollectionName("OPENCLAW_EXECUTION_PERMITS", env);
+  const permitSnap = await db.collection(permitCollection)
+    .doc(built.request.executionPermit.openclaw_execution_permit_id)
+    .get();
+  assert.strictEqual(permitSnap.exists, true);
+  assert.strictEqual(permitSnap.data().permit_status, "ISSUED");
+
+  const worldCollection = resolveV2CollectionName("OPENCLAW_WORLD_STATES", env);
+  const worldSnap = await db.collection(worldCollection)
+    .doc(built.request.worldState.openclaw_world_state_id)
+    .get();
+  assert.strictEqual(worldSnap.exists, true);
+
+  const bundleCollection = resolveV2CollectionName("OPENCLAW_DECISION_BUNDLES", env);
+  const bundleSnap = await db.collection(bundleCollection)
+    .doc(persisted.decision_bundle.doc.openclaw_decision_bundle_id)
+    .get();
+  assert.strictEqual(bundleSnap.exists, true);
+}
+
+async function bridgeDoesNotReissueAlreadyClaimedPermit() {
+  const db = protectedCanary.__test.createMemoryFirestore();
+  const env = buildEnv();
+  const built = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env,
+    db,
+    intentRow: buildIntent({
+      intent_id: "INTENT__BNB__CLAIMED",
+      signal_id: "SIG__BINANCEFUT__BNBUSDT__15m__1777002300000__LONG",
+      features_json: {
+        signal_id: "SIG__BINANCEFUT__BNBUSDT__15m__1777002300000__LONG",
+      },
+    }),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
+    referencePrice: 600,
+    nowMs: Date.parse("2026-04-24T07:31:00.000Z"),
+    marketDataQuality: marketDataQuality(),
+    exchangeInfo: {
+      minNotional: 5,
+      minQty: 0.01,
+      stepSize: 0.01,
+    },
+    discoveryState: {
+      active_position_n: 0,
+      trade_count_24h: 0,
+      daily_realized_pnl_quote: 0,
+    },
+  });
+  assert.strictEqual(built.ok, true);
+  const permitCollection = resolveV2CollectionName("OPENCLAW_EXECUTION_PERMITS", env);
+  db.__seedDoc(
+    permitCollection,
+    built.request.executionPermit.openclaw_execution_permit_id,
+    {
+      ...built.request.executionPermit,
+      permit_status: "CLAIMED",
+      execution_claim_id: "CLAIM__EXISTING",
+    },
+  );
+
+  const persisted = await __test.persistDiscoveryBridgeLedgers({
+    db,
+    env,
+    built,
+    nowIso: "2026-04-24T07:31:00.000Z",
+  });
+  assert.strictEqual(persisted.ok, false);
+  assert.strictEqual(persisted.reason, "V2_DISCOVERY_BRIDGE_EXECUTION_PERMIT_LEDGER_WRITE_FAILED");
+  assert.strictEqual(persisted.execution_permit.reason, "OPENCLAW_EXECUTION_PERMIT_LEDGER_ALREADY_USED");
+}
+
 async function marketDataQualityBlockFailsClosed() {
   const result = await buildDiscoveryCanaryLiveRequestFromIntent({
     env: buildEnv(),
@@ -308,6 +413,8 @@ async function linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied() {
 
 async function main() {
   await serverSignalRoutesToV2ProductionEntryLiveRequest();
+  await bridgePersistsRouteRequiredLedgersBeforeEndpoint();
+  await bridgeDoesNotReissueAlreadyClaimedPermit();
   await dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop();
   await linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied();
   await marketDataQualityBlockFailsClosed();
