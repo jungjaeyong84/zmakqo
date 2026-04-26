@@ -450,13 +450,43 @@ Drill:
 
 ### P2-3. Alert Escalation Router
 
-Add `src/v2/alertEscalationRouter.js`.
+Status: Module shipped as a standalone building block. Caller migration is intentionally deferred to a separate PR so that callers with their own dedup/backoff state (for example, `check-v2-active-protection-reconciliation.js`) are not forced into a double-state conflict.
+
+Module: `src/v2/alertEscalationRouter.js` provides:
+
+- `routeEscalatedAlert({ severity, title, body, fingerprint, fallbackChannel, env, db, sendAlertFn, now })`
+- `ackEscalation({ db, fingerprint, ackReason, source })`
+- `recoverEscalation({ db, fingerprint, recoverReason })`
+- Pure helpers: `evaluateCriticalDecision`, `buildEscalationFingerprint`, `buildPersistedState`, `resolveAlertEscalationPolicy`, `resolveAlertChannelMap`, `resolveTargetChannel`, `normalizeSeverityRoute`.
 
 Routing:
 
-- INFO/WARN -> canary channel
-- ERROR -> ops channel
-- CRITICAL -> ops channel and repeat every 5 minutes until ack or recovery
+- INFO/WARN -> canary channel (`DONBEOLJA_V2_ALERT_CANARY_CHANNEL`)
+- ERROR -> ops channel (`DONBEOLJA_V2_ALERT_OPS_CHANNEL`)
+- CRITICAL -> critical channel (`DONBEOLJA_V2_ALERT_CRITICAL_CHANNEL`, falls back to ops) and repeat every `DONBEOLJA_V2_ALERT_ESCALATION_REPEAT_INTERVAL_MS` (default 5 minutes) until acknowledged or recovered, capped at `DONBEOLJA_V2_ALERT_ESCALATION_MAX_REPEAT_N` (default 288 = 24 hours at 5 min cadence).
+
+Default flag policy:
+
+- `DONBEOLJA_V2_ALERT_ESCALATION_ROUTER_ENABLED` defaults to `false`. When false, `routeEscalatedAlert` becomes a passthrough to `sendAlertFn` with the supplied fallback channel, which keeps existing alert call sites unchanged.
+
+State storage:
+
+- `runtime_locks/v2_alert_escalation__{fingerprint}` Firestore documents.
+- Lifecycle statuses: `ACTIVE` -> `ACKNOWLEDGED` (operator) or `RECOVERED` (auto). Both terminal statuses suppress further repeats.
+
+Caller migration plan (separate PR after observation):
+
+- `scripts/check-v2-active-protection-reconciliation.js` should switch to `routeEscalatedAlert` only after its existing in-process backoff state is consolidated into the router's Firestore state, otherwise repeat counters double-count.
+- `signalLifecycleAlert.js` adoption requires per-call fingerprint design.
+- Any future CRITICAL alert source must pass a stable fingerprint to avoid noisy unique-row creation.
+
+Required regression tests:
+
+- `src/tests/v2-alert-escalation-router.test.js` covers severity routes, channel resolution, `evaluateCriticalDecision` transitions, full CRITICAL repeat lifecycle (first send -> cooldown suppress -> repeat -> max suppress -> ack suppress -> recovery suppress), no-channel and Firestore-unavailable paths, and disabled-flag passthrough.
+
+Required gate:
+
+- `npm run check:v2-alert-escalation-router` runs `scripts/check-v2-alert-escalation-router.js` to assert exports, defaults, channel map shape, decision contract, and fingerprint stability without any I/O. The gate is wired into `npm run check:v2-p2-phase-gate`.
 
 ### P2-4. Incident Drills
 
