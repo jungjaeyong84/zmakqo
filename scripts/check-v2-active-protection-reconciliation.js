@@ -10,6 +10,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
 const OPS_RUNTIME_DIR = path.join(REPO_ROOT, "ops", "runtime");
 const DEFAULT_ALERT_STATE_FILE = path.join(OPS_RUNTIME_DIR, "v2_active_protection_reconciliation_alert_state.json");
+const DEFAULT_HISTORY_FILE = path.join(OPS_DAILY_DIR, "v2_active_protection_reconciliation_history.jsonl");
 
 function trimOrNull(value) {
   const text = String(value == null ? "" : value).trim();
@@ -50,8 +51,29 @@ function writeJson(file, payload) {
   fs.writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+function appendJsonl(file, payload) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, `${JSON.stringify(payload)}\n`, "utf8");
+}
+
+function readJsonlSafe(file) {
+  try {
+    return fs.readFileSync(file, "utf8")
+      .split(/\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  } catch (_) {
+    return [];
+  }
+}
+
 function resolveOutputDir(env = process.env) {
   return trimOrNull(env.V2_ACTIVE_PROTECTION_RECONCILIATION_OUTPUT_DIR) || OPS_DAILY_DIR;
+}
+
+function resolveHistoryFile(env = process.env) {
+  return trimOrNull(env.V2_ACTIVE_PROTECTION_RECONCILIATION_HISTORY_FILE) || DEFAULT_HISTORY_FILE;
 }
 
 function resolveAlertStateFile(env = process.env) {
@@ -183,6 +205,46 @@ function buildAlertBody(summary = {}) {
   return lines.join("\n");
 }
 
+function buildDailySummary({ rows = [], dateKey = isoDate(), latest = null } = {}) {
+  const allRows = Array.isArray(rows) ? rows.slice() : [];
+  if (latest) allRows.push(latest);
+  const dayRows = allRows.filter((row) => String(row && row.generated_at || "").startsWith(dateKey));
+  const sortedRows = dayRows.slice().sort((a, b) => String(a.generated_at || "").localeCompare(String(b.generated_at || "")));
+  const last = sortedRows[sortedRows.length - 1] || {};
+  const blockedRows = sortedRows.filter((row) => row && row.ok !== true);
+  const maxNumber = (field) => sortedRows.reduce((max, row) => Math.max(max, Number(row && row[field]) || 0), 0);
+  const criticalIssueN = sortedRows.reduce((sum, row) => sum + (Number(row && row.critical_issue_n) || 0), 0);
+  const unprotectedSymbols = Array.from(new Set(sortedRows
+    .flatMap((row) => Array.isArray(row && row.unprotected_symbols) ? row.unprotected_symbols : [])
+    .map((symbol) => String(symbol || "").toUpperCase())
+    .filter(Boolean))).sort();
+  return Object.freeze({
+    generated_at: nowIso(),
+    date_key: dateKey,
+    ok: blockedRows.length === 0 && maxNumber("unprotected_position_n") === 0,
+    reason: blockedRows.length === 0 && maxNumber("unprotected_position_n") === 0
+      ? "V2_ACTIVE_PROTECTION_RECONCILIATION_DAILY_SUMMARY_PASS"
+      : "V2_ACTIVE_PROTECTION_RECONCILIATION_DAILY_SUMMARY_BLOCKED",
+    run_n: sortedRows.length,
+    pass_n: sortedRows.filter((row) => row && row.ok === true).length,
+    blocked_n: blockedRows.length,
+    max_active_position_n: maxNumber("active_position_n"),
+    max_protected_position_n: maxNumber("protected_position_n"),
+    max_unprotected_position_n: maxNumber("unprotected_position_n"),
+    critical_issue_n: criticalIssueN,
+    unprotected_symbols: Object.freeze(unprotectedSymbols),
+    first_run_at: sortedRows[0] && sortedRows[0].generated_at || null,
+    last_run_at: last.generated_at || null,
+    latest: Object.freeze({
+      ok: last.ok === true,
+      active_position_n: Number(last.active_position_n) || 0,
+      protected_position_n: Number(last.protected_position_n) || 0,
+      unprotected_position_n: Number(last.unprotected_position_n) || 0,
+      critical_issue_n: Number(last.critical_issue_n) || 0,
+    }),
+  });
+}
+
 function shouldSendActiveProtectionAlert(summary = {}, env = process.env, previousState = null) {
   const decision = resolveActiveProtectionAlertDecision({ summary, env, previousState });
   return decision.should_send === true;
@@ -244,6 +306,7 @@ function buildNextAlertState({ previousState = null, summary = {}, alertDecision
 async function run({ auditFn = auditBinanceExitIntegrity, env = process.env, sendAlertFn = sendAlert } = {}) {
   const integrity = await auditFn({ includeFlat: false });
   const outputDir = resolveOutputDir(env);
+  const historyFile = resolveHistoryFile(env);
   const stateFile = resolveAlertStateFile(env);
   const previousAlertState = readJsonSafe(stateFile);
   const baseSummary = summarizeActiveProtection(integrity);
@@ -259,12 +322,24 @@ async function run({ auditFn = auditBinanceExitIntegrity, env = process.env, sen
     producer_script: "check-v2-active-protection-reconciliation",
     alert_decision: alertDecision,
     alert_state_file: stateFile,
+    history_file: historyFile,
   };
   fs.mkdirSync(outputDir, { recursive: true });
   const latestPath = path.join(outputDir, "v2_active_protection_reconciliation_latest.json");
   const datedPath = path.join(outputDir, `${isoDate()}_v2_active_protection_reconciliation.json`);
+  const dailySummaryLatestPath = path.join(outputDir, "v2_active_protection_reconciliation_daily_summary_latest.json");
+  const dailySummaryDatedPath = path.join(outputDir, `${isoDate()}_v2_active_protection_reconciliation_daily_summary.json`);
   writeJson(latestPath, summary);
   writeJson(datedPath, summary);
+  const previousHistoryRows = readJsonlSafe(historyFile);
+  appendJsonl(historyFile, summary);
+  const dailySummary = buildDailySummary({
+    rows: previousHistoryRows,
+    latest: summary,
+    dateKey: isoDate(),
+  });
+  writeJson(dailySummaryLatestPath, dailySummary);
+  writeJson(dailySummaryDatedPath, dailySummary);
   const alert = await maybeSendAlert(summary, env, sendAlertFn, alertDecision).catch((error) => ({
     ok: false,
     reason: "ALERT_SEND_FAILED",
@@ -277,7 +352,17 @@ async function run({ auditFn = auditBinanceExitIntegrity, env = process.env, sen
     alert,
   });
   writeJson(stateFile, nextAlertState);
-  return { ...summary, output_json: latestPath, output_dated_json: datedPath, alert, alert_state: nextAlertState };
+  return {
+    ...summary,
+    output_json: latestPath,
+    output_dated_json: datedPath,
+    output_history_jsonl: historyFile,
+    output_daily_summary_json: dailySummaryLatestPath,
+    output_dated_daily_summary_json: dailySummaryDatedPath,
+    daily_summary: dailySummary,
+    alert,
+    alert_state: nextAlertState,
+  };
 }
 
 async function main() {
@@ -313,10 +398,13 @@ if (require.main === module) {
       resolveActiveProtectionAlertDecision,
       buildNextAlertState,
       buildAlertBody,
+      buildDailySummary,
       shouldSendActiveProtectionAlert,
       maybeSendAlert,
       resolveOutputDir,
+      resolveHistoryFile,
       resolveAlertStateFile,
+      readJsonlSafe,
       boolEnv,
       trimOrNull,
     },
