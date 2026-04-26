@@ -54,20 +54,27 @@ async function fetchBinanceFuturesKlines({ symbol, candle_close_ms, horizon_clos
   return data;
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  const dryRun = argv.includes("--dry-run");
-  const policy = ledger.resolveCounterfactualLedgerPolicy(process.env);
+async function main({
+  env = process.env,
+  argv = process.argv.slice(2),
+  db: providedDb = null,
+  fetchKlines = fetchBinanceFuturesKlines,
+  now_ms = Date.now(),
+  setProcessExitCode = require.main === module,
+} = {}) {
+  const dryRun = Array.isArray(argv) && argv.includes("--dry-run");
+  const policy = ledger.resolveCounterfactualLedgerPolicy(env);
   if (!policy.enabled) {
-    emit({
+    const payload = {
       ok: true,
       reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_WALKER_DISABLED",
       processed_n: 0,
-    });
-    return;
+    };
+    emit(payload);
+    return payload;
   }
   if (dryRun) {
-    emit({
+    const payload = {
       ok: true,
       reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_WALKER_DRY_RUN",
       policy: {
@@ -78,25 +85,27 @@ async function main() {
         batch_limit: policy.batch_limit,
       },
       processed_n: 0,
-    });
-    return;
+    };
+    emit(payload);
+    return payload;
   }
-  const db = await tryLoadFirestore();
+  const db = providedDb || await tryLoadFirestore();
   if (!db) {
-    emit({
+    const payload = {
       ok: false,
       reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_WALKER_FIRESTORE_UNAVAILABLE",
       processed_n: 0,
-    });
-    process.exit(0);
+    };
+    emit(payload);
+    return payload;
   }
   const result = await ledger.walkPendingCounterfactuals({
     db,
-    env: process.env,
-    fetchKlines: fetchBinanceFuturesKlines,
-    now_ms: Date.now(),
+    env,
+    fetchKlines,
+    now_ms,
   });
-  emit({
+  const payload = {
     ok: result.ok === true,
     reason: result.reason,
     processed_n: result.processed_n,
@@ -106,15 +115,26 @@ async function main() {
     expired_n: Array.isArray(result.results)
       ? result.results.filter((r) => r && r.action === "EXPIRE").length
       : 0,
-  });
-  if (!result.ok) process.exit(1);
+  };
+  emit(payload);
+  if (!result.ok && setProcessExitCode) process.exitCode = 1;
+  return payload;
 }
 
-main().catch((error) => {
-  emit({
-    ok: false,
-    reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_WALKER_THROWN",
-    error_message: error && error.message ? String(error.message) : String(error),
+if (require.main === module) {
+  main().catch((error) => {
+    emit({
+      ok: false,
+      reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_WALKER_THROWN",
+      error_message: error && error.message ? String(error.message) : String(error),
+    });
+    process.exitCode = 1;
   });
-  process.exit(1);
-});
+}
+
+module.exports = {
+  main,
+  __test: {
+    fetchBinanceFuturesKlines,
+  },
+};

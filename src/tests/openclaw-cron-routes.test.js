@@ -18,10 +18,18 @@ assert.ok(routeSource.includes("v2_active_protection_reconciliation"), "v2 activ
 assert.ok(routeSource.includes("/api/openclaw/cron/openclaw-server-primary-tick"), "server primary tick endpoint missing");
 assert.ok(routeSource.includes("run-openclaw-server-primary-tick"), "server primary tick script binding missing");
 assert.ok(routeSource.includes("openclaw_server_primary_tick"), "server primary tick timeout label missing");
+assert.ok(routeSource.includes("/api/openclaw/cron/v2-signal-shadow-counterfactual-walker"), "shadow counterfactual walker endpoint missing");
+assert.ok(routeSource.includes("walk-v2-signal-shadow-counterfactual-ledger"), "shadow counterfactual walker script binding missing");
+assert.ok(routeSource.includes("v2_signal_shadow_counterfactual_walker"), "shadow counterfactual walker timeout label missing");
+assert.ok(routeSource.includes("/api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer"), "shadow counterfactual analyzer endpoint missing");
+assert.ok(routeSource.includes("analyze-v2-signal-shadow-counterfactuals"), "shadow counterfactual analyzer script binding missing");
+assert.ok(routeSource.includes("v2_signal_shadow_counterfactual_analyzer"), "shadow counterfactual analyzer timeout label missing");
 assert.ok(routeSource.includes("outcome.result && outcome.result.ok === true"), "route must fail HTTP status when canary result is blocked");
 assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-production-entry-route-canary"), "ping route list must expose canary endpoint");
 assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-exit-runtime-canary"), "ping route list must expose exit runtime canary endpoint");
 assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-active-protection-reconciliation"), "ping route list must expose active protection reconciliation endpoint");
 assert.ok(routeSource.includes("POST /api/openclaw/cron/openclaw-server-primary-tick"), "ping route list must expose server primary tick endpoint");
+assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-signal-shadow-counterfactual-walker"), "ping route list must expose walker endpoint");
+assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer"), "ping route list must expose analyzer endpoint");
 
 console.log("OPENCLAW_CRON_ROUTES_TEST_OK");

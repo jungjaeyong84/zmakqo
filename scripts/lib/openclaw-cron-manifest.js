@@ -175,6 +175,29 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     criticality: "HIGH",
     runtime_mode: "SERVER_PRIMARY_PAPER",
   },
+  {
+    job_id: "v2_signal_shadow_counterfactual_walker",
+    scheduler_name: "v2-signal-shadow-counterfactual-walker",
+    scheduler_region: "asia-northeast3",
+    scheduler_schedule: "*/15 * * * *",
+    scheduler_time_zone: "Asia/Seoul",
+    http_path: "/api/openclaw/cron/v2-signal-shadow-counterfactual-walker",
+    owner: "openclaw",
+    criticality: "MEDIUM",
+    runtime_mode: "SHADOW_COUNTERFACTUAL_WALKER",
+  },
+  {
+    job_id: "v2_signal_shadow_counterfactual_analyzer",
+    scheduler_name: "v2-signal-shadow-counterfactual-analyzer",
+    scheduler_region: "asia-northeast3",
+    scheduler_schedule: "0 7 * * *",
+    scheduler_time_zone: "Asia/Seoul",
+    http_path: "/api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer",
+    owner: "openclaw",
+    criticality: "MEDIUM",
+    produces_artifact: "v2_signal_shadow_counterfactual_analysis_latest.json",
+    runtime_mode: "SHADOW_COUNTERFACTUAL_ANALYZER",
+  },
   // weekly_summary intentionally not recreated until the evidence
   // ledger accumulates enough data to make the digest worth reading.
 ]);
