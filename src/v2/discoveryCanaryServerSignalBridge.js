@@ -20,6 +20,7 @@ const { DISCOVERY_CONFIRM_PHRASE } = require("./discoveryCanaryContract");
 const { evaluateMarketDataQualityGate } = require("./marketDataQualityGate");
 const { resolveV2CollectionRef } = require("./storage");
 const { collectBinanceMicrostructureFeatures } = require("./binanceMicrostructureFeatures");
+const { loadLatestLiquidationSnapshot } = require("./binanceLiquidationStreamCollector");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -303,30 +304,41 @@ async function fetchFuturesPublicJson(path, params = {}, env = process.env) {
 
 async function collectMarketDataQuality({
   env = process.env,
+  db = null,
   symbol,
   candleCloseMs,
   nowMs = Date.now(),
   fetchBookTicker = fetchFuturesBookTicker,
   fetchPublicJson = (path, params) => fetchFuturesPublicJson(path, params, env),
+  liquidationSnapshot = undefined,
+  loadLiquidationSnapshot = loadLatestLiquidationSnapshot,
 } = {}) {
   const sym = upper(symbol);
   if (!sym) throw new Error("V2_DISCOVERY_BRIDGE_SYMBOL_REQUIRED");
-  const [book, premium, ticker24h, microstructure] = await Promise.all([
+  const [book, premium, ticker24h, resolvedLiquidationSnapshot] = await Promise.all([
     fetchBookTicker({ symbol: sym }),
     fetchPublicJson("/fapi/v1/premiumIndex", { symbol: sym }),
     fetchPublicJson("/fapi/v1/ticker/24hr", { symbol: sym }),
-    collectBinanceMicrostructureFeatures({
-      symbol: sym,
-      env,
-      fetchJson: fetchPublicJson,
-    }).catch((error) => Object.freeze({
-      ok: false,
-      reason: "BINANCE_MICROSTRUCTURE_FEATURES_FAILED",
-      symbol: sym,
-      features: Object.freeze({ symbol: sym }),
-      errors: Object.freeze([error && error.message ? String(error.message) : String(error)]),
-    })),
+    liquidationSnapshot !== undefined
+      ? Promise.resolve(liquidationSnapshot)
+      : Promise.resolve()
+        .then(() => (typeof loadLiquidationSnapshot === "function"
+          ? loadLiquidationSnapshot({ db, env, symbol: sym })
+          : null))
+        .catch(() => null),
   ]);
+  const microstructure = await collectBinanceMicrostructureFeatures({
+    symbol: sym,
+    env,
+    fetchJson: fetchPublicJson,
+    liquidationSnapshot: resolvedLiquidationSnapshot,
+  }).catch((error) => Object.freeze({
+    ok: false,
+    reason: "BINANCE_MICROSTRUCTURE_FEATURES_FAILED",
+    symbol: sym,
+    features: Object.freeze({ symbol: sym }),
+    errors: Object.freeze([error && error.message ? String(error.message) : String(error)]),
+  }));
   const snapshot = {
     symbol: sym,
     candle_close_ms: toNumberOrNull(candleCloseMs),

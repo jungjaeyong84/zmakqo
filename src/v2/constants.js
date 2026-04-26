@@ -25,6 +25,7 @@ const V2_COLLECTIONS = Object.freeze({
   OPENCLAW_OUTCOME_ADJUDICATIONS: "openclaw_outcome_adjudications_v2",
   OPENCLAW_LEARNER_SHADOW_EVALUATIONS: "openclaw_learner_shadow_evaluations_v2",
   TRAIL_OBSERVATIONS: "trail_observations_v2",
+  LIQUIDATION_SNAPSHOTS: "liquidation_snapshots_v2",
   PRODUCTION_ENTRY_ROUTE_CANARIES: "production_entry_route_canaries_v2",
   EXIT_RUNTIME_CANARIES: "exit_runtime_canaries_v2",
 });

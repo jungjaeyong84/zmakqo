@@ -24,6 +24,7 @@ const DOC_ID_FIELDS = Object.freeze({
   OPENCLAW_OUTCOME_ADJUDICATIONS: "openclaw_outcome_adjudication_id",
   OPENCLAW_LEARNER_SHADOW_EVALUATIONS: "openclaw_learner_shadow_evaluation_id",
   TRAIL_OBSERVATIONS: "trail_observation_id",
+  LIQUIDATION_SNAPSHOTS: "liquidation_snapshot_id",
   PRODUCTION_ENTRY_ROUTE_CANARIES: "production_entry_route_canary_id",
   EXIT_RUNTIME_CANARIES: "exit_runtime_canary_id",
 });
