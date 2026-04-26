@@ -129,6 +129,7 @@ async function sendSlack({ url, title, body, severity }) {
 
 function normalizeTelegramSeverity(severity) {
   const s = String(severity || "").trim().toUpperCase();
+  if (s === "CRITICAL" || s === "CRIT") return "긴급";
   if (s === "ERROR") return "오류";
   if (s === "WARN" || s === "WARNING") return "주의";
   if (s === "PASS" || s === "OK" || s === "SUCCESS") return "정상";

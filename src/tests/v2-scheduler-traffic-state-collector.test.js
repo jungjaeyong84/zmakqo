@@ -51,6 +51,13 @@ function buildCloudSchedulerJobs({ legacyScheduler = false, missingServerPrimary
       httpTarget: { uri: "https://donbeolja.run.app/api/openclaw/cron/v2-exit-runtime-canary" },
     },
     {
+      name: "projects/p/locations/asia-northeast3/jobs/v2-active-protection-reconciliation",
+      state: "ENABLED",
+      schedule: "0 * * * *",
+      timeZone: "Asia/Seoul",
+      httpTarget: { uri: "https://donbeolja.run.app/api/openclaw/cron/v2-active-protection-reconciliation" },
+    },
+    {
       name: "projects/p/locations/asia-northeast3/jobs/openclaw-server-primary-tick",
       state: "ENABLED",
       schedule: "1,16,31,46 * * * *",
@@ -98,6 +105,7 @@ function fakeExecFactory({ legacyScheduler = false, badTraffic = false, expectPa
   assert.strictEqual(state.cloud_run_services.length, 2);
   assert.ok(state.openclaw_cron_jobs.some((job) => job.job_id === "v2_repair_queue_service" && job.enabled === true));
   assert.ok(state.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_exit_runtime_canary" && job.enabled === true));
+  assert.ok(state.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_active_protection_reconciliation" && job.enabled === true));
   assert.ok(state.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "openclaw_server_primary_tick" && job.enabled === true));
   assert.deepStrictEqual(state.legacy_scheduler_jobs, []);
 })();

@@ -17,6 +17,7 @@ function job(name, state = "ENABLED", code = null) {
     jobs: [
       job("v2-production-entry-route-canary"),
       job("v2-exit-runtime-canary", "ENABLED", 0),
+      job("v2-active-protection-reconciliation"),
       job("donbeolja-tick-5m", "PAUSED", -1),
       job("donbeolja-cost-guard", "ENABLED"),
     ],
@@ -31,6 +32,7 @@ function job(name, state = "ENABLED", code = null) {
     jobs: [
       job("v2-production-entry-route-canary"),
       job("v2-exit-runtime-canary"),
+      job("v2-active-protection-reconciliation"),
       job("donbeolja-tick-5m", "ENABLED"),
     ],
     env: {},
@@ -44,6 +46,7 @@ function job(name, state = "ENABLED", code = null) {
     jobs: [
       job("v2-production-entry-route-canary"),
       job("v2-exit-runtime-canary"),
+      job("v2-active-protection-reconciliation"),
       job("donbeolja-tick-5m", "PAUSED", -1),
       job("donbeolja-ml-ops-pipeline", "ENABLED", 14),
     ],
@@ -70,6 +73,7 @@ function job(name, state = "ENABLED", code = null) {
     DONBEOLJA_V2_SCHEDULER_JOBS_JSON: JSON.stringify([
       job("v2-production-entry-route-canary"),
       job("v2-exit-runtime-canary"),
+      job("v2-active-protection-reconciliation"),
       job("donbeolja-tick-5m", "PAUSED", -1),
     ]),
   });

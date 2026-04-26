@@ -69,6 +69,7 @@ const {
     "openclaw_agent_retrospect",
     "v2_production_entry_route_canary",
     "v2_exit_runtime_canary",
+    "v2_active_protection_reconciliation",
     "openclaw_server_primary_tick",
   ]) {
     assert.ok(cloudJobIds.has(required),
@@ -87,6 +88,13 @@ const {
   assert.strictEqual(v2ExitRuntimeCanary.criticality, "HIGH");
   assert.strictEqual(v2ExitRuntimeCanary.canary_mode, "LIVE_EXIT_RUNTIME_OBSERVATION");
   assert.strictEqual(v2ExitRuntimeCanary.scheduler_schedule, "35 * * * *");
+  const v2ActiveProtectionReconciliation = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "v2_active_protection_reconciliation");
+  assert.ok(v2ActiveProtectionReconciliation, "v2 active protection reconciliation missing");
+  assert.strictEqual(v2ActiveProtectionReconciliation.http_path, "/api/openclaw/cron/v2-active-protection-reconciliation");
+  assert.strictEqual(v2ActiveProtectionReconciliation.criticality, "HIGH");
+  assert.strictEqual(v2ActiveProtectionReconciliation.canary_mode, "LIVE_ACTIVE_PROTECTION_RECONCILIATION");
+  assert.strictEqual(v2ActiveProtectionReconciliation.scheduler_schedule, "0 * * * *");
+  assert.strictEqual(v2ActiveProtectionReconciliation.produces_artifact, "v2_active_protection_reconciliation_latest.json");
   const serverPrimaryTick = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "openclaw_server_primary_tick");
   assert.ok(serverPrimaryTick, "server primary tick missing");
   assert.strictEqual(serverPrimaryTick.http_path, "/api/openclaw/cron/openclaw-server-primary-tick");
