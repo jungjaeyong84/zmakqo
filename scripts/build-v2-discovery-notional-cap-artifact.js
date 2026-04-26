@@ -5,9 +5,18 @@ const path = require("path");
 const {
   buildDiscoveryNotionalCapConsistencyArtifact,
 } = require("../src/v2/discoveryCanaryRiskCapConsistency");
+const {
+  resolveDiscoverySymbolNotionalQuoteMap,
+} = require("../src/v2/discoveryCanaryNotionalPolicy");
 
 const ROOT = path.resolve(__dirname, "..");
 const DEFAULT_OUTPUT_FILE = path.join(ROOT, "ops", "daily", "v2_discovery_notional_cap_consistency_latest.json");
+const DEFAULT_HISTORY_FILE = path.join(ROOT, "ops", "daily", "v2_discovery_notional_cap_consistency_history.jsonl");
+
+function numberWithDefault(value, fallback) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
 
 function writeJson(file, payload) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -16,11 +25,21 @@ function writeJson(file, payload) {
 
 function main(env = process.env) {
   const outputFile = env.V2_DISCOVERY_NOTIONAL_CAP_ARTIFACT_FILE || DEFAULT_OUTPUT_FILE;
-  const artifact = buildDiscoveryNotionalCapConsistencyArtifact();
+  const historyFile = env.V2_DISCOVERY_NOTIONAL_CAP_ARTIFACT_HISTORY_FILE || DEFAULT_HISTORY_FILE;
+  const artifact = buildDiscoveryNotionalCapConsistencyArtifact({
+    map: resolveDiscoverySymbolNotionalQuoteMap(env),
+    maxPositionCount: numberWithDefault(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, 5),
+    riskTotalCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, 300),
+    riskSymbolCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, 155),
+    riskCorrelatedGroupCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, 300),
+  });
   writeJson(outputFile, artifact);
+  fs.mkdirSync(path.dirname(historyFile), { recursive: true });
+  fs.appendFileSync(historyFile, `${JSON.stringify(artifact)}\n`, "utf8");
   return Object.freeze({
     ...artifact,
     output_file: outputFile,
+    history_file: historyFile,
   });
 }
 
@@ -40,4 +59,6 @@ if (require.main === module) {
 module.exports = {
   main,
   DEFAULT_OUTPUT_FILE,
+  DEFAULT_HISTORY_FILE,
+  __test: { numberWithDefault },
 };
