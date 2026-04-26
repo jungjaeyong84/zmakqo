@@ -11,9 +11,14 @@ function parseHours(argv) {
   return null;
 }
 
+function hasFlag(argv, flag) {
+  return argv.includes(flag);
+}
+
 (async () => {
   const hours = parseHours(process.argv) || 72;
   const lookbackMs = hours * 60 * 60 * 1000;
+  const reprocessExisting = hasFlag(process.argv, "--reprocess-existing");
   const ex = await getExchangeSettingsForProvider("BINANCEFUT", 5000);
   const markets = Array.isArray(ex && ex.markets) ? ex.markets : [];
 
@@ -24,6 +29,7 @@ function parseHours(argv) {
     liveEnabled: true,
     lookbackMs,
     force: true,
+    reprocessExisting,
   });
   console.log(JSON.stringify(res, null, 2));
 })().catch((e) => {

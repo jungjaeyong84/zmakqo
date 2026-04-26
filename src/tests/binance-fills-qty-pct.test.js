@@ -33,6 +33,10 @@ async function run() {
   assert.strictEqual(typeof resolveFillSyncAlertCloseRatio, "function", "resolveFillSyncAlertCloseRatio export missing");
   const applyExternalExitQtyAuthorityFn = __test && __test.applyExternalExitQtyAuthority;
   assert.strictEqual(typeof applyExternalExitQtyAuthorityFn, "function", "applyExternalExitQtyAuthority export missing");
+  const shouldRunExternalExitSideEffects = __test && __test.shouldRunExternalExitSideEffects;
+  assert.strictEqual(typeof shouldRunExternalExitSideEffects, "function", "shouldRunExternalExitSideEffects export missing");
+  const resolvePostCanonicalPersistedExitEvent = __test && __test.resolvePostCanonicalPersistedExitEvent;
+  assert.strictEqual(typeof resolvePostCanonicalPersistedExitEvent, "function", "resolvePostCanonicalPersistedExitEvent export missing");
 
   const tp1Authority = applyExternalExitQtyAuthorityFn({
     authorityMap: new Map(),
@@ -721,6 +725,34 @@ async function run() {
     forcedExitAllMustBeatTrailFallback,
     "FORCE_EXIT_ALL",
     "matched forced exit intent must override trail fallback classification"
+  );
+
+  assert.strictEqual(
+    resolvePostCanonicalPersistedExitEvent({
+      canonicalStageDecision: { event: null, entryLineageMissing: true },
+      rawEvidenceEvent: "EXIT_TP_P1_1.65P",
+      event: null,
+    }),
+    "EXIT_TP_P1_1.65P",
+    "missing canonical lineage must not erase raw native TP1 evidence"
+  );
+  assert.strictEqual(
+    shouldRunExternalExitSideEffects({
+      upserted: { ok: true, inserted: false, previous_event: null, event: "EXIT_TP_P1_1.65P", event_changed: true },
+      looksLikeExit: true,
+      event: "EXIT_TP_P1_1.65P",
+    }),
+    true,
+    "reclassifying an existing null/OTHER fill into TP1 must replay TP1 side effects"
+  );
+  assert.strictEqual(
+    shouldRunExternalExitSideEffects({
+      upserted: { ok: true, inserted: false, previous_event: "EXIT_TP_P1_1.65P", event: "EXIT_TP_P1_1.65P", event_changed: false },
+      looksLikeExit: true,
+      event: "EXIT_TP_P1_1.65P",
+    }),
+    false,
+    "unchanged existing TP1 fills must not replay side effects repeatedly"
   );
 
   console.log("BINANCE_FILLS_QTY_PCT_TEST_OK");

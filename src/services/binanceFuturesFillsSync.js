@@ -2035,6 +2035,33 @@ function resolvePersistedExternalExitEvent({
   });
 }
 
+function shouldRunExternalExitSideEffects({
+  upserted = null,
+  looksLikeExit = false,
+  event = null,
+} = {}) {
+  if (looksLikeExit !== true) return false;
+  if (!upserted || upserted.ok !== true) return false;
+  const ev = String(event || "").trim().toUpperCase();
+  if (!ev.startsWith("EXIT_") && !isAuthoritativeForcedExitIntentEvent(ev)) return false;
+  if (upserted.inserted === true) return true;
+  if (upserted.event_changed === true) return true;
+  const previousEvent = String(upserted.previous_event || "").trim().toUpperCase();
+  return !previousEvent;
+}
+
+function resolvePostCanonicalPersistedExitEvent({
+  canonicalStageDecision = null,
+  rawEvidenceEvent = null,
+  event = null,
+} = {}) {
+  const canonicalEvent = String(canonicalStageDecision && canonicalStageDecision.event || "").trim().toUpperCase();
+  if (canonicalEvent) return canonicalEvent;
+  const rawEvent = String(rawEvidenceEvent || "").trim().toUpperCase();
+  if (rawEvent) return rawEvent;
+  return String(event || "").trim().toUpperCase() || null;
+}
+
 function resolveExternalSyncHintStage({
   event,
   orderMeta,
@@ -3760,6 +3787,7 @@ async function syncMarketTrades({
   matchWindowMs,
   intents,
   maxPages = 5,
+  reprocessExisting = false,
 } = {}) {
   const db = getFirestore();
   const now = Date.now();
@@ -3773,14 +3801,14 @@ async function syncMarketTrades({
   const lastMsRaw = Number(cursor && cursor.last_trade_time_ms);
   const lastId = Number(cursor && cursor.last_trade_id);
   const lookbackStart = now - (lookbackMs || DEFAULT_LOOKBACK_MS);
-  const hasCursorMs = Number.isFinite(lastMsRaw) && lastMsRaw > 0;
-  const startMs = hasCursorMs ? Math.max(lastMsRaw, lookbackStart) : lookbackStart;
+  const shouldUseCursor = reprocessExisting !== true && Number.isFinite(lastMsRaw) && lastMsRaw > 0;
+  const startMs = shouldUseCursor ? Math.max(lastMsRaw, lookbackStart) : lookbackStart;
   const endMs = now;
 
   let fetched = 0;
   let inserted = 0;
-  let lastTradeMs = hasCursorMs ? lastMsRaw : null;
-  let lastTradeId = Number.isFinite(lastId) ? lastId : null;
+  let lastTradeMs = shouldUseCursor ? lastMsRaw : null;
+  let lastTradeId = shouldUseCursor && Number.isFinite(lastId) ? lastId : null;
   let pageStartMs = startMs;
   const positionEntryCache = new Map();
   const orderMetaCache = new Map();
@@ -3907,7 +3935,15 @@ async function syncMarketTrades({
         recentTrail,
         rules: exitRules,
       });
-      event = canonicalStageDecision.event;
+      // The canonical reducer may refuse to mutate when lineage is incomplete.
+      // That must not erase raw exchange evidence like native TP1 fills from the
+      // persisted fill row; otherwise existing TP1 fills remain OTHER/null and
+      // the position never advances to TP1/trailing.
+      event = resolvePostCanonicalPersistedExitEvent({
+        canonicalStageDecision,
+        rawEvidenceEvent: event,
+        event,
+      });
       const qtyFraction = intent ? intent.qty_fraction : null;
       const intentEntryCtx = extractEntryContextFromIntent(intent);
       const signalPrice = intent
@@ -4041,7 +4077,11 @@ async function syncMarketTrades({
         recentTrail,
         rules: exitRules,
       });
-      event = canonicalStageDecision.event;
+      event = resolvePostCanonicalPersistedExitEvent({
+        canonicalStageDecision,
+        rawEvidenceEvent,
+        event,
+      });
       const positionSideBefore = inferPositionSideBefore({ trade: t, positionCtx });
       const authorityDecision = looksLikeExit
         ? applyExternalExitQtyAuthority({
@@ -4258,7 +4298,7 @@ async function syncMarketTrades({
         });
       }
 
-      if (upserted && upserted.inserted && looksLikeExit) {
+      if (shouldRunExternalExitSideEffects({ upserted, looksLikeExit, event })) {
         let shadowTp1Write = null;
         let shadowStopWrite = null;
         let shadowExternalCloseWrite = null;
@@ -4422,6 +4462,30 @@ async function syncMarketTrades({
               event,
               trade: t,
               runId: `RUN__FILL_SYNC_STAGE_HINT__${sym}__${tradeMs}`,
+            });
+            if (stageHintResult && stageHintResult.position) {
+              positionEntryCache.set(`BINANCEFUT__${sym}`, {
+                ...(positionCtx && typeof positionCtx === "object" ? positionCtx : {}),
+                entryEventId: stageHintResult.position.meta && stageHintResult.position.meta.entry_event_id
+                  ? String(stageHintResult.position.meta.entry_event_id)
+                  : ((positionCtx && positionCtx.entryEventId) || null),
+                positionSide: resolvePositionSideFromPosition(stageHintResult.position) || ((positionCtx && positionCtx.positionSide) || null),
+                qtyBase: Number.isFinite(Number(stageHintResult.position.qty_base))
+                  ? Number(stageHintResult.position.qty_base)
+                  : ((positionCtx && Number.isFinite(Number(positionCtx.qtyBase))) ? Number(positionCtx.qtyBase) : null),
+                tpP0Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p0_done === true,
+                tpP1Done: stageHintResult.position.meta && stageHintResult.position.meta.tp_p1_done === true,
+                trailActive: stageHintResult.position.meta && stageHintResult.position.meta.trail_active === true,
+                position: stageHintResult.position,
+              });
+            }
+          } else if (isTpP0Event(event) || isTpP1Event(event) || String(event || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) {
+            const stageHintResult = await promotePositionStageHintsFromExternalExit({
+              exchange: "BINANCEFUT",
+              symbol: sym,
+              event,
+              trade: t,
+              runId: `RUN__FILL_SYNC_STAGE_HINT_REPLAY__${sym}__${tradeMs}`,
             });
             if (stageHintResult && stageHintResult.position) {
               positionEntryCache.set(`BINANCEFUT__${sym}`, {
@@ -4758,6 +4822,7 @@ async function syncBinanceFuturesFills({
   lookbackMs,
   minIntervalMs,
   force = false,
+  reprocessExisting = false,
 } = {}) {
   const enabled = resolveEnvBool(process.env.BINANCEFUT_FILLS_SYNC_ENABLED, true);
   if (!enabled) return { ok: false, skipped: true, reason: "SYNC_DISABLED" };
@@ -4808,6 +4873,7 @@ async function syncBinanceFuturesFills({
           matchWindowMs,
           intents,
           maxPages,
+          reprocessExisting,
         }),
       });
       results.push(r);
@@ -4910,6 +4976,8 @@ module.exports = {
     applyAuthoritativeIntentEventOverride,
     inferExitEventFromDecisionReason,
     resolvePersistedExternalExitEvent,
+    shouldRunExternalExitSideEffects,
+    resolvePostCanonicalPersistedExitEvent,
     maybeWriteV2ShadowTp1Transition,
     resolveLegacyCanonicalTp1WriteGate,
     maybeWriteV2ShadowStopExit,

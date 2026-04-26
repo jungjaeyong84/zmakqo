@@ -519,6 +519,7 @@ async function upsertExternalFill({
     const now = nowIso();
     const existing = snap.exists ? (snap.data() || null) : null;
     const created_at = existing && existing.created_at ? existing.created_at : (createdAt || now);
+    const previousEvent = String(existing && existing.event || "").trim().toUpperCase() || null;
 
     const qtyPctVal = (qtyPct === null || qtyPct === undefined || qtyPct === "") ? null : Number(qtyPct);
     const qtyFractionVal = (qtyFraction === null || qtyFraction === undefined || qtyFraction === "") ? null : Number(qtyFraction);
@@ -627,7 +628,15 @@ async function upsertExternalFill({
     if (unifiedDoc) tx.set(db.collection("unified_event_timeline").doc(unifiedDoc.unified_event_id), unifiedDoc, { merge: false });
     tx.set(db.collection("fill_events").doc(fillEventDoc.fill_event_id), fillEventDoc, { merge: false });
     tx.set(db.collection("unified_event_timeline").doc(fillEventUnifiedDoc.unified_event_id), fillEventUnifiedDoc, { merge: false });
-    return { ok: true, fill_id: fillId, inserted: createdNew };
+    const nextEvent = String(payload.event || "").trim().toUpperCase() || null;
+    return {
+      ok: true,
+      fill_id: fillId,
+      inserted: createdNew,
+      previous_event: previousEvent,
+      event: nextEvent,
+      event_changed: previousEvent !== nextEvent,
+    };
   });
 }
 
