@@ -6,6 +6,7 @@ const { getSystemSettingsForProvider } = require("../storage/settings");
 const { sendAlert } = require("../utils/alerts");
 const { classifySignalReasonStage, explainSignalReason } = require("../utils/signalReasonView");
 const { canonicalExternalEntryEvent } = require("../utils/liveEntryTaxonomy");
+const { riskGovernorTelegramLine } = require("../v2/riskGovernorSurface");
 
 const channelCache = new Map();
 const ROOT = path.resolve(__dirname, "../..");
@@ -48,6 +49,18 @@ function isLiveExecutionMode(mode) {
 function shouldAlertForMode(mode) {
   if (toBool(process.env.SIGNAL_LIFECYCLE_ALERT_INCLUDE_PAPER, false)) return true;
   return isLiveExecutionMode(mode);
+}
+
+function appendRiskGovernorLine(lines, payload = {}) {
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : {};
+  const line = riskGovernorTelegramLine(
+    payload.riskGovernor
+    || payload.risk_governor
+    || meta.v2_discovery_risk_governor_surface
+    || meta.risk_governor_surface
+    || null
+  );
+  if (line) lines.push(line);
 }
 
 function isTelegramChannel(raw) {
@@ -281,6 +294,7 @@ function buildDroppedMessage(payload = {}) {
     `실행모드: ${String(payload.executionMode || "-")}`,
   ];
   appendDropQtyLines(lines, payload, { isTimingDefer });
+  appendRiskGovernorLine(lines, payload);
   if (payload.signalId) lines.push(`signal_id: ${payload.signalId}`);
   return { title, body: lines.join("\n"), severity: isPostFillCritical ? "CRITICAL" : (isPostFillProtected ? "ERROR" : (isTimingDefer ? "INFO" : "WARN")) };
 }
@@ -308,6 +322,7 @@ function buildProgressMessage(payload = {}) {
     `진행 상태: ${String(payload.progressReason || "INTENT_CREATED")}`,
     `다음 단계: ${nextStep}`,
   ];
+  appendRiskGovernorLine(lines, payload);
   if (payload.signalId) lines.push(`signal_id: ${payload.signalId}`);
   if (payload.scheduledExecBarCloseUtc) lines.push(`예정 집행시각: ${String(payload.scheduledExecBarCloseUtc)}`);
   return { title, body: lines.join("\n"), severity: "INFO" };
@@ -517,6 +532,7 @@ module.exports = {
     buildProgressMessage,
     buildDroppedMessage,
     buildCompareMessage,
+    appendRiskGovernorLine,
     shouldSendCompareAlert,
   },
 };

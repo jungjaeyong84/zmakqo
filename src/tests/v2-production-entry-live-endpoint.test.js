@@ -254,6 +254,8 @@ async function missingRiskGovernorBlocksBeforeRouteByDefault() {
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.reason, "V2_RISK_GOVERNOR_BLOCKED");
   assert.ok(result.risk_governor.blockers.includes("RISK_GOVERNOR:EQUITY_REQUIRED"));
+  assert.strictEqual(result.risk_governor.surface.primary_code, "ACCOUNT_REQUIRED");
+  assert.strictEqual(result.risk_governor_surface.primary_code, "ACCOUNT_REQUIRED");
   assert.deepStrictEqual(calls, []);
 }
 

@@ -7,6 +7,7 @@ const { confirmSelfEvolutionRuntimeSignal } = require("../utils/selfEvolutionRun
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { extractLiveExecutionPolicyTrace, toLiveExecutionPolicyTopLevel } = require("../utils/liveExecutionPolicyTrace");
+const { normalizeRiskGovernorSurface } = require("../v2/riskGovernorSurface");
 
 function nowIso() {
   return new Date().toISOString();
@@ -66,10 +67,28 @@ function coalesceDefined(...values) {
   return null;
 }
 
+function extractRiskGovernorSurface(features = null) {
+  const src = features && typeof features === "object" ? features : {};
+  if (src.v2_discovery_risk_governor_surface && typeof src.v2_discovery_risk_governor_surface === "object") {
+    return normalizeRiskGovernorSurface(src.v2_discovery_risk_governor_surface);
+  }
+  if (src.v2_discovery_risk_governor_reason || src.v2_discovery_risk_governor_blockers) {
+    return normalizeRiskGovernorSurface({
+      ok: false,
+      reason: src.v2_discovery_risk_governor_reason,
+      blockers: Array.isArray(src.v2_discovery_risk_governor_blockers)
+        ? src.v2_discovery_risk_governor_blockers
+        : [src.v2_discovery_risk_governor_blockers].filter(Boolean),
+    });
+  }
+  return null;
+}
+
 function buildDropAlertPayload(drop = null) {
   const payload = drop && typeof drop === "object" ? drop : {};
   const features = resolveFeatureBag(payload);
   const authorityTrace = extractOpenClawAuthorityTrace(features);
+  const riskGovernor = extractRiskGovernorSurface(features);
   const bucket = resolveDropStageBucket(payload);
   return {
     exchange: payload.exchange,
@@ -92,6 +111,7 @@ function buildDropAlertPayload(drop = null) {
     authoritative: true,
     dropGroup: payload.event_group || bucket.group,
     dropSubtype: payload.event_subtype || bucket.subtype,
+    riskGovernor: riskGovernor && riskGovernor.present === true ? riskGovernor : null,
   };
 }
 
@@ -780,6 +800,7 @@ module.exports = {
     deriveCanonicalEventId,
     deriveEffectiveDropReason,
     extractOpenClawAuthorityTrace,
+    extractRiskGovernorSurface,
     buildDropAlertPayload,
     resolveSignalIdFromDrop,
     isSignalDropAlreadyHandled,

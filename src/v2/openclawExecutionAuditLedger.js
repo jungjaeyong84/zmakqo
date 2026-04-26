@@ -23,6 +23,7 @@ async function persistOpenClawExecutionAudit({
   source = "PROMOTION_RUNTIME_COLLECTOR",
   artifactRunId = null,
   recordedAt = null,
+  riskGovernorSurface = null,
 } = {}) {
   const doc = buildOpenClawExecutionAuditDoc({
     audit,
@@ -30,6 +31,7 @@ async function persistOpenClawExecutionAudit({
     source,
     artifactRunId,
     recordedAt,
+    riskGovernorSurface,
   });
 
   if (!isOpenClawExecutionAuditLedgerWriteEnabled(env)) {

@@ -8,6 +8,7 @@ const {
   evaluateDiscoveryCanaryContract,
 } = require("./discoveryCanaryContract");
 const { evaluateV2RiskGovernor } = require("./riskGovernor");
+const { normalizeRiskGovernorSurface } = require("./riskGovernorSurface");
 
 const LIVE_CONFIRM_PHRASE = "EXECUTE_V2_LIVE_ENTRY";
 
@@ -236,6 +237,7 @@ async function runV2ProductionEntryLiveEndpoint({
   }
 
   let riskGovernorSummary = null;
+  let riskGovernorSurface = null;
   const riskGovernorInput = extractRiskGovernorInput({ body, bundle: resolvedBundle });
   if (riskGovernorInput || parseBool(env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, true)) {
     riskGovernorSummary = evaluateV2RiskGovernor({
@@ -250,12 +252,14 @@ async function runV2ProductionEntryLiveEndpoint({
       },
       market: riskGovernorInput && riskGovernorInput.market,
     });
+    riskGovernorSurface = normalizeRiskGovernorSurface(riskGovernorSummary);
     if (!riskGovernorSummary.ok) {
       return buildBlock("V2_RISK_GOVERNOR_BLOCKED", {
         ...base,
         transport_resolution: summarizeTransportResolution(transportResolution),
         discovery_canary_contract: discoveryContract,
         risk_governor: riskGovernorSummary,
+        risk_governor_surface: riskGovernorSurface,
       });
     }
   }
@@ -268,6 +272,7 @@ async function runV2ProductionEntryLiveEndpoint({
     worldState: resolvedWorldState,
     entryTransport: resolvedEntryTransport,
     protectionTransports: resolvedProtectionTransports,
+    riskGovernorSurface,
     now: () => startedAt,
   });
 
@@ -291,6 +296,7 @@ async function runV2ProductionEntryLiveEndpoint({
       transport_resolution: summarizeTransportResolution(transportResolution),
       discovery_canary_contract: discoveryContract,
       risk_governor: riskGovernorSummary,
+      risk_governor_surface: riskGovernorSurface,
       },
     );
   }
@@ -304,6 +310,7 @@ async function runV2ProductionEntryLiveEndpoint({
     transport_resolution: summarizeTransportResolution(transportResolution),
     discovery_canary_contract: discoveryContract,
     risk_governor: riskGovernorSummary,
+    risk_governor_surface: riskGovernorSurface,
   });
 }
 

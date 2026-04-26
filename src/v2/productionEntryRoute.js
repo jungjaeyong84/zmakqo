@@ -378,6 +378,7 @@ async function runV2ProductionEntryRoute({
   findExistingBundleExecution = findExistingDecisionBundleExecution,
   claimExecution = claimOpenClawExecution,
   finalizeExecutionClaim = finalizeOpenClawExecutionClaim,
+  riskGovernorSurface = null,
   findRecentSameDirectionExecutionsFn = findRecentSameDirectionExecutions,
   evaluateSameDirectionCooldown = evaluateV2SameDirectionCooldown,
   now = () => new Date().toISOString(),
@@ -763,6 +764,7 @@ async function runV2ProductionEntryRoute({
       positionCycleId: trimOrNull(executedEntry && executedEntry.positionCycle && executedEntry.positionCycle.position_cycle_id),
       source: "PRODUCTION_ENTRY_ROUTE",
       recordedAt: trimOrNull(now()) || new Date().toISOString(),
+      riskGovernorSurface,
     });
   } catch (error) {
     return buildRouteBlock("V2_PRODUCTION_ENTRY_AUDIT_LEDGER_FAILED", {

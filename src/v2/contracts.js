@@ -620,6 +620,7 @@ function buildOpenClawExecutionAuditDoc({
   source = "PROMOTION_RUNTIME_COLLECTOR",
   artifactRunId = null,
   recordedAt = null,
+  riskGovernorSurface = null,
 } = {}) {
   const row = audit && typeof audit === "object" ? audit : null;
   if (!row) throw new Error("openclaw_execution_audit_REQUIRED");
@@ -649,6 +650,7 @@ function buildOpenClawExecutionAuditDoc({
     failed_check_ids: failedCheckIds,
     source: validateRequiredString("source", upper(source)),
     artifact_run_id: trimOrNull(artifactRunId),
+    risk_governor_surface: cloneJson(riskGovernorSurface) || null,
     audit_snapshot: cloneJson(row) || {},
     recorded_at: trimOrNull(recordedAt) || new Date().toISOString(),
   };

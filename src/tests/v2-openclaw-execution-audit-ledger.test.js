@@ -58,7 +58,16 @@ function buildAudit() {
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "deterministic router may create canary entry intent",
   });
-  return evaluateOpenClawExecutionSeparation({ bundle });
+  return evaluateOpenClawExecutionSeparation({
+    bundle,
+    routedDecision: {
+      ok: true,
+      reason: "ENTRY_INTENT_APPROVED",
+      entryIntent: {
+        entry_intent_id: "EINTV2__ETH__AUDIT",
+      },
+    },
+  });
 }
 
 (function writeEnableFlagDefaultsOff() {
@@ -75,6 +84,12 @@ function buildAudit() {
     positionCycleId: "PCY__ETH__AUDIT",
     artifactRunId: "RUN__AUDIT",
     recordedAt: "2026-04-21T04:00:00.000Z",
+    riskGovernorSurface: {
+      present: true,
+      ok: false,
+      primary_code: "GROUP_NOTIONAL_EXCEEDED",
+      blockers: ["RISK_GOVERNOR:CORRELATED_GROUP_NOTIONAL_EXCEEDED"],
+    },
   });
   assert.strictEqual(doc.openclaw_execution_audit_id, audit.audit_id);
   assert.strictEqual(doc.audit_id, audit.audit_id);
@@ -82,6 +97,7 @@ function buildAudit() {
   assert.strictEqual(doc.ok, true);
   assert.strictEqual(doc.fail_n, 0);
   assert.strictEqual(doc.audit_snapshot.audit_id, audit.audit_id);
+  assert.strictEqual(doc.risk_governor_surface.primary_code, "GROUP_NOTIONAL_EXCEEDED");
 })();
 
 (async function persistAuditSkipsWhenLedgerWriteDisabled() {

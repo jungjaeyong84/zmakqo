@@ -1,5 +1,7 @@
 "use strict";
 
+const { normalizeRiskGovernorSurface } = require("./riskGovernorSurface");
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -135,7 +137,7 @@ function evaluateV2RiskGovernor({
   if (Number.isFinite(leverageAfter) && leverageAfter > policy.max_account_leverage) blockers.push("RISK_GOVERNOR:ACCOUNT_LEVERAGE_EXCEEDED");
   if (volatilityBps >= policy.volatility_halt_bps) blockers.push("RISK_GOVERNOR:VOLATILITY_HALT");
 
-  return Object.freeze({
+  const result = {
     ok: blockers.length === 0,
     reason: blockers.length === 0 ? "V2_RISK_GOVERNOR_PASS" : "V2_RISK_GOVERNOR_BLOCKED",
     blockers: Object.freeze(Array.from(new Set(blockers))),
@@ -156,7 +158,9 @@ function evaluateV2RiskGovernor({
       trade_count_24h: trades24h,
       volatility_bps: volatilityBps,
     }),
-  });
+  };
+  result.surface = normalizeRiskGovernorSurface(result);
+  return Object.freeze(result);
 }
 
 module.exports = {

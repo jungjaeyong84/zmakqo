@@ -87,6 +87,7 @@ const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../
 const { sendSignalReceivedAlert, sendSignalProgressAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
 const { runV2DiscoveryCanaryServerSignalHandoff } = require("../v2/discoveryCanaryServerSignalBridge");
+const { normalizeRiskGovernorSurface } = require("../v2/riskGovernorSurface");
 const {
   resolveDiscoverySymbolNotionalQuote,
   resolveDiscoverySymbolNotionalQuoteMap,
@@ -6067,6 +6068,9 @@ function resolveV2DiscoveryHandoffDetail(handoff = null) {
   const discoveryContractBlockers = collectReasonBlockers(discoveryContract && discoveryContract.blockers);
   const marketDataQualityBlockers = collectReasonBlockers(marketDataQuality && marketDataQuality.blockers);
   const riskGovernorBlockers = collectReasonBlockers(riskGovernor && riskGovernor.blockers);
+  const riskGovernorSurface = riskGovernor && riskGovernor.surface
+    ? normalizeRiskGovernorSurface(riskGovernor.surface)
+    : normalizeRiskGovernorSurface(riskGovernor);
   return {
     bridge_reason: handoff && handoff.reason ? String(handoff.reason).trim().toUpperCase() : null,
     bridge_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
@@ -6089,6 +6093,10 @@ function resolveV2DiscoveryHandoffDetail(handoff = null) {
       ? String(riskGovernor.reason).trim().toUpperCase()
       : null,
     risk_governor_blockers: riskGovernorBlockers,
+    risk_governor_surface: riskGovernorSurface.present === true ? riskGovernorSurface : null,
+    risk_governor_primary_code: riskGovernorSurface.primary_code,
+    risk_governor_primary_blocker: riskGovernorSurface.primary_blocker,
+    risk_governor_blocker_codes: riskGovernorSurface.blocker_codes,
   };
 }
 
@@ -6109,6 +6117,10 @@ function buildV2DiscoveryHandoffFeaturePatch(handoff = null) {
     v2_discovery_market_data_quality_blockers: detail.market_data_quality_blockers,
     v2_discovery_risk_governor_reason: detail.risk_governor_reason,
     v2_discovery_risk_governor_blockers: detail.risk_governor_blockers,
+    v2_discovery_risk_governor_surface: detail.risk_governor_surface,
+    v2_discovery_risk_governor_primary_code: detail.risk_governor_primary_code,
+    v2_discovery_risk_governor_primary_blocker: detail.risk_governor_primary_blocker,
+    v2_discovery_risk_governor_blocker_codes: detail.risk_governor_blocker_codes,
     v2_discovery_post_fill_exchange_write: sideEffect ? sideEffect.exchange_write_performed === true : false,
     v2_discovery_post_fill_unprotected_possible: sideEffect ? sideEffect.unprotected_position_possible === true : false,
     v2_discovery_post_fill_entry_order_id: sideEffect ? (sideEffect.entry_order_id || null) : null,

@@ -56,6 +56,11 @@ const { __test: accountSummaryTest } = require("../services/binanceFuturesAccoun
   assert.ok(result.blockers.includes("RISK_GOVERNOR:TOTAL_NOTIONAL_EXCEEDED"));
   assert.ok(result.blockers.includes("RISK_GOVERNOR:ACCOUNT_LEVERAGE_EXCEEDED"));
   assert.ok(result.blockers.includes("RISK_GOVERNOR:VOLATILITY_HALT"));
+  assert.strictEqual(result.surface.present, true);
+  assert.strictEqual(result.surface.primary_code, "DAILY_LOSS_HALT");
+  assert.strictEqual(result.surface.telegram_line, "riskGovernor: DAILY_LOSS_HALT");
+  assert.strictEqual(result.surface.limits.max_total_notional_quote, 100);
+  assert.strictEqual(result.surface.metrics.total_after_notional_quote, 120);
 }
 
 {
