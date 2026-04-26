@@ -411,6 +411,125 @@ async function linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied() {
   assert.ok(result.request.entrySizingDecision.notional_quote > 40);
 }
 
+async function shadowCounterfactualWireUpDerivesInputsFromBundle() {
+  const env = buildEnv();
+  const built = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env,
+    db: null,
+    intentRow: buildIntent(),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
+    referencePrice: 600,
+    nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
+    marketDataQuality: marketDataQuality(),
+    exchangeInfo: { minNotional: 5, minQty: 0.01, stepSize: 0.01 },
+    discoveryState: { active_position_n: 0, trade_count_24h: 0, daily_realized_pnl_quote: 0 },
+  });
+  assert.strictEqual(built.ok, true);
+  const inputs = __test.deriveCounterfactualInputs({
+    bundle: built.bundle,
+    intentRow: buildIntent(),
+    request: built.request,
+    body: built.request && built.request.body,
+  });
+  assert.ok(inputs, "INPUTS_NOT_NULL");
+  assert.strictEqual(inputs.symbol, "BNBUSDT");
+  assert.strictEqual(inputs.side, "LONG");
+  assert.strictEqual(inputs.candle_close_ms, Date.parse("2026-04-24T07:15:00.000Z"));
+  assert.ok(typeof inputs.shadow_filter_decision === "object" && inputs.shadow_filter_decision !== null);
+  assert.ok(["PASS", "BLOCK"].includes(inputs.signal_verdict));
+}
+
+async function shadowCounterfactualWireUpReturnsNullWithoutShadowDecision() {
+  const inputs = __test.deriveCounterfactualInputs({
+    bundle: { signalIntent: { symbol: "BTCUSDT", side: "LONG" }, signalCriteria: null },
+    intentRow: { signal_bar_close_time_utc_ms: 1700000000000 },
+    request: null,
+    body: null,
+  });
+  assert.strictEqual(inputs, null);
+}
+
+async function shadowCounterfactualWireUpReturnsNullWithoutCandleCloseMs() {
+  const inputs = __test.deriveCounterfactualInputs({
+    bundle: {
+      signalIntent: { symbol: "BTCUSDT", side: "LONG", signal_intent_id: "id" },
+      signalCriteria: { shadow_filter_decision: { shadow_verdict: "WOULD_PASS", filters: [] } },
+      openclawDecision: { approved: true },
+    },
+    intentRow: {},
+    request: null,
+    body: null,
+  });
+  assert.strictEqual(inputs, null);
+}
+
+async function shadowCounterfactualWireUpFiresAndForgetsWhenLedgerEnabled() {
+  const db = protectedCanary.__test.createMemoryFirestore();
+  const env = buildEnv({ DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED: "1" });
+  const built = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env,
+    db,
+    intentRow: buildIntent(),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
+    referencePrice: 600,
+    nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
+    marketDataQuality: marketDataQuality(),
+    exchangeInfo: { minNotional: 5, minQty: 0.01, stepSize: 0.01 },
+    discoveryState: { active_position_n: 0, trade_count_24h: 0, daily_realized_pnl_quote: 0 },
+  });
+  assert.strictEqual(built.ok, true);
+  const persisted = await __test.persistDiscoveryBridgeLedgers({
+    db,
+    env,
+    built,
+    intentRow: buildIntent(),
+    nowIso: "2026-04-24T07:16:00.000Z",
+  });
+  assert.strictEqual(persisted.ok, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  const cfWrites = (db.__v2_canary_writes || []).filter(
+    (w) => w && w.ref && w.ref.collectionName === "v2__signal_shadow_counterfactuals",
+  );
+  assert.ok(cfWrites.length >= 1, "COUNTERFACTUAL_RECORD_WRITTEN");
+  const payload = cfWrites[0].payload;
+  assert.strictEqual(payload.symbol, "BNBUSDT");
+  assert.strictEqual(payload.side, "LONG");
+  assert.strictEqual(payload.status, "PENDING");
+}
+
+async function shadowCounterfactualWireUpSkipsWhenLedgerDisabled() {
+  const db = protectedCanary.__test.createMemoryFirestore();
+  const env = buildEnv();
+  const built = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env,
+    db,
+    intentRow: buildIntent(),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
+    referencePrice: 600,
+    nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
+    marketDataQuality: marketDataQuality(),
+    exchangeInfo: { minNotional: 5, minQty: 0.01, stepSize: 0.01 },
+    discoveryState: { active_position_n: 0, trade_count_24h: 0, daily_realized_pnl_quote: 0 },
+  });
+  assert.strictEqual(built.ok, true);
+  const persisted = await __test.persistDiscoveryBridgeLedgers({
+    db,
+    env,
+    built,
+    intentRow: buildIntent(),
+    nowIso: "2026-04-24T07:16:00.000Z",
+  });
+  assert.strictEqual(persisted.ok, true);
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  const cfWrites = (db.__v2_canary_writes || []).filter(
+    (w) => w && w.ref && w.ref.collectionName === "v2__signal_shadow_counterfactuals",
+  );
+  assert.strictEqual(cfWrites.length, 0, "COUNTERFACTUAL_RECORD_NOT_WRITTEN_WHEN_DISABLED");
+}
+
 async function main() {
   await serverSignalRoutesToV2ProductionEntryLiveRequest();
   await bridgePersistsRouteRequiredLedgersBeforeEndpoint();
@@ -418,6 +537,11 @@ async function main() {
   await dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop();
   await linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied();
   await marketDataQualityBlockFailsClosed();
+  await shadowCounterfactualWireUpDerivesInputsFromBundle();
+  await shadowCounterfactualWireUpReturnsNullWithoutShadowDecision();
+  await shadowCounterfactualWireUpReturnsNullWithoutCandleCloseMs();
+  await shadowCounterfactualWireUpFiresAndForgetsWhenLedgerEnabled();
+  await shadowCounterfactualWireUpSkipsWhenLedgerDisabled();
   console.log("V2_DISCOVERY_SERVER_SIGNAL_BRIDGE_TEST_OK");
 }
 
