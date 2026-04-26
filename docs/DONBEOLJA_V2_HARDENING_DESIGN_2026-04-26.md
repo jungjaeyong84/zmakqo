@@ -569,10 +569,10 @@ When activated:
 
 This is **F0 + F1** of the Stage 1 filter promotion roadmap discussed with operator on 2026-04-26:
 
-- F0: shadow ledger schema + walker (this PR)
-- F1: counterfactual tracker added (this PR — module ready, wire-up deferred)
-- F2: leave-one-out analysis at `blocked_n ≥ 50` per filter (separate analysis script)
-- F3: precision (true positive rate) `≥ 0.65` and counterfactual PnL drag `≤ -0.3R` are required to promote a filter from SHADOW_ONLY to hard-block
+- F0: shadow ledger schema + walker (shipped — `signalShadowCounterfactualLedger.js`)
+- F1: counterfactual tracker module ready, live wire-up deferred (shipped)
+- F2: leave-one-out analysis at `blocked_n ≥ 50` per filter (shipped — see P2-6 below)
+- F3: precision (true positive rate) `≥ 0.65` and counterfactual PnL drag `≥ +0.3` (i.e. `mean_exit_close_pct ≤ -0.003`) required to promote a filter from SHADOW_ONLY to hard-block
 - F4: funding/OI/liquidation/orderbook feature additions (separate PR after F3 promotion settles)
 
 #### Required Invariants
@@ -586,6 +586,51 @@ This is **F0 + F1** of the Stage 1 filter promotion roadmap discussed with opera
 #### Rollback
 
 Set `DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED=0` and the recorder/walker become no-ops. The Firestore collection can be left in place as historical evidence or dropped by the operator at will.
+
+### P2-6. Signal Shadow Counterfactual Analyzer (F2)
+
+#### Problem
+
+F0/F1 records counterfactual evidence but provides no aggregation. Without per-filter precision and PnL-drag metrics — and without leave-one-out attribution that isolates each filter's marginal contribution — there is no objective way to decide which filter qualifies for hard-block promotion.
+
+#### Building Block (shipped)
+
+Add `src/v2/signalShadowCounterfactualAnalyzer.js` plus:
+
+- `scripts/analyze-v2-signal-shadow-counterfactuals.js` — CLI that reads CLOSED records from `v2__signal_shadow_counterfactuals`, builds the analysis report, and writes `ops/daily/v2_signal_shadow_counterfactual_analysis_latest.json`. `--dry-run` produces an empty-record artifact for smoke tests.
+- `scripts/walk-v2-signal-shadow-counterfactual-ledger.js` — runtime walker entry point for cron / launchd / Cloud Scheduler. Default no-op when ledger flag is OFF.
+
+Module API:
+
+- `isClosedWithKlines(record)` — gating predicate. Records without `bar_n_observed > 0` and a full triplet of `mfe_pct / mae_pct / exit_close_pct` are excluded from analysis.
+- `summarizeNumericArray(values)` — n / mean / median / p25 / p75 / min / max / stddev for any numeric series.
+- `buildPerFilterSummary({ filterId, records })` — per-filter `would_block_n`, `would_pass_n`, `precision_proxy` (negative-or-zero exit fraction among blocked), `pnl_drag_proxy_r` (negation of mean exit_close_pct among blocked), and full distribution summaries for blocked exit / mfe / mae and passed exit.
+- `buildLeaveOneOutSummary({ filterId, records })` — splits records into "filter is the SOLE blocker" vs "filter co-occurs with other blockers" so the marginal contribution of the filter alone can be observed.
+- `buildFilterCombinationSummary({ records })` — buckets every CLOSED record by its `would_block_filter_set` so the operator can see which filter combinations actually fire and what return distribution each produces.
+- `buildAnalyzerReport({ records, generated_at_ms })` — top-level frozen report combining all of the above. Default filter id list is `REQUIRED_FILTER_IDS` plus any new filter id discovered in the data.
+- `loadCounterfactualRecords({ db, batchLimit })` — Firestore read helper; not used by pure-logic tests.
+
+Sign convention:
+
+- `pnl_drag_proxy_r = -mean(exit_close_pct)` among blocked-and-closed records. A filter that would have removed losing trades produces a *positive* drag value. A filter that would have removed profitable trades produces a *negative* drag value (i.e. it is hurting performance and must not be promoted).
+- `precision_proxy` is the fraction of blocked records with `exit_close_pct ≤ 0`. This is a proxy because it does not model the actual TP1 / SL strategy exit; it is suitable for filter promotion screening, not for live PnL projection.
+
+Tests: `src/tests/v2-signal-shadow-counterfactual-analyzer.test.js` covers exports, closed-with-klines guard, numeric summary basics, per-filter precision and drag math, leave-one-out separation, filter combination grouping, empty records shape, status counting (PENDING / EXPIRED / CLOSED), and discovery of new filter ids.
+
+Required gate: `npm run check:v2-signal-shadow-counterfactual-analyzer` runs `scripts/check-v2-signal-shadow-counterfactual-analyzer.js` to assert exports, predicate correctness, sign convention, leave-one-out separation, and report shape without any I/O. Wired into `npm run check:v2-p2-phase-gate`.
+
+#### F3 Promotion Gate (deferred, scaffolded)
+
+Once `blocked_closed_n ≥ 50` per filter, the F3 promotion gate (separate PR) will:
+
+1. Read `ops/daily/v2_signal_shadow_counterfactual_analysis_latest.json`.
+2. For each filter, require `precision_proxy ≥ 0.65` AND `pnl_drag_proxy_r ≥ 0.003` AND `leave_one_out.sole_blocker_pnl_drag_proxy_r ≥ 0` (filter must not lose money on its own).
+3. Emit a per-filter promotion verdict.
+4. The operator hand-promotes a passing filter from SHADOW_ONLY to hard-block by toggling its `hard_block_enabled` flag in `signalShadowFilters.js` policy.
+
+#### Rollback
+
+The analyzer is read-only. No rollback required. To suppress the artifact, simply stop scheduling the analyzer script.
 
 ## 10. P3 Scope: Evidence And Formal LIVE Readiness
 
