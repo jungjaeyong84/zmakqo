@@ -284,6 +284,7 @@ function buildOpenClawDecisionBundle({
   const resolvedSignalCriteria = requiresMlEvidence
     ? buildSignalCriteria({
         signalSide: signalIntent.side,
+        symbol: signalIntent.symbol,
         qualityScore: signalIntent.quality_score,
         featureValues: featureSnapshot ? featureSnapshot.feature_values : featureValues,
         marketDataQuality,

@@ -19,6 +19,7 @@ const { runV2ProductionEntryLiveEndpoint } = require("./productionEntryLiveEndpo
 const { DISCOVERY_CONFIRM_PHRASE } = require("./discoveryCanaryContract");
 const { evaluateMarketDataQualityGate } = require("./marketDataQualityGate");
 const { resolveV2CollectionRef } = require("./storage");
+const { collectBinanceMicrostructureFeatures } = require("./binanceMicrostructureFeatures");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -300,13 +301,31 @@ async function fetchFuturesPublicJson(path, params = {}, env = process.env) {
   return text ? JSON.parse(text) : {};
 }
 
-async function collectMarketDataQuality({ env = process.env, symbol, candleCloseMs, nowMs = Date.now() } = {}) {
+async function collectMarketDataQuality({
+  env = process.env,
+  symbol,
+  candleCloseMs,
+  nowMs = Date.now(),
+  fetchBookTicker = fetchFuturesBookTicker,
+  fetchPublicJson = (path, params) => fetchFuturesPublicJson(path, params, env),
+} = {}) {
   const sym = upper(symbol);
   if (!sym) throw new Error("V2_DISCOVERY_BRIDGE_SYMBOL_REQUIRED");
-  const [book, premium, ticker24h] = await Promise.all([
-    fetchFuturesBookTicker({ symbol: sym }),
-    fetchFuturesPublicJson("/fapi/v1/premiumIndex", { symbol: sym }, env),
-    fetchFuturesPublicJson("/fapi/v1/ticker/24hr", { symbol: sym }, env),
+  const [book, premium, ticker24h, microstructure] = await Promise.all([
+    fetchBookTicker({ symbol: sym }),
+    fetchPublicJson("/fapi/v1/premiumIndex", { symbol: sym }),
+    fetchPublicJson("/fapi/v1/ticker/24hr", { symbol: sym }),
+    collectBinanceMicrostructureFeatures({
+      symbol: sym,
+      env,
+      fetchJson: fetchPublicJson,
+    }).catch((error) => Object.freeze({
+      ok: false,
+      reason: "BINANCE_MICROSTRUCTURE_FEATURES_FAILED",
+      symbol: sym,
+      features: Object.freeze({ symbol: sym }),
+      errors: Object.freeze([error && error.message ? String(error.message) : String(error)]),
+    })),
   ]);
   const snapshot = {
     symbol: sym,
@@ -319,12 +338,28 @@ async function collectMarketDataQuality({ env = process.env, symbol, candleClose
     gap_bars: 0,
     source: "BINANCE_FUTURES_PUBLIC",
   };
-  const quality = evaluateMarketDataQualityGate({ env, snapshot, nowMs });
+  const baseQuality = evaluateMarketDataQualityGate({ env, snapshot, nowMs });
+  const microFeatures = asObject(microstructure && microstructure.features) || {};
+  const quality = Object.freeze({
+    ...baseQuality,
+    warnings: Object.freeze(Array.from(new Set([
+      ...(Array.isArray(baseQuality.warnings) ? baseQuality.warnings : []),
+      ...((microstructure && microstructure.ok === false) ? ["MARKET_DATA:MICROSTRUCTURE_PARTIAL"] : []),
+    ]))),
+    metrics: Object.freeze({
+      ...(asObject(baseQuality.metrics) || {}),
+      ...microFeatures,
+      microstructure_ok: microstructure ? microstructure.ok === true : false,
+      microstructure_reason: microstructure ? microstructure.reason : null,
+      microstructure_errors: microstructure && Array.isArray(microstructure.errors) ? microstructure.errors : [],
+    }),
+  });
   return Object.freeze({
     quality,
     book,
     premium,
     ticker24h,
+    microstructure,
   });
 }
 
@@ -353,7 +388,8 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
   const resolvedNetR = explicitNetR !== null
     ? explicitNetR
     : (grossR !== null && costREquivalent !== null ? Math.max(0, grossR - costREquivalent) : null);
-  const fundingPenaltyBps = Math.abs(toNumberOrNull(features.funding_penalty_bps) ?? 0);
+  const fundingPenaltyBpsFromMarket = metricNumber(marketDataQuality, "funding_penalty_bps");
+  const resolvedFundingPenaltyBps = Math.abs(toNumberOrNull(features.funding_penalty_bps) ?? fundingPenaltyBpsFromMarket ?? 0);
   return Object.freeze({
     htf_regime: {
       regime: side,
@@ -378,7 +414,7 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
       market_quality_score: toNumberOrNull(features.market_quality_score) ?? (marketDataQuality && marketDataQuality.ok === true ? 1 : null),
       spread_bps: spreadBps,
       mark_index_gap_bps: markIndexGapBps,
-      funding_penalty_bps: fundingPenaltyBps,
+      funding_penalty_bps: resolvedFundingPenaltyBps,
     },
     expected_edge_gate: {
       expected_gross_r: grossR,
@@ -425,6 +461,7 @@ function buildDiscoveryCanaryBundleFromIntent({
   const score = clamp01(features.score_norm ?? features.opportunity_score ?? features.posterior ?? features.confidence, 0);
   const signalCriteria = buildSignalCriteriaSeedFromIntent({ intentRow: row, marketDataQuality });
   const featureValues = Object.freeze({
+    ...(asObject(marketDataQuality && marketDataQuality.metrics) || {}),
     ...features,
     signal_id: signalId,
     source_intent_id: trimOrNull(row.intent_id),

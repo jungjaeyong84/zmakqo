@@ -2,6 +2,7 @@
 
 const { buildSignalRegimeProfile } = require("./signalRegimeProfile");
 const { buildExpectedEdgeModel } = require("./expectedEdgeModel");
+const { buildSignalShadowFilters } = require("./signalShadowFilters");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -186,6 +187,7 @@ function resolveMarketMetric(marketDataQuality = null, ...keys) {
 }
 
 function buildSignalCriteria({
+  symbol = null,
   signalSide,
   signalCriteria = null,
   qualityScore = null,
@@ -420,6 +422,23 @@ function buildSignalCriteria({
     costREquivalent: resolvedCostREquivalent,
     regimeProfile,
   });
+  const shadowFilterDecision = buildSignalShadowFilters({
+    symbol,
+    signalSide: side,
+    featureValues: features,
+    marketDataQuality,
+    signalCriteria: {
+      htf_regime: {
+        regime: resolvedHtfRegime,
+        alignment_score: resolvedHtfAlignmentScore,
+      },
+      expected_edge_gate: {
+        expected_net_r_after_cost: resolvedExpectedNetRAfterCost,
+        cost_estimate_bps: resolvedCostEstimateBps,
+      },
+    },
+    thresholds: asObject(cfg.shadow_filters) || asObject(seed.shadow_filters && seed.shadow_filters.policy),
+  });
 
   const componentScores = Object.freeze({
     htf_regime: htfPass ? Math.round(25 * resolvedHtfAlignmentScore) : 0,
@@ -502,6 +521,7 @@ function buildSignalCriteria({
     }),
     regime_profile: regimeProfile,
     expected_edge_model: expectedEdgeModel,
+    shadow_filter_decision: shadowFilterDecision,
   });
 }
 
