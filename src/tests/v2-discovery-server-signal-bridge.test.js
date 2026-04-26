@@ -19,7 +19,7 @@ function buildEnv(overrides = {}) {
     DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
-    DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:230|ETHUSDT:50|LINKUSDT:50|BNBUSDT:15|XRPUSDT:15|SOLUSDT:15|AXSUSDT:15|DOGEUSDT:15",
+    DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:155|ETHUSDT:42|LINKUSDT:41|BNBUSDT:13|XRPUSDT:11|SOLUSDT:11|AXSUSDT:12|DOGEUSDT:11",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "5",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
     DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
@@ -407,8 +407,8 @@ async function linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied() {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_DISCOVERY_BRIDGE_REQUEST_READY");
   assert.strictEqual(result.request.entrySizingDecision.symbol, "LINKUSDT");
-  assert.ok(result.request.entrySizingDecision.notional_quote < 50);
-  assert.ok(result.request.entrySizingDecision.notional_quote > 49);
+  assert.ok(result.request.entrySizingDecision.notional_quote < 42);
+  assert.ok(result.request.entrySizingDecision.notional_quote > 40);
 }
 
 async function main() {

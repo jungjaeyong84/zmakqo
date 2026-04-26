@@ -169,9 +169,9 @@ Consumed/locked signal drops are now suppressed, but suppressed rows are not yet
     "reason": "GROUP_NOTIONAL_EXCEEDED",
     "blockers": ["RISK_GROUP_NOTIONAL_EXCEEDED"],
     "policy": {
-      "risk_total": 250,
-      "risk_symbol": 230,
-      "risk_group": 250
+      "risk_total": 300,
+      "risk_symbol": 155,
+      "risk_group": 300
     }
   }
 }
@@ -379,12 +379,12 @@ Required change:
 
 ### P1-4. Discovery Notional And Risk Cap Consistency
 
-Current caps can conflict: BTC 230 plus group cap 250 can block other BTC-beta symbols after one BTC position.
+Current caps can conflict: BTC 230 plus group cap 250 can block other BTC-beta symbols after one BTC position. A lower BTC cap such as 80 is not viable because Binance step size makes the 50% TP1 quantity round to zero. The chosen map therefore uses the minimum notional that can still place entry plus 50% TP1 for each approved symbol, and raises risk total/group caps to 300 so riskGovernor does not create an accidental hidden blocker.
 
 Before changing caps, produce an artifact explaining the chosen map and expected group usage. Candidate map:
 
 ```text
-BTCUSDT:80|ETHUSDT:50|LINKUSDT:30|BNBUSDT:30|XRPUSDT:20|SOLUSDT:30|AXSUSDT:15|DOGEUSDT:15
+BTCUSDT:155|ETHUSDT:42|LINKUSDT:41|BNBUSDT:13|XRPUSDT:11|SOLUSDT:11|AXSUSDT:12|DOGEUSDT:11
 ```
 
 No cap change is allowed without:

@@ -23,7 +23,7 @@ const env = {
   assert.deepStrictEqual(policy.allowed_symbols, ["BTCUSDT"]);
   assert.strictEqual(policy.max_symbol_count, 2);
   assert.strictEqual(policy.max_notional_quote, 25);
-  assert.strictEqual(policy.symbol_notional_quote_map.BTCUSDT, 230);
+  assert.strictEqual(policy.symbol_notional_quote_map.BTCUSDT, 155);
   assert.strictEqual(policy.max_position_count, 5);
   assert.strictEqual(policy.max_trades_per_day, "UNLIMITED");
   assert.strictEqual(policy.daily_loss_halt_quote, 10);
@@ -101,7 +101,7 @@ const env = {
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: symbols,
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT: "8",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "6",
-      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:230|ETHUSDT:50|LINKUSDT:50|BNBUSDT:15|XRPUSDT:15|SOLUSDT:15|AXSUSDT:15|DOGEUSDT:15",
+      DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "BTCUSDT:155|ETHUSDT:42|LINKUSDT:41|BNBUSDT:13|XRPUSDT:11|SOLUSDT:11|AXSUSDT:12|DOGEUSDT:11",
     },
     confirm: DISCOVERY_CONFIRM_PHRASE,
     runtime: { enabled: true, dry_run: false, canary_only: true },
@@ -117,8 +117,8 @@ const env = {
         status: "APPROVED",
         symbol: "DOGEUSDT",
         side: "LONG",
-        notional_quote: 15,
-        entry_qty_abs: 151,
+        notional_quote: 11,
+        entry_qty_abs: 111,
         reference_price: 0.099,
         min_notional_quote: 5,
         step_size: 1,
@@ -129,7 +129,7 @@ const env = {
   assert.strictEqual(result.policy.allowed_symbols.length, 8);
   assert.strictEqual(result.policy.max_symbol_count, 8);
   assert.strictEqual(result.policy.max_notional_quote, 6);
-  assert.strictEqual(result.effective_symbol_notional_quote, 15);
+  assert.strictEqual(result.effective_symbol_notional_quote, 11);
   assert.strictEqual(result.policy.max_position_count, 5);
   assert.strictEqual(result.policy.max_trades_per_day, "UNLIMITED");
 })();
