@@ -11,6 +11,7 @@ const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = requi
 const { listExchangePositionReadViews } = require("./positionReadModel");
 const { resolveExitRulesForPosition } = require("../engine/signalEngine");
 const { normalizePositionSide, resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
+const { updateAlgoEndpointDegradationState } = require("../v2/algoEndpointDegradationState");
 
 function toBool(v, def = false) {
   if (v == null) return def;
@@ -194,7 +195,8 @@ function shouldVerifyNativeTp1Protection(meta = {}, nowMs = Date.now()) {
   return !(ctx.tp_p1_done === true || ctx.trail_active === true || pendingState.fresh === true);
 }
 
-async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) {
+async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = null, env = process.env } = {}) {
+  const runtimeEnv = env && typeof env === "object" ? env : process.env;
   const keys = await resolveBinanceKeys();
   if (!keys) return { ok: false, reason: "BINANCE_KEYS_MISSING", updated_at: nowIso(), issues: [], markets: [] };
 
@@ -241,6 +243,8 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
     if (!includeFlat && !internalActive && !externalActive) continue;
 
     const marketIssues = [];
+    let algoEndpointDegradation = null;
+    let algoEndpointUnavailableObserved = false;
     const internalSide = resolvePositionSideFromPosition(internal, meta);
     const externalSide = resolveExternalSideFromPosition(external);
     const runtimeObservation = internalActive
@@ -341,7 +345,7 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
       }
     }
 
-    if (externalActive && toBool(process.env.BINANCE_NATIVE_PROTECTION_ENABLED, true)) {
+    if (externalActive && toBool(runtimeEnv.BINANCE_NATIVE_PROTECTION_ENABLED, true)) {
       let openOrders = [];
       let algoOrders = [];
       let algoEndpointUnavailable = false;
@@ -361,9 +365,29 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
         const normalized = normalizeAlgoOrderFetchResult(fetchedAlgoOrders);
         algoOrders = normalized.orders;
         algoEndpointUnavailable = normalized.endpointUnavailable === true;
+        algoEndpointUnavailableObserved = algoEndpointUnavailable;
         if (algoEndpointUnavailable) {
+          try {
+            algoEndpointDegradation = await updateAlgoEndpointDegradationState({
+              db,
+              env: runtimeEnv,
+              exchange: "BINANCEFUT",
+              symbol: sym,
+              endpointUnavailable: true,
+              note: normalized.note || "ALGO_ENDPOINT_UNAVAILABLE",
+            });
+          } catch (stateError) {
+            algoEndpointDegradation = {
+              ok: false,
+              status: "STATE_UPDATE_FAILED",
+              reason: stateError && stateError.message ? stateError.message : String(stateError),
+              duration_ms: 0,
+              escalated: false,
+            };
+          }
           const metaTracked = hasTrackedNativeProtectionMeta(meta);
-          const severity = isV2LiveWriteRuntime(process.env) ? "CRIT" : "WARN";
+          const stateSeverity = String(algoEndpointDegradation && algoEndpointDegradation.severity || "WARN").toUpperCase();
+          const severity = isV2LiveWriteRuntime(runtimeEnv) || stateSeverity === "CRIT" ? "CRIT" : "WARN";
           marketIssues.push(makeIssue({
             symbol: sym,
             code: "NATIVE_ALGO_ORDER_VERIFY_UNAVAILABLE",
@@ -371,7 +395,31 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
             detail: metaTracked
               ? "Binance algo 주문 조회를 사용할 수 없어 메타 기준 보호주문만 확인함"
               : "Binance algo 주문 조회를 사용할 수 없어 보호주문 실존을 완전 검증하지 못함",
+            meta: {
+              first_seen_at: algoEndpointDegradation && algoEndpointDegradation.first_seen_at || null,
+              duration_ms: Number(algoEndpointDegradation && algoEndpointDegradation.duration_ms) || 0,
+              crit_after_ms: Number(algoEndpointDegradation && algoEndpointDegradation.crit_after_ms) || null,
+              escalated: algoEndpointDegradation && algoEndpointDegradation.escalated === true,
+              state_status: algoEndpointDegradation && algoEndpointDegradation.status || null,
+              state_reason: algoEndpointDegradation && algoEndpointDegradation.reason || null,
+            },
           }));
+        } else {
+          try {
+            algoEndpointDegradation = await updateAlgoEndpointDegradationState({
+              db,
+              env: runtimeEnv,
+              exchange: "BINANCEFUT",
+              symbol: sym,
+              endpointUnavailable: false,
+            });
+          } catch (stateError) {
+            algoEndpointDegradation = {
+              ok: false,
+              status: "STATE_RECOVERY_UPDATE_FAILED",
+              reason: stateError && stateError.message ? stateError.message : String(stateError),
+            };
+          }
         }
       } catch (e) {
         marketIssues.push(makeIssue({
@@ -430,7 +478,7 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
         }
 
         const meta = (internal && typeof internal.meta === "object") ? internal.meta : {};
-        if (shouldVerifyNativeTp1Protection(meta) && toBool(process.env.BINANCE_NATIVE_TP_ENABLED, false)) {
+        if (shouldVerifyNativeTp1Protection(meta) && toBool(runtimeEnv.BINANCE_NATIVE_TP_ENABLED, false)) {
           const tpCandidates = allOrders.filter((o) => isStrictTp1OrderCandidate(o, closeSide));
           if (!tpCandidates.length) {
             marketIssues.push(makeIssue({
@@ -498,6 +546,15 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false } = {}) 
       external_active: externalActive,
       internal_side: internalSide || null,
       external_side: externalSide || null,
+      algo_endpoint_unavailable: algoEndpointUnavailableObserved,
+      algo_endpoint_degradation: algoEndpointDegradation ? {
+        ok: algoEndpointDegradation.ok === true,
+        status: algoEndpointDegradation.status || null,
+        first_seen_at: algoEndpointDegradation.first_seen_at || null,
+        duration_ms: Number(algoEndpointDegradation.duration_ms) || 0,
+        escalated: algoEndpointDegradation.escalated === true,
+        recovered: algoEndpointDegradation.recovered === true,
+      } : null,
       issue_count: marketIssues.length,
       issues: marketIssues,
     });
