@@ -103,10 +103,6 @@ const { getBinanceFuturesAccountSummary } = require("../services/binanceFuturesA
 const { fetchRecentNewFills, buildTradesFromFills } = require("../services/tradesFromFills");
 const {
   fetchFuturesExchangeInfo,
-  placeFuturesMarketOrder,
-  placeFuturesStopMarketOrder,
-  placeFuturesTakeProfitMarketOrder,
-  cancelFuturesOpenOrders,
   fetchFuturesOpenOrders,
   fetchFuturesAlgoOpenOrders,
   fetchFuturesOrder,
@@ -119,7 +115,13 @@ const {
 const { triggerExitWorkerRun } = require("../services/exitWorkerClient");
 const { reconcileBinancePositionMetaWithExchange } = require("../services/binancePositionReconciler");
 const {
+  placeFuturesMarketOrder,
+  placeFuturesStopMarketOrder,
+  placeFuturesTakeProfitMarketOrder,
+  cancelFuturesOpenOrders,
   placeFuturesEntryMakerFirst,
+} = require("./legacy/v1ExchangeWriters");
+const {
   isMakerFirstEnabled: isEntryMakerFirstEnabled,
 } = require("../services/binanceMakerFirstEntry");
 const { writeOpenClawShadowEntryBootstrap } = require("../v2/openclawShadowPositionWriter");
