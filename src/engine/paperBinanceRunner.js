@@ -5900,24 +5900,104 @@ function shouldBypassLegacyEntryFiltersForV2Discovery({ liveCfg = null, intent =
   return isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent });
 }
 
-function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE") {
-  const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
-  const endpointReason = handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null;
-  const discoveryContract = handoff && handoff.endpoint_result && handoff.endpoint_result.discovery_canary_contract
-    ? handoff.endpoint_result.discovery_canary_contract
-    : null;
-  const discoveryContractBlockers = Array.isArray(discoveryContract && discoveryContract.blockers)
-    ? discoveryContract.blockers.map((x) => String(x || "").trim().toUpperCase()).filter(Boolean)
-    : [];
-  if (routedDecision && routedDecision.reason) return String(routedDecision.reason).trim().toUpperCase();
-  if (
-    String(endpointReason || "").trim().toUpperCase() === "V2_DISCOVERY_CANARY_CONTRACT_BLOCKED"
-    && discoveryContractBlockers.length
-  ) {
-    return discoveryContractBlockers[0];
+function collectReasonBlockers(...sources) {
+  const out = [];
+  for (const source of sources) {
+    if (!Array.isArray(source)) continue;
+    for (const item of source) {
+      const token = String(item || "").trim().toUpperCase();
+      if (token && !out.includes(token)) out.push(token);
+    }
   }
-  if (endpointReason) return String(endpointReason).trim().toUpperCase();
-  if (handoff && handoff.reason) return String(handoff.reason).trim().toUpperCase();
+  return out;
+}
+
+function resolveV2DiscoveryHandoffDetail(handoff = null) {
+  const endpointResult = handoff && handoff.endpoint_result && typeof handoff.endpoint_result === "object"
+    ? handoff.endpoint_result
+    : null;
+  const routeResult = endpointResult && endpointResult.route_result && typeof endpointResult.route_result === "object"
+    ? endpointResult.route_result
+    : null;
+  const routedDecision = handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision));
+  const routeRoutedDecision = routeResult && (routeResult.routedDecision || routeResult.routed_decision);
+  const discoveryContract = endpointResult && endpointResult.discovery_canary_contract
+    ? endpointResult.discovery_canary_contract
+    : null;
+  const marketDataQuality = handoff && handoff.marketDataQuality && typeof handoff.marketDataQuality === "object"
+    ? handoff.marketDataQuality
+    : (endpointResult && endpointResult.market_data_quality && typeof endpointResult.market_data_quality === "object"
+      ? endpointResult.market_data_quality
+      : null);
+  const routeBlockers = collectReasonBlockers(
+    routeResult && routeResult.blockers,
+    routeResult && routeResult.detail && routeResult.detail.blockers,
+    routeRoutedDecision && routeRoutedDecision.blockers,
+    routeRoutedDecision && routeRoutedDecision.detail && routeRoutedDecision.detail.blockers,
+  );
+  const routerBlockers = collectReasonBlockers(
+    routedDecision && routedDecision.blockers,
+    routedDecision && routedDecision.detail && routedDecision.detail.blockers,
+    routeRoutedDecision && routeRoutedDecision.blockers,
+    routeRoutedDecision && routeRoutedDecision.detail && routeRoutedDecision.detail.blockers,
+  );
+  const discoveryContractBlockers = collectReasonBlockers(discoveryContract && discoveryContract.blockers);
+  const marketDataQualityBlockers = collectReasonBlockers(marketDataQuality && marketDataQuality.blockers);
+  return {
+    bridge_reason: handoff && handoff.reason ? String(handoff.reason).trim().toUpperCase() : null,
+    bridge_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
+    endpoint_reason: endpointResult && endpointResult.reason ? String(endpointResult.reason).trim().toUpperCase() : null,
+    route_reason: routeResult && routeResult.reason ? String(routeResult.reason).trim().toUpperCase() : null,
+    route_blockers: routeBlockers,
+    router_reason: routedDecision && routedDecision.reason
+      ? String(routedDecision.reason).trim().toUpperCase()
+      : (routeRoutedDecision && routeRoutedDecision.reason ? String(routeRoutedDecision.reason).trim().toUpperCase() : null),
+    router_blockers: routerBlockers,
+    discovery_contract_reason: discoveryContract && discoveryContract.reason
+      ? String(discoveryContract.reason).trim().toUpperCase()
+      : null,
+    discovery_contract_blockers: discoveryContractBlockers,
+    market_data_quality_reason: marketDataQuality && marketDataQuality.reason
+      ? String(marketDataQuality.reason).trim().toUpperCase()
+      : null,
+    market_data_quality_blockers: marketDataQualityBlockers,
+  };
+}
+
+function buildV2DiscoveryHandoffFeaturePatch(handoff = null) {
+  const detail = resolveV2DiscoveryHandoffDetail(handoff);
+  return {
+    v2_discovery_bridge_reason: detail.bridge_reason,
+    v2_discovery_bridge_error: detail.bridge_error,
+    v2_discovery_endpoint_reason: detail.endpoint_reason,
+    v2_discovery_route_reason: detail.route_reason,
+    v2_discovery_route_blockers: detail.route_blockers,
+    v2_discovery_router_reason: detail.router_reason,
+    v2_discovery_router_blockers: detail.router_blockers,
+    v2_discovery_canary_contract_reason: detail.discovery_contract_reason,
+    v2_discovery_canary_contract_blockers: detail.discovery_contract_blockers,
+    v2_discovery_market_data_quality_reason: detail.market_data_quality_reason,
+    v2_discovery_market_data_quality_blockers: detail.market_data_quality_blockers,
+  };
+}
+
+function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE") {
+  const detail = resolveV2DiscoveryHandoffDetail(handoff);
+  if (detail.router_reason) return detail.router_reason;
+  if (detail.router_blockers.length) return detail.router_blockers[0];
+  if (detail.route_reason) return detail.route_reason;
+  if (detail.route_blockers.length) return detail.route_blockers[0];
+  if (
+    detail.endpoint_reason === "V2_DISCOVERY_CANARY_CONTRACT_BLOCKED"
+    && detail.discovery_contract_blockers.length
+  ) {
+    return detail.discovery_contract_blockers[0];
+  }
+  if (detail.market_data_quality_blockers.length) return detail.market_data_quality_blockers[0];
+  if (detail.market_data_quality_reason) return detail.market_data_quality_reason;
+  if (detail.endpoint_reason) return detail.endpoint_reason;
+  if (detail.discovery_contract_reason) return detail.discovery_contract_reason;
+  if (detail.bridge_reason) return detail.bridge_reason;
   return fallback;
 }
 
@@ -15298,9 +15378,6 @@ async function runPaperBinanceForBar({
         continue;
       }
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
-      const discoveryContract = handoff && handoff.endpoint_result && handoff.endpoint_result.discovery_canary_contract
-        ? handoff.endpoint_result.discovery_canary_contract
-        : null;
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -15310,16 +15387,7 @@ async function runPaperBinanceForBar({
         features_json: {
           ...(features || {}),
           v2_discovery_signal_fan_in_blocked: true,
-          v2_discovery_bridge_reason: handoff && handoff.reason ? handoff.reason : null,
-          v2_discovery_bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
-          v2_discovery_endpoint_reason: handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null,
-          v2_discovery_canary_contract_reason: discoveryContract ? discoveryContract.reason || null : null,
-          v2_discovery_canary_contract_blockers: discoveryContract && Array.isArray(discoveryContract.blockers)
-            ? discoveryContract.blockers
-            : [],
-          v2_discovery_router_reason: handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision))
-            ? (handoff.routedDecision || (handoff.request && handoff.request.routedDecision)).reason || null
-            : null,
+          ...buildV2DiscoveryHandoffFeaturePatch(handoff),
         },
         event_intent: intent,
       });
@@ -18967,9 +19035,6 @@ async function runPaperFuturesForBar({
         continue;
       }
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
-      const discoveryContract = handoff && handoff.endpoint_result && handoff.endpoint_result.discovery_canary_contract
-        ? handoff.endpoint_result.discovery_canary_contract
-        : null;
       signalDrops.push({
         ...s,
         bar_close_time_utc_ms: effectiveBarMs,
@@ -18979,16 +19044,7 @@ async function runPaperFuturesForBar({
         features_json: {
           ...(features || {}),
           v2_discovery_signal_fan_in_blocked: true,
-          v2_discovery_bridge_reason: handoff && handoff.reason ? handoff.reason : null,
-          v2_discovery_bridge_error: handoff && handoff.error_message ? handoff.error_message : null,
-          v2_discovery_endpoint_reason: handoff && handoff.endpoint_result ? handoff.endpoint_result.reason || null : null,
-          v2_discovery_canary_contract_reason: discoveryContract ? discoveryContract.reason || null : null,
-          v2_discovery_canary_contract_blockers: discoveryContract && Array.isArray(discoveryContract.blockers)
-            ? discoveryContract.blockers
-            : [],
-          v2_discovery_router_reason: handoff && (handoff.routedDecision || (handoff.request && handoff.request.routedDecision))
-            ? (handoff.routedDecision || (handoff.request && handoff.request.routedDecision)).reason || null
-            : null,
+          ...buildV2DiscoveryHandoffFeaturePatch(handoff),
         },
         event_intent: intent,
       });
@@ -19359,6 +19415,9 @@ module.exports = {
     isV2DiscoveryCanaryLegacyEntryWriteBlocked,
     shouldTreatLegacyWaitOneBarAsAdvisoryForV2Discovery,
     shouldBypassLegacyEntryFiltersForV2Discovery,
+    resolveV2DiscoveryHandoffDetail,
+    buildV2DiscoveryHandoffFeaturePatch,
+    deriveV2DiscoveryHandoffBlockReason,
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,

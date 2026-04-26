@@ -88,6 +88,7 @@ function classifySignalReasonStage(reason) {
     code === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL" ||
     code === "V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL" ||
     code === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED" ||
+    code === "V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED" ||
     code === "LIVE_DISABLED" ||
     code === "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE" ||
     code === "V2_DISCOVERY_CANARY_REQUIRES_PRODUCTION_ENTRY_ROUTE" ||
@@ -116,7 +117,12 @@ function classifySignalReasonStage(reason) {
     };
   }
 
-  if (code === "MARKET_DATA_QUALITY_BLOCKED" || code === "MARKET_DATA_QUALITY_REQUIRED") {
+  if (
+    code === "MARKET_DATA_QUALITY_BLOCKED" ||
+    code === "MARKET_DATA_QUALITY_REQUIRED" ||
+    code === "V2_MARKET_DATA_QUALITY_BLOCKED" ||
+    code.startsWith("MARKET_DATA:")
+  ) {
     return {
       step: 1,
       key: "MARKET_DATA",
@@ -256,6 +262,7 @@ function explainSignalReason(reason) {
     V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL: "진입 주문이 체결된 뒤 보호주문 확인 또는 복구가 실패했습니다. 이 상태는 신호 드롭이 아니라 실제 포지션 보호 복구가 필요한 CRITICAL 상태입니다.",
     V2_PRODUCTION_ENTRY_POST_FILL_PROTECTION_CRITICAL: "진입 주문이 체결된 뒤 보호주문 확인 또는 복구가 실패했습니다. 이 상태는 신호 드롭이 아니라 실제 포지션 보호 복구가 필요한 CRITICAL 상태입니다.",
     V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED: "진입 주문과 보호주문은 완료됐지만 route/audit 후처리가 실패했습니다. 이 상태는 신호 드롭이 아니라 실제 체결 이후 기록 확인이 필요한 상태입니다.",
+    V2_PRODUCTION_ENTRY_LIVE_ROUTE_BLOCKED: "V2 production entry route가 주문 전 단계에서 진입을 차단했습니다. 세부 사유는 route_result 또는 V2 discovery route blocker를 확인해야 합니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:SYMBOL_NOT_ALLOWED": "V2 discovery canary 허용 심볼 목록에 없는 심볼이라 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:LIVE_ENDPOINT_REQUIRED": "V2 discovery live endpoint가 켜져 있지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:DISCOVERY_NOT_ENABLED": "V2 discovery canary가 켜져 있지 않아 실제 주문을 보류했습니다.",
@@ -289,6 +296,12 @@ function explainSignalReason(reason) {
     SIGNAL_CRITERIA_REQUIRED: "V2 신호 기준 증거가 없어 discovery 주문을 보류했습니다.",
     MARKET_DATA_QUALITY_BLOCKED: "시장 데이터 품질 기준을 통과하지 못해 discovery 주문을 보류했습니다.",
     MARKET_DATA_QUALITY_REQUIRED: "시장 데이터 품질 증거가 없어 discovery 주문을 보류했습니다.",
+    V2_MARKET_DATA_QUALITY_BLOCKED: "V2 시장 데이터 품질 기준을 통과하지 못해 discovery 주문을 보류했습니다.",
+    "MARKET_DATA:STALE_CANDLE": "시장 데이터 기준 봉이 오래되어 stale candle로 판단됐고 신규 진입을 보류했습니다.",
+    "MARKET_DATA:SPREAD_TOO_WIDE": "현재 스프레드가 기준보다 넓어 신규 진입을 보류했습니다.",
+    "MARKET_DATA:MARK_INDEX_DIVERGENCE_TOO_WIDE": "mark/index 가격 괴리가 기준보다 커 신규 진입을 보류했습니다.",
+    "MARKET_DATA:VOLUME_TOO_LOW": "24시간 거래대금 또는 유동성이 기준보다 낮아 신규 진입을 보류했습니다.",
+    "MARKET_DATA:GAP_BARS_PRESENT": "최근 데이터에 결측 봉이 있어 신규 진입을 보류했습니다.",
     LIVE_POLICY_BLOCK: "라이브 운영 정책에서 진입을 차단했습니다.",
     LIVE_RESCUE_ADD_DISABLED: "현재 구조에서는 구조보강 ADD가 비활성이라 추가 진입을 보류했습니다.",
     LIVE_RESCUE_ADD_TIER_BLOCKED: "이번 신호 티어는 구조보강 ADD 허용 구간이 아니라 추가 진입을 보류했습니다.",
