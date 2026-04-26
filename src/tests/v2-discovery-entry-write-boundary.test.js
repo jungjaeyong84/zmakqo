@@ -183,6 +183,12 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
     source.indexOf("recordedSignalDrops = await filterSignalDropsForRecording") < source.indexOf("await recordSignalDrops({"),
     "drop recording must happen only after consumed-signal filtering"
   );
+  const routedHandoffN = (source.match(/V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE/g) || []).length;
+  const claimedConsumedN = (source.match(/await markSignalConsumedIfClaimed/g) || []).length;
+  assert.ok(
+    claimedConsumedN >= routedHandoffN,
+    "every V2 discovery routed/post-fill handoff path must claim signal consumption before emitting progress alerts"
+  );
 })();
 
 console.log("V2_DISCOVERY_ENTRY_WRITE_BOUNDARY_TEST_OK");

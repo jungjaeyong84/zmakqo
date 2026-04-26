@@ -13130,6 +13130,7 @@ async function runPaperBinanceForBar({
         const requestBundle = requestBody.bundle || {};
         const requestPermit = requestBody.executionPermit || {};
         const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        const handoffSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
         await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
           cancel_reason: routeReason,
           status_reason: routeReason,
@@ -13138,6 +13139,23 @@ async function runPaperBinanceForBar({
           v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
           v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
         });
+        if (handoffSignalId) {
+          await markSignalConsumedIfClaimed({
+            signalId: handoffSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: routeReason,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_bridge_reason: handoff.reason || null,
+              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+            },
+          });
+        }
         sendSignalProgressAlert({
           exchange,
           symbol,
@@ -13150,7 +13168,7 @@ async function runPaperBinanceForBar({
           authoritative: true,
           progressReason: routeReason,
           pendingReason: "IMMEDIATE_EXEC",
-          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
+          signalId: handoffSignalId,
         }).catch((e) => {
           console.warn("[V2_DISCOVERY_EARLY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
         });
@@ -13189,6 +13207,23 @@ async function runPaperBinanceForBar({
         }),
       });
       if (postFillHandoff.exchange_write_performed === true) {
+        const postFillSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
+        if (postFillSignalId) {
+          await markSignalConsumedIfClaimed({
+            signalId: postFillSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: blockReason,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_post_fill_exchange_write: true,
+              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+            },
+          });
+        }
         sendV2DiscoveryPostFillHandoffProgressAlert({
           exchange,
           symbol,
@@ -13197,7 +13232,7 @@ async function runPaperBinanceForBar({
           tf: signalTf,
           qtyPct: Number(it.qty_pct),
           executionMode: liveCfg.executionMode,
-          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
+          signalId: postFillSignalId,
           blockReason,
           handoff,
           postFillHandoff,
@@ -16009,6 +16044,7 @@ async function runPaperFuturesForBar({
         const requestBundle = requestBody.bundle || {};
         const requestPermit = requestBody.executionPermit || {};
         const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        const handoffSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
         await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
           cancel_reason: routeReason,
           status_reason: routeReason,
@@ -16017,6 +16053,23 @@ async function runPaperFuturesForBar({
           v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
           v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
         });
+        if (handoffSignalId) {
+          await markSignalConsumedIfClaimed({
+            signalId: handoffSignalId,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs,
+            execBarCloseUtc,
+            reason: routeReason,
+            meta: {
+              intent,
+              order_intent_id: it.intent_id || null,
+              v2_discovery_bridge_reason: handoff.reason || null,
+              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+            },
+          });
+        }
         sendSignalProgressAlert({
           exchange,
           symbol,
@@ -16029,7 +16082,7 @@ async function runPaperFuturesForBar({
           authoritative: true,
           progressReason: routeReason,
           pendingReason: "IMMEDIATE_EXEC",
-          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
+          signalId: handoffSignalId,
         }).catch((e) => {
           console.warn("[V2_DISCOVERY_EARLY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
         });
@@ -16067,20 +16120,37 @@ async function runPaperFuturesForBar({
           post_fill_side_effect: postFillHandoff.side_effect || null,
         }),
       });
-      if (postFillHandoff.exchange_write_performed === true) {
-        sendV2DiscoveryPostFillHandoffProgressAlert({
-          exchange,
-          symbol,
-          event: it.event,
-          side: normalizeSideValue(it.side),
-          tf: signalTf,
-          qtyPct: Number(it.qty_pct),
-          executionMode: liveCfg.executionMode,
-          signalId: it.signal_id || (it.features_json && it.features_json.signal_id) || null,
-          blockReason,
-          handoff,
-          postFillHandoff,
-        });
+        if (postFillHandoff.exchange_write_performed === true) {
+          const postFillSignalId = it.signal_id || (it.features_json && it.features_json.signal_id) || null;
+          if (postFillSignalId) {
+            await markSignalConsumedIfClaimed({
+              signalId: postFillSignalId,
+              runId,
+              consumedAtIso: new Date().toISOString(),
+              execBarCloseMs,
+              execBarCloseUtc,
+              reason: blockReason,
+              meta: {
+                intent,
+                order_intent_id: it.intent_id || null,
+                v2_discovery_post_fill_exchange_write: true,
+                v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+              },
+            });
+          }
+          sendV2DiscoveryPostFillHandoffProgressAlert({
+            exchange,
+            symbol,
+            event: it.event,
+            side: normalizeSideValue(it.side),
+            tf: signalTf,
+            qtyPct: Number(it.qty_pct),
+            executionMode: liveCfg.executionMode,
+            signalId: postFillSignalId,
+            blockReason,
+            handoff,
+            postFillHandoff,
+          });
         continue;
       }
       notifyTradeExitFailureAlert({
@@ -16806,6 +16876,7 @@ async function runPaperFuturesForBar({
           const requestBundle = requestBody.bundle || {};
           const requestPermit = requestBody.executionPermit || {};
           const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+          const handoffSignalId = liveSignalId;
           await markIntentStatus(it.intent_id, "SUPERSEDED_BY_V2_PROTECTED_ENTRY", {
             cancel_reason: routeReason,
             status_reason: routeReason,
@@ -16814,6 +16885,23 @@ async function runPaperFuturesForBar({
             v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
             v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
           });
+          if (handoffSignalId) {
+            await markSignalConsumedIfClaimed({
+              signalId: handoffSignalId,
+              runId,
+              consumedAtIso: new Date().toISOString(),
+              execBarCloseMs,
+              execBarCloseUtc,
+              reason: routeReason,
+              meta: {
+                intent,
+                order_intent_id: it.intent_id || null,
+                v2_discovery_bridge_reason: handoff.reason || null,
+                v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+                v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+              },
+            });
+          }
           sendSignalProgressAlert({
             exchange,
             symbol,
@@ -16826,7 +16914,7 @@ async function runPaperFuturesForBar({
             authoritative: true,
             progressReason: routeReason,
             pendingReason: "IMMEDIATE_EXEC",
-            signalId: liveSignalId,
+            signalId: handoffSignalId,
           }).catch((e) => {
             console.warn("[V2_DISCOVERY_HANDOFF_ALERT_FAIL]", e && e.message ? e.message : String(e));
           });
@@ -16871,6 +16959,23 @@ async function runPaperFuturesForBar({
           }),
         });
         if (postFillHandoff.exchange_write_performed === true) {
+          const postFillSignalId = liveSignalId;
+          if (postFillSignalId) {
+            await markSignalConsumedIfClaimed({
+              signalId: postFillSignalId,
+              runId,
+              consumedAtIso: new Date().toISOString(),
+              execBarCloseMs,
+              execBarCloseUtc,
+              reason: blockReason,
+              meta: {
+                intent,
+                order_intent_id: it.intent_id || null,
+                v2_discovery_post_fill_exchange_write: true,
+                v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+              },
+            });
+          }
           sendV2DiscoveryPostFillHandoffProgressAlert({
             exchange,
             symbol,
@@ -16879,7 +16984,7 @@ async function runPaperFuturesForBar({
             tf: signalTf,
             qtyPct: qtyFraction,
             executionMode: liveCfg.executionMode,
-            signalId: liveSignalId,
+            signalId: postFillSignalId,
             blockReason,
             handoff,
             postFillHandoff,
