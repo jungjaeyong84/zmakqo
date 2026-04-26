@@ -6,6 +6,7 @@ const {
   buildNoExchangeKernelResult,
   runV2ProductionEntryRouteCanary,
 } = require("../v2/productionEntryRouteCanary");
+const protectedCanary = require("../v2/productionEntryProtectedCanary");
 
 (function noExchangeKernelEvidenceSatisfiesKernelAudit() {
   const bundle = buildReferenceNativeMlEvidencePack();
@@ -28,6 +29,7 @@ const {
 async function canaryRunsProductionRouteWithoutExchangeWrite() {
   const artifact = await runV2ProductionEntryRouteCanary({
     env: {},
+    db: protectedCanary.__test.createMemoryFirestore(),
     now: () => "2026-04-21T07:05:00.000Z",
   });
   assert.strictEqual(artifact.ok, true);
@@ -35,6 +37,8 @@ async function canaryRunsProductionRouteWithoutExchangeWrite() {
   assert.strictEqual(artifact.exchange_write_performed, false);
   assert.strictEqual(artifact.kernel_called, true);
   assert.strictEqual(artifact.persist_called, true);
+  assert.strictEqual(artifact.prerequisite_ledgers.ok, true);
+  assert.strictEqual(artifact.route_result_summary.prerequisite_ledger_reason, "PRODUCTION_ENTRY_ROUTE_CANARY_PREREQUISITE_LEDGERS_WRITTEN");
   assert.strictEqual(artifact.route_result_summary.reason, "V2_PRODUCTION_ENTRY_EXECUTED_AND_PROTECTED");
   assert.strictEqual(artifact.route_result_summary.runtime.dry_run, false);
   assert.strictEqual(artifact.route_result_summary.audit_ledger_reason, "PRODUCTION_ENTRY_ROUTE_CANARY_LEDGER_WRITE_DISABLED");
@@ -44,12 +48,14 @@ async function canaryRunsProductionRouteWithoutExchangeWrite() {
   assert.strictEqual(artifact.route_result_summary.entry_sizing_decision.entry_qty_abs, 0.5);
   assert.ok(artifact.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_APPROVED"));
   assert.ok(artifact.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_ENTRY_SIZING_QTY_MATCHES_FILL"));
+  assert.ok(artifact.check_ids.includes("V2_PRODUCTION_ROUTE_CANARY_PREREQUISITE_LEDGERS"));
   assert.deepStrictEqual(artifact.failed_check_ids, []);
 }
 
 async function routeFailureBlocksCanaryArtifact() {
   const artifact = await runV2ProductionEntryRouteCanary({
     env: {},
+    db: protectedCanary.__test.createMemoryFirestore(),
     now: () => "2026-04-21T07:06:00.000Z",
     runProductionEntryRoute: async () => ({
       ok: false,

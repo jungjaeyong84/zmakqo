@@ -33,7 +33,7 @@ function summarizeFirestoreHistoryResult(result) {
 }
 
 async function main({ env = process.env, db = null, setProcessExitCode = require.main === module } = {}) {
-  const result = await runV2ProductionEntryRouteCanary({ env });
+  const result = await runV2ProductionEntryRouteCanary({ env, db });
   const outputFile = resolveOutputFile(env);
   const historyFile = resolveHistoryFile(env);
   const baseArtifact = Object.freeze({
