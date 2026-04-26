@@ -11,6 +11,9 @@ const {
   runCheck: runV1WriterDenyStreakCheck,
 } = require("../../scripts/check-v2-v1-writer-deny-streak");
 const {
+  evaluateStaticSource: evaluateCanaryEvolutionStaticSource,
+} = require("../../scripts/check-v2-canary-evolution-hygiene");
+const {
   evaluateActiveProtectionReconciliationStreak,
   runCheck: runActiveProtectionReconciliationStreakCheck,
 } = require("../../scripts/check-v2-active-protection-reconciliation-streak");
@@ -29,6 +32,13 @@ async function algoEndpointEscalationGatePasses() {
   assert.strictEqual(result.reason, "V2_ALGO_ENDPOINT_ESCALATION_PASS");
   assert.deepStrictEqual(result.blockers, []);
   assert.strictEqual(result.final_status, "RECOVERED");
+}
+
+function canaryEvolutionHygieneGatePassesStaticContract() {
+  const sourceText = fs.readFileSync(path.join(__dirname, "..", "storage", "signalDrops.js"), "utf8");
+  const result = evaluateCanaryEvolutionStaticSource({ sourceText, sourceReadOk: true, sourceFile: "signalDrops.js" });
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(result.blockers, []);
 }
 
 function v1WriterDenyStreakBlocksWhenRequiredArtifactMissing() {
@@ -123,6 +133,7 @@ function activeProtectionStreakBlocksUnprotectedWindow() {
 (async function run() {
   await repairLeaseGatePasses();
   await algoEndpointEscalationGatePasses();
+  canaryEvolutionHygieneGatePassesStaticContract();
   v1WriterDenyStreakBlocksWhenRequiredArtifactMissing();
   v1WriterDenyStreakPassesWithZeroWriteArtifact();
   v1WriterDenyStreakBlocksNonZeroWriteArtifact();
