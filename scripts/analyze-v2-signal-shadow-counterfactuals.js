@@ -17,21 +17,25 @@ const path = require("path");
 
 const analyzer = require("../src/v2/signalShadowCounterfactualAnalyzer");
 
-const OUTPUT_DIR = path.join(__dirname, "..", "ops", "daily");
-const OUTPUT_FILE = path.join(OUTPUT_DIR, "v2_signal_shadow_counterfactual_analysis_latest.json");
+const DEFAULT_OUTPUT_DIR = path.join(__dirname, "..", "ops", "daily");
+const DEFAULT_OUTPUT_FILE = path.join(DEFAULT_OUTPUT_DIR, "v2_signal_shadow_counterfactual_analysis_latest.json");
 
-function ensureOutputDir() {
+function resolveOutputFile(env = process.env) {
+  const explicit = String(
+    (env && env.DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_ANALYSIS_FILE) || ""
+  ).trim();
+  return explicit || DEFAULT_OUTPUT_FILE;
+}
+
+function writeArtifact(report, outputFile = DEFAULT_OUTPUT_FILE) {
+  const dir = path.dirname(outputFile);
   try {
-    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true });
   } catch (error) {
     if (!error || error.code !== "EEXIST") throw error;
   }
-}
-
-function writeArtifact(report) {
-  ensureOutputDir();
-  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(report, null, 2));
-  return OUTPUT_FILE;
+  fs.writeFileSync(outputFile, JSON.stringify(report, null, 2));
+  return outputFile;
 }
 
 function emit(payload) {
@@ -47,60 +51,81 @@ async function tryLoadFirestore() {
   }
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  const dryRun = argv.includes("--dry-run") || argv.includes("--no-firestore");
-  const generated_at_ms = Date.now();
+async function main({
+  env = process.env,
+  argv = process.argv.slice(2),
+  db: providedDb = null,
+  generated_at_ms = Date.now(),
+  setProcessExitCode = require.main === module,
+} = {}) {
+  const dryRun = Array.isArray(argv) && (argv.includes("--dry-run") || argv.includes("--no-firestore"));
+  const outputFile = resolveOutputFile(env);
   if (dryRun) {
     const report = analyzer.buildAnalyzerReport({ records: [], generated_at_ms });
-    const file = writeArtifact(report);
-    emit({
+    const file = writeArtifact(report, outputFile);
+    const payload = {
       ok: true,
       reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_ANALYSIS_DRY_RUN",
       output_file: file,
       sample_n: 0,
-    });
-    return;
+    };
+    emit(payload);
+    return payload;
   }
-  const db = await tryLoadFirestore();
+  const db = providedDb || await tryLoadFirestore();
   if (!db) {
     const report = analyzer.buildAnalyzerReport({ records: [], generated_at_ms });
-    const file = writeArtifact(report);
-    emit({
+    const file = writeArtifact(report, outputFile);
+    const payload = {
       ok: false,
       reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_ANALYSIS_FIRESTORE_UNAVAILABLE",
       output_file: file,
       sample_n: 0,
-    });
-    process.exit(0);
+    };
+    emit(payload);
+    return payload;
   }
   let records;
   try {
     records = await analyzer.loadCounterfactualRecords({ db, batchLimit: 5000 });
   } catch (error) {
-    emit({
+    const payload = {
       ok: false,
       reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_ANALYSIS_LOAD_FAILED",
       error_message: error && error.message ? String(error.message) : String(error),
-    });
-    process.exit(1);
+    };
+    emit(payload);
+    if (setProcessExitCode) process.exitCode = 1;
+    return payload;
   }
   const report = analyzer.buildAnalyzerReport({ records, generated_at_ms });
-  const file = writeArtifact(report);
-  emit({
+  const file = writeArtifact(report, outputFile);
+  const payload = {
     ok: true,
     reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_ANALYSIS_OK",
     output_file: file,
     sample_n: report.sample.total_record_n,
     closed_with_klines_n: report.sample.closed_with_klines_n,
+  };
+  emit(payload);
+  return payload;
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    emit({
+      ok: false,
+      reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_ANALYSIS_THROWN",
+      error_message: error && error.message ? String(error.message) : String(error),
+    });
+    process.exitCode = 1;
   });
 }
 
-main().catch((error) => {
-  emit({
-    ok: false,
-    reason: "V2_SIGNAL_SHADOW_COUNTERFACTUAL_ANALYSIS_THROWN",
-    error_message: error && error.message ? String(error.message) : String(error),
-  });
-  process.exit(1);
-});
+module.exports = {
+  main,
+  __test: {
+    resolveOutputFile,
+    writeArtifact,
+  },
+};

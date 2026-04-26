@@ -176,6 +176,50 @@ router.post("/api/openclaw/cron/openclaw-server-primary-tick", requireSchedulerT
   }
 });
 
+// v2-signal-shadow-counterfactual-walker: closes pending shadow ledger
+// records past their kline horizon (F1). Default OFF behind
+// DONBEOLJA_V2_SIGNAL_SHADOW_COUNTERFACTUAL_LEDGER_ENABLED — when the
+// flag is unset the walker returns immediately as a no-op so this
+// endpoint is safe to schedule before the ledger is activated.
+router.post("/api/openclaw/cron/v2-signal-shadow-counterfactual-walker", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/walk-v2-signal-shadow-counterfactual-ledger");
+    const outcome = await runWithShortTimeout(
+      "v2_signal_shadow_counterfactual_walker",
+      () => main({ setProcessExitCode: false }),
+      120000
+    );
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
+// v2-signal-shadow-counterfactual-analyzer: read-only F2 leave-one-out
+// analyzer that consumes CLOSED records and writes the daily report
+// artifact. Pure analysis, never mutates the ledger.
+router.post("/api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/analyze-v2-signal-shadow-counterfactuals");
+    const outcome = await runWithShortTimeout(
+      "v2_signal_shadow_counterfactual_analyzer",
+      () => main({ setProcessExitCode: false }),
+      180000
+    );
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // v2-production-entry-live: deliberately disabled by default. When enabled,
 // this endpoint still delegates only to the V2 production entry route.
 router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, express.json({ type: "*/*", limit: "128kb" }), async (req, res) => {
@@ -209,6 +253,8 @@ router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
       "POST /api/openclaw/cron/v2-exit-runtime-canary",
       "POST /api/openclaw/cron/v2-active-protection-reconciliation",
       "POST /api/openclaw/cron/openclaw-server-primary-tick",
+      "POST /api/openclaw/cron/v2-signal-shadow-counterfactual-walker",
+      "POST /api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer",
       "POST /api/openclaw/cron/v2-production-entry-live",
     ],
     now_iso: new Date().toISOString(),

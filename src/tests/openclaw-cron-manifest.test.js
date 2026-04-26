@@ -71,6 +71,8 @@ const {
     "v2_exit_runtime_canary",
     "v2_active_protection_reconciliation",
     "openclaw_server_primary_tick",
+    "v2_signal_shadow_counterfactual_walker",
+    "v2_signal_shadow_counterfactual_analyzer",
   ]) {
     assert.ok(cloudJobIds.has(required),
       `required Cloud Scheduler job missing: ${required}`);
@@ -101,6 +103,19 @@ const {
   assert.strictEqual(serverPrimaryTick.criticality, "HIGH");
   assert.strictEqual(serverPrimaryTick.runtime_mode, "SERVER_PRIMARY_PAPER");
   assert.strictEqual(serverPrimaryTick.scheduler_schedule, "1,16,31,46 * * * *");
+  const shadowWalker = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "v2_signal_shadow_counterfactual_walker");
+  assert.ok(shadowWalker, "shadow counterfactual walker missing");
+  assert.strictEqual(shadowWalker.http_path, "/api/openclaw/cron/v2-signal-shadow-counterfactual-walker");
+  assert.strictEqual(shadowWalker.criticality, "MEDIUM");
+  assert.strictEqual(shadowWalker.runtime_mode, "SHADOW_COUNTERFACTUAL_WALKER");
+  assert.strictEqual(shadowWalker.scheduler_schedule, "*/15 * * * *");
+  const shadowAnalyzer = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "v2_signal_shadow_counterfactual_analyzer");
+  assert.ok(shadowAnalyzer, "shadow counterfactual analyzer missing");
+  assert.strictEqual(shadowAnalyzer.http_path, "/api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer");
+  assert.strictEqual(shadowAnalyzer.criticality, "MEDIUM");
+  assert.strictEqual(shadowAnalyzer.runtime_mode, "SHADOW_COUNTERFACTUAL_ANALYZER");
+  assert.strictEqual(shadowAnalyzer.scheduler_schedule, "0 7 * * *");
+  assert.strictEqual(shadowAnalyzer.produces_artifact, "v2_signal_shadow_counterfactual_analysis_latest.json");
   // weekly_summary intentionally not on Cloud Scheduler yet — dashboard
   // content is too sparse pre-Day 14 to warrant a weekly digest.
   assert.ok(!cloudJobIds.has("openclaw_agent_weekly_summary"),
