@@ -21,6 +21,8 @@ const DEFAULT_FILES = Object.freeze({
   algoEndpointHistory: path.join(OPS_DAILY_DIR, "v2_algo_endpoint_degradation_state_history.jsonl"),
   repairQueueLatest: path.join(OPS_DAILY_DIR, "v2_repair_queue_service_latest.json"),
   runtimeManifestLatest: path.join(OPS_DAILY_DIR, "v2_runtime_discovery_canary_manifest_latest.json"),
+  alertEventConsistencyLatest: path.join(OPS_DAILY_DIR, "fill_sync_alert_event_consistency_latest.json"),
+  tradeExecutionAlertCrossAuditLatest: path.join(OPS_DAILY_DIR, "trade_execution_alert_cross_audit_latest.json"),
 });
 
 function trimOrNull(value) {
@@ -55,6 +57,11 @@ function normalizeRate(value) {
   const n = toNumberOrNull(value);
   if (n == null) return null;
   return Math.abs(n) > 1 ? n / 100 : n;
+}
+
+function hasRows(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  return Boolean(value && typeof value === "object" && Object.keys(value).length > 0);
 }
 
 function dateKeyFromMs(ms) {
@@ -109,6 +116,8 @@ function resolveFiles(env = process.env) {
     algoEndpointHistory: trimOrNull(env.V2_EVIDENCE_SNAPSHOT_ALGO_ENDPOINT_HISTORY_FILE) || DEFAULT_FILES.algoEndpointHistory,
     repairQueueLatest: trimOrNull(env.V2_EVIDENCE_SNAPSHOT_REPAIR_QUEUE_FILE) || DEFAULT_FILES.repairQueueLatest,
     runtimeManifestLatest: trimOrNull(env.V2_EVIDENCE_SNAPSHOT_RUNTIME_MANIFEST_FILE) || DEFAULT_FILES.runtimeManifestLatest,
+    alertEventConsistencyLatest: trimOrNull(env.V2_EVIDENCE_SNAPSHOT_ALERT_EVENT_CONSISTENCY_FILE) || DEFAULT_FILES.alertEventConsistencyLatest,
+    tradeExecutionAlertCrossAuditLatest: trimOrNull(env.V2_EVIDENCE_SNAPSHOT_TRADE_EXECUTION_ALERT_CROSS_AUDIT_FILE) || DEFAULT_FILES.tradeExecutionAlertCrossAuditLatest,
   });
 }
 
@@ -132,8 +141,27 @@ function buildPerformanceSummary({ performanceGate = null, performanceReport = n
   const summary = report.summary && typeof report.summary === "object" ? report.summary : {};
   const perf = report.performance && typeof report.performance === "object" ? report.performance : {};
   const costs = report.costs && typeof report.costs === "object" ? report.costs : {};
+  const tail = report.tail_loss && typeof report.tail_loss === "object" ? report.tail_loss : {};
+  const mae = report.mae && typeof report.mae === "object" ? report.mae : {};
+  const adverse = report.adverse_excursion && typeof report.adverse_excursion === "object" ? report.adverse_excursion : {};
   const sampleN = firstNumber(gateMetrics.sample_n, report.sample_n, report.trade_n, report.outcome_n, summary.trade_n, summary.outcome_n);
   const pf = firstNumber(gateMetrics.profit_factor, report.profit_factor, perf.profit_factor, summary.profit_factor);
+  const bootstrapPfLowerCi = firstNumber(
+    gateMetrics.bootstrap_pf_lower_ci,
+    gateMetrics.profit_factor_bootstrap_lower_ci,
+    gateMetrics.bootstrap_profit_factor_lower_ci,
+    gateMetrics.pf_bootstrap_lower_ci_95,
+    gateMetrics.profit_factor_95ci_lower,
+    report.bootstrap_pf_lower_ci,
+    report.profit_factor_bootstrap_lower_ci,
+    report.bootstrap_profit_factor_lower_ci,
+    report.pf_bootstrap_lower_ci_95,
+    report.profit_factor_95ci_lower,
+    perf.bootstrap_pf_lower_ci,
+    perf.profit_factor_bootstrap_lower_ci,
+    summary.bootstrap_pf_lower_ci,
+    summary.profit_factor_bootstrap_lower_ci,
+  );
   const expectancyR = firstNumber(gateMetrics.expectancy_r, report.expectancy_r, perf.expectancy_r, summary.expectancy_r);
   const expectancyQuote = firstNumber(report.expectancy_quote, report.expectancy, perf.expectancy_quote, summary.expectancy_quote, summary.expectancy);
   const netPnlQuote = firstNumber(gateMetrics.net_pnl_usdt, report.net_pnl_usdt, perf.net_pnl_usdt, summary.net_pnl_usdt);
@@ -145,7 +173,17 @@ function buildPerformanceSummary({ performanceGate = null, performanceReport = n
   const fundingIncluded = boolOrNull(report.funding_included ?? perf.funding_included ?? costs.funding_included);
   const slippageIncluded = boolOrNull(report.slippage_included ?? perf.slippage_included ?? costs.slippage_included);
   const bySymbol = summary.by_symbol && typeof summary.by_symbol === "object" ? summary.by_symbol : report.by_symbol;
-  const byRegime = summary.by_regime && typeof summary.by_regime === "object" ? summary.by_regime : report.by_regime;
+  const byRegime = summary.by_regime && typeof summary.by_regime === "object" ? summary.by_regime : (report.by_regime || (report.cohort_summary && report.cohort_summary.by_regime_cohort));
+  const tailLossMaeReportPresent = report.tail_loss_mae_report_present === true
+    || report.tail_loss_report_present === true
+    || report.mae_report_present === true
+    || report.adverse_excursion_report_present === true
+    || hasRows(tail)
+    || hasRows(mae)
+    || hasRows(adverse)
+    || hasRows(report.tail_loss_rows)
+    || hasRows(report.mae_rows)
+    || hasRows(report.adverse_excursion_rows);
   const blockers = Array.isArray(gate.blockers) ? gate.blockers : [];
   const performanceGateStatus = gate.ok === true
     ? "PASS"
@@ -155,6 +193,7 @@ function buildPerformanceSummary({ performanceGate = null, performanceReport = n
     sample_n_total: sampleN,
     sample_n_30d: sampleN,
     profit_factor_30d: pf,
+    bootstrap_pf_lower_ci: bootstrapPfLowerCi,
     expectancy_r_30d: expectancyR,
     expectancy_30d_quote: expectancyQuote,
     net_pnl_30d_quote: netPnlQuote,
@@ -166,7 +205,8 @@ function buildPerformanceSummary({ performanceGate = null, performanceReport = n
     funding_included: fundingIncluded,
     slippage_included: slippageIncluded,
     symbol_breakdown_present: bySymbol && typeof bySymbol === "object" && Object.keys(bySymbol).length > 0,
-    regime_breakdown_present: byRegime && typeof byRegime === "object" && Object.keys(byRegime).length > 0,
+    regime_breakdown_present: hasRows(byRegime),
+    tail_loss_mae_report_present: tailLossMaeReportPresent,
     performance_gate_status: performanceGateStatus,
     performance_gate_reason: trimOrNull(gate.reason),
     performance_gate_blockers: Object.freeze(blockers),
@@ -212,6 +252,8 @@ function buildSafetySummary({
   algoEndpointHistoryRows = [],
   repairQueueLatest = null,
   runtimeManifestLatest = null,
+  alertEventConsistencyLatest = null,
+  tradeExecutionAlertCrossAuditLatest = null,
   nowMs = Date.now(),
 } = {}) {
   const activeRows30d = rowsWithinDays(activeProtectionHistoryRows, nowMs, 30);
@@ -245,6 +287,20 @@ function buildSafetySummary({
   const algoWarn30d = algoRows30d.length ? sum(algoRows30d, "degraded_warn_n") : Number(algoEndpointLatest && algoEndpointLatest.degraded_warn_n || 0);
   const repairSummary = repairQueueLatest && repairQueueLatest.summary && typeof repairQueueLatest.summary === "object" ? repairQueueLatest.summary : {};
   const manifestOk = runtimeManifestLatest && typeof runtimeManifestLatest === "object" ? runtimeManifestLatest.ok : null;
+  const alertEventIssueN = alertEventConsistencyLatest
+    ? firstNumber(alertEventConsistencyLatest.issue_n, alertEventConsistencyLatest.issue_fill_n, 0)
+    : null;
+  const crossAuditIssueN = tradeExecutionAlertCrossAuditLatest
+    ? firstNumber(
+      tradeExecutionAlertCrossAuditLatest.missing_alert_fill_n,
+      tradeExecutionAlertCrossAuditLatest.missing_verified_exit_alert_fill_n,
+      tradeExecutionAlertCrossAuditLatest.unmatched_alert_n,
+      0,
+    )
+    : null;
+  const alertFillContradictionN = alertEventIssueN == null && crossAuditIssueN == null
+    ? null
+    : Number(alertEventIssueN || 0) + Number(crossAuditIssueN || 0);
 
   return Object.freeze({
     active_protection_streak_days: computeActiveProtectionStreakDays(activeRows30d, latestActive, nowMs),
@@ -263,6 +319,9 @@ function buildSafetySummary({
     repair_queue_lag_p95_ms: firstNumber(repairQueueLatest && repairQueueLatest.repair_queue_lag_p95_ms, repairSummary.repair_queue_lag_p95_ms),
     repair_requested_n: firstNumber(repairSummary.requested_repair_n, repairQueueLatest && repairQueueLatest.requested_repair_n),
     repair_missing_context_n: firstNumber(repairSummary.missing_context_n, repairQueueLatest && repairQueueLatest.missing_context_n),
+    contradictory_alert_fill_issue_n_30d: alertFillContradictionN,
+    alert_event_consistency_issue_n: alertEventIssueN,
+    trade_execution_alert_missing_fill_n: crossAuditIssueN,
     cloud_run_revision_drift_n: manifestOk === null || manifestOk === undefined ? null : (manifestOk === true ? 0 : 1),
   });
 }
@@ -282,6 +341,8 @@ function buildSnapshot({ loaded = {}, env = process.env, nowMs = Date.now() } = 
     algoEndpointHistoryRows: loaded.algoEndpointHistory && loaded.algoEndpointHistory.rows,
     repairQueueLatest: loaded.repairQueueLatest && loaded.repairQueueLatest.data,
     runtimeManifestLatest: loaded.runtimeManifestLatest && loaded.runtimeManifestLatest.data,
+    alertEventConsistencyLatest: loaded.alertEventConsistencyLatest && loaded.alertEventConsistencyLatest.data,
+    tradeExecutionAlertCrossAuditLatest: loaded.tradeExecutionAlertCrossAuditLatest && loaded.tradeExecutionAlertCrossAuditLatest.data,
     nowMs,
   });
   const missingEvidence = Object.entries(loaded)
@@ -293,6 +354,7 @@ function buildSnapshot({ loaded = {}, env = process.env, nowMs = Date.now() } = 
   if (Number(safety.post_fill_critical_30d || 0) > 0) blockers.push("EVIDENCE_SNAPSHOT:POST_FILL_CRITICAL_30D");
   if (Number(safety.v1_place_futures_call_n_30d || 0) > 0) blockers.push("EVIDENCE_SNAPSHOT:V1_WRITER_CALL_30D");
   if (Number(safety.algo_endpoint_degraded_crit_n_30d || 0) > 0) blockers.push("EVIDENCE_SNAPSHOT:ALGO_ENDPOINT_CRIT_30D");
+  if (Number(safety.contradictory_alert_fill_issue_n_30d || 0) > 0) blockers.push("EVIDENCE_SNAPSHOT:ALERT_FILL_CONTRADICTION_30D");
   if (safety.cloud_run_revision_drift_n !== null && Number(safety.cloud_run_revision_drift_n) > 0) blockers.push("EVIDENCE_SNAPSHOT:CLOUD_RUN_REVISION_DRIFT");
   if (missingEvidence.length) blockers.push("EVIDENCE_SNAPSHOT:REQUIRED_EVIDENCE_MISSING");
 
@@ -306,6 +368,7 @@ function buildSnapshot({ loaded = {}, env = process.env, nowMs = Date.now() } = 
     sample_n_total: performance.sample_n_total,
     sample_n_30d: performance.sample_n_30d,
     profit_factor_30d: performance.profit_factor_30d,
+    bootstrap_pf_lower_ci: performance.bootstrap_pf_lower_ci,
     expectancy_r_30d: performance.expectancy_r_30d,
     expectancy_30d_quote: performance.expectancy_30d_quote,
     net_pnl_30d_quote: performance.net_pnl_30d_quote,
@@ -325,6 +388,9 @@ function buildSnapshot({ loaded = {}, env = process.env, nowMs = Date.now() } = 
     repair_queue_lag_p95_ms: safety.repair_queue_lag_p95_ms,
     repair_requested_n: safety.repair_requested_n,
     repair_missing_context_n: safety.repair_missing_context_n,
+    contradictory_alert_fill_issue_n_30d: safety.contradictory_alert_fill_issue_n_30d,
+    alert_event_consistency_issue_n: safety.alert_event_consistency_issue_n,
+    trade_execution_alert_missing_fill_n: safety.trade_execution_alert_missing_fill_n,
     cloud_run_revision_drift_n: safety.cloud_run_revision_drift_n,
     performance_gate_status: performance.performance_gate_status,
     performance_gate_reason: performance.performance_gate_reason,
@@ -334,6 +400,7 @@ function buildSnapshot({ loaded = {}, env = process.env, nowMs = Date.now() } = 
     slippage_included: performance.slippage_included,
     symbol_breakdown_present: performance.symbol_breakdown_present,
     regime_breakdown_present: performance.regime_breakdown_present,
+    tail_loss_mae_report_present: performance.tail_loss_mae_report_present,
     source_files: Object.freeze(Object.fromEntries(Object.entries(loaded).map(([key, value]) => [key, value && value.file || null]))),
   });
 }
@@ -352,6 +419,8 @@ function loadInputs(files = resolveFiles(), env = process.env) {
     algoEndpointHistory: { ...readJsonlSafe(files.algoEndpointHistory), required: false },
     repairQueueLatest: { ...readJsonSafe(files.repairQueueLatest), required: false },
     runtimeManifestLatest: { ...readJsonSafe(files.runtimeManifestLatest), required: requireRuntimeManifest },
+    alertEventConsistencyLatest: { ...readJsonSafe(files.alertEventConsistencyLatest), required: false },
+    tradeExecutionAlertCrossAuditLatest: { ...readJsonSafe(files.tradeExecutionAlertCrossAuditLatest), required: false },
   });
 }
 
