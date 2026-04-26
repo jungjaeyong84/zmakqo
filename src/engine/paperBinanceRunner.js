@@ -1254,12 +1254,13 @@ async function consumeDroppedSignals({ drops, runId, execBarCloseMs, execBarClos
   if (!Array.isArray(drops) || drops.length === 0) return;
   const consumedAtIso = new Date().toISOString();
   for (const d of drops) {
-    if (!d || !d.signal_id) continue;
+    const signalId = resolveSignalIdFromSignalLike(d);
+    if (!d || !signalId) continue;
     try {
-      const lock = await tryLockSignal({ signalId: d.signal_id, runId });
+      const lock = await tryLockSignal({ signalId, runId });
       if (lock && lock.ok) {
         await markSignalConsumed({
-          signalId: d.signal_id,
+          signalId,
           runId,
           consumedAtIso,
           execBarCloseMs,
@@ -1269,6 +1270,72 @@ async function consumeDroppedSignals({ drops, runId, execBarCloseMs, execBarClos
       }
     } catch (_) {}
   }
+}
+
+function resolveSignalIdFromSignalLike(row = null) {
+  return String(
+    (row && row.signal_id) ||
+    (row && row.signal_doc_id) ||
+    (row && row.features_json && row.features_json.signal_id) ||
+    (row && row.features_json && row.features_json.signal_doc_id) ||
+    (row && row.features && row.features.signal_id) ||
+    (row && row.features && row.features.signal_doc_id) ||
+    ""
+  ).trim() || null;
+}
+
+async function markSignalConsumedIfClaimed({
+  signalId = null,
+  runId = null,
+  consumedAtIso = null,
+  execBarCloseMs = null,
+  execBarCloseUtc = null,
+  reason = null,
+  meta = null,
+} = {}) {
+  const id = String(signalId || "").trim();
+  if (!id) return { ok: false, reason: "SIGNAL_ID_MISSING" };
+  const lock = await tryLockSignal({ signalId: id, runId });
+  if (!lock || lock.ok !== true) return lock || { ok: false, reason: "LOCK_FAILED" };
+  await markSignalConsumed({
+    signalId: id,
+    runId,
+    consumedAtIso: consumedAtIso || new Date().toISOString(),
+    execBarCloseMs,
+    execBarCloseUtc,
+    reason,
+    meta,
+  });
+  return { ok: true };
+}
+
+async function filterSignalDropsForRecording({ drops = [], runId = null } = {}) {
+  if (!Array.isArray(drops) || drops.length === 0) return [];
+  const kept = [];
+  for (const d of drops) {
+    const signalId = resolveSignalIdFromSignalLike(d);
+    if (!signalId) {
+      kept.push(d);
+      continue;
+    }
+    try {
+      const lock = await tryLockSignal({ signalId, runId });
+      if (lock && lock.ok === true) {
+        kept.push({ ...d, signal_id: signalId });
+        continue;
+      }
+      const reason = String(lock && lock.reason || "LOCK_FAILED").toUpperCase();
+      if (reason === "ALREADY_CONSUMED" || reason === "LOCKED") {
+        console.warn(`[SIGNAL_DROP_SUPPRESSED_ALREADY_CONSUMED] signal_id=${signalId} reason=${reason}`);
+        continue;
+      }
+      kept.push({ ...d, signal_id: signalId });
+    } catch (err) {
+      console.warn(`[SIGNAL_DROP_CONSUME_CHECK_FAIL] signal_id=${signalId} err=${err && err.message ? err.message : String(err)}`);
+      kept.push({ ...d, signal_id: signalId });
+    }
+  }
+  return kept;
 }
 
 function buildEntryEventId({ exchange, symbol, tf, signalBarCloseMs, event }) {
@@ -14429,6 +14496,7 @@ async function runPaperBinanceForBar({
     stage: "BAR_SIGNAL_FANIN",
   });
   const signalDrops = [];
+  let recordedSignalDrops = [];
   const metaUpdates = pendingMetaPatch ? { ...pendingMetaPatch } : {};
   const posSideNow = normalizePositionSide(
     pos.position_side ||
@@ -15448,6 +15516,22 @@ async function runPaperBinanceForBar({
         const requestBundle = requestBody.bundle || {};
         const requestPermit = requestBody.executionPermit || {};
         const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        if (s.signal_id) {
+          await markSignalConsumedIfClaimed({
+            signalId: s.signal_id,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs: execBarCloseMsForIntent,
+            execBarCloseUtc: execBarCloseUtcForIntent,
+            reason: routeReason,
+            meta: {
+              intent: intent || null,
+              v2_discovery_bridge_reason: handoff.reason || null,
+              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+            },
+          });
+        }
         sendSignalProgressAlert({
           exchange,
           symbol,
@@ -15470,30 +15554,26 @@ async function runPaperBinanceForBar({
         }).catch((err) => {
           console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_HANDOFF_ALERT_FAIL]", err?.message || err);
         });
-        if (s.signal_id) {
-          const lock = await tryLockSignal({ signalId: s.signal_id, runId });
-          if (lock && lock.ok) {
-            await markSignalConsumed({
-              signalId: s.signal_id,
-              runId,
-              consumedAtIso: new Date().toISOString(),
-              execBarCloseMs: execBarCloseMsForIntent,
-              execBarCloseUtc: execBarCloseUtcForIntent,
-              reason: routeReason,
-              meta: {
-                intent: intent || null,
-                v2_discovery_bridge_reason: handoff.reason || null,
-                v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
-                v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
-              },
-            });
-          }
-        }
         continue;
       }
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
       const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
       if (postFillHandoff.exchange_write_performed === true) {
+        if (s.signal_id) {
+          await markSignalConsumedIfClaimed({
+            signalId: s.signal_id,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs: execBarCloseMsForIntent,
+            execBarCloseUtc: execBarCloseUtcForIntent,
+            reason: blockReason,
+            meta: {
+              intent: intent || null,
+              v2_discovery_post_fill_exchange_write: true,
+              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+            },
+          });
+        }
         sendSignalProgressAlert({
           exchange,
           symbol,
@@ -15515,24 +15595,6 @@ async function runPaperBinanceForBar({
         }).catch((err) => {
           console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_POST_FILL_ALERT_FAIL]", err?.message || err);
         });
-        if (s.signal_id) {
-          const lock = await tryLockSignal({ signalId: s.signal_id, runId });
-          if (lock && lock.ok) {
-            await markSignalConsumed({
-              signalId: s.signal_id,
-              runId,
-              consumedAtIso: new Date().toISOString(),
-              execBarCloseMs: execBarCloseMsForIntent,
-              execBarCloseUtc: execBarCloseUtcForIntent,
-              reason: blockReason,
-              meta: {
-                intent: intent || null,
-                v2_discovery_post_fill_exchange_write: true,
-                v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
-              },
-            });
-          }
-        }
         continue;
       }
       signalDrops.push({
@@ -15629,12 +15691,15 @@ async function runPaperBinanceForBar({
     if (isImmediateEntry) immediateIntentsCreated += 1;
   }
   if (signalDrops.length) {
+    recordedSignalDrops = await filterSignalDropsForRecording({ drops: signalDrops, runId });
+  }
+  if (recordedSignalDrops.length) {
     await recordSignalDrops({
       exchange,
       symbol,
       tf: signalTf,
       runId,
-      drops: signalDrops.map((d) => ({
+      drops: recordedSignalDrops.map((d) => ({
         ...d,
         execution_mode: intentExecutionMode,
         signal_id: d.signal_id || (d.features_json && d.features_json.signal_id) || (d.features && d.features.signal_id) || null,
@@ -15642,7 +15707,7 @@ async function runPaperBinanceForBar({
       })),
     });
     await consumeDroppedSignals({
-      drops: signalDrops,
+      drops: recordedSignalDrops,
       runId,
       execBarCloseMs,
       execBarCloseUtc,
@@ -15700,14 +15765,15 @@ async function runPaperBinanceForBar({
     signals_external: externalSignals.length,
     signals_internal: internalSignals.length,
     signals_external_late: lateSignals,
-    signal_drop_n: signalDrops.length,
-    signal_drop_reason_counts: signalDrops.reduce((acc, row) => {
+    signal_drop_n: recordedSignalDrops.length,
+    signal_drop_suppressed_n: Math.max(0, signalDrops.length - recordedSignalDrops.length),
+    signal_drop_reason_counts: recordedSignalDrops.reduce((acc, row) => {
       const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
       acc[reason] = (acc[reason] || 0) + 1;
       return acc;
     }, {}),
-    top_signal_drop_reason: signalDrops.length
-      ? Object.entries(signalDrops.reduce((acc, row) => {
+    top_signal_drop_reason: recordedSignalDrops.length
+      ? Object.entries(recordedSignalDrops.reduce((acc, row) => {
         const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
         acc[reason] = (acc[reason] || 0) + 1;
         return acc;
@@ -17912,6 +17978,7 @@ async function runPaperFuturesForBar({
   });
   const signals = [];
   const signalDrops = [];
+  let recordedSignalDrops = [];
   const metaUpdates = pendingMetaPatch ? { ...pendingMetaPatch } : {};
   let injectedOppExit = false;
   const posSizeNowRaw = Number(pos.size_pct || 0);
@@ -19196,6 +19263,22 @@ async function runPaperFuturesForBar({
         const requestBundle = requestBody.bundle || {};
         const requestPermit = requestBody.executionPermit || {};
         const routeReason = "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE";
+        if (s.signal_id) {
+          await markSignalConsumedIfClaimed({
+            signalId: s.signal_id,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs: execBarCloseMsForIntent,
+            execBarCloseUtc: execBarCloseUtcForIntent,
+            reason: routeReason,
+            meta: {
+              intent: intent || null,
+              v2_discovery_bridge_reason: handoff.reason || null,
+              v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
+              v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
+            },
+          });
+        }
         sendSignalProgressAlert({
           exchange,
           symbol,
@@ -19218,30 +19301,26 @@ async function runPaperFuturesForBar({
         }).catch((err) => {
           console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_HANDOFF_ALERT_FAIL]", err?.message || err);
         });
-        if (s.signal_id) {
-          const lock = await tryLockSignal({ signalId: s.signal_id, runId });
-          if (lock && lock.ok) {
-            await markSignalConsumed({
-              signalId: s.signal_id,
-              runId,
-              consumedAtIso: new Date().toISOString(),
-              execBarCloseMs: execBarCloseMsForIntent,
-              execBarCloseUtc: execBarCloseUtcForIntent,
-              reason: routeReason,
-              meta: {
-                intent: intent || null,
-                v2_discovery_bridge_reason: handoff.reason || null,
-                v2_openclaw_decision_bundle_hash: requestBundle.openclawDecisionBundleHash || null,
-                v2_openclaw_execution_permit_id: requestPermit.openclaw_execution_permit_id || null,
-              },
-            });
-          }
-        }
         continue;
       }
       const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
       const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
       if (postFillHandoff.exchange_write_performed === true) {
+        if (s.signal_id) {
+          await markSignalConsumedIfClaimed({
+            signalId: s.signal_id,
+            runId,
+            consumedAtIso: new Date().toISOString(),
+            execBarCloseMs: execBarCloseMsForIntent,
+            execBarCloseUtc: execBarCloseUtcForIntent,
+            reason: blockReason,
+            meta: {
+              intent: intent || null,
+              v2_discovery_post_fill_exchange_write: true,
+              v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
+            },
+          });
+        }
         sendSignalProgressAlert({
           exchange,
           symbol,
@@ -19263,24 +19342,6 @@ async function runPaperFuturesForBar({
         }).catch((err) => {
           console.warn("[V2_DISCOVERY_SIGNAL_FAN_IN_POST_FILL_ALERT_FAIL]", err?.message || err);
         });
-        if (s.signal_id) {
-          const lock = await tryLockSignal({ signalId: s.signal_id, runId });
-          if (lock && lock.ok) {
-            await markSignalConsumed({
-              signalId: s.signal_id,
-              runId,
-              consumedAtIso: new Date().toISOString(),
-              execBarCloseMs: execBarCloseMsForIntent,
-              execBarCloseUtc: execBarCloseUtcForIntent,
-              reason: blockReason,
-              meta: {
-                intent: intent || null,
-                v2_discovery_post_fill_exchange_write: true,
-                v2_discovery_post_fill_unprotected_possible: postFillHandoff.unprotected_position_possible === true,
-              },
-            });
-          }
-        }
         continue;
       }
       signalDrops.push({
@@ -19411,15 +19472,18 @@ async function runPaperFuturesForBar({
     if (isImmediateEntry) immediateIntentsCreated += 1;
   }
   if (signalDrops.length) {
+    recordedSignalDrops = await filterSignalDropsForRecording({ drops: signalDrops, runId });
+  }
+  if (recordedSignalDrops.length) {
     await recordSignalDrops({
       exchange,
       symbol,
       tf: signalTf,
       runId,
-      drops: signalDrops.map((d) => ({ ...d, execution_mode: intentExecutionMode })),
+      drops: recordedSignalDrops.map((d) => ({ ...d, execution_mode: intentExecutionMode })),
     });
     await consumeDroppedSignals({
-      drops: signalDrops,
+      drops: recordedSignalDrops,
       runId,
       execBarCloseMs,
       execBarCloseUtc,
@@ -19483,14 +19547,15 @@ async function runPaperFuturesForBar({
     signals_external: externalSignals.length,
     signals_internal: internalSignals.length,
     signals_external_late: lateSignals,
-    signal_drop_n: signalDrops.length,
-    signal_drop_reason_counts: signalDrops.reduce((acc, row) => {
+    signal_drop_n: recordedSignalDrops.length,
+    signal_drop_suppressed_n: Math.max(0, signalDrops.length - recordedSignalDrops.length),
+    signal_drop_reason_counts: recordedSignalDrops.reduce((acc, row) => {
       const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
       acc[reason] = (acc[reason] || 0) + 1;
       return acc;
     }, {}),
-    top_signal_drop_reason: signalDrops.length
-      ? Object.entries(signalDrops.reduce((acc, row) => {
+    top_signal_drop_reason: recordedSignalDrops.length
+      ? Object.entries(recordedSignalDrops.reduce((acc, row) => {
         const reason = String(row && (row.drop_reason_code || row.reason) || "UNKNOWN");
         acc[reason] = (acc[reason] || 0) + 1;
         return acc;
@@ -19668,6 +19733,8 @@ module.exports = {
     resolveV2DiscoveryPostFillSideEffect,
     classifyV2DiscoveryPostFillHandoff,
     deriveV2DiscoveryHandoffBlockReason,
+    resolveSignalIdFromSignalLike,
+    filterSignalDropsForRecording,
     pickSignalRegime,
     isBinanceMultiAssetsIsolatedMarginBlocked,
     isBinanceMarginTypeOpenOrdersConflict,

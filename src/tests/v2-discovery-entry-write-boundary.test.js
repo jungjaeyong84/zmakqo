@@ -166,4 +166,23 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   );
 })();
 
+(function consumedSignalsMustNotEmitLaterDropAlerts() {
+  assert.ok(
+    source.includes("filterSignalDropsForRecording"),
+    "paper runner must filter drop alerts against signal consumed/locked state before recording"
+  );
+  assert.ok(
+    source.includes("SIGNAL_DROP_SUPPRESSED_ALREADY_CONSUMED"),
+    "suppressed duplicate drop alerts must be observable"
+  );
+  assert.ok(
+    source.includes("signal_drop_suppressed_n"),
+    "run summary must expose suppressed duplicate signal drops"
+  );
+  assert.ok(
+    source.indexOf("recordedSignalDrops = await filterSignalDropsForRecording") < source.indexOf("await recordSignalDrops({"),
+    "drop recording must happen only after consumed-signal filtering"
+  );
+})();
+
 console.log("V2_DISCOVERY_ENTRY_WRITE_BOUNDARY_TEST_OK");
