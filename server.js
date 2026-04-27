@@ -1,5 +1,17 @@
 require("dotenv").config();
 
+// 2026-04-27 Stage K — install global process crash handlers as the
+// FIRST thing after dotenv so any subsequent unhandled async error or
+// sync throw surfaces with a structured stack instead of an opaque
+// signal-6 SIGABRT in Cloud Logging.
+try {
+  const { installProcessCrashHandlers } = require("./src/utils/processCrashHandler");
+  installProcessCrashHandlers();
+} catch (_) {
+  // Best-effort: never fail boot just because the crash handler module
+  // couldn't be required.
+}
+
 try {
   if (process.stdin && process.stdin.on) {
     process.stdin.on("error", () => {});

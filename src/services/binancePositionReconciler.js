@@ -592,9 +592,53 @@ function emitFlatProjectionTrailContextLostAlert(meta = {}) {
   return true;
 }
 
+// 2026-04-27 Stage L — senior audit caught LINKUSDT staying DB-active +
+// exchange-flat for 30+ minutes earlier today before reconciliation
+// finally landed on a manual dashboard refresh. The reconciler itself
+// fully cleaned up once invoked — the gap was that NO ticker invokes
+// it on a fixed cadence, so a position whose paper engine sync skipped
+// it (lock contention, cold-cache, etc.) sat in the dashboard with a
+// red alert until an operator hit refresh. This emitter fires the
+// first time reconciler observes (active=false) more than
+// RECONCILER_FLAT_STALE_THRESHOLD_MS after the last native protection
+// refresh, so prolonged mismatches surface in Cloud Logging as soon as
+// reconciliation runs (instead of relying on operator vigilance).
+//
+// 안전 계약:
+//   - threshold env: `RECONCILER_FLAT_STALE_THRESHOLD_MS` (default 30min).
+//   - kill switch: `RECONCILER_FLAT_STALE_OBSERVE=0`.
+//   - emit 자체가 throw 해도 swallow (best-effort).
+//   - 후보 값 (refresh timestamp) 누락 시 silent (false negative 허용).
+function emitFlatStaleThresholdBreachAlert(meta = {}, {
+  now = Date.now(),
+  thresholdMs = Number(process.env.RECONCILER_FLAT_STALE_THRESHOLD_MS) || (30 * 60 * 1000),
+  observe = String(process.env.RECONCILER_FLAT_STALE_OBSERVE ?? "1").trim() !== "0",
+  emit = (line) => console.warn("[RECONCILER_FLAT_STALE_BREACH]", line),
+} = {}) {
+  if (!observe) return false;
+  if (!meta || typeof meta !== "object") return false;
+  const previousRefreshAtMs = Number(meta.native_protection_refresh_at_ms);
+  if (!Number.isFinite(previousRefreshAtMs) || previousRefreshAtMs <= 0) return false;
+  const ageMs = Number(now) - previousRefreshAtMs;
+  if (!Number.isFinite(ageMs) || ageMs < thresholdMs) return false;
+  try {
+    emit(JSON.stringify({
+      event: "reconciler_flat_stale_breach",
+      symbol: meta.symbol || meta.market || null,
+      position_side: meta.position_side || meta.native_protection_side || null,
+      previous_refresh_at_ms: previousRefreshAtMs,
+      stale_age_ms: ageMs,
+      threshold_ms: thresholdMs,
+      observed_at: new Date(Number(now)).toISOString(),
+    }));
+  } catch (_) { /* surveillance must never throw */ }
+  return true;
+}
+
 function buildFlatMetaProjection(meta = {}) {
   const frozen = buildFrozenTrailContext(meta);
   if (frozen) emitFlatProjectionTrailContextLostAlert(meta);
+  emitFlatStaleThresholdBreachAlert(meta);
   const next = {
     ...meta,
     exchange_projection_source: "BINANCE_LIVE_STATE",
@@ -771,6 +815,7 @@ module.exports = {
     buildFlatMetaProjection,
     buildFrozenTrailContext,
     emitFlatProjectionTrailContextLostAlert,
+    emitFlatStaleThresholdBreachAlert,
     FLAT_META_FROZEN_TRAIL_FIELDS,
   },
 };
