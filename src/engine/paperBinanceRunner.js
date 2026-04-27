@@ -2211,6 +2211,21 @@ function isExitMetaLinkedToEntry({
       linkedToEntry = false;
     }
   }
+  // Lineage-less exit ledger flags cannot be proven to belong to the current
+  // cycle. Earlier writers omitted tp_p1_entry_event_id / tp_p1_entry_exec_bar_ms
+  // / tp_p1_at, so a leaked tp_p1_done from a prior cycle silently passed the
+  // checks above (no fields → no mismatch). When the entry side has any lineage
+  // proof but the exit side carries none, treat the exit as unlinked so the
+  // sync auto-heal path clears the stale flag instead of letting it block TP1.
+  if (
+    linkedToEntry
+    && (entryId || Number.isFinite(entryMs))
+    && !exitEntryId
+    && !Number.isFinite(linkedEntryMs)
+    && !Number.isFinite(exitMs)
+  ) {
+    linkedToEntry = false;
+  }
   return linkedToEntry;
 }
 
@@ -19902,6 +19917,7 @@ module.exports = {
     resolveSignalTier,
     computeTrailingMetaUpdate,
     resolveEntryQualityTier,
+    isExitMetaLinkedToEntry,
     isExternalEntrySignalCandidate,
     compareEntrySignalPriority,
     buildEntrySignalResolutionDetail,
