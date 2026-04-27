@@ -309,6 +309,70 @@ function derivePositionState(sizePct, meta = {}) {
   return "COMMIT";
 }
 
+// 2026-04-27 Stage 3a — explicit position_cycle_id stamp (vulnerability B
+// structural fix, foundation phase).
+//
+// 배경: V2 entry kernel / runtime chain audit / alert worker 는 이미
+// `position_cycle_id` 라는 1급 식별자로 사이클을 추적한다 (src/v2/storage.js
+// POSITION_CYCLES 참조).  그러나 정작 positions_paper 의 meta 에는 이
+// id 가 강제 stamp 되지 않아, 어떤 사이클인지 식별하려면 entry_event_id
+// 에 의존해야 한다.  entry_event_id 는 cycle 마다 바뀌는 implicit signal
+// 이라, tp_p1_done 같은 lifecycle flag 가 cross-cycle 로 leak 되었을 때
+// 비교 기준이 모호해진다 (Stage 1 invariant validator 가 LINEAGE_MISMATCH
+// 로 잡지만, 그건 *증상* 검출이지 *근본* 식별자는 아니다).
+//
+// Stage 3a 의 목표 (이 변경): 모든 CORE upsertPosition write 가
+// `meta.position_cycle_id` 를 명시적으로 stamp 하도록 만든다.
+// 다음 규칙으로 도출:
+//
+//   1. FLAT 으로 가는 write (sizePct <= 0)            → null. cycle 종료.
+//   2. caller 가 meta.position_cycle_id 를 명시       → 그대로 사용
+//                                                       (V2 entry kernel
+//                                                        같은 source-of-
+//                                                        truth 가 owns).
+//   3. 직전이 ACTIVE + cycle_id 보유                  → preserve
+//                                                       (사이클 내 churn).
+//   4. FLAT→ACTIVE 진입 (또는 cycle_id 비어 있는 ACTIVE → backfill)
+//                                                     → 새로 generate.
+//      seed 는 entry_event_id (가능하면 의미 추적성 ↑).
+//
+// **이 단계에서 invariant 추가는 안 함** — 단순 additive observation.
+// Stage 3b 에서 모든 ACTIVE write 가 cycle_id 를 갖는지 강제하는
+// validator 를 warn-only → throw 로 격상 예정.
+function generatePositionCycleId(seed) {
+  const ts = Date.now();
+  const tsStr = String(ts).padStart(14, "0");
+  const tag = String(seed || "").trim().replace(/[^a-zA-Z0-9]/g, "").slice(0, 32)
+    || Math.random().toString(36).slice(2, 8);
+  return `pcid_${tsStr}_${tag}`;
+}
+
+function derivePositionCycleId({ prev = null, incomingMeta = null, sizePct = null } = {}) {
+  const incomingSize = Number(sizePct);
+  const isFlatTarget = !Number.isFinite(incomingSize) || incomingSize <= 0;
+  if (isFlatTarget) return null;
+  const explicit = String((incomingMeta && incomingMeta.position_cycle_id) || "").trim();
+  if (explicit) return explicit;
+  const prevMeta = (prev && prev.meta) || {};
+  const prevSize = Number(prev && prev.size_pct);
+  const prevWasActive = Number.isFinite(prevSize) && prevSize > 0;
+  const prevCycle = String(prevMeta.position_cycle_id || "").trim();
+  if (prevWasActive && prevCycle) return prevCycle;
+  const seed = String((incomingMeta && incomingMeta.entry_event_id) || "").trim();
+  return generatePositionCycleId(seed);
+}
+
+// META-only writes never *create* a cycle — they only carry forward whatever
+// the previous snapshot had, or accept an explicit override from the caller.
+// Cycle creation is owned by upsertPosition (CORE).
+function deriveMetaOnlyPositionCycleId({ prev = null, incomingMeta = null } = {}) {
+  const explicit = String((incomingMeta && incomingMeta.position_cycle_id) || "").trim();
+  if (explicit) return explicit;
+  const prevMeta = (prev && prev.meta) || {};
+  const prevCycle = String(prevMeta.position_cycle_id || "").trim();
+  return prevCycle || null;
+}
+
 function buildFlatPositionSnapshot({ exchange, symbol, id = null } = {}) {
   return {
     pos_id: id || posId({ exchange, symbol }),
@@ -1121,6 +1185,19 @@ async function upsertPosition({
             const previous = snap.exists ? (snap.data() || {}) : buildFlatPositionSnapshot({ exchange, symbol, id });
             assertExpectedWriteToken(previous, expectedWriteToken);
             const positionState = derivePositionState(sizePct, meta);
+            // 2026-04-27 Stage 3a — stamp position_cycle_id at the write
+            // boundary. Derivation runs on (previous, incoming meta, sizePct)
+            // so cycle continuity / RE_OPEN / FLAT-clear are decided in one
+            // place. See `derivePositionCycleId` for rule precedence.
+            const stampedCycleId = derivePositionCycleId({
+              prev: previous,
+              incomingMeta: meta,
+              sizePct,
+            });
+            const stampedMeta = {
+              ...(meta || {}),
+              position_cycle_id: stampedCycleId,
+            };
             const transitionValidation = validatePositionSnapshotTransition({
               prev: previous,
               next: {
@@ -1131,7 +1208,7 @@ async function upsertPosition({
                 size_pct: Number(sizePct),
                 avg_price: avgPrice === null || avgPrice === undefined ? null : Number(avgPrice),
                 qty_base: (qtyBase === null || qtyBase === undefined) ? null : Number(qtyBase),
-                meta: meta || {},
+                meta: stampedMeta,
               },
             });
             const transitionIssues = formatTransitionIssues(transitionValidation.issues);
@@ -1160,7 +1237,7 @@ async function upsertPosition({
               budget_max_krw: (budgetMaxKrw === null || budgetMaxKrw === undefined) ? null : Number(budgetMaxKrw),
               budget_used_krw: (budgetUsedKrw === null || budgetUsedKrw === undefined) ? null : Number(budgetUsedKrw),
               budget_source: budgetSource || null,
-              meta: meta || {},
+              meta: stampedMeta,
               trace_id: trace.trace_id,
               request_id: trace.request_id,
               last_mutation_kind: trace.mutation_kind,
@@ -1293,6 +1370,17 @@ async function upsertPositionMetaOnly({
             const snap = await tx.get(ref);
             const previous = snap.exists ? (snap.data() || {}) : buildFlatPositionSnapshot({ exchange, symbol, id });
             assertExpectedWriteToken(previous, expectedWriteToken);
+            // 2026-04-27 Stage 3a — META-only writes preserve the previous
+            // cycle_id (or accept an explicit override). They never *create*
+            // a cycle — that's CORE's responsibility. Without this, a
+            // meta-patch would silently strip cycle_id because the meta map
+            // is replaced wholesale (see commitPositionMutationTransaction).
+            const carriedCycleId = deriveMetaOnlyPositionCycleId({
+              prev: previous,
+              incomingMeta: meta,
+            });
+            const stampedMeta = { ...(meta || {}) };
+            if (carriedCycleId) stampedMeta.position_cycle_id = carriedCycleId;
             const nextSnapshot = {
               ...previous,
               pos_id: id,
@@ -1300,7 +1388,7 @@ async function upsertPositionMetaOnly({
               symbol_or_pair_id: symbol,
               run_id: runId || null,
               execution_mode: executionMode || null,
-              meta: meta || {},
+              meta: stampedMeta,
             };
             const transitionValidation = validatePositionSnapshotTransition({
               prev: previous,
@@ -1323,7 +1411,7 @@ async function upsertPositionMetaOnly({
               symbol_or_pair_id: symbol,
               run_id: runId || null,
               execution_mode: executionMode || null,
-              meta: meta || {},
+              meta: stampedMeta,
               trace_id: trace.trace_id,
               request_id: trace.request_id,
               last_mutation_kind: trace.mutation_kind,
@@ -1420,5 +1508,8 @@ module.exports = {
     notifyActivePositionInvariantViolation,
     positionInvariantAlertState,
     structuredLog,
+    generatePositionCycleId,
+    derivePositionCycleId,
+    deriveMetaOnlyPositionCycleId,
   },
 };
