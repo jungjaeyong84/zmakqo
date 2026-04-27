@@ -1,14 +1,21 @@
 "use strict";
 
+// 2026-04-27 — bumped per-symbol budget from 11~42 USDT to ≥100 USDT so that
+// the TP1 50% partial close (now ≥50 USDT) clears Binance Futures'
+// MIN_NOTIONAL filter (50 USDT). Below the bump, partial TP1 orders were
+// silently rejected on small symbols (LINKUSDT seen at 41 USDT entry → 20.4
+// USDT TP1 partial → MIN_NOTIONAL fail), leaving the position protected only
+// by SL with no automated profit-taking. BTCUSDT stays at 155 because it
+// already cleared the threshold and hold-out budget is meaningful for it.
 const DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP = Object.freeze({
   BTCUSDT: 155,
-  ETHUSDT: 42,
-  LINKUSDT: 41,
-  BNBUSDT: 13,
-  XRPUSDT: 11,
-  SOLUSDT: 11,
-  AXSUSDT: 12,
-  DOGEUSDT: 11,
+  ETHUSDT: 100,
+  LINKUSDT: 100,
+  BNBUSDT: 100,
+  XRPUSDT: 100,
+  SOLUSDT: 100,
+  AXSUSDT: 100,
+  DOGEUSDT: 100,
 });
 
 const DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT = Object.entries(

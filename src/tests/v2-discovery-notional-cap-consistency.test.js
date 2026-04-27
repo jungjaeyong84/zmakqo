@@ -16,28 +16,33 @@ const artifactScript = require("../../scripts/build-v2-discovery-notional-cap-ar
 const capCheck = require("../../scripts/check-v2-discovery-notional-cap-consistency");
 
 function defaultMapMatchesP1Design() {
+  // 2026-04-27 — bumped per-symbol budget to ≥100 USDT so TP1 50% partial
+  // (≥50 USDT) clears Binance MIN_NOTIONAL filter (50 USDT). BTCUSDT held at
+  // 155 since it already cleared. Total configured rises 296 → 855.
   assert.strictEqual(
     DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT,
-    "BTCUSDT:155|ETHUSDT:42|LINKUSDT:41|BNBUSDT:13|XRPUSDT:11|SOLUSDT:11|AXSUSDT:12|DOGEUSDT:11"
+    "BTCUSDT:155|ETHUSDT:100|LINKUSDT:100|BNBUSDT:100|XRPUSDT:100|SOLUSDT:100|AXSUSDT:100|DOGEUSDT:100"
   );
   assert.deepStrictEqual(DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP, {
     BTCUSDT: 155,
-    ETHUSDT: 42,
-    LINKUSDT: 41,
-    BNBUSDT: 13,
-    XRPUSDT: 11,
-    SOLUSDT: 11,
-    AXSUSDT: 12,
-    DOGEUSDT: 11,
+    ETHUSDT: 100,
+    LINKUSDT: 100,
+    BNBUSDT: 100,
+    XRPUSDT: 100,
+    SOLUSDT: 100,
+    AXSUSDT: 100,
+    DOGEUSDT: 100,
   });
 }
 
 function btcBetaBasketDoesNotConsumeGroupCap() {
+  // BTC-beta basket = BTC(155) + ETH(100) + SOL(100) + BNB(100) + LINK(100) = 555
+  // under bumped caps (total=900, group=900) — well within headroom.
   const dryRun = dryRunSequentialRiskGovernor();
   assert.strictEqual(dryRun.ok, true);
   assert.strictEqual(dryRun.steps.length, 5);
-  assert.strictEqual(dryRun.steps[dryRun.steps.length - 1].group_after_notional_quote, 262);
-  assert.strictEqual(dryRun.steps[dryRun.steps.length - 1].total_after_notional_quote, 262);
+  assert.strictEqual(dryRun.steps[dryRun.steps.length - 1].group_after_notional_quote, 555);
+  assert.strictEqual(dryRun.steps[dryRun.steps.length - 1].total_after_notional_quote, 555);
 }
 
 function artifactCapturesGroupExposureEvidence() {
@@ -47,18 +52,20 @@ function artifactCapturesGroupExposureEvidence() {
   assert.strictEqual(artifact.ok, true);
   assert.strictEqual(artifact.reason, "V2_DISCOVERY_NOTIONAL_CAP_CONSISTENCY_PASS");
   assert.deepStrictEqual(artifact.blockers, []);
-  assert.strictEqual(artifact.evidence.btc_beta_configured_notional_quote, 262);
-  assert.strictEqual(artifact.evidence.btc_beta_group_cap_headroom_quote, 38);
-  assert.strictEqual(artifact.evidence.total_configured_notional_quote, 296);
-  assert.strictEqual(artifact.evidence.largest_notional_position_basket_quote, 263);
+  assert.strictEqual(artifact.evidence.btc_beta_configured_notional_quote, 555);
+  // group cap 900 - btc_beta 555 = 345 headroom.
+  assert.strictEqual(artifact.evidence.btc_beta_group_cap_headroom_quote, 345);
+  assert.strictEqual(artifact.evidence.total_configured_notional_quote, 855);
+  // top-5 by notional (entries order, stable sort): BTC(155) + ETH+LINK+BNB+XRP each 100 = 555.
+  assert.strictEqual(artifact.evidence.largest_notional_position_basket_quote, 555);
   assert.deepStrictEqual(
     artifact.evidence.largest_notional_position_basket.map((row) => row.symbol),
-    ["BTCUSDT", "ETHUSDT", "LINKUSDT", "BNBUSDT", "AXSUSDT"]
+    ["BTCUSDT", "ETHUSDT", "LINKUSDT", "BNBUSDT", "XRPUSDT"]
   );
   assert.strictEqual(artifact.evidence.largest_configured_symbol_notional_quote, 155);
-  assert.strictEqual(artifact.policy.risk_total_cap_quote, 300);
-  assert.strictEqual(artifact.policy.risk_symbol_cap_quote, 155);
-  assert.strictEqual(artifact.policy.risk_correlated_group_cap_quote, 300);
+  assert.strictEqual(artifact.policy.risk_total_cap_quote, 900);
+  assert.strictEqual(artifact.policy.risk_symbol_cap_quote, 200);
+  assert.strictEqual(artifact.policy.risk_correlated_group_cap_quote, 900);
   assert.strictEqual(artifact.evidence.risk_governor_btc_beta_dry_run.ok, true);
 }
 
@@ -75,7 +82,7 @@ function artifactScriptWritesMachineReadableEvidence() {
   assert.strictEqual(result.history_file, historyFile);
   const parsed = JSON.parse(fs.readFileSync(outputFile, "utf8"));
   assert.strictEqual(parsed.ok, true);
-  assert.strictEqual(parsed.evidence.btc_beta_configured_notional_quote, 262);
+  assert.strictEqual(parsed.evidence.btc_beta_configured_notional_quote, 555);
   assert.strictEqual(fs.existsSync(historyFile), true);
 }
 

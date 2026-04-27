@@ -39,9 +39,9 @@ function dryRunSequentialRiskGovernor({
 } = {}) {
   const policy = resolveRiskGovernorPolicy({
     DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "1",
-    DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "300",
-    DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: "155",
-    DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE: "300",
+    DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "900",
+    DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: "200",
+    DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE: "900",
     DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY: "UNLIMITED",
     DONBEOLJA_V2_RISK_DAILY_LOSS_HALT_QUOTE: "10",
     ...env,
@@ -98,9 +98,9 @@ function buildDiscoveryNotionalCapConsistencyArtifact({
   map = DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP,
   generatedAt = new Date().toISOString(),
   maxPositionCount = 5,
-  riskTotalCap = 300,
-  riskSymbolCap = 155,
-  riskCorrelatedGroupCap = 300,
+  riskTotalCap = 900,
+  riskSymbolCap = 200,
+  riskCorrelatedGroupCap = 900,
 } = {}) {
   const symbols = Object.keys(map);
   const btcBetaNotional = sumNotionalForSymbols(map, DEFAULT_BTC_BETA_SYMBOLS);

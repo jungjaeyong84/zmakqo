@@ -29,9 +29,9 @@ function main(env = process.env) {
   const artifact = buildDiscoveryNotionalCapConsistencyArtifact({
     map: resolveDiscoverySymbolNotionalQuoteMap(env),
     maxPositionCount: numberWithDefault(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, 5),
-    riskTotalCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, 300),
-    riskSymbolCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, 155),
-    riskCorrelatedGroupCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, 300),
+    riskTotalCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, 900),
+    riskSymbolCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, 200),
+    riskCorrelatedGroupCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, 900),
   });
   writeJson(outputFile, artifact);
   fs.mkdirSync(path.dirname(historyFile), { recursive: true });
