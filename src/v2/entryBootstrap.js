@@ -1,7 +1,7 @@
 "use strict";
 
 const { buildPositionCycleDoc, buildExitRuntimeProjectionDoc } = require("./contracts");
-const { buildInitialProtectionPlan } = require("./protectionModel");
+const { buildInitialProtectionPlan, observeProtectionLeveragePlan } = require("./protectionModel");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -55,6 +55,22 @@ function buildV2EntryBootstrap({
     tp1TargetPct,
     tp1QtyRatio,
     leverage,
+    ...(protectionLeverageNormalize !== undefined ? { protectionLeverageNormalize } : {}),
+  });
+
+  // Stage B — opportunistic warn-only diff between V2 raw and V1-normalized
+  // SL/TP1 prices. Only fires when caller hands us a real `leverage > 1`,
+  // so callers that haven't been wired through Stage C yet stay silent.
+  observeProtectionLeveragePlan({
+    plan: protectionPlan,
+    entryPrice,
+    positionSide,
+    stopLossPct,
+    tp1TargetPct,
+    leverage,
+    exchange,
+    symbol,
+    positionCycleId: positionCycle.position_cycle_id,
     ...(protectionLeverageNormalize !== undefined ? { protectionLeverageNormalize } : {}),
   });
 
