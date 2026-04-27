@@ -530,6 +530,40 @@ const tickExitFailureAlertState = new Map();
 const nativeProtectionStateCache = new Map();
 const nativeProtectionRefreshAttemptState = new Map();
 const trailHardExitCooldownState = new Map();
+
+// 2026-04-28 senior audit (Step 8 — defensive depth on top of Step 4 OOM
+// fix). Step 4 capped only `tpP1PendingTerminalAlertState` because that
+// was the empirically-observed leak (intent-id keyed). The other caches
+// here are keyed by `symbol` or `symbol:reason` — bounded today, but
+// silent if a future change adds higher-cardinality dimensions to the
+// key (e.g. `intent_id`, `bar_close_ms`). This single-pass helper
+// applies the same cap+sweep contract uniformly so no individual cache
+// can re-introduce the SIGABRT-via-OOM pattern under future drift.
+//
+// Contract:
+//   - When the cache exceeds `softCap` entries, drop entries older than
+//     `cooldownMs` first (cooldown-aware sweep — they've already
+//     expired their semantic purpose).
+//   - If the cache is still over `softCap` after the sweep, drop the
+//     oldest half deterministically (Map preserves insertion order, so
+//     iterating from the head gives oldest-first).
+//   - Returns nothing; mutates the cache in place.
+//   - Safe to call after every `.set()` — early-exit when under cap.
+function applyAlertCacheCap(cache, cooldownMs, softCap = 2048) {
+  if (!cache || typeof cache.size !== "number" || cache.size <= softCap) return;
+  const now = Date.now();
+  const cutoff = now - (Number.isFinite(Number(cooldownMs)) ? Number(cooldownMs) : 300000);
+  for (const [k, v] of cache.entries()) {
+    if (!Number.isFinite(v) || v < cutoff) cache.delete(k);
+  }
+  if (cache.size > softCap) {
+    let drop = Math.floor(cache.size / 2);
+    for (const k of cache.keys()) {
+      if (drop-- <= 0) break;
+      cache.delete(k);
+    }
+  }
+}
 const TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS = normalizeIntervalMs(process.env.TICK_EXIT_NATIVE_PROTECTION_VERIFY_TTL_MS, 10000);
 const TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_NATIVE_PROTECTION_REFRESH_COOLDOWN_MS, 3000);
 const TICK_EXIT_HARD_EXIT_COOLDOWN_MS = normalizeIntervalMs(process.env.TICK_EXIT_HARD_EXIT_COOLDOWN_MS, 60000);
@@ -636,6 +670,9 @@ function shouldRunNativeProtectionRefreshCooldown({ symbol, now = nowMs(), coold
   const last = Number(nativeProtectionRefreshAttemptState.get(key));
   if (Number.isFinite(last) && (current - last) < cooldown) return false;
   nativeProtectionRefreshAttemptState.set(key, current);
+  // 2026-04-28 Step 8 — symbol-only keying is bounded today, but cap
+  // defensively in case future code adds higher-cardinality dimensions.
+  applyAlertCacheCap(nativeProtectionRefreshAttemptState, cooldown);
   return true;
 }
 
@@ -871,6 +908,9 @@ function shouldSendTickExitFailureAlert({ symbol, reason } = {}) {
   const last = Number(tickExitFailureAlertState.get(key));
   if (Number.isFinite(last) && (now - last) < TICK_EXIT_FAILURE_ALERT_COOLDOWN_MS) return false;
   tickExitFailureAlertState.set(key, now);
+  // 2026-04-28 Step 8 — symbol:reason keying is bounded today, but cap
+  // defensively in case future code adds higher-cardinality dimensions.
+  applyAlertCacheCap(tickExitFailureAlertState, TICK_EXIT_FAILURE_ALERT_COOLDOWN_MS);
   return true;
 }
 
@@ -992,30 +1032,11 @@ function shouldSendTpP1PendingTerminalAlert({ symbol, intentId, reason } = {}) {
   const last = Number(tpP1PendingTerminalAlertState.get(key));
   if (Number.isFinite(last) && (now - last) < TP_P1_PENDING_TERMINAL_ALERT_COOLDOWN_MS) return false;
   tpP1PendingTerminalAlertState.set(key, now);
-  // 2026-04-28 senior audit (OOM diagnosis): the key contains a per-intent
-  // intentId, so without periodic eviction the cache grew unboundedly across
-  // the lifetime of a Cloud Run instance. Cloud Run logged
-  // `Memory limit of 1024 MiB exceeded` followed by SIGABRT (signal 6) every
-  // 30–60 min on the donbeolja main service. Cap entries and drop the oldest
-  // half once we breach the soft ceiling. We only need cooldown semantics —
-  // dropping an entry just means the next alert for that exact (symbol,
-  // intent_id, reason) triplet may fire one extra time after the cap, which
-  // is acceptable.
-  if (tpP1PendingTerminalAlertState.size > 2048) {
-    const cutoff = now - TP_P1_PENDING_TERMINAL_ALERT_COOLDOWN_MS;
-    for (const [k, v] of tpP1PendingTerminalAlertState.entries()) {
-      if (!Number.isFinite(v) || v < cutoff) tpP1PendingTerminalAlertState.delete(k);
-    }
-    if (tpP1PendingTerminalAlertState.size > 2048) {
-      // Hard cap: drop oldest half deterministically (Map preserves insert
-      // order, so we walk from the head).
-      let drop = Math.floor(tpP1PendingTerminalAlertState.size / 2);
-      for (const k of tpP1PendingTerminalAlertState.keys()) {
-        if (drop-- <= 0) break;
-        tpP1PendingTerminalAlertState.delete(k);
-      }
-    }
-  }
+  // 2026-04-28 Step 4 — empirically observed unbounded growth (intent-id
+  // keyed). Cap via the shared helper; semantics: if a key gets evicted
+  // before its cooldown elapses, the next alert for that exact triplet may
+  // fire one extra time, which is acceptable.
+  applyAlertCacheCap(tpP1PendingTerminalAlertState, TP_P1_PENDING_TERMINAL_ALERT_COOLDOWN_MS);
   return true;
 }
 
@@ -1116,6 +1137,9 @@ function shouldSendTpP1AckTimeoutAlert({ symbol, intentId, reason } = {}) {
   const last = Number(tpP1AckTimeoutAlertState.get(key));
   if (Number.isFinite(last) && (now - last) < TP_P1_ACK_TIMEOUT_ALERT_COOLDOWN_MS) return false;
   tpP1AckTimeoutAlertState.set(key, now);
+  // 2026-04-28 Step 8 — same intent-id key shape as the pending-terminal
+  // cache (Step 4). Cap defensively to prevent the same OOM pattern.
+  applyAlertCacheCap(tpP1AckTimeoutAlertState, TP_P1_ACK_TIMEOUT_ALERT_COOLDOWN_MS);
   return true;
 }
 
@@ -1706,6 +1730,9 @@ function shouldSendTp1MetaSyncGapAlert({ symbol, issueCodes = [] } = {}) {
   const last = Number(tp1MetaSyncGapAlertState.get(key));
   if (Number.isFinite(last) && (now - last) < TP1_META_SYNC_GAP_ALERT_COOLDOWN_MS) return false;
   tp1MetaSyncGapAlertState.set(key, now);
+  // 2026-04-28 Step 8 — defensive cap; key combines symbol + sorted
+  // issue-code CSV so cardinality could grow if issue-code enum widens.
+  applyAlertCacheCap(tp1MetaSyncGapAlertState, TP1_META_SYNC_GAP_ALERT_COOLDOWN_MS);
   return true;
 }
 
@@ -3260,6 +3287,8 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         const lastHardExitAt = Number(trailHardExitCooldownState.get(hardExitKey));
         if (!Number.isFinite(lastHardExitAt) || (tickNow - lastHardExitAt) >= TICK_EXIT_HARD_EXIT_COOLDOWN_MS) {
           trailHardExitCooldownState.set(hardExitKey, tickNow);
+          // 2026-04-28 Step 8 — defensive cap.
+          applyAlertCacheCap(trailHardExitCooldownState, TICK_EXIT_HARD_EXIT_COOLDOWN_MS);
           try {
             const hardExitResult = await runTrailHardExit({
               exchange: "BINANCEFUT",
@@ -3982,6 +4011,11 @@ module.exports = {
     _tp1NativeProtectionGapState: tp1NativeProtectionGapState,
     _tp1NativeProtectionGapAlertState: tp1NativeProtectionGapAlertState,
     _tpP1PendingTerminalAlertState: tpP1PendingTerminalAlertState,
+    _tpP1AckTimeoutAlertState: tpP1AckTimeoutAlertState,
+    _tickExitFailureAlertState: tickExitFailureAlertState,
+    _nativeProtectionRefreshAttemptState: nativeProtectionRefreshAttemptState,
+    _trailHardExitCooldownState: trailHardExitCooldownState,
+    applyAlertCacheCap,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;
     },
