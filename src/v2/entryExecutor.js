@@ -66,6 +66,8 @@ function buildV2ExecutedEntryFromIntent({
   stopLossPct = 0.0165,
   tp1TargetPct = 0.0168,
   tp1QtyRatio = 0.5,
+  leverage = null,
+  protectionLeverageNormalize = undefined,
 } = {}) {
   const intent = validateExecutableEntryIntent(entryIntent);
   const bootstrap = buildV2EntryBootstrap({
@@ -83,6 +85,8 @@ function buildV2ExecutedEntryFromIntent({
     stopLossPct,
     tp1TargetPct,
     tp1QtyRatio,
+    leverage,
+    ...(protectionLeverageNormalize !== undefined ? { protectionLeverageNormalize } : {}),
   });
   return Object.freeze({
     entryContract: intent,

@@ -200,6 +200,8 @@ async function runV2EntrySubmitter({
   stopLossPct = 0.0165,
   tp1TargetPct = 0.0168,
   tp1QtyRatio = 0.5,
+  leverage = null,
+  protectionLeverageNormalize = undefined,
   runProtectionActivation = runV2EntryProtectionActivation,
 } = {}) {
   const submitEntryOrder = validateTransportFn("SUBMIT_ENTRY_ORDER_TRANSPORT", entryTransport && entryTransport.submitEntryOrder);
@@ -258,6 +260,8 @@ async function runV2EntrySubmitter({
     stopLossPct,
     tp1TargetPct,
     tp1QtyRatio,
+    leverage,
+    ...(protectionLeverageNormalize !== undefined ? { protectionLeverageNormalize } : {}),
   });
 
   let protectionResult = null;

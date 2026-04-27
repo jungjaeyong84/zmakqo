@@ -27,6 +27,8 @@ function buildV2EntryBootstrap({
   stopLossPct = 0.0165,
   tp1TargetPct = 0.0168,
   tp1QtyRatio = 0.5,
+  leverage = null,
+  protectionLeverageNormalize = undefined,
 } = {}) {
   const positionCycle = buildPositionCycleDoc({
     exchange,
@@ -52,6 +54,8 @@ function buildV2EntryBootstrap({
     stopLossPct,
     tp1TargetPct,
     tp1QtyRatio,
+    leverage,
+    ...(protectionLeverageNormalize !== undefined ? { protectionLeverageNormalize } : {}),
   });
 
   const projection = buildExitRuntimeProjectionDoc({

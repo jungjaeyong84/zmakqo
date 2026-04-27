@@ -1,5 +1,16 @@
 "use strict";
 
+// 2026-04-27 Stage A — V2 protection plan 의 SL/TP1 가격이 V1 의 leverage 정규화
+// (`pnlPct/lev`) 와 어긋나 prod 에서 실제 PnL 손절/익절 기준이 leverage 만큼
+// 더 멀리 잡혔던 회귀를 회복하기 위한 격리 경로.
+//
+// 안전망:
+//   - `V2_PROTECTION_LEVERAGE_NORMALIZE` env flag (prod/non-prod 모두 default off).
+//   - flag on **그리고** leverage 가 명시적 양수일 때만 `pct/leverage` 적용.
+//   - flag off 또는 leverage 누락 → 기존 raw 동작 (V2 origin) 유지.
+//   기존 caller / 테스트 / prod 배포는 영향 0. Stage B 의 diff 로깅, Stage D 의
+//   prod flip 시점에서만 실효.
+
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
@@ -15,24 +26,56 @@ function clampRatio(value, fallback) {
   return Math.max(0, Math.min(1, num));
 }
 
-function computePriceByPct({ entryPrice, pct, positionSide, kind } = {}) {
-  const price = toNumber(entryPrice);
+function readEnv(name) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null) return null;
+  const text = String(raw).trim().toLowerCase();
+  if (!text) return null;
+  if (text === "1" || text === "true" || text === "yes" || text === "on") return true;
+  if (text === "0" || text === "false" || text === "no" || text === "off") return false;
+  return null;
+}
+
+function isProtectionLeverageNormalizeEnabled() {
+  const explicit = readEnv("V2_PROTECTION_LEVERAGE_NORMALIZE");
+  if (explicit === true || explicit === false) return explicit;
+  return false;
+}
+
+function resolveEffectivePct({ pct, leverage, normalize }) {
   const ratio = Math.abs(toNumber(pct));
+  if (!(Number.isFinite(ratio) && ratio > 0)) return null;
+  if (normalize !== true) return ratio;
+  const lev = toNumber(leverage);
+  if (!(Number.isFinite(lev) && lev > 0)) return ratio;
+  return ratio / lev;
+}
+
+function computePriceByPct({
+  entryPrice,
+  pct,
+  positionSide,
+  kind,
+  leverage = null,
+  normalize = isProtectionLeverageNormalizeEnabled(),
+} = {}) {
+  const price = toNumber(entryPrice);
   const side = upper(positionSide);
   const type = upper(kind);
   if (!(Number.isFinite(price) && price > 0)) throw new Error("ENTRY_PRICE_REQUIRED");
-  if (!(Number.isFinite(ratio) && ratio > 0)) throw new Error("PCT_REQUIRED");
+  const effective = resolveEffectivePct({ pct, leverage, normalize });
+  if (!(Number.isFinite(effective) && effective > 0)) throw new Error("PCT_REQUIRED");
   if (side !== "LONG" && side !== "SHORT") throw new Error("POSITION_SIDE_REQUIRED");
 
   if (type === "SL") {
     return side === "LONG"
-      ? price * (1 - ratio)
-      : price * (1 + ratio);
+      ? price * (1 - effective)
+      : price * (1 + effective);
   }
   if (type === "TP1") {
     return side === "LONG"
-      ? price * (1 + ratio)
-      : price * (1 - ratio);
+      ? price * (1 + effective)
+      : price * (1 - effective);
   }
   throw new Error("PROTECTION_KIND_INVALID");
 }
@@ -46,6 +89,8 @@ function buildInitialProtectionPlan({
   tp1TargetPct = 0.0168,
   tp1QtyRatio = 0.5,
   exchange = "BINANCEFUT",
+  leverage = null,
+  protectionLeverageNormalize = isProtectionLeverageNormalizeEnabled(),
 } = {}) {
   const sym = upper(symbol);
   const side = upper(positionSide);
@@ -62,6 +107,23 @@ function buildInitialProtectionPlan({
   const tp1QtyAbs = Number((qty * tpQtyRatioClamped).toFixed(8));
   const runnerRemainingQtyAbs = Number((qty - tp1QtyAbs).toFixed(8));
 
+  const slPriceArgs = {
+    entryPrice: entry,
+    pct: stopLossPct,
+    positionSide: side,
+    kind: "SL",
+    leverage,
+    normalize: protectionLeverageNormalize === true,
+  };
+  const tp1PriceArgs = {
+    entryPrice: entry,
+    pct: tp1TargetPct,
+    positionSide: side,
+    kind: "TP1",
+    leverage,
+    normalize: protectionLeverageNormalize === true,
+  };
+
   return Object.freeze({
     exchange: upper(exchange) || "BINANCEFUT",
     symbol: sym,
@@ -74,18 +136,8 @@ function buildInitialProtectionPlan({
     tp1_qty_ratio: tpQtyRatioClamped,
     tp1_qty_abs: tp1QtyAbs,
     runner_remaining_qty_abs: runnerRemainingQtyAbs,
-    sl_trigger_price: Number(computePriceByPct({
-      entryPrice: entry,
-      pct: stopLossPct,
-      positionSide: side,
-      kind: "SL",
-    }).toFixed(8)),
-    tp1_trigger_price: Number(computePriceByPct({
-      entryPrice: entry,
-      pct: tp1TargetPct,
-      positionSide: side,
-      kind: "TP1",
-    }).toFixed(8)),
+    sl_trigger_price: Number(computePriceByPct(slPriceArgs).toFixed(8)),
+    tp1_trigger_price: Number(computePriceByPct(tp1PriceArgs).toFixed(8)),
   });
 }
 
@@ -94,5 +146,7 @@ module.exports = {
   __test: {
     computePriceByPct,
     clampRatio,
+    isProtectionLeverageNormalizeEnabled,
+    resolveEffectivePct,
   },
 };
