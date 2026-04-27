@@ -44,9 +44,12 @@ function collectorWritesArtifactConsumableByGate() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "v1-writer-deny-collector-"));
   const latestFile = path.join(tmpDir, "latest.json");
   const historyFile = path.join(tmpDir, "history.jsonl");
+  // Fixture timestamp must lie within the 24h window seeded by collect()'s
+  // implicit nowMs (Date.now()). A previously hard-coded date drifted out of
+  // window once wall-clock advanced past it, dropping the deny row to 0.
   const { artifact: payload } = collect({
     DONBEOLJA_V2_V1_WRITER_DENY_LOGS_JSON: JSON.stringify([
-      row("V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED"),
+      row("V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED", new Date().toISOString()),
     ]),
     DONBEOLJA_V2_V1_WRITER_DENY_STREAK_FILE: latestFile,
     DONBEOLJA_V2_V1_WRITER_DENY_STREAK_HISTORY_FILE: historyFile,
@@ -70,7 +73,7 @@ function collectorArtifactBlocksGateOnWrite() {
   const historyFile = path.join(tmpDir, "history.jsonl");
   const { artifact: payload } = collect({
     DONBEOLJA_V2_V1_WRITER_DENY_LOGS_JSON: JSON.stringify([
-      row("LEGACY_V1_EXCHANGE_WRITE_PERFORMED"),
+      row("LEGACY_V1_EXCHANGE_WRITE_PERFORMED", new Date().toISOString()),
     ]),
     DONBEOLJA_V2_V1_WRITER_DENY_STREAK_FILE: latestFile,
     DONBEOLJA_V2_V1_WRITER_DENY_STREAK_HISTORY_FILE: historyFile,
