@@ -22,6 +22,41 @@ function asObject(value) {
   return value && typeof value === "object" ? value : null;
 }
 
+// Stage C — leverage 가 entry → kernel → submitter → entryBootstrap →
+// protectionModel 까지 흘러가야 V2 protection plan 의 leverage 정규화 (Stage
+// A/B/D) 가 prod 에서 발효된다. 후보 우선순위는 caller (entryIntent) 가 가장
+// 강하고, 그다음 openclawDecision, signalIntent, env fallback 순.
+//
+// 모든 후보가 비어있으면 null 반환 → protectionModel 은 silent (raw mode 유지).
+// Stage D 에서 env flag flip 후에도 leverage>1 이 안 들어오면 raw 동작 유지하기에
+// 안전.
+function resolveProductionEntryLeverage({ entryIntent, bundle, env } = {}) {
+  const intent = asObject(entryIntent);
+  const row = asObject(bundle);
+  const decision = asObject(row && row.openclawDecision);
+  const evidence = asObject(decision && decision.canonical_evidence_summary);
+  const signalIntent = asObject(row && row.signalIntent);
+  const envObj = asObject(env) || {};
+  const candidates = [
+    intent && intent.leverage,
+    intent && intent.futures_leverage,
+    decision && decision.leverage,
+    decision && decision.futures_leverage,
+    evidence && evidence.leverage,
+    evidence && evidence.futures_leverage,
+    signalIntent && signalIntent.leverage,
+    signalIntent && signalIntent.futures_leverage,
+    envObj.V2_FUTURES_DEFAULT_LEVERAGE,
+    envObj.DONBEOLJA_V2_FUTURES_DEFAULT_LEVERAGE,
+  ];
+  for (const cand of candidates) {
+    if (cand === undefined || cand === null || cand === "") continue;
+    const num = Number(cand);
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+  return null;
+}
+
 function summarizeRuntimeConfig(cfg) {
   return Object.freeze({
     enabled: cfg.enabled === true,
@@ -381,6 +416,7 @@ async function runV2ProductionEntryRoute({
   riskGovernorSurface = null,
   findRecentSameDirectionExecutionsFn = findRecentSameDirectionExecutions,
   evaluateSameDirectionCooldown = evaluateV2SameDirectionCooldown,
+  routeEntryIntentFromOpenClaw = resolveEntryIntentFromOpenClaw,
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
   stopLossPct = 0.0165,
@@ -420,7 +456,7 @@ async function runV2ProductionEntryRoute({
     });
   }
 
-  const routedDecision = resolveEntryIntentFromOpenClaw(bundle);
+  const routedDecision = routeEntryIntentFromOpenClaw(bundle);
   const preExecutionAudit = evaluateOpenClawExecutionSeparation({
     bundle,
     routedDecision,
@@ -649,6 +685,7 @@ async function runV2ProductionEntryRoute({
     });
   }
 
+  const leverage = resolveProductionEntryLeverage({ entryIntent, bundle, env });
   const kernelResult = await runEntryKernel({
     db,
     env,
@@ -660,6 +697,7 @@ async function runV2ProductionEntryRoute({
     stopLossPct,
     tp1TargetPct,
     tp1QtyRatio,
+    leverage,
   });
   const postFillSideEffect = summarizePostFillSideEffect(kernelResult);
   if (!kernelResult || kernelResult.ok !== true) {
@@ -854,10 +892,12 @@ async function runV2ProductionEntryRoute({
 
 module.exports = {
   runV2ProductionEntryRoute,
+  resolveProductionEntryLeverage,
   __test: {
     trimOrNull,
     upper,
     asObject,
+    resolveProductionEntryLeverage,
     summarizeRuntimeConfig,
     extractExecutedEntry,
     extractSubmitterResult,
