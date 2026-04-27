@@ -126,7 +126,7 @@ function buildTp1BlockedPayload() {
   return {
     exchange: "BINANCEFUT",
     symbol: "LINKUSDT",
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: "EXIT",
     side: "SELL",
     positionSideBefore: "LONG",
@@ -136,7 +136,7 @@ function buildTp1BlockedPayload() {
     qtyBase: 70.85,
     closeRatio: 0.5,
     fullExit: false,
-    canonicalExitEvent: "EXIT_TP_P1_3.25P",
+    canonicalExitEvent: "EXIT_TP_P1_2.5P",
     canonicalExitStage: "TP1",
     canonicalTransitionEvents: [],
     canonicalTransitionEvent: null,

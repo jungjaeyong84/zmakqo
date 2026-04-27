@@ -24,7 +24,7 @@ async function run() {
     execPrice: 84.12,
     appliedLeverage: 2,
     leverageReason: "REGIME_NOT_TREND",
-    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+    exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
     features: {
       market_bias_mult: 0.5,
       ev_mult: 0.7,
@@ -65,7 +65,7 @@ async function run() {
       time_stop_scope: "PRE_TP1",
       openclaw_market_regime_cohort: "RESCUE",
     },
-    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+    exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(timeStop, "time stop message should exist");
   assert.strictEqual(timeStop.title, "SOLUSDT TIME_STOP_18B 전량 청산");
@@ -87,20 +87,20 @@ async function run() {
     closeRatio: 0.5,
     appliedLeverage: 2,
     leverageReason: "REGIME_NOT_TREND",
-    canonicalExitEvent: "EXIT_TP_P1_3.25P",
+    canonicalExitEvent: "EXIT_TP_P1_2.5P",
     canonicalExitStage: "TP1",
     canonicalTransitionEvent: "TP1_REACHED",
     canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
-    exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+    exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(tp1Failure, "tp1 failure message should exist");
-  assert.strictEqual(tp1Failure.title, "SOLUSDT 정본재분류 TP1_1.65->TP1_3.25 주문 실패");
+  assert.strictEqual(tp1Failure.title, "SOLUSDT 정본재분류 TP1_1.65->TP1_2.5 주문 실패");
   assert.ok(tp1Failure.body.includes("방향: 숏 청산"), "failure message should include exit direction");
-  assert.ok(tp1Failure.body.includes("종류: 익절(TP1) 3.25%"), "failure message should use canonical stage label");
-  assert.ok(tp1Failure.body.includes("실행계약: TP1_3.25"), "failure message should show canonical executed contract");
+  assert.ok(tp1Failure.body.includes("종류: 익절(TP1) 2.5%"), "failure message should use canonical stage label");
+  assert.ok(tp1Failure.body.includes("실행계약: TP1_2.5"), "failure message should show canonical executed contract");
   assert.ok(tp1Failure.body.includes("주문비율: 50%"), "failure message should include close ratio");
-  assert.ok(tp1Failure.body.includes("정본재분류: TP1_1.65 -> TP1_3.25"), "failure message should expose canonical reclassification");
-  assert.ok(tp1Failure.body.includes("전략계약: SL_1.65 / TP1_3.25 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "failure message should separate strategy contract from executed stage");
+  assert.ok(tp1Failure.body.includes("정본재분류: TP1_1.65 -> TP1_2.5"), "failure message should expose canonical reclassification");
+  assert.ok(tp1Failure.body.includes("전략계약: SL_1.65 / TP1_2.5 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "failure message should separate strategy contract from executed stage");
   assert.ok(tp1Failure.body.includes("RUNNER_MIN_2"), "failure message should include runner floor rule");
   assert.ok(tp1Failure.body.includes("실패사유: MARGIN_TYPE_SET_FAILED"), "failure reason should be explicit");
   assert.ok(tp1Failure.body.includes("메모: margin type change rejected"), "failure note should be explicit");

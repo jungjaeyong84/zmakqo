@@ -13,27 +13,27 @@ async function run() {
     position: {
       meta: {
         openclaw_market_regime_cohort: "RESCUE",
-        exit_rules_override: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+        exit_rules_override: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
       },
     },
-  }, { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 });
+  }, { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 });
   assert.ok(approxEqual(rescueExitRules.TP_P1, 0.0165), "rescue cohort alert must use current TP1");
   assert.ok(approxEqual(rescueExitRules.TRAIL_R_MULTIPLE, 0.6), "rescue cohort alert must use current trailing R");
   assert.ok(approxEqual(rescueExitRules.RUNNER_MIN_PROFIT_PCT, 0.0165), "rescue cohort alert must honor minimum Binance runner floor");
   assert.ok(approxEqual(rescueExitRules.BE_PCT, 0.0015), "rescue cohort alert must use current BE");
   assert.strictEqual(
-    fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P1_3.25P", rescueExitRules),
+    fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P1_2.5P", rescueExitRules),
     "EXIT_TP_P1_1.65P",
     "legacy TP1 event label must be normalized to current cohort rule"
   );
 
   const firstCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: { qty_fraction: 0.5 },
     qtyScale: { ratio: 0.394 },
   });
   const secondCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: { qty_fraction: 0.5 },
     qtyScale: { ratio: 0.606 },
   });
@@ -42,7 +42,7 @@ async function run() {
   assert.ok(approxEqual(secondCloseRatio, 0.303), "second split close ratio must be scaled from intent qty_fraction");
   assert.strictEqual(
     fillsSyncTest.resolveFillSyncAlertFullExit({
-      event: "EXIT_TP_P1_3.25P",
+      event: "EXIT_TP_P1_2.5P",
       orderMeta: { closePosition: false },
       closeRatio: firstCloseRatio,
     }),
@@ -167,7 +167,7 @@ async function run() {
   const batches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(batches, {
     symbol: "XRPUSDT",
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: "EXIT",
     side: "SELL",
     orderMeta: { orderId: 99123, clientOrderId: "fut_xrp_tp1" },
@@ -175,13 +175,13 @@ async function run() {
     payload: {
       exchange: "BINANCEFUT",
       symbol: "XRPUSDT",
-      event: "EXIT_TP_P1_3.25P",
+      event: "EXIT_TP_P1_2.5P",
       side: "SELL",
       intent: "EXIT",
       executionMode: "LIVE",
       notional: 158.49,
       execPrice: 1.395,
-      canonicalExitEvent: "EXIT_TP_P1_3.25P",
+      canonicalExitEvent: "EXIT_TP_P1_2.5P",
       canonicalExitStage: "TP1",
       canonicalTransitionEvent: "TP1_REACHED",
       canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
@@ -192,13 +192,13 @@ async function run() {
       positionSideAfter: null,
       appliedLeverage: 2,
       leverageReason: "BINANCE_USER_TRADES_SYNC",
-      exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_PCT: 0.01, BE_PCT: 0.0025 },
+      exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_PCT: 0.01, BE_PCT: 0.0025 },
       runId: "FILL_SYNC__XRPUSDT",
     },
   });
   fillsSyncTest.queueFillSyncAlertBatch(batches, {
     symbol: "XRPUSDT",
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: "EXIT",
     side: "SELL",
     orderMeta: { orderId: 99123, clientOrderId: "fut_xrp_tp1" },
@@ -206,13 +206,13 @@ async function run() {
     payload: {
       exchange: "BINANCEFUT",
       symbol: "XRPUSDT",
-      event: "EXIT_TP_P1_3.25P",
+      event: "EXIT_TP_P1_2.5P",
       side: "SELL",
       intent: "EXIT",
       executionMode: "LIVE",
       notional: 243.88,
       execPrice: 1.395,
-      canonicalExitEvent: "EXIT_TP_P1_3.25P",
+      canonicalExitEvent: "EXIT_TP_P1_2.5P",
       canonicalExitStage: "TP1",
       canonicalTransitionEvent: "TP1_REACHED",
       canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
@@ -223,7 +223,7 @@ async function run() {
       positionSideAfter: null,
       appliedLeverage: 2,
       leverageReason: "BINANCE_USER_TRADES_SYNC",
-      exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_PCT: 0.01, BE_PCT: 0.0025 },
+      exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_PCT: 0.01, BE_PCT: 0.0025 },
       runId: "FILL_SYNC__XRPUSDT",
     },
   });
@@ -369,7 +369,7 @@ async function run() {
   );
 
   const nativeTpCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: null,
     qtyScale: { ratio: null },
     execQtyBase: 49.19,
@@ -398,7 +398,7 @@ async function run() {
   );
 
   const ethLikeCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: null,
     qtyScale: { ratio: null },
     execQtyBase: 0.165,
@@ -414,7 +414,7 @@ async function run() {
   );
 
   const missingTpMetaCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: null,
     qtyScale: { ratio: null },
     execQtyBase: 0.165,
@@ -590,8 +590,8 @@ async function run() {
 
   const msg = alertTest.buildMessage(merged.payload);
   assert.ok(msg, "aggregated TP1 alert message must be buildable");
-  assert.strictEqual(msg.title, "XRPUSDT TP1_3.25 50% 청산");
-  assert.ok(msg.body.includes("종류: 익절(TP1) 3.25%"), "TP1 label must be preserved");
+  assert.strictEqual(msg.title, "XRPUSDT TP1_2.5 50% 청산");
+  assert.ok(msg.body.includes("종류: 익절(TP1) 2.5%"), "TP1 label must be preserved");
   assert.ok(msg.body.includes("청산규모: 402.37 USDT"), "aggregated notional must be visible");
 
   const repeatedContractRatioBatches = new Map();
@@ -698,7 +698,7 @@ async function run() {
       entryEventId: "BINANCEFUT|BTCUSDT|15m|1775372400000|SHORT|SHORT",
       appliedLeverage: 2,
       leverageReason: "BINANCE_USER_TRADES_SYNC",
-      exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+      exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
       runId: "FILL_SYNC__BTCUSDT",
     },
   });
@@ -725,7 +725,7 @@ async function run() {
       entryEventId: "BINANCEFUT|BTCUSDT|15m|1775372400000|SHORT|SHORT",
       appliedLeverage: 2,
       leverageReason: "BINANCE_USER_TRADES_SYNC",
-      exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+      exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
       runId: "FILL_SYNC__BTCUSDT",
     },
   });
@@ -752,7 +752,7 @@ async function run() {
       entryEventId: "BINANCEFUT|BTCUSDT|15m|1775372400000|SHORT|SHORT",
       appliedLeverage: 2,
       leverageReason: "BINANCE_USER_TRADES_SYNC",
-      exitRules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+      exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
       runId: "FILL_SYNC__BTCUSDT",
     },
   });
@@ -791,7 +791,7 @@ async function run() {
 
   const sameOrderAsRecentTp1 = fillsSyncTest.isSameOrderAsRecentTp1(
     { orderId: 14608292413, clientOrderId: "dbj_same_order" },
-    { orderId: 14608292413, clientOrderId: "dbj_other", event: "EXIT_TP_P1_3.25P" }
+    { orderId: 14608292413, clientOrderId: "dbj_other", event: "EXIT_TP_P1_2.5P" }
   );
   assert.strictEqual(sameOrderAsRecentTp1, true, "same order id must be recognized as the same TP1 order");
 
@@ -811,14 +811,14 @@ async function run() {
     recentTp1: {
       orderId: 14608292413,
       clientOrderId: "dbj_same_order",
-      event: "EXIT_TP_P1_3.25P",
+      event: "EXIT_TP_P1_2.5P",
       tradeMs: 1_777_810_631_082,
     },
-    rules: { SL: -0.0165, TP_P1: 0.0325, TRAIL_PCT: 0.01, BE_PCT: 0.0025 },
+    rules: { SL: -0.0165, TP_P1: 0.025, TRAIL_PCT: 0.01, BE_PCT: 0.0025 },
   });
   assert.strictEqual(
     sameOrderEvent,
-    "EXIT_TP_P1_3.25P",
+    "EXIT_TP_P1_2.5P",
     "split fills from the same triggered TP1 order must stay classified as TP1, not TRAIL"
   );
 
@@ -1224,7 +1224,7 @@ async function run() {
 
   assert.strictEqual(
     fillsSyncTest.shouldEmitExternalFillSyncExitAlert({
-      event: "EXIT_TP_P1_3.25P",
+      event: "EXIT_TP_P1_2.5P",
       realizedPnl: 0,
       canonicalStage: "TP1",
       canonicalTransitionEvents: ["TP1_REACHED"],

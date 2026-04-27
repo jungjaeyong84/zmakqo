@@ -170,7 +170,7 @@ async function run() {
   const baseExitRules = {
     TP_P0: 0.008,
     TP_P0_QTY: 0.25,
-    TP_P1: 0.0325,
+    TP_P1: 0.025,
     TP_P1_RESCUE_COHORT: 0.0165,
     TP_P1_MIXED_COHORT: 0.025,
     SL: -0.0165,
@@ -284,7 +284,7 @@ async function run() {
       exit_profile: "BASE",
       exit_profile_reason: "MANUAL_BASE_PROFILE",
       exit_rules_override: {
-        TP_P1: 0.0325,
+        TP_P1: 0.025,
         TP_P1_QTY: 0.5,
         SL: -0.0165,
         BE_ENABLE: true,

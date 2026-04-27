@@ -107,7 +107,7 @@ function run() {
     },
     rules: {
       SL: -0.0165,
-      TP_P1: 0.0325,
+      TP_P1: 0.025,
       TP_P1_QTY: 0.5,
       TRAIL_R_MULTIPLE: 0.9,
       TRAIL_PCT: 0.01,
@@ -137,7 +137,7 @@ function run() {
         trail_low: 98.3,
         exit_rules_override: {
           SL: -0.0165,
-          TP_P1: 0.0325,
+          TP_P1: 0.025,
           TP_P1_QTY: 0.5,
           TRAIL_R_MULTIPLE: 0.9,
           TRAIL_PCT: 0.01,

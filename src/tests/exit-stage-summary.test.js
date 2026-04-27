@@ -26,7 +26,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
         native_protection_tp_status: "OK",
         exit_rules_override: {
           SL: 0.0165,
-          TP_P1: 0.0325,
+          TP_P1: 0.025,
           TP_P1_QTY: 0.5,
           TRAIL_R_MULTIPLE: 0.9,
           TRAIL_PCT: 0.01,
@@ -114,7 +114,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
         native_protection_stop_price: 98.35,
         exit_rules_override: {
           SL: 0.0165,
-          TP_P1: 0.0325,
+          TP_P1: 0.025,
           TP_P1_QTY: 0.5,
           TRAIL_R_MULTIPLE: 0.9,
           TRAIL_PCT: 0.01,

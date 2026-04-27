@@ -2067,7 +2067,7 @@ const FUTURES_EXIT_PROFILE_BASE = Object.freeze({
   key: "BASE",
   rules: {
     SL: -0.0165,
-    TP_P1: 0.0325,
+    TP_P1: 0.025,
     TP_P1_QTY: 0.5,
     TP_C: null,
     BE_ENABLE: true,

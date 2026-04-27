@@ -15,7 +15,7 @@ const { buildSignalLineageReport } = require("../../scripts/report-signal-lineag
     fills: [
       { event: "LONG", signal_doc_id: "SIG__1", intent_id: "INT__1", exec_price_source: "WEBHOOK" },
       { event: "EXIT_EXTERNAL_SYNC", signal_doc_id: "SIG__1", intent_id: null, exec_price_source: "BINANCE_USER_TRADES", decision_reason: "EXTERNAL_FILL_RECONCILED" },
-      { event: "EXIT_TP_P1_3.25P", signal_doc_id: "SIG__1", intent_id: null, exec_price_source: "BINANCE_USER_TRADES", decision_reason: "EXTERNAL_FILL_RECONCILED" },
+      { event: "EXIT_TP_P1_2.5P", signal_doc_id: "SIG__1", intent_id: null, exec_price_source: "BINANCE_USER_TRADES", decision_reason: "EXTERNAL_FILL_RECONCILED" },
     ],
   });
 

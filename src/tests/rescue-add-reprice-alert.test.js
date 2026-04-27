@@ -51,7 +51,7 @@ async function run() {
         leverage: 2,
         exit_rules_override: {
           SL: -0.0165,
-          TP_P1: 0.0325,
+          TP_P1: 0.025,
           BE_ENABLE: true,
           BE_PCT: 0.0025,
           TRAIL_PCT: 0.01,
@@ -65,7 +65,7 @@ async function run() {
     fillPrice: 99,
     exitRules: {
       SL: -0.0165,
-      TP_P1: 0.0325,
+      TP_P1: 0.025,
       BE_ENABLE: true,
       BE_PCT: 0.0025,
       TRAIL_PCT: 0.01,

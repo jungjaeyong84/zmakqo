@@ -323,7 +323,7 @@ async function run() {
       symbol: "SOLUSDT",
       tf: "15m",
       side: "SELL",
-      event: "EXIT_TP_P1_3.25P",
+      event: "EXIT_TP_P1_2.5P",
       exec_price: 103,
       qty_pct: 0.075,
       exec_bar_close_time_utc_ms: 7000,

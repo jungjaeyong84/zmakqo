@@ -298,7 +298,7 @@ function run() {
 
   const fillsByEntryEventId = new Map([
     ["BINANCEFUT|BTCUSDT|15m|1000|CORE_LONG|CORE_LONG", [
-      { event: "EXIT_TP_P1_3.25P" },
+      { event: "EXIT_TP_P1_2.5P" },
       { event: "EXIT_TRAIL_1P" },
     ]],
     ["BINANCEFUT|ETHUSDT|15m|2000|CORE_LONG|CORE_LONG", [

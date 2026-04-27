@@ -9,7 +9,7 @@ function run() {
     TP_P0: 0.008,
     TP_P0_QTY: 0.25,
     TP_P0_ATR_MULTIPLE: 0.8,
-    TP_P1: 0.0325,
+    TP_P1: 0.025,
     TRAIL_PCT: 0.01,
     BE_ENABLE: true,
     TRAIL_DELAY_BARS: 1,

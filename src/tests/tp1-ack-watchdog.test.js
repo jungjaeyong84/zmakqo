@@ -51,7 +51,7 @@ function run() {
   const payload = __test.buildTpP1AckTimeoutAlertPayload({
     symbol: "ETHUSDT",
     tf: "15m",
-    pendingEvent: "EXIT_TP_P1_3.25P",
+    pendingEvent: "EXIT_TP_P1_2.5P",
     pendingAtMs: Date.parse("2026-04-16T04:30:00.000Z"),
     intent: {
       intent_id: "INTENT__ETH__TP1",

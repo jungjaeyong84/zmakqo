@@ -334,7 +334,7 @@ function run() {
       },
     },
   });
-  assert.strictEqual(promotedBaseRules.TP_P1, 0.0325);
+  assert.strictEqual(promotedBaseRules.TP_P1, 0.025);
 
   const samplingStage = evaluateTp1LadderStage({
     cohort: "BASE",

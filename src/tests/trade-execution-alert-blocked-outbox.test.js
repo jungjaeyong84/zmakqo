@@ -97,7 +97,7 @@ function buildTp1BlockedPayload() {
   return {
     exchange: "BINANCEFUT",
     symbol: "BNBUSDT",
-    event: "EXIT_TP_P1_3.25P",
+    event: "EXIT_TP_P1_2.5P",
     intent: "EXIT",
     side: "SELL",
     positionSideBefore: "LONG",
@@ -109,7 +109,7 @@ function buildTp1BlockedPayload() {
     // Canonical metadata set to simulate the P0 symptom: stage is TP1 but
     // transitionEvents is empty because entry_event_id was missing
     // upstream.
-    canonicalExitEvent: "EXIT_TP_P1_3.25P",
+    canonicalExitEvent: "EXIT_TP_P1_2.5P",
     canonicalExitStage: "TP1",
     canonicalTransitionEvents: [],
     canonicalTransitionEvent: null,
@@ -145,11 +145,11 @@ function buildTp1BlockedPayload() {
     assert.strictEqual(prep.type, "TRADE_EXECUTION_ALERT");
     assert.strictEqual(prep.exchange, "BINANCEFUT");
     assert.strictEqual(prep.symbol, "BNBUSDT");
-    assert.strictEqual(prep.event, "EXIT_TP_P1_3.25P");
+    assert.strictEqual(prep.event, "EXIT_TP_P1_2.5P");
     assert.ok(prep.title && prep.title.includes("[BLOCKED:MISSING_CANONICAL_EXIT_TRANSITION]"),
       "placeholder title must encode the skip reason so dashboards can "
       + "render BLOCKED rows without needing to re-derive the cause");
-    assert.ok(prep.title.includes("BNBUSDT") && prep.title.includes("EXIT_TP_P1_3.25P"),
+    assert.ok(prep.title.includes("BNBUSDT") && prep.title.includes("EXIT_TP_P1_2.5P"),
       "placeholder title must carry symbol/event for at-a-glance ops view");
     assert.strictEqual(prep.allowResend, false,
       "BLOCKED prep must NOT allowResend — we must not clobber prior SENT rows");
