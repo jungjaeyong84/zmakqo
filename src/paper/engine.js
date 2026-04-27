@@ -28,12 +28,48 @@ async function getPosition({ ruleId, symbol }) {
   return snap.data();
 }
 
+// 2026-04-27 P0 / Stage 2 — vulnerability A defense-in-depth.
+//
+// 이 V1 paper engine 은 simplified-exit V2 (positionsPaper.js) 가 도입되기
+// 전의 legacy 경로다. V1/V2 둘 다 같은 `positions_paper` 컬렉션을 쓰지만
+// schema 가 다르고 (V1: {side,qty,avg_price}; V2: {state,position_state,meta})
+// invariant validator 와 writer-lease 도 V2 만 갖고 있다.
+//
+// 안전장치 (현재 doc-id prefix 가 다르므로 사실상 충돌 없음, 그러나 회귀
+// 방지용 belt-and-suspenders):
+//   (1) V2 namespace (POS__) 로 시작하는 doc-id 가 들어오면 throw —
+//       "어느 부주의한 ruleId 가 POS__... 처럼 만들어져도 V2 데이터를
+//       건드리지 못하도록".
+//   (2) 모든 V1 write 에 `paper_engine_version: "v1_legacy"` sentinel 을
+//       stamp — listing/aggregation 코드가 V1 doc 을 V2 schema 로 잘못
+//       해석하는 것을 막을 수 있도록 식별자 제공.
+const V2_DOC_ID_PREFIX = "POS__";
+
 async function setPosition({ ruleId, symbol, pos }) {
   const db = getFirestore();
   const docId = safeId(`${ruleId}_${symbol}`);
+  if (typeof docId === "string" && docId.startsWith(V2_DOC_ID_PREFIX)) {
+    const err = new Error(
+      `[V1_PAPER_ENGINE_NAMESPACE_GUARD] refusing to write doc-id `
+      + `"${docId}" — collides with V2 namespace (positionsPaper helpers). `
+      + `ruleId="${ruleId}" symbol="${symbol}". Route through `
+      + `src/storage/positionsPaper.upsertPosition for V2 writes.`
+    );
+    err.code = "V1_PAPER_ENGINE_NAMESPACE_GUARD";
+    err.docId = docId;
+    err.ruleId = ruleId;
+    err.symbol = symbol;
+    throw err;
+  }
   const ref = db.collection("positions_paper").doc(docId);
   await ref.set(
-    { ...pos, rule_id: ruleId, symbol, updated_at: nowIso() },
+    {
+      ...pos,
+      rule_id: ruleId,
+      symbol,
+      paper_engine_version: "v1_legacy",
+      updated_at: nowIso(),
+    },
     { merge: true }
   );
 }
@@ -327,4 +363,8 @@ async function processSignalPaper({ runId, payload }) {
   return { ok: true, signal_id: signalDoc.signal_id, results };
 }
 
-module.exports = { processSignalPaper, parseRulesEnv };
+module.exports = {
+  processSignalPaper,
+  parseRulesEnv,
+  __test: { setPosition, V2_DOC_ID_PREFIX },
+};
