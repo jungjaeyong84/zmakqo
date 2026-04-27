@@ -91,6 +91,8 @@ function buildV2EntryBootstrap({
     finalEffectiveStop: protectionPlan.sl_trigger_price,
     nativeStopPrice: null,
     healthStatus: "HEALTHY",
+    initialStopPrice: protectionPlan.initial_stop_price,
+    entryRDistance: protectionPlan.entry_r_distance,
   });
 
   return Object.freeze({

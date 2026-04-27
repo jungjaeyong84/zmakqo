@@ -365,6 +365,8 @@ function buildExitRuntimeProjectionDoc({
   finalEffectiveStop,
   nativeStopPrice,
   healthStatus = "HEALTHY",
+  initialStopPrice = null,
+  entryRDistance = null,
 } = {}) {
   return {
     exit_runtime_projection_id: buildExitRuntimeProjectionId({ positionCycleId }),
@@ -384,6 +386,8 @@ function buildExitRuntimeProjectionDoc({
     final_effective_stop: toNumberOrNull(finalEffectiveStop),
     native_stop_price: toNumberOrNull(nativeStopPrice),
     health_status: validateEnum("health_status", healthStatus, V2_HEALTH_STATUSES),
+    initial_stop_price: toNumberOrNull(initialStopPrice),
+    entry_r_distance: toNumberOrNull(entryRDistance),
   };
 }
 

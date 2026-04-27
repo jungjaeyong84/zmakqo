@@ -124,6 +124,13 @@ function buildInitialProtectionPlan({
     normalize: protectionLeverageNormalize === true,
   };
 
+  const slTriggerPrice = Number(computePriceByPct(slPriceArgs).toFixed(8));
+  const tp1TriggerPrice = Number(computePriceByPct(tp1PriceArgs).toFixed(8));
+  // Surface the normalized SL distance as a single source of truth for any
+  // downstream trail meta (entry_r_distance / initial_stop_price). Without
+  // this the exit path falls back to signalEngine.resolveEntryRDistance
+  // recomputing `sl/lev` — correct today but fragile to future refactors.
+  const entryRDistance = Number(Math.abs(slTriggerPrice - entry).toFixed(8));
   return Object.freeze({
     exchange: upper(exchange) || "BINANCEFUT",
     symbol: sym,
@@ -136,8 +143,10 @@ function buildInitialProtectionPlan({
     tp1_qty_ratio: tpQtyRatioClamped,
     tp1_qty_abs: tp1QtyAbs,
     runner_remaining_qty_abs: runnerRemainingQtyAbs,
-    sl_trigger_price: Number(computePriceByPct(slPriceArgs).toFixed(8)),
-    tp1_trigger_price: Number(computePriceByPct(tp1PriceArgs).toFixed(8)),
+    sl_trigger_price: slTriggerPrice,
+    tp1_trigger_price: tp1TriggerPrice,
+    initial_stop_price: slTriggerPrice,
+    entry_r_distance: entryRDistance,
   });
 }
 
