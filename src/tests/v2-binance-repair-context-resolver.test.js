@@ -44,7 +44,7 @@ function buildDelegatedRefreshRepair(overrides = {}) {
       native_stop_price: 2410,
       leverage: 3,
       exit_rules_override: {
-        TP_P1: 0.0168,
+        TP_P1: 0.025,
       },
       ...overrides.protectionRuntime,
     },
@@ -75,7 +75,7 @@ function buildDelegatedRefreshRepair(overrides = {}) {
   assert.strictEqual(context.fallbackSide, "BUY");
   assert.strictEqual(context.fallbackEntryPrice, 2500);
   assert.strictEqual(context.fallbackLeverage, 3);
-  assert.deepStrictEqual(context.exitRulesOverride, { TP_P1: 0.0168 });
+  assert.deepStrictEqual(context.exitRulesOverride, { TP_P1: 0.025 });
   assert.strictEqual(context.posMeta.tp1_done, true);
   assert.strictEqual(context.posMeta.trail_active, true);
   assert.strictEqual(context.posMeta.native_protection_stop_price, 2420);

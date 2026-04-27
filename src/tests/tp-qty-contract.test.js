@@ -68,7 +68,7 @@ const nativeProtectionSimplifiedV2 = runnerTest.computeBinanceNativeProtectionPr
     SL: -0.0165,
     TP_P0: 0.008,
     TP_P0_QTY: 0.9,
-    TP_P1: 0.0168,
+    TP_P1: 0.025,
     TP_P1_QTY: 0.5,
   },
   posMeta: {
@@ -105,7 +105,7 @@ assert.strictEqual(simplifiedV2Tp0ContractPayload, null);
 const simplifiedV2Tp1ContractPayload = runnerTest.buildExitOrderContractRecordPayload({
   kind: "TP1",
   rules: {
-    TP_P1: 0.0168,
+    TP_P1: 0.025,
   },
   posMeta: {
     simplified_exit_v2_enabled: true,
@@ -113,7 +113,7 @@ const simplifiedV2Tp1ContractPayload = runnerTest.buildExitOrderContractRecordPa
   symbol: "ETHUSDT",
 });
 assert.strictEqual(simplifiedV2Tp1ContractPayload.stage, "TP1");
-assert.strictEqual(simplifiedV2Tp1ContractPayload.event, "EXIT_TP_P1_1.68P");
+assert.strictEqual(simplifiedV2Tp1ContractPayload.event, "EXIT_TP_P1_2.5P");
 
 if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
 else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;

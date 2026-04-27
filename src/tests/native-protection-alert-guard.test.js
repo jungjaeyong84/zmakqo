@@ -73,7 +73,7 @@ async function run() {
       execPrice: 0.0941,
       priceRef: 0.094,
       leverageMult: 2,
-      exitRulesOverride: { TP_P1: 0.0168 },
+      exitRulesOverride: { TP_P1: 0.025 },
       positionMeta: { entry_event_id: "ENTRY__Z" },
     }).posMeta,
     {

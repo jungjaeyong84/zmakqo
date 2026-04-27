@@ -16,12 +16,12 @@ function run() {
   });
 
   const simplifiedTp1 = __test.buildCanonicalFillMetadata({
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     qty_fraction: 0.5,
     simplified_exit_v2_enabled: true,
   });
   assert.deepStrictEqual(simplifiedTp1, {
-    canonical_exit_event: "EXIT_TP_P1_1.68P",
+    canonical_exit_event: "EXIT_TP_P1_2.5P",
     canonical_exit_stage: "TP1",
     canonical_transition_events: ["TP1_REACHED", "TRAIL_ACTIVATED"],
     canonical_primary_transition_event: "TRAIL_ACTIVATED",

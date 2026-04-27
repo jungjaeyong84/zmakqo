@@ -35,12 +35,12 @@ function reload() {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
   });
   assert.strictEqual(plan.sl_trigger_price, 1967,
     "(A) default off → underlying 1.65% raw 적용 (= 2000 * 0.9835).");
-  assert.strictEqual(plan.tp1_trigger_price, 2033.6,
+  assert.strictEqual(plan.tp1_trigger_price, 2050,
     "(A) default off → underlying 1.68% raw 적용 (= 2000 * 1.0168).");
 }
 
@@ -54,7 +54,7 @@ function reload() {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
     leverage: 2,
   });
@@ -72,15 +72,15 @@ function reload() {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
     leverage: 2,
   });
   // SL: 2000 * (1 - 0.0165/2) = 2000 * 0.99175 = 1983.5
   assert.strictEqual(plan.sl_trigger_price, 1983.5,
     "(C) flag on + lev=2 → SL underlying 0.825% (V1 정렬).");
-  // TP1: 2000 * (1 + 0.0168/2) = 2000 * 1.0084 = 2016.8
-  assert.strictEqual(plan.tp1_trigger_price, 2016.8,
+  // TP1: 2000 * (1 + 0.025/2) = 2000 * 1.0084 = 2025
+  assert.strictEqual(plan.tp1_trigger_price, 2025,
     "(C) flag on + lev=2 → TP1 underlying 0.84% (V1 정렬).");
 }
 
@@ -94,14 +94,14 @@ function reload() {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
     leverage: 2,
   });
   assert.strictEqual(plan.sl_trigger_price, 2016.5,
     "(D) SHORT SL: 2000 * (1 + 0.0165/2) = 2016.5.");
-  assert.strictEqual(plan.tp1_trigger_price, 1983.2,
-    "(D) SHORT TP1: 2000 * (1 - 0.0168/2) = 1983.2.");
+  assert.strictEqual(plan.tp1_trigger_price, 1975,
+    "(D) SHORT TP1: 2000 * (1 - 0.025/2) = 1975.");
 }
 
 // (E) flag on + leverage 미제공 → V2 raw fallback (silent 회귀 fix는 caller 책임).
@@ -116,7 +116,7 @@ function reload() {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
   });
   assert.strictEqual(plan.sl_trigger_price, 1967,
@@ -134,7 +134,7 @@ function reload() {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
     leverage: 2,
     protectionLeverageNormalize: true,
@@ -153,7 +153,7 @@ function reload() {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
     leverage: 2,
     protectionLeverageNormalize: false,

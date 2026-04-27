@@ -11,7 +11,7 @@
 //       version_id }
 //
 //   The vote veto's the entry when the calibrated TP1 probability falls
-//   below `OPENCLAW_ML_MIN_TP1_PROB` (default 0.22). It also observes the
+//   below `OPENCLAW_ML_MIN_TP1_PROB` (default 0.45). It also observes the
 //   live inference router's `block_new_entries` flag which the ML serving
 //   state may raise when the canary is stale / rolled back.
 //

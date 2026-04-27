@@ -226,7 +226,7 @@ async function writeOpenClawShadowEntryBootstrap({
     entryPrice,
     entryQtyAbs,
     stopLossPct: stopLossPct || 0.0165,
-    tp1TargetPct: tp1TargetPct || 0.0168,
+    tp1TargetPct: tp1TargetPct || 0.025,
     tp1QtyRatio,
   });
 

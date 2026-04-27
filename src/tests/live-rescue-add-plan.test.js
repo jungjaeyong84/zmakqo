@@ -1004,7 +1004,7 @@ async function run() {
       SL: -0.0165,
       TP_P0: 0.008,
       TP_P0_QTY: 0.25,
-      TP_P1: 0.0168,
+      TP_P1: 0.025,
       TP_P1_QTY: 0.5,
     },
     posMeta: {

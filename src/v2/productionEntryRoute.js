@@ -512,7 +512,7 @@ async function runV2ProductionEntryRoute({
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
   stopLossPct = 0.0165,
-  tp1TargetPct = 0.0168,
+  tp1TargetPct = 0.025,
   tp1QtyRatio = 0.5,
 } = {}) {
   if (typeof runEntryKernel !== "function") throw new Error("RUN_ENTRY_KERNEL_REQUIRED");

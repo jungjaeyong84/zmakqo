@@ -436,7 +436,7 @@ function run() {
       },
     },
     authorityState: { tp1: 0, total: 0 },
-    rules: { TP_P1_QTY: 0.5, TP_P1: 0.0168 },
+    rules: { TP_P1_QTY: 0.5, TP_P1: 0.025 },
     observedQtyRatio: 0.5,
     fullExit: false,
   });

@@ -50,7 +50,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert(stage.simplified_exit_v2_shadow, "shadow view must exist");
   assert.equal(stage.simplified_exit_v2_shadow.tp1_target_qty_abs, 0.075);
   assert.equal(stage.simplified_exit_v2_shadow.runner_qty_abs, 0.075);
-  assert.ok(Math.abs(stage.simplified_exit_v2_shadow.tp1_target_price - 101.68) < 1e-9);
+  assert.ok(Math.abs(stage.simplified_exit_v2_shadow.tp1_target_price - 102.5) < 1e-9);
 })();
 
 (() => {
@@ -73,7 +73,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
         exit_rules_override: {
           SL: 0.0165,
           TP_P0: 0.008,
-          TP_P1: 0.0168,
+          TP_P1: 0.025,
           TP_P1_QTY: 0.5,
           TRAIL_R_MULTIPLE: 0.6,
           TRAIL_PCT: 0.01,
@@ -165,7 +165,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
         trail_active: false,
         exit_rules_override: {
           SL: -0.0165,
-          TP_P1: 0.0168,
+          TP_P1: 0.025,
           TP_P1_QTY: 0.5,
           TRAIL_PCT: 0.01,
           RUNNER_MIN_PROFIT_PCT: 0.0025,

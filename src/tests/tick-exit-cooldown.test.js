@@ -60,7 +60,7 @@ async function run() {
         leverage: 2,
         meta: {
           external_leverage: 3,
-          exit_rules_override: { TP_P1: 0.0168 },
+          exit_rules_override: { TP_P1: 0.025 },
           marker: "keep",
         },
       },
@@ -73,10 +73,10 @@ async function run() {
       fallbackSide: "SELL",
       fallbackEntryPrice: 2258.08,
       fallbackLeverage: 3,
-      exitRulesOverride: { TP_P1: 0.0168 },
+      exitRulesOverride: { TP_P1: 0.025 },
       posMeta: {
         external_leverage: 3,
-        exit_rules_override: { TP_P1: 0.0168 },
+        exit_rules_override: { TP_P1: 0.025 },
         marker: "keep",
       },
       writerSource: "BINANCE_TICK_EXIT",
@@ -395,14 +395,14 @@ async function run() {
         simplified_exit_v2_enabled: true,
         exit_rules_override: {
           TP_P0: 0.008,
-          TP_P1: 0.0168,
+          TP_P1: 0.025,
           SL: -0.0165,
         },
       },
     },
     rules: {
       TP_P0: 0.008,
-      TP_P1: 0.0168,
+      TP_P1: 0.025,
       SL: -0.0165,
     },
     leverageEff: 2,
@@ -425,7 +425,7 @@ async function run() {
         tp_p1_pending: true,
         exit_rules_override: {
           TP_P0: 0.008,
-          TP_P1: 0.0168,
+          TP_P1: 0.025,
           SL: -0.0165,
           TRAIL_PCT: 0.01,
         },
@@ -433,7 +433,7 @@ async function run() {
     },
     rules: {
       TP_P0: 0.008,
-      TP_P1: 0.0168,
+      TP_P1: 0.025,
       SL: -0.0165,
       TRAIL_PCT: 0.01,
     },
@@ -456,14 +456,14 @@ async function run() {
       meta: {
         exit_rules_override: {
           TP_P0: 0.008,
-          TP_P1: 0.0168,
+          TP_P1: 0.025,
           SL: -0.0165,
         },
       },
     },
     rules: {
       TP_P0: 0.008,
-      TP_P1: 0.0168,
+      TP_P1: 0.025,
       SL: -0.0165,
     },
     leverageEff: 2,
@@ -494,7 +494,7 @@ async function run() {
     price: 100.2,
     side: "LONG",
     rules: {
-      TP_P1: 0.0168,
+      TP_P1: 0.025,
       SL: -0.0165,
       TRAIL_PCT: 0.01,
     },

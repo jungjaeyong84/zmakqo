@@ -172,7 +172,7 @@ function buildDashboardPayload({ tailLimit } = {}) {
       conductor_shadow_only: String(process.env.OPENCLAW_CONDUCTOR_SHADOW_ONLY || "1").trim() !== "0",
       retrospect_apply_enabled: String(process.env.OPENCLAW_RETROSPECT_APPLY_ENABLED || "").trim() === "1",
       autonomy_auto_degrade: String(process.env.OPENCLAW_AUTONOMY_AUTO_DEGRADE || "").trim() === "1",
-      ml_min_tp1_prob: Number(process.env.OPENCLAW_ML_MIN_TP1_PROB || 0.22) || 0.22,
+      ml_min_tp1_prob: Number(process.env.OPENCLAW_ML_MIN_TP1_PROB || 0.45) || 0.45,
     },
   };
 }

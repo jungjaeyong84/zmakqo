@@ -151,7 +151,7 @@ function ruleVoteFromAuthority(result) {
 // Phase B ML soft-gate. Reads the predicted TP1 probability carried in
 // features, looks up the empirical calibration bucket from
 // `best_self_evolution_ev_probability_calibration_latest.json`, and votes
-// accept/reject against `OPENCLAW_ML_MIN_TP1_PROB` (default 0.22). It also
+// accept/reject against `OPENCLAW_ML_MIN_TP1_PROB` (default 0.45). It also
 // honours the live inference router's `block_new_entries` flag — when the
 // ML serving state is degraded/rolled-back, the gate vetoes regardless of
 // probability. Any Firestore / artifact failure falls back to a neutral

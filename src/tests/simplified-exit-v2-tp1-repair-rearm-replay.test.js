@@ -141,7 +141,7 @@ async function run() {
     intents: [
       {
         symbol: "ETHUSDT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         status: "PENDING",
         created_at: "2026-04-17T00:02:00.000Z",
         live_submit_state: "ACKED",

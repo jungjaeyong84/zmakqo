@@ -104,7 +104,7 @@ async function run() {
 
   const degradedProtectionShadowWrite = await __test.maybeWriteV2ShadowTp1Transition({
     symbol: "ETHUSDT",
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     transitionEvents: ["TP1_REACHED"],
     entryEventId: "ENTRY__ETH",
     positionSide: "LONG",
@@ -145,7 +145,7 @@ async function run() {
   assert.strictEqual(nonTp1LegacyGate.reason, "TP1_GATE_NOT_APPLICABLE");
 
   const writtenTp1LegacyGate = __test.resolveLegacyCanonicalTp1WriteGate({
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     transitionEvents: ["TP1_REACHED"],
     shadowTp1Write: buildBatchShadowWrite({ reason: "V2_SHADOW_TP1_TRANSITION_OK" }),
   });
@@ -153,7 +153,7 @@ async function run() {
   assert.strictEqual(writtenTp1LegacyGate.reason, "V2_SHADOW_TP1_BATCH_WRITTEN");
 
   const missingBatchTp1LegacyGate = __test.resolveLegacyCanonicalTp1WriteGate({
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     transitionEvents: ["TP1_REACHED"],
     shadowTp1Write: {
       ok: true,
@@ -166,7 +166,7 @@ async function run() {
   assert.strictEqual(missingBatchTp1LegacyGate.reason, "V2_SHADOW_CANONICAL_BATCH_EVIDENCE_MISSING");
 
   const incompleteBatchTp1LegacyGate = __test.resolveLegacyCanonicalTp1WriteGate({
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     transitionEvents: ["TP1_REACHED"],
     shadowTp1Write: buildBatchShadowWrite({
       writes: [
@@ -188,7 +188,7 @@ async function run() {
   assert.strictEqual(remappedTp0LegacyGate.reason, "V2_EXIT_FILL_UNSUPPORTED_LEGACY_PARTIAL");
 
   const disabledTp1LegacyGate = __test.resolveLegacyCanonicalTp1WriteGate({
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     transitionEvents: ["TP1_REACHED"],
     shadowTp1Write: {
       ok: true,
@@ -201,7 +201,7 @@ async function run() {
   assert.strictEqual(disabledTp1LegacyGate.reason, "V2_SHADOW_EXIT_WRITE_DISABLED");
 
   const blockedTp1LegacyGate = __test.resolveLegacyCanonicalTp1WriteGate({
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     transitionEvents: ["TP1_REACHED"],
     shadowTp1Write: degradedProtectionShadowWrite,
   });
@@ -210,7 +210,7 @@ async function run() {
   assert.ok(blockedTp1LegacyGate.issue_codes.includes("TP1_ORDER_MISSING"));
 
   const missingTp1LegacyGate = __test.resolveLegacyCanonicalTp1WriteGate({
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     transitionEvents: ["TP1_REACHED"],
   });
   assert.strictEqual(missingTp1LegacyGate.ok, false);
@@ -218,7 +218,7 @@ async function run() {
 
   const nonStopShadowWrite = await __test.maybeWriteV2ShadowStopExit({
     symbol: "ETHUSDT",
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     fullExit: false,
     entryEventId: "ENTRY__ETH",
     positionSide: "LONG",

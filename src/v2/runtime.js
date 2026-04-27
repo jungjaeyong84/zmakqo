@@ -50,7 +50,7 @@ function resolveV2RuntimeConfig(env = process.env) {
     v1FreezeRequired: true,
     defaultProtectionModel: Object.freeze({
       tp1QtyRatio: 0.5,
-      tp1TargetPct: 0.0168,
+      tp1TargetPct: 0.025,
     }),
     defaultComparisonThresholds: Object.freeze({
       qualityScoreAbsDeltaWarn: 0.15,

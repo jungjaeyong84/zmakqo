@@ -28,7 +28,7 @@ const baseArgs = {
   entryPrice: 2000,
   positionSide: "LONG",
   stopLossPct: 0.0165,
-  tp1TargetPct: 0.0168,
+  tp1TargetPct: 0.025,
 };
 
 // (A) computeProtectionLeverageDiagnostics — 두 모드 가격 + delta 정확.
@@ -41,10 +41,10 @@ const baseArgs = {
   assert.strictEqual(diag.sl_price_normalized, 1983.5, "(A) SL norm = 2000 * (1 - 0.00825)");
   assert.strictEqual(diag.sl_price_delta_abs, 16.5, "(A) SL delta abs");
   assert.strictEqual(diag.sl_price_delta_pct, 0.00825, "(A) SL delta pct of entry");
-  assert.strictEqual(diag.tp1_price_raw, 2033.6);
-  assert.strictEqual(diag.tp1_price_normalized, 2016.8);
-  assert.strictEqual(diag.tp1_price_delta_abs, -16.8);
-  assert.strictEqual(diag.tp1_price_delta_pct, -0.0084);
+  assert.strictEqual(diag.tp1_price_raw, 2050);
+  assert.strictEqual(diag.tp1_price_normalized, 2025);
+  assert.strictEqual(diag.tp1_price_delta_abs, -25);
+  assert.strictEqual(diag.tp1_price_delta_pct, -0.0125);
 }
 
 // (B) leverage<=1 → null (정규화해도 raw 와 일치, 비교 의미 없음).
@@ -62,7 +62,7 @@ const baseArgs = {
   const captured = [];
   const result = observeProtectionLeveragePlan({
     ...baseArgs,
-    plan: { sl_trigger_price: 1967, tp1_trigger_price: 2033.6 },
+    plan: { sl_trigger_price: 1967, tp1_trigger_price: 2050 },
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
     emit: (p) => captured.push(p),
@@ -78,7 +78,7 @@ const baseArgs = {
   const captured = [];
   observeProtectionLeveragePlan({
     ...baseArgs,
-    plan: { sl_trigger_price: 1967, tp1_trigger_price: 2033.6 },
+    plan: { sl_trigger_price: 1967, tp1_trigger_price: 2050 },
     leverage: 2,
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
@@ -96,8 +96,8 @@ const baseArgs = {
   assert.strictEqual(ev.sl_price_raw, 1967);
   assert.strictEqual(ev.sl_price_normalized, 1983.5);
   assert.strictEqual(ev.live_plan_sl_trigger_price, 1967, "(D) live plan = raw 와 일치");
-  assert.strictEqual(ev.tp1_price_raw, 2033.6);
-  assert.strictEqual(ev.tp1_price_normalized, 2016.8);
+  assert.strictEqual(ev.tp1_price_raw, 2050);
+  assert.strictEqual(ev.tp1_price_normalized, 2025);
   assert.ok(typeof ev.observed_at === "string" && ev.observed_at.length > 0);
 }
 
@@ -108,7 +108,7 @@ const baseArgs = {
   const captured = [];
   observeProtectionLeveragePlan({
     ...baseArgs,
-    plan: { sl_trigger_price: 1983.5, tp1_trigger_price: 2016.8 },
+    plan: { sl_trigger_price: 1983.5, tp1_trigger_price: 2025 },
     leverage: 2,
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
@@ -126,7 +126,7 @@ const baseArgs = {
   const captured = [];
   observeProtectionLeveragePlan({
     ...baseArgs,
-    plan: { sl_trigger_price: 1983.5, tp1_trigger_price: 2016.8 },
+    plan: { sl_trigger_price: 1983.5, tp1_trigger_price: 2025 },
     leverage: 2,
     protectionLeverageNormalize: true,
     emit: (p) => captured.push(p),
@@ -143,7 +143,7 @@ const baseArgs = {
   const captured = [];
   const ret = observeProtectionLeveragePlan({
     ...baseArgs,
-    plan: { sl_trigger_price: 1967, tp1_trigger_price: 2033.6 },
+    plan: { sl_trigger_price: 1967, tp1_trigger_price: 2050 },
     leverage: 2,
     emit: (p) => captured.push(p),
   });

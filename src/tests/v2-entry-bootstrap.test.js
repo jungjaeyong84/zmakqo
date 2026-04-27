@@ -14,14 +14,14 @@ const {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
   });
   assert.strictEqual(plan.close_side, "SELL");
   assert.strictEqual(plan.tp1_qty_abs, 0.5);
   assert.strictEqual(plan.runner_remaining_qty_abs, 0.5);
   assert.strictEqual(plan.sl_trigger_price, 1967);
-  assert.strictEqual(plan.tp1_trigger_price, 2033.6);
+  assert.strictEqual(plan.tp1_trigger_price, 2050);
 })();
 
 (function shortProtectionPlanIsSymmetric() {
@@ -31,12 +31,12 @@ const {
     entryPrice: 2000,
     entryQtyAbs: 1,
     stopLossPct: 0.0165,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     tp1QtyRatio: 0.5,
   });
   assert.strictEqual(plan.close_side, "BUY");
   assert.strictEqual(plan.sl_trigger_price, 2033);
-  assert.strictEqual(plan.tp1_trigger_price, 1966.4);
+  assert.strictEqual(plan.tp1_trigger_price, 1950);
 })();
 
 (function entryBootstrapSeedsCycleProjectionAndProtection() {

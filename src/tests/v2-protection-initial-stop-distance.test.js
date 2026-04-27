@@ -38,7 +38,7 @@ const baseArgs = {
   entryPrice: 2000,
   entryQtyAbs: 1,
   stopLossPct: 0.0165,
-  tp1TargetPct: 0.0168,
+  tp1TargetPct: 0.025,
 };
 
 // (A) leverage 미제공 / normalize off → raw 거리 33.

@@ -7,7 +7,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
   assert.strictEqual(__test.isSimplifiedExitV2Position({ meta: { simplified_exit_v2_enabled: true } }), true);
   assert.strictEqual(__test.isSimplifiedExitV2Position({ meta: { simplified_exit_v2_enabled: false } }), false);
 
-  assert.strictEqual(__test.normalizeFillStage("EXIT_TP_P1_1.68P"), "TP1");
+  assert.strictEqual(__test.normalizeFillStage("EXIT_TP_P1_2.5P"), "TP1");
   assert.strictEqual(__test.normalizeFillStage("EXIT_TRAIL"), "TRAIL");
   assert.deepStrictEqual(
     __test.parseTransitionEvents({
@@ -21,14 +21,14 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
     {
       ts: "2026-04-17T00:00:00.000Z",
       symbol: "ETHUSDT",
-      event: "EXIT_TP_P1_1.68P",
+      event: "EXIT_TP_P1_2.5P",
       source_fill_id: "fill-1",
       title: "eth tp1",
     },
     {
       ts: "2026-04-17T00:00:00.000Z",
       symbol: "ETHUSDT",
-      event: "EXIT_TP_P1_1.68P",
+      event: "EXIT_TP_P1_2.5P",
       source_fill_id: "fill-1",
       title: "eth tp1",
     },
@@ -136,7 +136,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
       {
         symbol: "ETHUSDT",
         exchange: "BINANCEFUT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         created_at: "2026-04-17T00:00:20.000Z",
         canonical_transition_events: ["TP1_REACHED"],
       },
@@ -152,7 +152,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
       {
         ts: "2026-04-17T00:00:21.000Z",
         symbol: "ETHUSDT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         canonical_transition_events: ["TP1_REACHED"],
         title: "ETH TP1",
       },

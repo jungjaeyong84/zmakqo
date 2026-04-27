@@ -41,7 +41,7 @@ function run() {
     fill_id: "fill-eth-v2",
     exchange: "binancefut",
     symbol: "ethusdt",
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
     created_at: "2026-04-14T01:00:00.000Z",
     simplified_exit_v2_enabled: true,
   });

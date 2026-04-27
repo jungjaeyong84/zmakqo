@@ -108,7 +108,7 @@ const {
       fallbackEntryPrice: 2500,
       fallbackLeverage: 2,
       exitRulesOverride: {
-        TP_P1: 0.0168,
+        TP_P1: 0.025,
       },
       posMeta: {
         position_side: "LONG",

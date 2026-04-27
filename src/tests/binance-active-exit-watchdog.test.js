@@ -69,7 +69,7 @@ function run() {
         native_protection_refresh_status: "MISSING",
         exit_rules_override: {
           TP_P1_QTY: 0.5,
-          TP_P1: 0.0168,
+          TP_P1: 0.025,
           SL: -0.0165,
         },
       },
@@ -100,7 +100,7 @@ function run() {
         native_protection_refresh_status: "OK",
         exit_rules_override: {
           TP_P1_QTY: 0.5,
-          TP_P1: 0.0168,
+          TP_P1: 0.025,
           RUNNER_MIN_PROFIT_PCT: 0.0025,
           TRAIL_PCT: 0.01,
           SL: -0.0165,
@@ -133,7 +133,7 @@ function run() {
         native_protection_refresh_status: "OK",
         exit_rules_override: {
           TP_P1_QTY: 0.5,
-          TP_P1: 0.0168,
+          TP_P1: 0.025,
           SL: -0.0165,
         },
       },
@@ -162,8 +162,8 @@ function run() {
         native_protection_refresh_status: "OK",
         exit_rules_override: {
           TP_P1_QTY: 0.5,
-          TP_P1: 0.0168,
-          RUNNER_MIN_PROFIT_PCT: 0.0168,
+          TP_P1: 0.025,
+          RUNNER_MIN_PROFIT_PCT: 0.025,
           TRAIL_R_MULTIPLE: 0.6,
           SL: -0.0165,
         },
@@ -647,8 +647,8 @@ function run() {
         native_protection_refresh_status: "OK",
         exit_rules_override: {
           TP_P1_QTY: 0.5,
-          TP_P1: 0.0168,
-          RUNNER_MIN_PROFIT_PCT: 0.0168,
+          TP_P1: 0.025,
+          RUNNER_MIN_PROFIT_PCT: 0.025,
           TRAIL_R_MULTIPLE: 0.6,
           SL: -0.0165,
         },

@@ -136,7 +136,7 @@ async function main() {
       trail_active: false,
       exit_rules_override: {
         TP_P1_QTY: 0.5,
-        TP_P1: 0.0168,
+        TP_P1: 0.025,
       },
     },
   };
@@ -161,7 +161,7 @@ async function main() {
   assert.ok(simplifiedV2Summary.issues.includes("LATEST_TP0_SHOULD_BE_TP1"));
   const simplifiedV2Plan = __test.buildStageReclassificationPlan(simplifiedV2Summary);
   assert.deepStrictEqual(simplifiedV2Plan.map((row) => ({ fill_id: row.fill_id, to_event: row.to_event })), [
-    { fill_id: "eth-v2-mislabel", to_event: "EXIT_TP_P1_1.68P" },
+    { fill_id: "eth-v2-mislabel", to_event: "EXIT_TP_P1_2.5P" },
   ]);
   const simplifiedV2RepairedMeta = __test.buildReconciledMetaFromSummary(
     simplifiedV2Position,

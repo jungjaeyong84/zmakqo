@@ -67,7 +67,7 @@ function issueOpenClawExecutionPermit({
     riskBudget: riskBudget || {},
     exitContract: exitContract || {
       tp1_qty_ratio: 0.5,
-      tp1_target_pct: 0.0168,
+      tp1_target_pct: 0.025,
       tp0_supported: false,
     },
     approvalReason,

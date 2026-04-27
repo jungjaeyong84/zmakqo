@@ -438,7 +438,7 @@ async function run() {
       hintedMeta: {
         position_side: "LONG",
         external_leverage: 2,
-        exit_rules_override: { TP_P1_QTY: 0.5, TP_P1: 0.0168 },
+        exit_rules_override: { TP_P1_QTY: 0.5, TP_P1: 0.025 },
       },
     });
     assert.strictEqual(refreshArgs.executeImmediately, false, "fill sync must not perform immediate native stop writes");

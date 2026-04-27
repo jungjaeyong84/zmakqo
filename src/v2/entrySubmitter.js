@@ -198,7 +198,7 @@ async function runV2EntrySubmitter({
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
   stopLossPct = 0.0165,
-  tp1TargetPct = 0.0168,
+  tp1TargetPct = 0.025,
   tp1QtyRatio = 0.5,
   leverage = null,
   protectionLeverageNormalize = undefined,

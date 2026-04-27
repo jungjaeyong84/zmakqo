@@ -326,7 +326,7 @@ async function run() {
     rules: {
       TP_P0: 0,
       TP_P0_QTY: 0,
-      TP_P1: 0.0168,
+      TP_P1: 0.025,
       TP_P1_QTY: 0.5,
       SL: -0.0165,
       BE_ENABLE: true,

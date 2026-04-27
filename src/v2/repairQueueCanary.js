@@ -141,7 +141,7 @@ function buildRepairQueueCanaryFixture({
     leverage: 2,
     exit_rules_override: {
       SL: 0.0165,
-      TP_P1: 0.0168,
+      TP_P1: 0.025,
       TP_P1_QTY: 0.5,
       RUNNER_MIN_PROFIT_PCT: 0.0015,
     },

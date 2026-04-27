@@ -4,7 +4,7 @@ const assert = require("assert");
 const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldown");
 
 (async () => {
-  assert.strictEqual(__test.isTp1Event("EXIT_TP_P1_1.68P"), true);
+  assert.strictEqual(__test.isTp1Event("EXIT_TP_P1_2.5P"), true);
   assert.strictEqual(__test.isTp1Event("EXIT_TRAIL"), false);
   assert.deepStrictEqual(
     __test.parseTransitionEvents({
@@ -52,7 +52,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
     fills: [
       {
         symbol: "ETHUSDT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         created_at: "2026-04-17T00:00:00.000Z",
       },
     ],
@@ -78,7 +78,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
     fills: [
       {
         symbol: "ETHUSDT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         created_at: "2026-04-17T00:00:00.000Z",
         canonical_transition_events: ["TP1_REACHED"],
       },
@@ -107,7 +107,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
     intents: [
       {
         symbol: "ETHUSDT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         status: "CANCELED",
         status_reason: "LIVE_EXCEPTION",
         created_at: "2026-04-17T00:01:00.000Z",
@@ -137,7 +137,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
     intents: [
       {
         symbol: "ETHUSDT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         status: "PENDING",
         created_at: "2026-04-17T00:02:00.000Z",
         live_submit_state: "ACKED",
@@ -176,7 +176,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
       {
         symbol: "ETHUSDT",
         exchange: "BINANCEFUT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         intent_id: "INTENT__ETH__TP1",
         status: "PENDING",
         created_at: "2026-04-17T00:00:10.000Z",
@@ -189,7 +189,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
       {
         symbol: "ETHUSDT",
         exchange: "BINANCEFUT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         fill_id: "fill-1",
         created_at: "2026-04-17T00:00:20.000Z",
         canonical_transition_events: ["TP1_REACHED"],
@@ -199,7 +199,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
       {
         ts: "2026-04-17T00:00:22.000Z",
         symbol: "ETHUSDT",
-        event: "EXIT_TP_P1_1.68P",
+        event: "EXIT_TP_P1_2.5P",
         canonical_transition_events: ["TP1_REACHED"],
         title: "ETHUSDT TP1",
       },

@@ -21,7 +21,7 @@ function run() {
     minQty: 0.001,
     minNotional: 5,
     tp1QtyRatio: 0.5,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     stopLossPct: 0.0165,
     floorLockPct: 0.0025,
     trailPct: 0.009,
@@ -29,7 +29,7 @@ function run() {
   assert.strictEqual(longPlan.ok, true);
   assert.strictEqual(longPlan.tp1_target_qty_abs, 5);
   assert.strictEqual(longPlan.runner_qty_abs, 5);
-  assert.ok(Math.abs(longPlan.tp1_target_price - 101.68) < 1e-9);
+  assert.ok(Math.abs(longPlan.tp1_target_price - 102.5) < 1e-9);
   assert.ok(Math.abs(longPlan.initial_stop_price - 98.35) < 1e-9);
   assert.ok(Math.abs(longPlan.runner_floor_stop - 100.25) < 1e-9);
 
@@ -41,13 +41,13 @@ function run() {
     minQty: 0.001,
     minNotional: 5,
     tp1QtyRatio: 0.5,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     stopLossPct: 0.0165,
     floorLockPct: 0.0025,
     trailPct: 0.009,
   });
   assert.strictEqual(shortPlan.ok, true);
-  assert.ok(Math.abs(shortPlan.tp1_target_price - 98.32) < 1e-9);
+  assert.ok(Math.abs(shortPlan.tp1_target_price - 97.5) < 1e-9);
   assert.ok(Math.abs(shortPlan.initial_stop_price - 101.65) < 1e-9);
   assert.ok(Math.abs(shortPlan.runner_floor_stop - 99.75) < 1e-9);
 
@@ -59,7 +59,7 @@ function run() {
     minQty: 0.02,
     minNotional: 5,
     tp1QtyRatio: 0.5,
-    tp1TargetPct: 0.0168,
+    tp1TargetPct: 0.025,
     stopLossPct: 0.0165,
     floorLockPct: 0.0025,
     trailPct: 0.009,

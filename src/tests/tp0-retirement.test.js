@@ -160,7 +160,7 @@ const { __test: paperRunnerTest } = require("../engine/paperBinanceRunner");
     exitRules: {
       TP_P0: 0,
       TP_P0_QTY: 0,
-      TP_P1: 0.0168,
+      TP_P1: 0.025,
     },
   }), true, "trade alert layer must infer v2 when TP0 is retired from the live contract");
 })();
@@ -174,7 +174,7 @@ const { __test: paperRunnerTest } = require("../engine/paperBinanceRunner");
 
   assert.strictEqual(paperRunnerTest.isForbiddenTp0ExitIntent({
     currentMeta: { simplified_exit_v2_enabled: true },
-    event: "EXIT_TP_P1_1.68P",
+    event: "EXIT_TP_P1_2.5P",
   }), false);
 
   assert.strictEqual(paperRunnerTest.isForbiddenTp0ExitIntent({
@@ -241,10 +241,10 @@ const { __test: paperRunnerTest } = require("../engine/paperBinanceRunner");
     },
     recentTp1: null,
     recentTp0: null,
-    rules: { TP_P0: 0.008, TP_P1: 0.0168, TP_P1_QTY: 0.5 },
+    rules: { TP_P0: 0.008, TP_P1: 0.025, TP_P1_QTY: 0.5 },
     qtyPct: 0.5,
   });
-  assert.strictEqual(liveTp0EvidenceNormalizedToTp1, "EXIT_TP_P1_1.68P");
+  assert.strictEqual(liveTp0EvidenceNormalizedToTp1, "EXIT_TP_P1_2.5P");
 
   console.log("TP0_RETIREMENT_TEST_OK");
 })().catch((err) => {
