@@ -148,6 +148,29 @@ function observeActivePositionInvariants({
     violations: res.violations.slice(0, 12),
     summary: describeActiveInvariantViolations(res.violations),
   }, "warn");
+  // P0-C: fire-and-forget Slack push. await 하지 않음 — observer 는 sync,
+  // write 경로의 latency 에 영향 주면 안 됨. 알림 자체 실패 시 helper
+  // 안에서 console.warn 으로 흡수.
+  notifyActivePositionInvariantViolation({
+    exchange,
+    symbol,
+    mutationKind,
+    invariantScope: scope,
+    source,
+    reason,
+    requestId,
+    traceId,
+    runId,
+    state,
+    positionState,
+    positionSide,
+    sizePct,
+    qtyBase,
+    violations: res.violations,
+  }).catch((err) => {
+    const msg = err && err.message ? err.message : String(err);
+    console.warn("[POSITION_INVARIANT_ALERT_DISPATCH_FAIL]", msg);
+  });
 }
 
 function boolEnv(name, fallback = false) {
@@ -172,8 +195,27 @@ const POSITION_WRITER_ALERT_CHANNEL = String(
   || process.env.EXIT_INTEGRITY_ALERT_CHANNEL
   || ""
 ).trim() || null;
+
+// 2026-04-27 P0-C: invariant violation Slack alert.
+// warn-only structuredLog 만으로는 사람이 cloud logging 을 매번
+// 들여다봐야 함 — invariant 가 실제로 위반되는 순간 즉시 운영자가 알 수
+// 있어야 함. authority-failure 알림과 별도 cooldown 을 둔 이유:
+//   - authority-failure 는 "Firestore 락 경합 등 인프라 이슈" — 5분 쿨다운.
+//   - invariant 위반은 "데이터 모양이 깨졌다" — 더 긴 쿨다운(30분)으로
+//     같은 (symbol, reason) 의 반복 알림으로 인한 fatigue 방지.
+// CHANNEL 이 비어 있으면 자동 no-op (배포 환경에서 채널 미설정 시 알림
+// 안 감 — 알림 인프라 깔리기 전에 enable 켜져 있어도 안전).
+const POSITION_INVARIANT_ALERT_ENABLED = boolEnv("POSITION_INVARIANT_ALERT_ENABLED", true);
+const POSITION_INVARIANT_ALERT_COOLDOWN_MS = Math.max(0, Math.floor(Number(process.env.POSITION_INVARIANT_ALERT_COOLDOWN_MS) || (30 * 60 * 1000)));
+const POSITION_INVARIANT_ALERT_CHANNEL = String(
+  process.env.POSITION_INVARIANT_ALERT_CHANNEL
+  || process.env.POSITION_WRITER_ALERT_CHANNEL
+  || process.env.EXIT_INTEGRITY_ALERT_CHANNEL
+  || ""
+).trim() || null;
 const positionMutationQueue = new Map();
 const positionWriterAlertState = new Map();
+const positionInvariantAlertState = new Map();
 const positionWriterLeaseHolderId = `positions_paper_writer__${process.env.K_REVISION || process.env.HOSTNAME || "local"}__${process.pid}`;
 const positionWriterLeaseDepth = new Map();
 
@@ -637,6 +679,99 @@ function shouldSendPositionWriterAlert({
   }
   positionWriterAlertState.set(key, nowMs);
   return true;
+}
+
+// 2026-04-27 P0-C: invariant alert ratelimit. authority-failure 와 분리된
+// state map 을 쓰는 이유는 두 알림 클래스의 cooldown 이 다르고, 같은
+// (exchange, symbol) 에서 두 클래스가 모두 trigger 됐을 때 한 쪽이 다른
+// 쪽을 가리지 않기 위함. key 에 reason 을 포함해 "같은 symbol/같은 위반
+// 사유" 만 dedupe — 다른 reason 이면 별도 카운트.
+function shouldSendPositionInvariantAlert({
+  exchange,
+  symbol,
+  invariantScope,
+  reason,
+  nowMs = Date.now(),
+  cooldownMs = POSITION_INVARIANT_ALERT_COOLDOWN_MS,
+} = {}) {
+  const key = [
+    upper(exchange) || "UNKNOWN",
+    upper(symbol) || "UNKNOWN",
+    upper(invariantScope) || "FULL_SNAPSHOT",
+    upper(reason) || "UNKNOWN",
+  ].join("::");
+  const lastAt = Number(positionInvariantAlertState.get(key) || 0);
+  if (Number.isFinite(lastAt) && lastAt > 0 && (nowMs - lastAt) < Math.max(0, Number(cooldownMs) || 0)) {
+    return false;
+  }
+  positionInvariantAlertState.set(key, nowMs);
+  return true;
+}
+
+// fire-and-forget. observer 자체는 sync 라 await 하지 않고 호출. 알림이
+// 실패해도 write 흐름에 영향 X — invariant 의 본 layer 는 어디까지나
+// structuredLog warn 이고, 이 알림은 그 위의 *push notification*.
+async function notifyActivePositionInvariantViolation({
+  exchange,
+  symbol,
+  mutationKind,
+  invariantScope,
+  source,
+  reason,
+  requestId,
+  traceId,
+  runId,
+  state,
+  positionState,
+  positionSide,
+  sizePct,
+  qtyBase,
+  violations,
+} = {}) {
+  if (POSITION_INVARIANT_ALERT_ENABLED !== true) return false;
+  if (!POSITION_INVARIANT_ALERT_CHANNEL) return false;
+  const topReason = (Array.isArray(violations) && violations[0] && violations[0].reason) || "UNKNOWN_VIOLATION";
+  if (!shouldSendPositionInvariantAlert({
+    exchange,
+    symbol,
+    invariantScope,
+    reason: topReason,
+  })) return false;
+  const violationLine = (Array.isArray(violations) ? violations : [])
+    .slice(0, 6) // Slack body 폭 제한 — 한 알림 안에 다 넣지 말고 cap.
+    .map((v) => `  • ${v.field}: ${v.reason}`)
+    .join("\n");
+  const body = [
+    `exchange=${upper(exchange) || "UNKNOWN"}`,
+    `symbol=${upper(symbol) || "UNKNOWN"}`,
+    `invariant_scope=${upper(invariantScope) || "FULL_SNAPSHOT"}`,
+    `mutation=${upper(mutationKind) || "POSITION_UPSERT"}`,
+    `source=${upper(source) || "UNKNOWN"}`,
+    `state=${upper(state) || "?"}`,
+    `position_state=${upper(positionState) || "?"}`,
+    `position_side=${upper(positionSide) || "?"}`,
+    `size_pct=${Number.isFinite(Number(sizePct)) ? Number(sizePct) : "?"}`,
+    `qty_base=${Number.isFinite(Number(qtyBase)) ? Number(qtyBase) : "?"}`,
+    `request_id=${String(requestId || "").trim() || "NONE"}`,
+    `run_id=${String(runId || "").trim() || "NONE"}`,
+    `trace_id=${String(traceId || "").trim() || "NONE"}`,
+    `reason=${String(reason || "").trim() || "NONE"}`,
+    `violations:`,
+    violationLine || "  (none)",
+  ].join("\n");
+  try {
+    await sendAlert({
+      channel: POSITION_INVARIANT_ALERT_CHANNEL,
+      title: "positions_paper invariant violation",
+      body,
+      severity: "WARN",
+    });
+    return true;
+  } catch (alertErr) {
+    const msg = alertErr && alertErr.message ? alertErr.message : String(alertErr);
+    console.warn("[POSITION_INVARIANT_ALERT_FAIL]", msg);
+    return false;
+  }
 }
 
 function shouldSuppressPositionWriterAuthorityAlert(err, {
@@ -1238,6 +1373,10 @@ module.exports = {
     forceReleaseStalePositionWriterLease,
     heartbeatPositionWriterLease,
     observeMetaPriceSchema,
+    observeActivePositionInvariants,
+    shouldSendPositionInvariantAlert,
+    notifyActivePositionInvariantViolation,
+    positionInvariantAlertState,
     structuredLog,
   },
 };
