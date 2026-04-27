@@ -12,6 +12,7 @@ const {
 const {
   validateActivePositionInvariants,
   validateMetaPatchInvariants,
+  validatePositionCycleIdPresence,
   describeViolations: describeActiveInvariantViolations,
 } = require("../services/positionActivePositionInvariants");
 const { normalizeTraceContext } = require("../utils/traceContext");
@@ -191,6 +192,72 @@ function observeActivePositionInvariants({
     err.invariantReason = reason || null;
     throw err;
   }
+}
+
+// 2026-04-27 Stage 3b-1 — position_cycle_id presence warn-only observer.
+//
+// Stage 3a 가 모든 신규 ACTIVE write 에서 cycle_id 를 stamp 하지만, 라이브
+// 에서 이미 ACTIVE 인 *기존* 포지션은 cycle_id 가 비어 있을 수 있다.  이
+// observer 는 transaction 안에서 stamp 가 끝난 *후* 의 meta 를 받아서,
+// `position_cycle_id` 가 여전히 비어 있으면 (예: META-only 경로 + 라이브
+// 백필이 아직 안 됐을 때) warn 을 한 번 발화한다.
+//
+// 일반 invariant 와 분리된 이유:
+//   - Stage 1 의 throw graduation 이 전체 invariant 를 prod 외에서 throw
+//     시킨다. cycle_id 부재를 거기 묶으면 backfill 전에 라이브 META 트래픽
+//     까지 차단됨.
+//   - 운영 데이터에서 발생률이 0 으로 수렴(또는 backfill 완료) 한 후
+//     Stage 3b-3 에서 `validateActivePositionInvariants` 본체에 통합 →
+//     자동으로 throw 격상.
+//
+// rate-limit / Slack push 는 일부러 안 붙임. cycle_id 부재 빈도가 어느
+// 정도일지 운영 데이터 보기 전이라, 우선 구조화 로그만으로 cardinality
+// 부터 측정. 이후 P0-C 패턴처럼 channel 추가 가능.
+function observePositionCycleIdPresence({
+  scope,
+  meta,
+  state,
+  positionState,
+  positionSide,
+  sizePct,
+  qtyBase,
+  mutationKind,
+  writerScope,
+  exchange,
+  symbol,
+  source,
+  reason,
+  requestId,
+  traceId,
+  runId,
+} = {}) {
+  const res = validatePositionCycleIdPresence({
+    state,
+    positionState,
+    sizePct,
+    qtyBase,
+    meta,
+  });
+  if (res.ok) return;
+  structuredLog("position_cycle_id_missing", {
+    exchange: exchange || null,
+    symbol: symbol || null,
+    mutation_kind: mutationKind || null,
+    writer_scope: writerScope || null,
+    invariant_scope: scope || null,
+    source: source || null,
+    reason: reason || null,
+    request_id: requestId || null,
+    trace_id: traceId || null,
+    run_id: runId || null,
+    state: state || null,
+    position_state: positionState || null,
+    position_side: positionSide || null,
+    size_pct: Number.isFinite(Number(sizePct)) ? Number(sizePct) : null,
+    qty_base: Number.isFinite(Number(qtyBase)) ? Number(qtyBase) : null,
+    violation_n: res.violations.length,
+    violations: res.violations.slice(0, 4),
+  }, "warn");
 }
 
 function boolEnv(name, fallback = false) {
@@ -1198,6 +1265,28 @@ async function upsertPosition({
               ...(meta || {}),
               position_cycle_id: stampedCycleId,
             };
+            // Stage 3b-1: post-stamp cycle_id presence observer (warn-only).
+            // CORE 경로는 derivePositionCycleId 가 ACTIVE 인 한 항상 값을
+            // 채우므로 위반이 나면 전혀 다른 회귀 신호 (e.g. derive 함수
+            // 가 false-negative 를 낸 케이스).
+            observePositionCycleIdPresence({
+              scope: "FULL_SNAPSHOT_POST_STAMP",
+              meta: stampedMeta,
+              state,
+              positionState,
+              positionSide,
+              sizePct,
+              qtyBase,
+              mutationKind,
+              writerScope: "CORE",
+              exchange,
+              symbol,
+              source,
+              reason,
+              requestId,
+              traceId,
+              runId,
+            });
             const transitionValidation = validatePositionSnapshotTransition({
               prev: previous,
               next: {
@@ -1390,6 +1479,29 @@ async function upsertPositionMetaOnly({
               execution_mode: executionMode || null,
               meta: stampedMeta,
             };
+            // Stage 3b-1: META-only 경로의 post-carry cycle_id presence
+            // observer.  prev 가 라이브에서 cycle_id 없는 ACTIVE 인 채로
+            // 떠 있으면 deriveMetaOnlyPositionCycleId 가 null 을 반환하므로
+            // 여기서 warn 이 발화된다.  Stage 3b-2 backfill 의 진행 정도를
+            // Cloud Logging 에서 직접 추적 가능 (event=position_cycle_id_missing).
+            observePositionCycleIdPresence({
+              scope: "META_PATCH_POST_CARRY",
+              meta: stampedMeta,
+              state: previous && previous.state,
+              positionState: previous && previous.position_state,
+              positionSide: previous && previous.position_side,
+              sizePct: previous && previous.size_pct,
+              qtyBase: previous && previous.qty_base,
+              mutationKind,
+              writerScope: "META",
+              exchange,
+              symbol,
+              source,
+              reason,
+              requestId,
+              traceId,
+              runId,
+            });
             const transitionValidation = validatePositionSnapshotTransition({
               prev: previous,
               next: nextSnapshot,
@@ -1504,6 +1616,7 @@ module.exports = {
     heartbeatPositionWriterLease,
     observeMetaPriceSchema,
     observeActivePositionInvariants,
+    observePositionCycleIdPresence,
     shouldSendPositionInvariantAlert,
     notifyActivePositionInvariantViolation,
     positionInvariantAlertState,

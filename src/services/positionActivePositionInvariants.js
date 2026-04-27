@@ -169,11 +169,60 @@ function describeViolations(violations = []) {
     .slice(0, 500);
 }
 
+// 2026-04-27 Stage 3b-1 — position_cycle_id presence (warn-only).
+//
+// Stage 3a 가 upsertPosition 의 write boundary 에서 모든 신규 ACTIVE write
+// 에 `meta.position_cycle_id` 를 stamp 하도록 만들었다. 그러나 이미 라이브
+// 에서 ACTIVE 상태로 떠 있는 기존 포지션은 cycle_id 가 비어 있을 수 있고,
+// META-only write 만 들어오면 그대로 유지된다 (CORE 가 사이클 생성 권한자).
+//
+// 따라서 cycle_id 부재를 *일반 invariant 로 묶어 throw 시키면* backfill 이
+// 끝나기 전까지 라이브 정상 트래픽까지 차단되는 부작용이 생긴다.
+//
+// 이 단계 (Stage 3b-1) 의 목표:
+//   • cycle_id 부재를 *별도 함수* 로 분리해서 warn-only 관찰 가능하게.
+//   • Stage 1 에서 만든 `POSITION_INVARIANT_THROW_ENABLED` 격상 경로를
+//     건드리지 않음 (그게 격상되는 invariant 와 별도 cutover).
+//   • backfill 스크립트가 실제 라이브를 정리한 뒤 (Stage 3b-3) 일반
+//     invariant 에 통합해 throw 격상.
+//
+// reason 은 enum 으로 export 해서 alert/log 양쪽에서 같은 식별자를 사용.
+const CYCLE_ID_VIOLATION_REASONS = Object.freeze({
+  ACTIVE_REQUIRES_POSITION_CYCLE_ID: "ACTIVE_REQUIRES_POSITION_CYCLE_ID",
+});
+
+function validatePositionCycleIdPresence({
+  state = null,
+  positionState = null,
+  sizePct = null,
+  qtyBase = null,
+  meta = null,
+} = {}) {
+  const violations = [];
+  const active = isActiveState(state) || isActiveState(positionState);
+  const size = Number(sizePct);
+  const qty = Number(qtyBase);
+  const hasSize = (Number.isFinite(size) && size > 0) || (Number.isFinite(qty) && qty > 0);
+  if (!active || !hasSize) return { ok: true, violations };
+  const cycleId = nonEmptyId(meta && meta.position_cycle_id);
+  if (!cycleId) {
+    pushViolation(
+      violations,
+      "position_cycle_id",
+      CYCLE_ID_VIOLATION_REASONS.ACTIVE_REQUIRES_POSITION_CYCLE_ID,
+      meta && meta.position_cycle_id
+    );
+  }
+  return { ok: violations.length === 0, violations };
+}
+
 module.exports = {
   ACTIVE_POSITION_STATES,
   VIOLATION_REASONS,
+  CYCLE_ID_VIOLATION_REASONS,
   validateActivePositionInvariants,
   validateMetaPatchInvariants,
+  validatePositionCycleIdPresence,
   describeViolations,
   __test: {
     isActiveState,
