@@ -952,6 +952,48 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   const trailActive = trailDelay.trailActive;
   const exitSide = positionSide === "SHORT" ? "BUY" : "SELL";
   if (!BE_ENABLE) BE_PCT = null;
+
+  // 2026-04-28 Stage X — XRPUSDT 잔량 dust 가 매 15분 bar 마다 EXIT_TP_P1
+  // signal 을 trigger 해 telegram alert 폭탄을 일으킨 사례 (TP1 후 trail/
+  // runner 단계로 들어갔는데 잔량이 minNotional 미만 dust 라 trail close
+  // 도달 전엔 stale active 로 남음). 두 갈래 처리:
+  //   1) trail_active=true 이고 잔량이 dust 면 → 즉시 EXIT_TRAIL force-close
+  //      signal 1건 emit (closePosition 의도 명시). trail stop 도달 기다리지
+  //      않고 강제 cleanup.
+  //   2) trail_active=false (PRE_TP1 단계) 이고 dust 면 → silent skip. 이
+  //      단계의 dust 는 entry sizing 결함이라 alert 폭탄 만들 가치 없음.
+  // env: SIGNAL_DUST_SKIP_ENABLED (default ON), SIGNAL_DUST_NOTIONAL_
+  // THRESHOLD_USDT (default 20).
+  if (parseBoolEnv("SIGNAL_DUST_SKIP_ENABLED", true)) {
+    const qtyBase = toNum(pos.qty_base);
+    const dustThreshold = parseNumEnv("SIGNAL_DUST_NOTIONAL_THRESHOLD_USDT", 20);
+    if (Number.isFinite(qtyBase) && qtyBase > 0 && Number.isFinite(dustThreshold) && dustThreshold > 0) {
+      const notional = Math.abs(qtyBase * closePx);
+      if (notional < dustThreshold) {
+        if (trailActive === true) {
+          return [{
+            event: Number.isFinite(rules.TRAIL_R_MULTIPLE) && rules.TRAIL_R_MULTIPLE > 0
+              ? "EXIT_TRAIL"
+              : "EXIT_TRAIL",
+            side: exitSide,
+            qty_pct: 1,
+            reason: "EXIT_TRAIL_DUST_FORCE_CLOSE",
+            features: {
+              dust_notional: notional,
+              dust_threshold: dustThreshold,
+              qty_base: qtyBase,
+              ref_px: closePx,
+              avg_px: avg,
+              position_side: positionSide,
+              force_full_close: true,
+              trail_active: true,
+            },
+          }];
+        }
+        return [];
+      }
+    }
+  }
   if (BE_ENABLE && !Number.isFinite(BE_PCT) && ex.includes("BINANCE") && Number.isFinite(leverageEff) && leverageEff > 0) {
     const feeBps = Number(process.env.FEE_BPS || 4);
     const slippageBps = Number(process.env.SLIPPAGE_BPS || 5);
