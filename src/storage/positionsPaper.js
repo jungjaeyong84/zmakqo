@@ -9,6 +9,11 @@ const {
   validatePositionMetaPrices,
   describeViolations: describeMetaPriceViolations,
 } = require("../services/positionMetaSchema");
+const {
+  validateActivePositionInvariants,
+  validateMetaPatchInvariants,
+  describeViolations: describeActiveInvariantViolations,
+} = require("../services/positionActivePositionInvariants");
 const { normalizeTraceContext } = require("../utils/traceContext");
 const { sendAlert } = require("../utils/alerts");
 
@@ -76,6 +81,72 @@ function observeMetaPriceSchema({
     violation_n: res.violations.length,
     violations: res.violations.slice(0, 8), // 8개 필드가 최대이므로 cap
     summary: describeMetaPriceViolations(res.violations),
+  }, "warn");
+}
+
+// 2026-04-27 P0-A: lineage / lifecycle invariant 의 warn-only 관찰. price
+// schema 와 동일 패턴이지만, 이 layer 는 *meta-internal 일관성* 과
+// *active-coupled 강제 필드* 두 부류를 함께 본다.  CORE 경로
+// (upsertPosition) 는 state/sizePct/positionSide 를 알기에 full-snapshot
+// validator 를, META 경로 (upsertPositionMetaOnly) 는 meta 패치 단독으로
+// 검증 가능한 lineage 계약만 본다.
+//
+// price schema 와 마찬가지로 트랜잭션 retry 루프 밖에서 한 번만 발화 —
+// 같은 논리적 intent 가 retry 카운트로 부풀어 alert 가 왜곡되는 것을 막음.
+function observeActivePositionInvariants({
+  scope,
+  meta,
+  state,
+  positionState,
+  positionSide,
+  sizePct,
+  qtyBase,
+  mutationKind,
+  writerScope,
+  exchange,
+  symbol,
+  source,
+  reason,
+  requestId,
+  traceId,
+  runId,
+} = {}) {
+  let res;
+  if (scope === "META_PATCH") {
+    res = validateMetaPatchInvariants(meta);
+  } else {
+    res = validateActivePositionInvariants({
+      state,
+      positionState,
+      positionSide,
+      sizePct,
+      qtyBase,
+      meta,
+    });
+  }
+  if (res.ok) return;
+  structuredLog("position_active_invariant_violation", {
+    exchange: exchange || null,
+    symbol: symbol || null,
+    mutation_kind: mutationKind || null,
+    writer_scope: writerScope || null,
+    invariant_scope: scope || null,
+    source: source || null,
+    reason: reason || null,
+    request_id: requestId || null,
+    trace_id: traceId || null,
+    run_id: runId || null,
+    state: state || null,
+    position_state: positionState || null,
+    position_side: positionSide || null,
+    size_pct: Number.isFinite(Number(sizePct)) ? Number(sizePct) : null,
+    qty_base: Number.isFinite(Number(qtyBase)) ? Number(qtyBase) : null,
+    violation_n: res.violations.length,
+    // 위반 객체는 reason 분류용이라 cap=12. 실 운영에서 한 번에
+    // 12 개 이상 위반이 동시에 터질 만큼 코드가 망가지는 시나리오는
+    // 이미 invariant 차원의 문제가 아닌 catastrophic data corruption.
+    violations: res.violations.slice(0, 12),
+    summary: describeActiveInvariantViolations(res.violations),
   }, "warn");
 }
 
@@ -829,6 +900,24 @@ async function upsertPosition({
     traceId,
     runId,
   });
+  observeActivePositionInvariants({
+    scope: "FULL_SNAPSHOT",
+    meta,
+    state,
+    positionState: derivePositionState(sizePct, meta),
+    positionSide,
+    sizePct,
+    qtyBase,
+    mutationKind,
+    writerScope: "CORE",
+    exchange,
+    symbol,
+    source,
+    reason,
+    requestId,
+    traceId,
+    runId,
+  });
   return serializePositionMutation({
     exchange,
     symbol,
@@ -978,6 +1067,19 @@ async function upsertPositionMetaOnly({
   // 등 가격 필드 업데이트가 가장 자주 들어오는 path.  bug class 검출
   // 밀도가 여기서 가장 높을 것으로 기대됨.  scope = "META".
   observeMetaPriceSchema({
+    meta,
+    mutationKind,
+    writerScope: "META",
+    exchange,
+    symbol,
+    source,
+    reason,
+    requestId,
+    traceId,
+    runId,
+  });
+  observeActivePositionInvariants({
+    scope: "META_PATCH",
     meta,
     mutationKind,
     writerScope: "META",
