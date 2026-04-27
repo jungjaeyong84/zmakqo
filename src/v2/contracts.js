@@ -319,6 +319,13 @@ function buildProtectionRuntimeDoc({
   tp1AckAt = null,
   lastExchangeEvidence = null,
   lastEvidenceObservedAt = null,
+  // Stage G — V2 protection plan 의 normalized SL trigger 와 그 절대 거리를
+  // 동일 doc 에 stamp 한다. Stage E 에서 plan 자체에는 surface 가 추가됐지만,
+  // V2 collection 의 protection_runtime_v2 doc 에는 들어가지 않아 trail
+  // engine 통합 시 fallback 만 의존했다. 이제 V2 collection 이 정규화 메타의
+  // single source of truth 가 된다 (V1 positions_paper.meta 와 동등 surface).
+  initialStopPrice = null,
+  entryRDistance = null,
 } = {}) {
   return {
     protection_runtime_id: buildProtectionRuntimeId({ positionCycleId }),
@@ -345,6 +352,8 @@ function buildProtectionRuntimeDoc({
     tp1_ack_at: trimOrNull(tp1AckAt),
     last_exchange_evidence: cloneJson(lastExchangeEvidence),
     last_evidence_observed_at: trimOrNull(lastEvidenceObservedAt),
+    initial_stop_price: toNumberOrNull(initialStopPrice),
+    entry_r_distance: toNumberOrNull(entryRDistance),
   };
 }
 

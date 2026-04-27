@@ -247,6 +247,10 @@ async function writeOpenClawShadowEntryBootstrap({
     lastRefreshAt: protection.lastRefreshAt,
     lastGapMs: protection.lastGapMs,
     healthStatus: resolveHealthStatus(protection),
+    // Stage G — V2 protection plan 의 normalized SL trigger 와 거리를 V2
+    // protection_runtime_v2 doc 에도 single source of truth 로 stamp.
+    initialStopPrice: bootstrap.protectionPlan && bootstrap.protectionPlan.initial_stop_price,
+    entryRDistance: bootstrap.protectionPlan && bootstrap.protectionPlan.entry_r_distance,
   });
 
   const writes = await persistEntryBootstrap({
