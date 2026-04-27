@@ -157,4 +157,35 @@ function fakeProc(initialEnv = {}) {
   assert.deepStrictEqual(exitCalls, [1]);
 }
 
-console.log("PROCESS_CRASH_HANDLER_TEST_OK");
+// (I) Stage U — in-flight request tracker basics.
+{
+  const { trackInFlightRequest, activeRequestCount } = require("../utils/processCrashHandler");
+  // Use real process to verify symbol storage works on real process; reset.
+  delete process[__test.ACTIVE_REQUESTS_KEY];
+  assert.strictEqual(activeRequestCount(), 0);
+  const release1 = trackInFlightRequest();
+  const release2 = trackInFlightRequest();
+  assert.strictEqual(activeRequestCount(), 2);
+  release1();
+  assert.strictEqual(activeRequestCount(), 1);
+  release1(); // idempotent
+  assert.strictEqual(activeRequestCount(), 1);
+  release2();
+  assert.strictEqual(activeRequestCount(), 0);
+}
+
+// (J) Stage U — drainInFlight 가 0 reach 시 즉시 resolve.
+{
+  const { trackInFlightRequest, drainInFlight } = require("../utils/processCrashHandler");
+  delete process[__test.ACTIVE_REQUESTS_KEY];
+  const release = trackInFlightRequest();
+  // Release shortly after.
+  setTimeout(() => release(), 30);
+  return drainInFlight({ drainTimeoutMs: 1000, pollIntervalMs: 10 }).then((r) => {
+    assert.strictEqual(r.drained, true, "(J) drained=true");
+    assert.strictEqual(r.remaining, 0);
+    assert.ok(r.waited_ms < 200);
+
+    console.log("PROCESS_CRASH_HANDLER_TEST_OK");
+  });
+}

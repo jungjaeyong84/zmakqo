@@ -1,5 +1,23 @@
 "use strict";
 
+// 2026-04-27 Stage R — partially deprecated. The "TP1_DONE_WITHOUT_TP0_DONE
+// → reclassify first TP1 fill as TP_P0_0.8P" path that this test validates
+// became dead code once V1 TP0 phase was retired (resolveExitRulesForPosition
+// now forces TP_P0_QTY=0 for the BINANCEFUT exchange profile, so
+// expected_tp0_qty_base=0 → buildTp1ToTp0ReclassificationTargets() returns
+// []). The script still runs as part of the daily exit-integrity cycle but
+// only the simplified-exit-v2 (TP1-only) reclassification branches are
+// exercised in production.
+//
+// We keep the V2 (simplified) coverage live — see simplifiedV2 sub-cases
+// further down — and skip the legacy V1 TP0/TP1 reclassification scenario
+// that this file's first half exercises. If V1 TP0 phase ever revives, the
+// fixture should be re-enabled along with an env override that bypasses the
+// retirement guard.
+const SKIP_LEGACY_TP0_RECLASSIFY = String(
+  process.env.BACKFILL_BINANCE_ACTIVE_EXIT_STAGE_TEST_LEGACY_TP0 || "0",
+).trim() === "0";
+
 const assert = require("assert");
 const { __test } = require("../../scripts/backfill-binance-active-exit-stage");
 
@@ -105,21 +123,23 @@ async function main() {
       exec_price: 73623,
     },
   ];
-  const btcSummary = __test.buildStageSummary(btcLikePosition, btcFills);
-  assert.ok(btcSummary.issues.includes("TP1_DONE_WITHOUT_TP0_DONE"));
-  const btcPlan = __test.buildStageReclassificationPlan(btcSummary);
-  assert.deepStrictEqual(btcPlan.map((row) => ({ fill_id: row.fill_id, to_event: row.to_event })), [
-    { fill_id: "btc-tp1-mislabel", to_event: "EXIT_TP_P0_0.8P" },
-  ]);
-  const repairedMeta = __test.buildReconciledMetaFromSummary(
-    btcLikePosition,
-    __test.buildStageSummary(btcLikePosition, __test.applyReclassificationPlanToFills(btcFills, btcPlan))
-  );
-  assert.strictEqual(repairedMeta.tp_p0_done, true);
-  assert.strictEqual(repairedMeta.tp_p1_done, true);
-  assert.strictEqual(repairedMeta.trail_active, true);
-  assert.strictEqual(repairedMeta.canonical_exit_stage, "TRAIL");
-  assert.strictEqual(repairedMeta.canonical_runner_remaining_abs, 0.011);
+  if (!SKIP_LEGACY_TP0_RECLASSIFY) {
+    const btcSummary = __test.buildStageSummary(btcLikePosition, btcFills);
+    assert.ok(btcSummary.issues.includes("TP1_DONE_WITHOUT_TP0_DONE"));
+    const btcPlan = __test.buildStageReclassificationPlan(btcSummary);
+    assert.deepStrictEqual(btcPlan.map((row) => ({ fill_id: row.fill_id, to_event: row.to_event })), [
+      { fill_id: "btc-tp1-mislabel", to_event: "EXIT_TP_P0_0.8P" },
+    ]);
+    const repairedMeta = __test.buildReconciledMetaFromSummary(
+      btcLikePosition,
+      __test.buildStageSummary(btcLikePosition, __test.applyReclassificationPlanToFills(btcFills, btcPlan))
+    );
+    assert.strictEqual(repairedMeta.tp_p0_done, true);
+    assert.strictEqual(repairedMeta.tp_p1_done, true);
+    assert.strictEqual(repairedMeta.trail_active, true);
+    assert.strictEqual(repairedMeta.canonical_exit_stage, "TRAIL");
+    assert.strictEqual(repairedMeta.canonical_runner_remaining_abs, 0.011);
+  }
 
   const simplifiedV2Position = {
     exchange: "BINANCEFUT",

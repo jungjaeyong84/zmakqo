@@ -100,8 +100,9 @@ const NOW = 1700000000000;
   const origWarn = console.warn;
   const captured = [];
   console.warn = (...args) => { captured.push(args.join(" ")); };
+  let next;
   try {
-    const next = buildFlatMetaProjection({
+    next = buildFlatMetaProjection({
       symbol: "LINKUSDT",
       native_protection_refresh_at_ms: Date.now() - (40 * 60 * 1000),
     });
@@ -111,6 +112,43 @@ const NOW = 1700000000000;
   }
   const matched = captured.filter((line) => line.includes("RECONCILER_FLAT_STALE_BREACH"));
   assert.strictEqual(matched.length, 1, "(H) 통합 시 emit 1회");
+  // Stage V — flat_first_observed_at_ms 가 stamp 됐는지 (race 보호).
+  assert.ok(
+    Number.isFinite(next.flat_first_observed_at_ms) && next.flat_first_observed_at_ms > 0,
+    "(H) Stage V — flat_first_observed_at_ms stamp 됨"
+  );
+}
+
+// (I) Stage V — 두 번째 reconciler pass 도 baseline 유지하며 emit.
+{
+  const origWarn = console.warn;
+  const captured = [];
+  console.warn = (...args) => { captured.push(args.join(" ")); };
+  try {
+    // First flat pass — stamps flat_first_observed_at_ms.
+    const firstPass = buildFlatMetaProjection({
+      symbol: "LINKUSDT",
+      native_protection_refresh_at_ms: Date.now() - (40 * 60 * 1000),
+    });
+    // Simulate a second reconciler call where native_protection_refresh_at_ms
+    // is null (cleanup) but flat_first_observed_at_ms survives.
+    const secondMeta = {
+      symbol: "LINKUSDT",
+      native_protection_refresh_at_ms: null,
+      flat_first_observed_at_ms: firstPass.flat_first_observed_at_ms,
+    };
+    buildFlatMetaProjection(secondMeta);
+  } finally {
+    console.warn = origWarn;
+  }
+  const matched = captured.filter((line) => line.includes("RECONCILER_FLAT_STALE_BREACH"));
+  assert.ok(matched.length >= 2, "(I) Stage V — 2nd pass 도 emit (baseline 누적 유지)");
+  // 두 번째 emit 의 baseline_source 가 FLAT_FIRST_OBSERVED_AT_MS 이어야.
+  const secondEmit = matched[1] ? JSON.parse(matched[1].replace("[RECONCILER_FLAT_STALE_BREACH] ", "")) : null;
+  if (secondEmit) {
+    assert.strictEqual(secondEmit.baseline_source, "FLAT_FIRST_OBSERVED_AT_MS",
+      "(I) 2nd pass 는 새 baseline 사용");
+  }
 }
 
 console.log("RECONCILER_FLAT_STALE_BREACH_TEST_OK");

@@ -592,23 +592,27 @@ function emitFlatProjectionTrailContextLostAlert(meta = {}) {
   return true;
 }
 
-// 2026-04-27 Stage L — senior audit caught LINKUSDT staying DB-active +
-// exchange-flat for 30+ minutes earlier today before reconciliation
-// finally landed on a manual dashboard refresh. The reconciler itself
-// fully cleaned up once invoked — the gap was that NO ticker invokes
-// it on a fixed cadence, so a position whose paper engine sync skipped
-// it (lock contention, cold-cache, etc.) sat in the dashboard with a
-// red alert until an operator hit refresh. This emitter fires the
-// first time reconciler observes (active=false) more than
-// RECONCILER_FLAT_STALE_THRESHOLD_MS after the last native protection
-// refresh, so prolonged mismatches surface in Cloud Logging as soon as
-// reconciliation runs (instead of relying on operator vigilance).
+// 2026-04-27 Stage L → V — senior audit caught LINKUSDT staying DB-active +
+// exchange-flat for 30+ minutes earlier today. Stage L's first cut keyed
+// the staleness clock off `native_protection_refresh_at_ms`, but that
+// field gets nulled the moment buildFlatMetaProjection runs once — so a
+// second reconciler pass would have no baseline to measure against and
+// every subsequent stale window would silently pass through. Stage V
+// adds an immortal `flat_first_observed_at_ms` baseline that survives
+// cleanups (whitelisted from FLAT_META_NULL_FIELDS) and resets only when
+// the position re-confirms active again. The emitter now prefers that
+// field, falls back to native_protection_refresh_at_ms for the very
+// first flat pass, and stamps `flat_first_observed_at_ms` for the next
+// pass to find.
 //
 // 안전 계약:
 //   - threshold env: `RECONCILER_FLAT_STALE_THRESHOLD_MS` (default 30min).
 //   - kill switch: `RECONCILER_FLAT_STALE_OBSERVE=0`.
 //   - emit 자체가 throw 해도 swallow (best-effort).
 //   - 후보 값 (refresh timestamp) 누락 시 silent (false negative 허용).
+//   - `flat_first_observed_at_ms` 가 있으면 그것을 baseline 으로 사용
+//     (multi-pass 누적 추적). 없으면 native_protection_refresh_at_ms
+//     fallback (Stage L 호환).
 function emitFlatStaleThresholdBreachAlert(meta = {}, {
   now = Date.now(),
   thresholdMs = Number(process.env.RECONCILER_FLAT_STALE_THRESHOLD_MS) || (30 * 60 * 1000),
@@ -617,16 +621,27 @@ function emitFlatStaleThresholdBreachAlert(meta = {}, {
 } = {}) {
   if (!observe) return false;
   if (!meta || typeof meta !== "object") return false;
+  const firstFlatAtMs = Number(meta.flat_first_observed_at_ms);
   const previousRefreshAtMs = Number(meta.native_protection_refresh_at_ms);
-  if (!Number.isFinite(previousRefreshAtMs) || previousRefreshAtMs <= 0) return false;
-  const ageMs = Number(now) - previousRefreshAtMs;
+  let baselineMs = null;
+  let baselineSource = null;
+  if (Number.isFinite(firstFlatAtMs) && firstFlatAtMs > 0) {
+    baselineMs = firstFlatAtMs;
+    baselineSource = "FLAT_FIRST_OBSERVED_AT_MS";
+  } else if (Number.isFinite(previousRefreshAtMs) && previousRefreshAtMs > 0) {
+    baselineMs = previousRefreshAtMs;
+    baselineSource = "NATIVE_PROTECTION_REFRESH_AT_MS";
+  }
+  if (baselineMs === null) return false;
+  const ageMs = Number(now) - baselineMs;
   if (!Number.isFinite(ageMs) || ageMs < thresholdMs) return false;
   try {
     emit(JSON.stringify({
       event: "reconciler_flat_stale_breach",
       symbol: meta.symbol || meta.market || null,
       position_side: meta.position_side || meta.native_protection_side || null,
-      previous_refresh_at_ms: previousRefreshAtMs,
+      baseline_source: baselineSource,
+      baseline_at_ms: baselineMs,
       stale_age_ms: ageMs,
       threshold_ms: thresholdMs,
       observed_at: new Date(Number(now)).toISOString(),
@@ -635,10 +650,27 @@ function emitFlatStaleThresholdBreachAlert(meta = {}, {
   return true;
 }
 
-function buildFlatMetaProjection(meta = {}) {
+function buildFlatMetaProjection(meta = {}, { nowMs = Date.now() } = {}) {
   const frozen = buildFrozenTrailContext(meta);
   if (frozen) emitFlatProjectionTrailContextLostAlert(meta);
-  emitFlatStaleThresholdBreachAlert(meta);
+  emitFlatStaleThresholdBreachAlert(meta, { now: nowMs });
+  // Stage V — preserve `flat_first_observed_at_ms` across cleanups. If
+  // the previous projection already stamped it, keep the original. On
+  // the first flat pass we inherit `native_protection_refresh_at_ms`
+  // (the last active confirm timestamp) — it's the best lower-bound on
+  // when the position actually went flat. Falls back to `nowMs` only if
+  // the refresh timestamp is missing (defensive: still gives the next
+  // pass *some* baseline to accumulate staleness from).
+  const existingFirstFlat = Number(meta && meta.flat_first_observed_at_ms);
+  const previousRefreshAtMs = Number(meta && meta.native_protection_refresh_at_ms);
+  let flatFirstObservedAtMs;
+  if (Number.isFinite(existingFirstFlat) && existingFirstFlat > 0) {
+    flatFirstObservedAtMs = existingFirstFlat;
+  } else if (Number.isFinite(previousRefreshAtMs) && previousRefreshAtMs > 0) {
+    flatFirstObservedAtMs = previousRefreshAtMs;
+  } else {
+    flatFirstObservedAtMs = nowMs;
+  }
   const next = {
     ...meta,
     exchange_projection_source: "BINANCE_LIVE_STATE",
@@ -647,6 +679,8 @@ function buildFlatMetaProjection(meta = {}) {
   for (const field of FLAT_META_FALSE_FIELDS) next[field] = false;
   for (const field of FLAT_META_NULL_FIELDS) next[field] = null;
   if (frozen) Object.assign(next, frozen);
+  // Stamp AFTER the cleanup so it survives the field nulling loop.
+  next.flat_first_observed_at_ms = flatFirstObservedAtMs;
   return next;
 }
 
@@ -704,6 +738,10 @@ function reconcileBinancePositionMetaWithExchange({
     native_protection_side: normalizePositionSide(positionSide),
     exchange_projection_source: "BINANCE_LIVE_STATE",
     exchange_projection_in_sync: !!stop,
+    // Stage V — clear `flat_first_observed_at_ms` once the position is
+    // confirmed active again so the next flat episode starts a fresh
+    // staleness clock instead of inheriting an old one.
+    flat_first_observed_at_ms: null,
   };
 
   const side = normalizePositionSide(positionSide);

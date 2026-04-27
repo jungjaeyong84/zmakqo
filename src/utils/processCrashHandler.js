@@ -62,6 +62,63 @@ function buildPayload({ kind, error, origin, promiseInfo, observedAt }) {
   };
 }
 
+// Stage U — in-flight HTTP request tracker. The Stage K crash handler
+// originally exited after a fixed 250ms grace window, but a senior
+// audit pointed out that prod fetch() calls (egress proxy round-trips,
+// Binance order placements) routinely run 200-1500ms — exiting at 250ms
+// truncates an in-flight order ack and leaves an orphan exchange-side
+// order with no DB record. The new tracker counts active fetch promises
+// and waits up to `gracefulDrainTimeoutMs` (default 1500ms) for them to
+// settle before forcing exit. Tracker is global, idempotent, and exits
+// immediately if no work is in flight.
+const ACTIVE_REQUESTS_KEY = "__donbeolja_inflight_requests__";
+
+function getActiveRequestState(proc) {
+  if (!proc[ACTIVE_REQUESTS_KEY]) {
+    proc[ACTIVE_REQUESTS_KEY] = { count: 0 };
+  }
+  return proc[ACTIVE_REQUESTS_KEY];
+}
+
+function trackInFlightRequest(proc = process) {
+  const state = getActiveRequestState(proc);
+  state.count = (state.count || 0) + 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    state.count = Math.max(0, (state.count || 0) - 1);
+  };
+}
+
+function activeRequestCount(proc = process) {
+  const state = getActiveRequestState(proc);
+  return Number.isFinite(state.count) && state.count > 0 ? state.count : 0;
+}
+
+function drainInFlight({
+  proc = process,
+  drainTimeoutMs,
+  pollIntervalMs = 50,
+  setTimeoutFn = setTimeout,
+} = {}) {
+  return new Promise((resolve) => {
+    const state = getActiveRequestState(proc);
+    const startMs = Date.now();
+    const tick = () => {
+      const remaining = state.count || 0;
+      if (remaining <= 0) {
+        return resolve({ drained: true, waited_ms: Date.now() - startMs, remaining: 0 });
+      }
+      if (Date.now() - startMs >= drainTimeoutMs) {
+        return resolve({ drained: false, waited_ms: Date.now() - startMs, remaining });
+      }
+      setTimeoutFn(tick, pollIntervalMs);
+    };
+    tick();
+  });
+}
+
 function installProcessCrashHandlers({
   proc = process,
   emit = (payload) => {
@@ -72,6 +129,7 @@ function installProcessCrashHandlers({
   },
   graceful = String(proc.env.DONBEOLJA_PROCESS_CRASH_GRACEFUL || "1").trim() !== "0",
   gracefulDelayMs = 250,
+  gracefulDrainTimeoutMs = Number(proc.env.DONBEOLJA_PROCESS_CRASH_DRAIN_TIMEOUT_MS) || 1500,
   setTimeoutFn = setTimeout,
 } = {}) {
   if (proc[HANDLER_INSTALLED_KEY] === true) {
@@ -88,12 +146,44 @@ function installProcessCrashHandlers({
     try { exit(1); } catch (_) { /* swallow */ }
   };
 
+  // Async-aware finalize: if there's in-flight work, wait up to
+  // gracefulDrainTimeoutMs for it to settle before exiting.
+  const finalizeWithDrain = async (kind) => {
+    const inflight = activeRequestCount(proc);
+    if (inflight <= 0) {
+      // Nothing in flight — fall back to the original short-grace window
+      // so existing tests that rely on graceful=false / explicit
+      // gracefulDelayMs continue to behave the same.
+      setTimeoutFn(finalize, gracefulDelayMs);
+      return;
+    }
+    try {
+      const drainResult = await drainInFlight({
+        proc,
+        drainTimeoutMs: gracefulDrainTimeoutMs,
+        setTimeoutFn,
+      });
+      try {
+        emit({
+          event: "process_crash_handler_drain",
+          kind,
+          inflight_at_crash: inflight,
+          drained: drainResult.drained,
+          waited_ms: drainResult.waited_ms,
+          remaining: drainResult.remaining,
+          observed_at: nowIso(),
+        });
+      } catch (_) { /* swallow */ }
+    } catch (_) { /* swallow */ }
+    finalize();
+  };
+
   proc.on("uncaughtException", (error, origin) => {
     try {
       emit(buildPayload({ kind: "UNCAUGHT_EXCEPTION", error, origin }));
     } catch (_) { /* surveillance must never throw */ }
     if (graceful) {
-      setTimeoutFn(finalize, gracefulDelayMs);
+      finalizeWithDrain("UNCAUGHT_EXCEPTION");
     } else {
       finalize();
     }
@@ -108,7 +198,7 @@ function installProcessCrashHandlers({
       }));
     } catch (_) { /* swallow */ }
     if (graceful) {
-      setTimeoutFn(finalize, gracefulDelayMs);
+      finalizeWithDrain("UNHANDLED_REJECTION");
     } else {
       finalize();
     }
@@ -119,8 +209,12 @@ function installProcessCrashHandlers({
 
 module.exports = {
   installProcessCrashHandlers,
+  trackInFlightRequest,
+  activeRequestCount,
+  drainInFlight,
   __test: {
     buildPayload,
     HANDLER_INSTALLED_KEY,
+    ACTIVE_REQUESTS_KEY,
   },
 };
