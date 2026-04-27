@@ -90,7 +90,7 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE, "6");
     assert.strictEqual(
       result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP,
-      "BTCUSDT:155|ETHUSDT:100|LINKUSDT:100|BNBUSDT:100|XRPUSDT:100|SOLUSDT:100|AXSUSDT:100|DOGEUSDT:100"
+      "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120"
     );
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "1");
@@ -224,7 +224,7 @@ async function passingPreflightCanBuildFullUniverseMinimumNotionalCommand() {
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE, "6");
     assert.strictEqual(
       result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP,
-      "BTCUSDT:155|ETHUSDT:100|LINKUSDT:100|BNBUSDT:100|XRPUSDT:100|SOLUSDT:100|AXSUSDT:100|DOGEUSDT:100"
+      "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120"
     );
   });
 }

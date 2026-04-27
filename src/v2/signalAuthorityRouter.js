@@ -19,6 +19,41 @@ function hash10(payload) {
   return crypto.createHash("sha1").update(String(payload || "")).digest("hex").slice(0, 10);
 }
 
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+// Stage J — surveillance (Stage F) caught CANARY entry intents flowing
+// through resolveEntryIntentFromOpenClaw without any leverage value, which
+// meant production entry route's resolveProductionEntryLeverage had no
+// per-intent candidate to honor (env fallback worked at production layer
+// but the entry intent itself was leverage-blind). Stamp leverage onto
+// the entryIntent so the caller chain carries an explicit number from
+// the source of truth (signal intent / openclaw decision / evidence /
+// signal criteria) instead of relying on env fallback alone.
+function resolveEntryIntentLeverage({ signalIntent, openclawDecision } = {}) {
+  const intent = asObject(signalIntent);
+  const decision = asObject(openclawDecision);
+  const evidence = asObject(decision && decision.canonical_evidence_summary);
+  const criteria = asObject(evidence && evidence.signal_criteria);
+  const candidates = [
+    intent && intent.leverage,
+    intent && intent.futures_leverage,
+    decision && decision.leverage,
+    decision && decision.futures_leverage,
+    evidence && evidence.leverage,
+    evidence && evidence.futures_leverage,
+    criteria && criteria.leverage,
+    criteria && criteria.futures_leverage,
+  ];
+  for (const cand of candidates) {
+    if (cand === undefined || cand === null || cand === "") continue;
+    const num = Number(cand);
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+  return null;
+}
+
 function resolveStrategyFilter(strategyFilterResult) {
   const result = strategyFilterResult && typeof strategyFilterResult === "object" ? strategyFilterResult : null;
   if (!result) {
@@ -275,6 +310,10 @@ function resolveEntryIntentFromOpenClaw({
   const criteria = summary.signal_criteria && typeof summary.signal_criteria === "object"
     ? summary.signal_criteria
     : {};
+  const leverage = resolveEntryIntentLeverage({
+    signalIntent: intent,
+    openclawDecision: decision,
+  });
   return Object.freeze({
     ok: true,
     reason: null,
@@ -293,6 +332,8 @@ function resolveEntryIntentFromOpenClaw({
       signal_criteria_profile: trimOrNull(criteria.criteria_profile),
       entry_grade: upper(criteria.entry_grade),
       trigger_type: upper(criteria.trigger_type),
+      leverage,
+      futures_leverage: leverage,
     }),
   });
 }
@@ -304,4 +345,5 @@ module.exports = {
   resolveMarketDataQualityDecisionGate,
   resolveSignalCriteriaGate,
   resolveEntryIntentFromOpenClaw,
+  resolveEntryIntentLeverage,
 };

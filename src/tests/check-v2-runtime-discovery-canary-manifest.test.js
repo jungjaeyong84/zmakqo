@@ -7,7 +7,7 @@ function serviceJson({
   symbols = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT",
   maxSymbolCount = "8",
   maxNotionalQuote = "6",
-  symbolNotionalQuoteMap = "BTCUSDT:155|ETHUSDT:100|LINKUSDT:100|BNBUSDT:100|XRPUSDT:100|SOLUSDT:100|AXSUSDT:100|DOGEUSDT:100",
+  symbolNotionalQuoteMap = "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120",
   image = "gcr.io/donbeolja-dev/donbeolja:v2-fixture",
   commit = "0123456789abcdef0123456789abcdef01234567",
   endpointEnabled = "1",
