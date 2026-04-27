@@ -258,6 +258,24 @@ function observePositionCycleIdPresence({
     violation_n: res.violations.length,
     violations: res.violations.slice(0, 4),
   }, "warn");
+  // 2026-04-27 Stage 3b-3 — pre-commit gate for cycle_id 부재.
+  // Stage 3b-1 의 warn-only 관찰을 backfill 종료 후 throw 로 격상.
+  // observe 는 transaction 진입 *이전* 에 호출되므로 throw 시 Firestore
+  // write 자체가 일어나지 않음 (Stage 1 throw 와 동일 패턴).
+  if (POSITION_CYCLE_ID_THROW_ENABLED === true) {
+    const err = new Error(
+      `[POSITION_CYCLE_ID_VIOLATION] ${exchange || "?"} ${symbol || "?"} `
+      + `${scope || "?"} ACTIVE_REQUIRES_POSITION_CYCLE_ID`
+    );
+    err.code = "POSITION_CYCLE_ID_VIOLATION";
+    err.invariantScope = scope || null;
+    err.invariantViolations = res.violations.slice(0, 4);
+    err.invariantExchange = exchange || null;
+    err.invariantSymbol = symbol || null;
+    err.invariantMutationKind = mutationKind || null;
+    err.invariantReason = reason || null;
+    throw err;
+  }
 }
 
 function boolEnv(name, fallback = false) {
@@ -313,6 +331,22 @@ const POSITION_INVARIANT_ALERT_ENABLED = boolEnv("POSITION_INVARIANT_ALERT_ENABL
 const POSITION_INVARIANT_THROW_DEFAULT_NON_PROD = String(process.env.NODE_ENV || "").toLowerCase() !== "production";
 const POSITION_INVARIANT_THROW_ENABLED = boolEnv(
   "POSITION_INVARIANT_THROW_ENABLED",
+  POSITION_INVARIANT_THROW_DEFAULT_NON_PROD,
+);
+// 2026-04-27 Stage 3b-3 — position_cycle_id throw graduation.
+//
+// Stage 3b-1 added a warn-only observer for cycle_id 부재.  Stage 3b-2 의
+// backfill 스크립트가 라이브 ACTIVE 잔재를 정리한 뒤, 부재를 throw 로
+// 격상해 다음과 같은 현상을 영구히 차단한다:
+//   - META-only 경로가 (Stage 3a 의 derive 가 cycle_id 를 만들지 않으므로)
+//     cycle_id 없는 prev 위에 다시 cycle_id 없는 ACTIVE 를 쓰는 케이스.
+//   - 외부 동기화/repair 경로가 cycle_id 키를 빼먹고 ACTIVE 를 쓰는 케이스.
+// throw 는 별도 env (`POSITION_CYCLE_ID_THROW_ENABLED`) 로 격리한다 — 일반
+// invariant throw 와 운영 cutover 타이밍이 다르기 때문 (backfill 종료 후
+// 별도 soak).  default 는 일반 invariant 와 동일하게 NODE_ENV !== 'production'
+// 일 때 true.  prod 격상은 별도 deploy.
+const POSITION_CYCLE_ID_THROW_ENABLED = boolEnv(
+  "POSITION_CYCLE_ID_THROW_ENABLED",
   POSITION_INVARIANT_THROW_DEFAULT_NON_PROD,
 );
 const POSITION_INVARIANT_ALERT_COOLDOWN_MS = Math.max(0, Math.floor(Number(process.env.POSITION_INVARIANT_ALERT_COOLDOWN_MS) || (30 * 60 * 1000)));

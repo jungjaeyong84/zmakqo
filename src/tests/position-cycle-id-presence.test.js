@@ -13,16 +13,22 @@
 //   (A) `validatePositionCycleIdPresence` 는 ACTIVE 인데 cycle_id 가 없으면
 //       위반을 리턴, 그 외엔 ok.
 //   (B) `observePositionCycleIdPresence` 는 위반 시 structuredLog 발화 ↑,
-//       위반 없을 시 침묵.  *throw 하지 않음* — Stage 3b-3 에서 invariant
-//       본체에 통합되기 전까지 라이브 트래픽 차단 금지.
+//       위반 없을 시 침묵 — POSITION_CYCLE_ID_THROW_ENABLED=0 (kill switch)
+//       경로에서 throw 하지 않음을 핀.  Stage 3b-3 에서 throw 가 default
+//       이지만, 운영 backfill 미완료 상태에서 prod 가 즉시 throw 하지
+//       않도록 kill-switch 경로 자체가 살아 있어야 함.
 //
-// 별도 테스트로 분리한 이유: Stage 1 throw graduation 테스트
-// (position-invariant-throw-enforcement.test.js) 와 entanglement 회피.
+// throw 쪽 contract 는 별도 테스트
+// (position-cycle-id-throw-enforcement.test.js) 가 책임짐.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const assert = require("assert");
 
 process.env.NODE_ENV = "test";
+// Stage 3b-3 가 cycle_id 부재를 throw 격상시키지만, 본 테스트는 warn-only
+// 계약을 검증하므로 throw 플래그를 명시적으로 끈다.  (test 프로세스는
+// per-test fresh process — 이 mutation 은 다른 테스트에 새지 않음.)
+process.env.POSITION_CYCLE_ID_THROW_ENABLED = "0";
 
 const {
   validatePositionCycleIdPresence,
