@@ -22,6 +22,98 @@ function asObject(value) {
   return value && typeof value === "object" ? value : null;
 }
 
+function readEnvBool(envObj, name) {
+  const source = asObject(envObj) || {};
+  const raw = source[name];
+  if (raw === undefined || raw === null) return null;
+  const text = String(raw).trim().toLowerCase();
+  if (!text) return null;
+  if (text === "1" || text === "true" || text === "yes" || text === "on") return true;
+  if (text === "0" || text === "false" || text === "no" || text === "off") return false;
+  return null;
+}
+
+// Stage F — Stage C 의 caller chain 이 prod 에서 실제 leverage 를 흘렸는지
+// 매 entry 시점에 1회 surveillance. Stage E 에서 V2 protection plan 은
+// leverage>1 이 있어야만 정규화하고, Stage A 의 안전망으로 leverage 누락 시
+// silent raw 모드로 빠진다 (Stage A~D 시점 의도). 그 silent 가 새 회귀 (e.g.
+// caller chain 단계 누락, openclaw 후보 schema 변경) 의 조용한 신호가 될 수
+// 있어, prod 에서 leverage 가 흐르지 않으면 즉시 1줄 warn 으로 노출시킨다.
+//
+// 안전 계약:
+//   - resolved>1 → silent (정상 path).
+//   - resolved===null 또는 resolved<=1 → mode=MISSING 1회 warn.
+//   - `V2_ENTRY_LEVERAGE_RESOLVE_OBSERVE=0` kill switch.
+//   - 후보 값 자체는 노출 안 함 (어떤 슬롯이 채워져 있었는지만 boolean).
+function observeProductionEntryLeverageResolve({
+  entryIntent,
+  bundle,
+  env,
+  resolved,
+  exchange = null,
+  symbol = null,
+  side = null,
+  entryIntentId = null,
+  openclawDecisionId = null,
+  emit = (payload) => console.warn(JSON.stringify(payload)),
+} = {}) {
+  if (readEnvBool(env, "V2_ENTRY_LEVERAGE_RESOLVE_OBSERVE") === false) return null;
+  const rawIsNullish = resolved === null || resolved === undefined || resolved === "";
+  const numeric = rawIsNullish ? NaN : Number(resolved);
+  const healthy = Number.isFinite(numeric) && numeric > 1;
+  if (healthy) return null;
+  const intent = asObject(entryIntent);
+  const decision = asObject(bundle && bundle.openclawDecision);
+  const evidence = asObject(decision && decision.canonical_evidence_summary);
+  const signalIntent = asObject(bundle && bundle.signalIntent);
+  const envObj = asObject(env) || {};
+  const slotPresent = (obj, ...keys) => {
+    if (!obj) return false;
+    for (const k of keys) {
+      const v = obj[k];
+      if (v === undefined || v === null || v === "") continue;
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) return true;
+    }
+    return false;
+  };
+  const envSlotPresent = (key) => {
+    const v = envObj[key];
+    if (v === undefined || v === null) return false;
+    const text = String(v).trim();
+    if (!text) return false;
+    const n = Number(text);
+    return Number.isFinite(n) && n > 0;
+  };
+  const payload = {
+    event: "v2_entry_leverage_missing",
+    mode: Number.isFinite(numeric) && numeric > 0 ? "LEVERAGE_LE_ONE" : "MISSING",
+    resolved: rawIsNullish || !Number.isFinite(numeric) ? null : numeric,
+    exchange: upper(exchange) || null,
+    symbol: upper(symbol) || null,
+    side: upper(side) || null,
+    entry_intent_id: trimOrNull(entryIntentId),
+    openclaw_decision_id: trimOrNull(openclawDecisionId),
+    candidate_presence: {
+      entry_intent: slotPresent(intent, "leverage", "futures_leverage"),
+      openclaw_decision: slotPresent(decision, "leverage", "futures_leverage"),
+      canonical_evidence: slotPresent(evidence, "leverage", "futures_leverage"),
+      signal_intent: slotPresent(signalIntent, "leverage", "futures_leverage"),
+      env_v2_futures_default: envSlotPresent("V2_FUTURES_DEFAULT_LEVERAGE"),
+      env_donbeolja_v2_futures_default: envSlotPresent("DONBEOLJA_V2_FUTURES_DEFAULT_LEVERAGE"),
+    },
+    observed_at: new Date().toISOString(),
+  };
+  // Surveillance must never break the entry path: if `emit` throws (e.g.
+  // operator-supplied logger misbehaving), swallow it. The trade flow is
+  // already past the leverage resolve and the missing-leverage signal is a
+  // diagnostic, not a gate.
+  if (typeof emit === "function") {
+    try { emit(payload); } catch (_) { /* surveillance must be best-effort */ }
+  }
+  return payload;
+}
+
 // Stage C — leverage 가 entry → kernel → submitter → entryBootstrap →
 // protectionModel 까지 흘러가야 V2 protection plan 의 leverage 정규화 (Stage
 // A/B/D) 가 prod 에서 발효된다. 후보 우선순위는 caller (entryIntent) 가 가장
@@ -686,6 +778,17 @@ async function runV2ProductionEntryRoute({
   }
 
   const leverage = resolveProductionEntryLeverage({ entryIntent, bundle, env });
+  observeProductionEntryLeverageResolve({
+    entryIntent,
+    bundle,
+    env,
+    resolved: leverage,
+    exchange: runtime && runtime.exchange,
+    symbol: entryIntent && entryIntent.symbol,
+    side: entryIntent && entryIntent.side,
+    entryIntentId: entryIntent && entryIntent.entry_intent_id,
+    openclawDecisionId: bundle && bundle.openclawDecision && bundle.openclawDecision.openclaw_decision_id,
+  });
   const kernelResult = await runEntryKernel({
     db,
     env,
@@ -893,11 +996,14 @@ async function runV2ProductionEntryRoute({
 module.exports = {
   runV2ProductionEntryRoute,
   resolveProductionEntryLeverage,
+  observeProductionEntryLeverageResolve,
   __test: {
     trimOrNull,
     upper,
     asObject,
+    readEnvBool,
     resolveProductionEntryLeverage,
+    observeProductionEntryLeverageResolve,
     summarizeRuntimeConfig,
     extractExecutedEntry,
     extractSubmitterResult,
