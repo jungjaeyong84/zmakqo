@@ -73,6 +73,9 @@ function run() {
     "long trailing near trigger must activate fast lane"
   );
 
+  // 2026-04-28 V1 TP_P0 retired — pre-TP1 triggers must include TP_P1.
+  // Previously this block asserted TP_P0; updated alongside V1 TP0
+  // retirement so the orphan test reflects production behaviour.
   const noTrailPos = {
     exchange: "BINANCEFUT",
     avg_price: 100,
@@ -85,18 +88,20 @@ function run() {
   };
   const noTrailTriggers = __test.computeExitTriggers({ pos: noTrailPos, rules, leverageEff: 2 });
   assert.ok(
-    noTrailTriggers.some((t) => t.kind === "TP_P0"),
-    "pre-TP1 live tick triggers must include TP0"
+    noTrailTriggers.some((t) => t.kind === "TP_P1"),
+    "pre-TP1 live tick triggers must include TP_P1"
   );
+  // TP_P1 = 0.025/lev2 = 1.25% raw → LONG TP1 = 100 * 1.0125 = 101.25.
+  // Price 101.0 sits ~0.247% below 101.25 < nearPct=0.3% → near match.
   assert.strictEqual(
     __test.shouldCheckNear({
-      price: 99.61,
+      price: 101.0,
       triggers: noTrailTriggers,
       nearPct: 0.003,
       side: "LONG",
     }),
     true,
-    "TP0 should be treated as take-profit trigger for near/cross detection"
+    "TP_P1 should be treated as take-profit trigger for near/cross detection"
   );
   assert.strictEqual(
     __test.shouldActivateFastLane({

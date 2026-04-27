@@ -89,17 +89,26 @@
 
 ---
 
-## 5. SIGABRT 24h 24회 — root cause 미진단 (Stage K instrumentation 만)
+## 5. SIGABRT 24h 24회 — root cause 진단 완료 (2026-04-28)
 
-**상태**:
-- Stage K handler 가 다음 SIGABRT 시 stack 노출 ✓
-- 그러나 그 stack 이 무엇이 root cause 인지 진단 안 됨
-- EGRESS_PROXY recovery 직후 패턴 의심만, 검증 X
+**진단**:
+- Cloud Logging 직접 확인 — `Memory limit of 1024 MiB exceeded with 1050 MiB used`
+  followed by `Uncaught signal: 6` 패턴 반복 (08:31:57 외 다수)
+- **SIGABRT 는 Cloud Run 이 cgroup memory limit 위반 시 외부에서 강제 송출**
+  → Stage K 의 V8 uncaughtException handler 는 절대 fire 안 됨 (process 가 V8 도달 전에 kill)
 
-**필요한 추가 작업**:
-1. 다음 SIGABRT stack 분석 (Stage K emission 발생 시)
-2. EGRESS_PROXY keepalive socket 누수 / fetch pool exhaustion 가능성 검토
-3. heap dump enable
+**Hot 누수 후보**: `tpP1PendingTerminalAlertState` (key = `${symbol}:${intentId}:${reason}`)
+- intentId 가 매 intent 별 고유 → cache 무한 성장
+- 하루 ~1000+ entry × 250 byte = 250KB / day, 메모리 압박은 V8 heap fragmentation 와 곱셈
+
+**적용된 수정 (2026-04-28)**:
+1. `tpP1PendingTerminalAlertState` 에 size > 2048 시 cooldown-aware sweep + hard floor (oldest half drop)
+2. Cloud Run memory 1Gi → **2Gi** (donbeolja main + exit-worker 양쪽)
+3. Test: `tick-exit-alert-cache-eviction.test.js` 신설 (3 케이스 — cooldown / 노후 sweep / 신선 hard cap)
+4. Observability: `native_protection_unprotected_window_observed` 구조화 로그 추가 (Step 5 fix)
+
+**남은 위험**:
+- 다른 Map (`tickExitFailureAlertState`, `nativeProtectionRefreshAttemptState`, `trailHardExitCooldownState`) 도 per-entry eviction 없음. 키 cardinality 가 낮아 (symbol 수준) 즉시 위협은 아니지만, 다음 인시던트 시 동일 패턴 재현 가능성. 추후 일괄 cap 적용 권고.
 
 ---
 
@@ -108,6 +117,8 @@
 **상태**:
 - code -4130 으로 place-then-cancel 시도 자체가 거래소에서 reject
 - telemetry + UNPROTECTED_ACTIVE_POSITION 진단 + fail-closed pathway 가 architectural 한계 내 최대치
+- **2026-04-28 update**: Cloud Logging 에 `native_protection_unprotected_window_observed`
+  구조화 로그 추가됨. p50/p95/p99 분포가 dashboard 로 관찰 가능 (이전엔 Firestore round-trip 필요).
 
 **대안 검토 결과**: 없음. 거래소가 풀어주지 않는 한 mitigation 불가.
 
@@ -147,6 +158,22 @@
 
 1. **Pine script backtest 6개월+** → win rate 통계적 근거
 2. **V2 entry → V1 positions_paper mirror stamp** (Stage S code 변경)
+3. **다른 binanceTickExit Map 캐시 cap** (`tickExitFailureAlertState`, `nativeProtectionRefreshAttemptState`, `trailHardExitCooldownState`) — 현재 per-entry eviction 없음. cardinality 가 symbol 수준이라 즉시 위협 X 지만 미래의 키 확장 시 동일 OOM 패턴 재발 가능.
+
+---
+
+## 11. 테스트 CI 연결성 — 2026-04-28 senior audit 발견
+
+**상태 (수정 후)**:
+- 593 *.test.js 중 248 → npm test 직접 등록 (이전)
+- **나머지 345 → CI 미실행 = invisible orphans (이전)**
+  - 이 중 `tick-exit-fastlane.test.js` 는 V1 TP0 retire 시 broken 상태로 방치
+  - `live-trail-authority-skip.test.js` (Stage Y 핵심) 는 등록 안 됨
+- **fix**: `scripts/run-orphan-tests.js` glob runner 신설, `npm run test:orphans` 로 326 PASS orphan 자동 실행. 17 known-broken (drift) 은 explicit SKIP list 에서 reason 명시.
+- cloudbuild.yaml: `npm test && npm run test:orphans && npm run test:v2-promotion` 으로 wired
+
+**남은 위험**:
+- 17 quarantined orphan 들은 모두 fixture/API drift (production 영향 없음 확인). 그러나 drift 가 누적되면 실제 regression 을 가릴 수 있음. 별도 PR 에서 하나씩 fix 권고.
 3. **SIGABRT 첫 stack 분석** → root cause fix
 4. **ML prob histogram 1주일 수집** → 0.45 threshold 검증 / 재조정
 5. **첫 prod entry 50건의 R-multiple distribution** → ATR Phase 2 결정

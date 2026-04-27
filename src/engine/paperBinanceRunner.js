@@ -11216,6 +11216,35 @@ function buildNativeProtectionMetaPatch({
     ? null
     : resolvedReason;
   const windowFields = resolveNativeProtectionUnprotectedWindowFields(nativeProtection);
+  // 2026-04-28 senior audit (Step 5 — observability gap fix). The window
+  // timings are stamped onto positions_paper.meta but were *only* visible
+  // via Firestore queries; Cloud Logging had no event for analytics
+  // dashboards or alerting on regressions. Emit a single structured line
+  // here so the Cloud Run aggregate distribution (p50/p95/p99) of the
+  // cancel→ack window is observable without a Firestore round-trip.
+  // Sampled-out only when *all* timing fields are null (refresh path
+  // never reached the cancel call).
+  try {
+    if (
+      windowFields.native_protection_cancel_ms !== null
+      || windowFields.native_protection_stop_ack_ms !== null
+      || windowFields.native_protection_tp_ack_ms !== null
+    ) {
+      console.log(JSON.stringify({
+        event: "native_protection_unprotected_window_observed",
+        ts: new Date().toISOString(),
+        intent: intentUpper,
+        status,
+        cancel_succeeded: windowFields.native_protection_cancel_succeeded,
+        cancel_ms: windowFields.native_protection_cancel_ms,
+        stop_ack_ms: windowFields.native_protection_stop_ack_ms,
+        tp_ack_ms: windowFields.native_protection_tp_ack_ms,
+        unprotected_window_ms: windowFields.native_protection_unprotected_window_ms,
+        attempts: Number.isFinite(Number(nativeProtection.attempts)) ? Number(nativeProtection.attempts) : null,
+        position_side: nativeProtection.position_side || null,
+      }));
+    }
+  } catch (_) { /* observability only — never block meta patch on log fail */ }
   const basePatch = {
     native_protection_refresh_status: status,
     native_protection_refresh_reason: reason,

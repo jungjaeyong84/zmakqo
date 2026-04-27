@@ -992,6 +992,30 @@ function shouldSendTpP1PendingTerminalAlert({ symbol, intentId, reason } = {}) {
   const last = Number(tpP1PendingTerminalAlertState.get(key));
   if (Number.isFinite(last) && (now - last) < TP_P1_PENDING_TERMINAL_ALERT_COOLDOWN_MS) return false;
   tpP1PendingTerminalAlertState.set(key, now);
+  // 2026-04-28 senior audit (OOM diagnosis): the key contains a per-intent
+  // intentId, so without periodic eviction the cache grew unboundedly across
+  // the lifetime of a Cloud Run instance. Cloud Run logged
+  // `Memory limit of 1024 MiB exceeded` followed by SIGABRT (signal 6) every
+  // 30–60 min on the donbeolja main service. Cap entries and drop the oldest
+  // half once we breach the soft ceiling. We only need cooldown semantics —
+  // dropping an entry just means the next alert for that exact (symbol,
+  // intent_id, reason) triplet may fire one extra time after the cap, which
+  // is acceptable.
+  if (tpP1PendingTerminalAlertState.size > 2048) {
+    const cutoff = now - TP_P1_PENDING_TERMINAL_ALERT_COOLDOWN_MS;
+    for (const [k, v] of tpP1PendingTerminalAlertState.entries()) {
+      if (!Number.isFinite(v) || v < cutoff) tpP1PendingTerminalAlertState.delete(k);
+    }
+    if (tpP1PendingTerminalAlertState.size > 2048) {
+      // Hard cap: drop oldest half deterministically (Map preserves insert
+      // order, so we walk from the head).
+      let drop = Math.floor(tpP1PendingTerminalAlertState.size / 2);
+      for (const k of tpP1PendingTerminalAlertState.keys()) {
+        if (drop-- <= 0) break;
+        tpP1PendingTerminalAlertState.delete(k);
+      }
+    }
+  }
   return true;
 }
 
@@ -3957,6 +3981,7 @@ module.exports = {
     _tp1MetaSyncGapAlertState: tp1MetaSyncGapAlertState,
     _tp1NativeProtectionGapState: tp1NativeProtectionGapState,
     _tp1NativeProtectionGapAlertState: tp1NativeProtectionGapAlertState,
+    _tpP1PendingTerminalAlertState: tpP1PendingTerminalAlertState,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;
     },
