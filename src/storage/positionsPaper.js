@@ -171,6 +171,26 @@ function observeActivePositionInvariants({
     const msg = err && err.message ? err.message : String(err);
     console.warn("[POSITION_INVARIANT_ALERT_DISPATCH_FAIL]", msg);
   });
+  // 2026-04-27 P0-A throw graduation. fire-and-forget Slack push 는
+  // 위에서 이미 detached 됐으므로 throw 가 알림 dispatch 를 끊지 않는다.
+  // 호출자에게 typed error 를 던져 Firestore write 자체를 차단한다 —
+  // observe 는 transaction 시작 *이전* 에 호출되므로 corruption 발생 전
+  // 차단 (pre-commit gate).
+  if (POSITION_INVARIANT_THROW_ENABLED === true) {
+    const summary = describeActiveInvariantViolations(res.violations);
+    const err = new Error(
+      `[POSITION_INVARIANT_VIOLATION] ${exchange || "?"} ${symbol || "?"} `
+      + `${scope || "?"} ${summary || "INVARIANT_BREACH"}`
+    );
+    err.code = "POSITION_INVARIANT_VIOLATION";
+    err.invariantScope = scope || null;
+    err.invariantViolations = res.violations.slice(0, 12);
+    err.invariantExchange = exchange || null;
+    err.invariantSymbol = symbol || null;
+    err.invariantMutationKind = mutationKind || null;
+    err.invariantReason = reason || null;
+    throw err;
+  }
 }
 
 function boolEnv(name, fallback = false) {
@@ -206,6 +226,28 @@ const POSITION_WRITER_ALERT_CHANNEL = String(
 // CHANNEL 이 비어 있으면 자동 no-op (배포 환경에서 채널 미설정 시 알림
 // 안 감 — 알림 인프라 깔리기 전에 enable 켜져 있어도 안전).
 const POSITION_INVARIANT_ALERT_ENABLED = boolEnv("POSITION_INVARIANT_ALERT_ENABLED", true);
+// 2026-04-27 P0-A throw graduation step 1.
+//
+// observeActivePositionInvariants 는 serializePositionMutation/transaction
+// 시작 *이전* 에 호출된다 (line 1038/1216). 따라서 여기서 throw 하면
+// Firestore 에 단 1 byte 도 쓰이지 않은 채 호출자에게 에러가 전달되며,
+// 데이터 corruption 자체가 발생하지 않는 *pre-commit gate* 로 동작한다.
+// warn-only 와 차이: warn 은 "쓰이고 나서 알림", throw 는 "쓰지 않고 차단".
+//
+// 단계적 cutover:
+//   step 1 (this commit): env-gated. 기본값은 NODE_ENV !== 'production'.
+//                          full test suite 를 THROW=1 로 돌려 pre-existing
+//                          위반이 없음을 확인한 뒤 dev/CI 에서 켰음.
+//                          prod 는 명시적 opt-in 전까지 warn-only 유지.
+//   step 2 (별도 deploy):  운영 soak 1–2주 후 prod 도 THROW=1 enable.
+//
+// 안전장치: throw 가 활성화돼도 alert/log 는 그대로 발화 — 운영자가
+// "왜 거부됐는지" 까지 즉시 인지할 수 있도록 함.
+const POSITION_INVARIANT_THROW_DEFAULT_NON_PROD = String(process.env.NODE_ENV || "").toLowerCase() !== "production";
+const POSITION_INVARIANT_THROW_ENABLED = boolEnv(
+  "POSITION_INVARIANT_THROW_ENABLED",
+  POSITION_INVARIANT_THROW_DEFAULT_NON_PROD,
+);
 const POSITION_INVARIANT_ALERT_COOLDOWN_MS = Math.max(0, Math.floor(Number(process.env.POSITION_INVARIANT_ALERT_COOLDOWN_MS) || (30 * 60 * 1000)));
 const POSITION_INVARIANT_ALERT_CHANNEL = String(
   process.env.POSITION_INVARIANT_ALERT_CHANNEL
