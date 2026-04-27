@@ -8704,6 +8704,18 @@ function resolveActiveEntryLineageForSync({
   externalEntryTransition = false,
   persistedEntryLineage = null,
   recoveredEntryLineage = null,
+  // Raw material for the synthetic fallback. The external-sync entry
+  // transition path historically left entry_event_id=null when no recent
+  // fill/trade/intent could be recovered. That suppressed the canonical
+  // exit lineage gate and the Telegram TP1-protection-armed alert, which
+  // surfaced as user-visible "TP1 not set" even when TP1 was placed on
+  // the exchange. Mirror buildOpeningFillMetaPatch by stamping a
+  // deterministic SYN| id when these inputs are sufficient.
+  exchange = null,
+  symbol = null,
+  side = null,
+  syncEventMs = null,
+  signalTfMs = null,
 } = {}) {
   const persisted = normalizeEntryLineage(persistedEntryLineage);
   const recovered = normalizeEntryLineage(recoveredEntryLineage);
@@ -8711,17 +8723,38 @@ function resolveActiveEntryLineageForSync({
   const recoveredId = String(recovered.entry_event_id || "").trim() || null;
   if (externalEntryTransition) {
     if (recoveredId) return recovered;
+    // Number(null) coerces to 0 which is finite, so we cannot use Number()
+    // directly to distinguish "field absent" from "field=0". Read the value
+    // first, reject null/undefined, then coerce. A zero epoch is never a
+    // real bar-close timestamp, so guarding on >0 is a defensible second
+    // line of defence (mirrors buildSyntheticOpeningEntryEventId).
+    const toFiniteMs = (raw) => {
+      if (raw === null || raw === undefined) return null;
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const recoveredSignalBarMs = toFiniteMs(recovered.entry_signal_bar_ms);
+    const recoveredExecBarMs = toFiniteMs(recovered.entry_exec_bar_ms);
+    const syncEventMsNum = toFiniteMs(syncEventMs);
+    const lineageExecMs = recoveredExecBarMs != null
+      ? recoveredExecBarMs
+      : syncEventMsNum;
+    const synthetic = buildSyntheticOpeningEntryEventId({
+      exchange,
+      symbol,
+      signalTfMs,
+      side,
+      execBarCloseMs: lineageExecMs,
+    });
     return {
-      entry_event_id: null,
-      entry_signal_type: recovered.entry_signal_type || null,
+      entry_event_id: synthetic || null,
+      entry_signal_type: recovered.entry_signal_type
+        || (synthetic ? SYNTHETIC_OPENING_ENTRY_SIGNAL_TYPE : null),
       entry_grade: recovered.entry_grade || null,
       entry_qty_profile: recovered.entry_qty_profile || null,
-      entry_signal_bar_ms: Number.isFinite(Number(recovered.entry_signal_bar_ms))
-        ? Number(recovered.entry_signal_bar_ms)
-        : null,
-      entry_exec_bar_ms: Number.isFinite(Number(recovered.entry_exec_bar_ms))
-        ? Number(recovered.entry_exec_bar_ms)
-        : null,
+      entry_signal_bar_ms: recoveredSignalBarMs,
+      entry_exec_bar_ms: recoveredExecBarMs != null ? recoveredExecBarMs : lineageExecMs,
+      entry_lineage_origin: synthetic ? "SYNTHETIC_SYNC" : "MISSING",
     };
   }
   if (persistedId) return persisted;
@@ -9159,6 +9192,13 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     externalEntryTransition,
     persistedEntryLineage,
     recoveredEntryLineage,
+    exchange: ex,
+    symbol,
+    side,
+    syncEventMs,
+    signalTfMs: Number.isFinite(Number(prevMeta && prevMeta.entry_exec_tf_ms))
+      ? Number(prevMeta.entry_exec_tf_ms)
+      : null,
   });
   if (externalEntryTransition) {
     meta = mergeMeta(meta, {
