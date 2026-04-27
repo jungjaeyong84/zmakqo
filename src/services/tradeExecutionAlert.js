@@ -991,6 +991,65 @@ function buildMessage(payload) {
   return null;
 }
 
+// 2026-04-27 P0-D — lineage-gap degraded fallback message builder.
+//
+// When resolveCanonicalExitAlertRequirement reports required && !satisfied
+// (typical symptom: entry_event_id missing → simplifiedExitV2 transitions
+// empty), the standard buildMessage returns null and the operator gets
+// silence on what is supposed to be a TP1/TRAIL alert. This helper emits a
+// best-effort *degraded* message with a [LINEAGE_GAP:<reason>] prefix so
+// the operator is never silently denied a notification — the degraded line
+// still carries symbol, side, price, qty, notional, and event when present
+// in the payload, which is enough for ops to recognize the position and
+// drill into outbox/audit for full canonical context.
+function buildDegradedExitMessage(payload = {}, { reason } = {}) {
+  const exchange = normalizeExchange(payload.exchange);
+  const symbol = String(payload.symbol || "").toUpperCase();
+  const inputEvent = String(payload.event || "").trim().toUpperCase();
+  const event = normalizeTpP1EventForExchange(inputEvent, exchange);
+  const intent = resolveIntent(payload);
+  if (!symbol || intent !== "EXIT" || !event) return null;
+
+  const unit = exchange.includes("BINANCE") ? "USDT" : "KRW";
+  const closeRatio = Number(payload.closeRatio);
+  const fullExit = payload.fullExit === true
+    || (Number.isFinite(closeRatio) && closeRatio >= 0.999);
+  const qtyText = fullExit ? "전량" : (formatPercent(closeRatio) || "부분");
+  const direction = resolveDirection({
+    intent,
+    positionSideBefore: payload.positionSideBefore,
+    positionSideAfter: payload.positionSideAfter,
+    event,
+    side: payload.side,
+    exchange,
+  });
+  const directionKo = direction === "SHORT" ? "숏" : (direction === "LONG" ? "롱" : null);
+  const execPrice = Number(payload.execPrice);
+  const qtyBase = Number(payload.qtyBase);
+  const baseAsset = String(payload.baseAsset || "").trim().toUpperCase() || null;
+  const notional = Number(payload.notional);
+  const pnl = Number(payload.pnl);
+  const tag = String(reason || "MISSING_CANONICAL_EXIT_TRANSITION");
+
+  const title = `[LINEAGE_GAP:${tag}] ${symbol} ${qtyText} 청산 (degraded)`;
+  const lines = [];
+  lines.push("종류: 청산 알림 (정본 lineage 없음 — degraded)");
+  lines.push("주의: entry_event_id 가 없어 정본 메타가 비어 있습니다. 데이터 검증 필요.");
+  if (directionKo) lines.push(`방향: ${directionKo}`);
+  if (Number.isFinite(notional)) lines.push(`청산규모: ${formatMoney(notional, { unit })} ${unit}`);
+  if (Number.isFinite(pnl)) {
+    const pnlLabel = pnl >= 0 ? "수익" : "손익";
+    lines.push(`${pnlLabel}: ${formatMoney(pnl, { unit, signed: true })} ${unit}`);
+  }
+  if (Number.isFinite(execPrice)) lines.push(`체결가: ${formatMoney(execPrice, { unit })} ${unit}`);
+  if (Number.isFinite(qtyBase) && qtyBase > 0) {
+    lines.push(`체결수량: ${formatBaseQty(qtyBase)}${baseAsset ? ` ${baseAsset}` : ""}`);
+  }
+  lines.push(`이벤트: ${formatEventTag(event)}`);
+  lines.push(`사유: ${tag}`);
+  return { title, body: lines.join("\n") };
+}
+
 function buildFailureMessage(payload) {
   const exchange = normalizeExchange(payload.exchange);
   const symbol = String(payload.symbol || "").toUpperCase();
@@ -1136,6 +1195,138 @@ async function sendTradeExecutionAlert(payload = {}) {
       reason: canonicalRequirement.reason,
       source: "tradeExecutionAlert.sendTradeExecutionAlert",
     });
+    // 2026-04-27 P0-D — lineage-gap degraded fallback. Last line of defense
+    // against the V2 entry_event_id-missing class of bugs (P0-A catches at
+    // write boundary; this catches at the alert boundary). When canonical
+    // exit metadata is unavailable, still notify the operator with a
+    // [LINEAGE_GAP:<reason>] prefixed message carrying best-effort context
+    // (price, qty, side, event). On any failure (no message buildable, no
+    // channel, send error), we fall through to the BLOCKED row writer
+    // below so observability is never worse than the prior behaviour.
+    const lineageGapDegraded = toBool(process.env.TRADE_ALERT_LINEAGE_GAP_DEGRADED, true);
+    if (lineageGapDegraded && intent === "EXIT") {
+      const degradedReason = canonicalRequirement.reason || "MISSING_CANONICAL_EXIT_TRANSITION";
+      const degradedMsg = buildDegradedExitMessage(payload, { reason: degradedReason });
+      if (degradedMsg) {
+        let degradedOutboxState = null;
+        try {
+          degradedOutboxState = await prepareTradeAlertOutbox({
+            type: "TRADE_EXECUTION_ALERT",
+            exchange,
+            symbol: payload.symbol,
+            event: payload.event,
+            title: degradedMsg.title,
+            body: degradedMsg.body,
+            payload: { ...payload, lineage_gap_degraded: true, lineage_gap_reason: degradedReason },
+            sourceFillId: resolveTradeAlertSourceFillId(payload),
+            dedupeKey: resolveTradeAlertDedupeKey(payload),
+            allowResend: false,
+            source: "tradeExecutionAlert.sendTradeExecutionAlert.degraded",
+          });
+        } catch (err) {
+          console.warn("[TRADE_EXEC_ALERT_DEGRADED_OUTBOX_PREP_FAIL]",
+            err && err.message ? err.message : String(err));
+        }
+        if (degradedOutboxState && degradedOutboxState.skipSend === true) {
+          // Prior SENT exists for this dedupe key — degraded or canonical
+          // already dispatched. Don't redispatch and don't downgrade to
+          // BLOCKED below; surface the prior id and exit.
+          appendTradeExecutionAlertDecisionAudit({
+            exchange,
+            payload,
+            intent,
+            executionMode: mode,
+            title: degradedMsg.title,
+            body: degradedMsg.body,
+            ok: true,
+            skipped: true,
+            reason: "OUTBOX_ALREADY_SENT_DEGRADED",
+            source: "tradeExecutionAlert.sendTradeExecutionAlert.degraded",
+          });
+          return {
+            ok: true,
+            skipped: true,
+            reason: "OUTBOX_ALREADY_SENT",
+            degraded: true,
+            outboxId: degradedOutboxState.outboxId,
+          };
+        }
+        if (degradedOutboxState && degradedOutboxState.outboxId) {
+          const rawChannelDegraded = await resolveAlertChannel(exchange);
+          const telegramOnlyDegraded = toBool(process.env.TRADE_ALERT_TELEGRAM_ONLY, true);
+          const channelDegraded = rawChannelDegraded
+            ? (telegramOnlyDegraded ? filterTelegramChannels(rawChannelDegraded) : rawChannelDegraded)
+            : null;
+          if (channelDegraded) {
+            let degradedResult = null;
+            let degradedSendError = null;
+            try {
+              degradedResult = await sendAlert({
+                channel: channelDegraded,
+                title: degradedMsg.title,
+                body: degradedMsg.body,
+                severity: "WARN",
+              });
+            } catch (err) {
+              degradedSendError = err;
+              console.warn("[TRADE_EXEC_ALERT_DEGRADED_SEND_FAIL]",
+                err && err.message ? err.message : String(err));
+            }
+            if (degradedResult && degradedResult.ok === true) {
+              await markTradeAlertOutboxResult({
+                outboxId: degradedOutboxState.outboxId,
+                ok: true,
+                skipped: false,
+                reason: "DEGRADED_LINEAGE_GAP",
+                result: degradedResult,
+                channel: channelDegraded,
+                title: degradedMsg.title,
+                body: degradedMsg.body,
+                source: "tradeExecutionAlert.sendTradeExecutionAlert.degraded",
+              }).catch(() => null);
+              appendTradeExecutionAlertDecisionAudit({
+                exchange,
+                payload,
+                intent,
+                executionMode: mode,
+                channel: channelDegraded,
+                title: degradedMsg.title,
+                body: degradedMsg.body,
+                ok: true,
+                skipped: false,
+                reason: "DEGRADED_LINEAGE_GAP",
+                source: "tradeExecutionAlert.sendTradeExecutionAlert.degraded",
+              });
+              return {
+                ...(degradedResult || {}),
+                ok: true,
+                skipped: false,
+                reason: "DEGRADED_LINEAGE_GAP",
+                degraded: true,
+                outboxId: degradedOutboxState.outboxId,
+              };
+            }
+            // Degraded send failed — record the failure on the degraded
+            // row so ops can correlate, then fall through to BLOCKED.
+            await markTradeAlertOutboxResult({
+              outboxId: degradedOutboxState.outboxId,
+              ok: false,
+              skipped: false,
+              reason: degradedSendError
+                ? (degradedSendError.message || String(degradedSendError))
+                : resolveAlertSendResultReason(degradedResult),
+              error: degradedSendError && degradedSendError.stack
+                ? degradedSendError.stack
+                : (degradedSendError ? String(degradedSendError) : null),
+              channel: channelDegraded,
+              title: degradedMsg.title,
+              body: degradedMsg.body,
+              source: "tradeExecutionAlert.sendTradeExecutionAlert.degraded",
+            }).catch(() => null);
+          }
+        }
+      }
+    }
     // 2026-04-20 senior-audit P3: persist a durable BLOCKED row in
     // trade_alert_outbox so that canonical-exit gate rejections are
     // query-indexable by (symbol, event, time) in Firestore. Prior to this,
@@ -1610,6 +1801,7 @@ module.exports = {
   sendTradeExecutionFailureAlert,
   __test: {
     buildMessage,
+    buildDegradedExitMessage,
     buildFailureMessage,
     parseExitEventMeta,
     isSimplifiedExitV2Enabled,

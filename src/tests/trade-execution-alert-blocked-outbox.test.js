@@ -76,6 +76,10 @@ require.cache[outboxStubPath] = {
 // required unless TRADE_ALERT_INCLUDE_PAPER is set.
 process.env.TRADE_ALERT_ENABLED = "1";
 process.env.TRADE_ALERT_INCLUDE_PAPER = "1"; // avoid needing LIVE env
+// 2026-04-27 P0-D — this test asserts the BLOCKED-only path. Disable the
+// new degraded fallback so the BLOCKED writeback remains the sole prep call.
+// The degraded path has its own dedicated test.
+process.env.TRADE_ALERT_LINEAGE_GAP_DEGRADED = "0";
 
 // Load under test AFTER stubs are in place.
 const { sendTradeExecutionAlert } = require("../services/tradeExecutionAlert");
