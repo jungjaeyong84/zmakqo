@@ -4666,11 +4666,43 @@ function dedupeEntrySignalsByFamily(signals = [], context = null) {
   return resolved.signals;
 }
 
+// 2026-04-28 Stage Y (root-cause fix) — historically this function dropped
+// every internal EXIT_TRAIL signal under BINANCEFUT LIVE on the assumption
+// that the exchange-side native protection (cancel→place STOP_MARKET with
+// closePosition=true) was the canonical trail-close path. That assumption
+// silently broke today: TP1 hit on BNBUSDT/BTCUSDT/ETHUSDT/XRPUSDT at
+// ~16:00 UTC, the runner-floor trail signal fired, and this guard
+// suppressed all four. Native trail-stop refresh meanwhile hit
+// EGRESS_PROXY_TIMEOUT and never updated the stop trigger to the new trail
+// price — so the trail close never executed and four positions sat
+// runner-stale until external SL or manual cleanup eventually closed them.
+//
+// Root cause: internal trail signal was the only path that could have
+// closed the runner correctly, but it was unconditionally suppressed.
+//
+// Fix: stop suppressing internal trail signals. Both paths (internal
+// reduce-only market via paper engine + native closePosition STOP) can
+// race safely:
+//   - Whichever fires first reduces the position to zero.
+//   - Binance dedups the loser: closePosition=true with empty position
+//     becomes EXPIRED; reduce-only with qty>position becomes a no-op.
+// Idempotency on our side is provided by the existing client_order_id /
+// idempotencyKey conventions in placeFuturesStopMarketOrder /
+// placeFuturesTakeProfitMarketOrder etc.
+//
+// Kill switch retained for emergency rollback to the legacy suppress
+// behaviour: LIVE_TRAIL_INTERNAL_SIGNAL_SUPPRESS=1 (default 0 = let
+// internal trail signals through).
 function shouldSuppressLiveFuturesInternalExitSignal({
   exchange,
   liveCfg,
   signal,
 } = {}) {
+  // Inline kill-switch parse — paperBinanceRunner doesn't expose
+  // parseBoolEnv at this scope.
+  const suppressFlag = String(process.env.LIVE_TRAIL_INTERNAL_SIGNAL_SUPPRESS || "0").trim().toLowerCase();
+  const suppressEnabled = suppressFlag === "1" || suppressFlag === "true" || suppressFlag === "yes" || suppressFlag === "on";
+  if (!suppressEnabled) return false;
   const exUpper = String(exchange || "").toUpperCase();
   if (!exUpper.includes("BINANCEFUT")) return false;
   const mode = String(liveCfg && liveCfg.executionMode || "").toUpperCase();
