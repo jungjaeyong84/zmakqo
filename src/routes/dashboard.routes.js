@@ -239,6 +239,47 @@ function createDashboardRoutes(stateMachine, scheduler) {
     res.json(buildV2MissionControlSnapshot());
   });
 
+  // 2026-04-28 V2 frontend migration audit Step 29 — V2 live traffic
+  // snapshot. The mission-control endpoint reads file-based artifacts
+  // (canary streaks, gates) but never queries the V2 collections
+  // directly, so an operator can't tell from a single endpoint whether
+  // V2 entries are actually flowing today. This endpoint returns a
+  // best-effort live count of V2 signal intents (24h window). Combined
+  // with /api/v2/mission-control it gives a complete V2 readiness view.
+  router.get("/api/v2/traffic-snapshot", async (req, res) => {
+    try {
+      const { observeRecentV2SignalIntents } = require("../storage/v2IntentsObservation");
+      const exchangeRaw = String(req.query.exchange || "BINANCEFUT").trim().toUpperCase() || "BINANCEFUT";
+      const symbolRaw = String(req.query.symbol || "").trim().toUpperCase() || null;
+      const obs = await observeRecentV2SignalIntents({
+        exchange: exchangeRaw,
+        symbol: symbolRaw,
+        limit: 200,
+      });
+      res.json({
+        ok: true,
+        snapshot_at: nowIso(),
+        exchange: exchangeRaw,
+        symbol: symbolRaw,
+        v2_signal_intents: {
+          collection_name: obs.collection_name,
+          total_count: obs.count,
+          recent_24h_count: obs.recent_n,
+          latest_at_ms: obs.latest_at_ms,
+          observation_ok: obs.ok,
+          observation_error: obs.error,
+        },
+      });
+    } catch (err) {
+      res.status(200).json({
+        ok: false,
+        snapshot_at: nowIso(),
+        reason: "V2_TRAFFIC_SNAPSHOT_OBSERVATION_FAIL",
+        error: (err && err.message) || String(err),
+      });
+    }
+  });
+
   router.post("/api/v2/operator/safe-action", express.json({ limit: "32kb" }), (req, res) => {
     const result = planOperatorSafeModeAction({
       action: req.body && req.body.action,

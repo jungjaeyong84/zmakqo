@@ -74,6 +74,9 @@ const MENU_PATHS = [
   { path: "/dashboard/protection", group: "side-rail" },
   { path: "/dashboard/openclaw", group: "side-rail" },
   { path: "/dashboard/strategy-latest", group: "side-rail" },
+  // V2 API endpoints (Step 29)
+  { path: "/api/v2/mission-control", group: "v2-api" },
+  { path: "/api/v2/traffic-snapshot", group: "v2-api" },
 ];
 
 (async () => {
