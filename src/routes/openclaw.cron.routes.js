@@ -128,10 +128,16 @@ router.post("/api/openclaw/cron/v2-production-entry-route-canary", requireSchedu
 
 // v2-exit-runtime-canary: read-only collector for live exit runtime health.
 // This feeds the Firestore-backed 24h streak required before LIVE cutover.
+//
+// Timeout note (2026-04-28): production main() takes ~180s end-to-end
+// (binance API egress + Firestore writes) so the prior 120000ms cap
+// caused chronic 500s every hour even though the canary itself returned
+// ok=true. Bumped to 240000ms (4 min) — keeps headroom over the 180s
+// observed budget while still well under Cloud Run's 540s request cap.
 router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken, async (req, res) => {
   try {
     const { main } = require("../../scripts/run-v2-exit-runtime-canary");
-    const outcome = await runWithShortTimeout("v2_exit_runtime_canary", () => main({ setProcessExitCode: false }), 120000);
+    const outcome = await runWithShortTimeout("v2_exit_runtime_canary", () => main({ setProcessExitCode: false }), 240000);
     const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
     return res.status(resultOk ? 200 : 500).json({
       ...outcome,
