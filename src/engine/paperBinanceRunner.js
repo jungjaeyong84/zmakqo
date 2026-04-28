@@ -14691,7 +14691,7 @@ async function runPaperBinanceForBar({
       // Same-tf and HTF (240m) bars are sourced from the bars_snapshots
       // cache that runOneMarket has just refreshed (Phase 2.5).
       const sameTfBars = await queryBars({ exchange, symbol, tf: signalTf, limit: 200 });
-      const htfBars = await queryBars({ exchange, symbol, tf: "240", limit: 70 });
+      const htfBars = await queryBars({ exchange, symbol, tf: "4h", limit: 70 });
       const cooldownState = await getV2ServerEntryCooldownState({ exchange, symbol, tf: signalTf });
       const v2GenResult = generateV2EntrySignals({
         exchange,
@@ -18354,7 +18354,7 @@ async function runPaperFuturesForBar({
     })();
     if (v2EntryGeneratorEnabled) {
       const sameTfBars = await queryBars({ exchange, symbol, tf: signalTf, limit: 200 });
-      const htfBars = await queryBars({ exchange, symbol, tf: "240", limit: 70 });
+      const htfBars = await queryBars({ exchange, symbol, tf: "4h", limit: 70 });
       const cooldownState = await getV2ServerEntryCooldownState({ exchange, symbol, tf: signalTf });
       const v2GenResult = generateV2EntrySignals({
         exchange,

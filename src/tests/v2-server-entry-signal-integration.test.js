@@ -118,8 +118,8 @@ const path = require("path");
     "(F1) marketRunner must check the same env flag"
   );
   assert.ok(
-    /tf:\s*"240"/.test(src),
-    "(F2) marketRunner must refresh tf=\"240\" snapshot"
+    /tf:\s*"4h"/.test(src),
+    "(F2) marketRunner must refresh tf=\"4h\" snapshot (binance interval form, not raw \"240\")"
   );
   assert.ok(
     src.includes("countOverride: 70") || src.includes("countOverride : 70"),

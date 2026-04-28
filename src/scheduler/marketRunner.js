@@ -513,21 +513,26 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
   })();
   if (v2EntrySignalGeneratorEnabled) {
     try {
+      // Binance Futures klines API rejects "240" as an invalid interval
+      // (code -1120). The valid interval string is "4h". Use it both
+      // for fetch (downstream fetchCandles → fetchBinanceFuturesCandlesInterval)
+      // and for the doc id we'll later read via queryBars, so the
+      // generator's queryBars({ tf: "4h" }) finds the upserted bars.
       const htfRefresh = await refreshLatestBarSnapshot({
         exchange,
         market,
-        tf: "240",
+        tf: "4h",
         runId: runIdHint,
         countOverride: 70,
       });
       if (htfRefresh && htfRefresh.ok === false && !htfRefresh.skipped) {
         console.warn(
-          `[snapshot_refresh_fail] ex=${exchange} sym=${market} tf=240 err=${htfRefresh.error || htfRefresh.reason || "UNKNOWN"}`
+          `[snapshot_refresh_fail] ex=${exchange} sym=${market} tf=4h err=${htfRefresh.error || htfRefresh.reason || "UNKNOWN"}`
         );
       }
     } catch (htfErr) {
       console.warn(
-        `[snapshot_refresh_htf_fail] ex=${exchange} sym=${market} tf=240 err=${htfErr && htfErr.message ? htfErr.message : String(htfErr)}`
+        `[snapshot_refresh_htf_fail] ex=${exchange} sym=${market} tf=4h err=${htfErr && htfErr.message ? htfErr.message : String(htfErr)}`
       );
     }
   }
