@@ -14796,6 +14796,26 @@ async function runPaperBinanceForBar({
           }));
 
           try {
+            // Drill into nested block reasons so we can pinpoint where
+            // the handoff was blocked when handoff.ok=false. Common
+            // chain when the Server-Native ML/AI verdict is missing or
+            // budget gate fails:
+            //   handoff.reason = V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED
+            //   handoff.endpoint_result.reason = ...
+            //   built.reason / routedDecision.reason / sizingDecision
+            const routedDecisionReason = handoff && handoff.routedDecision && handoff.routedDecision.reason
+              ? String(handoff.routedDecision.reason) : null;
+            const builtReason = handoff && handoff.request && handoff.request.routedDecision
+              && handoff.request.routedDecision.reason
+              ? String(handoff.request.routedDecision.reason) : null;
+            const endpointResultReason = handoff && handoff.endpoint_result && handoff.endpoint_result.reason
+              ? String(handoff.endpoint_result.reason) : null;
+            const sizingNotApprovedReason = handoff && handoff.entrySizingDecision
+              && handoff.entrySizingDecision.reason
+              ? String(handoff.entrySizingDecision.reason) : null;
+            const ledgerPersistenceReason = handoff && handoff.ledger_persistence
+              && handoff.ledger_persistence.reason
+              ? String(handoff.ledger_persistence.reason) : null;
             console.log(JSON.stringify({
               event: "v2_server_entry_signal_handoff_dispatched",
               ts: new Date().toISOString(),
@@ -14809,6 +14829,11 @@ async function runPaperBinanceForBar({
               handoff_ok: handoff && handoff.ok === true,
               handoff_reason: handoff && handoff.reason ? String(handoff.reason) : null,
               handoff_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
+              routed_decision_reason: routedDecisionReason || builtReason,
+              endpoint_result_reason: endpointResultReason,
+              sizing_not_approved_reason: sizingNotApprovedReason,
+              ledger_persistence_reason: ledgerPersistenceReason,
+              handoff_keys: handoff ? Object.keys(handoff) : null,
             }));
           } catch (_) { /* observability only */ }
         } catch (handoffErr) {
@@ -18530,6 +18555,26 @@ async function runPaperFuturesForBar({
           }));
 
           try {
+            // Drill into nested block reasons so we can pinpoint where
+            // the handoff was blocked when handoff.ok=false. Common
+            // chain when the Server-Native ML/AI verdict is missing or
+            // budget gate fails:
+            //   handoff.reason = V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED
+            //   handoff.endpoint_result.reason = ...
+            //   built.reason / routedDecision.reason / sizingDecision
+            const routedDecisionReason = handoff && handoff.routedDecision && handoff.routedDecision.reason
+              ? String(handoff.routedDecision.reason) : null;
+            const builtReason = handoff && handoff.request && handoff.request.routedDecision
+              && handoff.request.routedDecision.reason
+              ? String(handoff.request.routedDecision.reason) : null;
+            const endpointResultReason = handoff && handoff.endpoint_result && handoff.endpoint_result.reason
+              ? String(handoff.endpoint_result.reason) : null;
+            const sizingNotApprovedReason = handoff && handoff.entrySizingDecision
+              && handoff.entrySizingDecision.reason
+              ? String(handoff.entrySizingDecision.reason) : null;
+            const ledgerPersistenceReason = handoff && handoff.ledger_persistence
+              && handoff.ledger_persistence.reason
+              ? String(handoff.ledger_persistence.reason) : null;
             console.log(JSON.stringify({
               event: "v2_server_entry_signal_handoff_dispatched",
               ts: new Date().toISOString(),
@@ -18543,6 +18588,11 @@ async function runPaperFuturesForBar({
               handoff_ok: handoff && handoff.ok === true,
               handoff_reason: handoff && handoff.reason ? String(handoff.reason) : null,
               handoff_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
+              routed_decision_reason: routedDecisionReason || builtReason,
+              endpoint_result_reason: endpointResultReason,
+              sizing_not_approved_reason: sizingNotApprovedReason,
+              ledger_persistence_reason: ledgerPersistenceReason,
+              handoff_keys: handoff ? Object.keys(handoff) : null,
             }));
           } catch (_) { /* observability only */ }
         } catch (handoffErr) {
