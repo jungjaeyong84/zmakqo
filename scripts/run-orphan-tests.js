@@ -46,7 +46,7 @@ const SKIP = new Map([
   // legacy projection path preserved behind explicit opt-out.
   ["binance-exit-qty-contract-audit.test.js", "qty contract drift — audit fixture"],
   ["dashboard-openclaw.test.js", "evidence_linker artifact removed; route shape drift"],
-  ["exit-trailing-contract-report.test.js", "contract report fixture drift"],
+  // exit-trailing-contract-report.test.js — drift fixed Step 14 (Stage N tp1_pct 3.25→2.5).
   ["pine-transition-lead-source.test.js", "pine header version mismatch — generator drift"],
   // signal-drops.test.js — drift fixed Step 12 (riskGovernor field added).
   ["v2-openclaw-shadow-position-writer.test.js", "shadow writer fixture drift"],

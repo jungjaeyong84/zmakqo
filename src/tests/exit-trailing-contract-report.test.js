@@ -22,8 +22,12 @@ const { __test } = require("../../scripts/report-best-self-evolution-exit-traili
   assert.strictEqual(binance.profile_mode, "BASE");
   assert.strictEqual(binance.trail_r_multiple, 0.9);
   assert.strictEqual(binance.event_name_mode, "EXIT_TRAIL_GENERIC");
+  // 2026-04-28 senior audit Step 14 — drift fix. Stage N unified
+  // BINANCEFUT TP_P1 from 0.0325 (3.25%) to 0.025 (2.5%). TP_P1_QTY
+  // remains 0.375 (37.5%) in the contract reporter (the V1 partial
+  // close size kept its legacy default for now).
   assert.strictEqual(binance.entry_exit_contract.sl_pct_abs, 1.65);
-  assert.strictEqual(binance.entry_exit_contract.tp1_pct, 3.25);
+  assert.strictEqual(binance.entry_exit_contract.tp1_pct, 2.5);
   assert.strictEqual(binance.entry_exit_contract.tp1_qty_pct, 37.5);
   assert.strictEqual(binance.entry_exit_contract.be_pct, 0.25);
   assert.strictEqual(binance.entry_exit_contract.runner_min_profit_pct, 2);
