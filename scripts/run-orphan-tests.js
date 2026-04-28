@@ -71,16 +71,11 @@ const SKIP = new Map([
   // signal-drops.test.js — drift fixed Step 12 (riskGovernor field added).
   // v2-openclaw-shadow-position-writer.test.js — drift fixed Step 15
   // (decision bundle collection added; calls.length expectation 5 → 6).
-  // best-self-evolution-dataset: NOT a simple fixture drift — the
-  // DROP_WAIT_ONE_BAR_* retirement (TIMING → LEGACY_RETIRED in
-  // signalReasonView.js) means bestSelfEvolutionDataset.js downstream
-  // checks at L1059 (`"TIMING"` allowlist for febtEligibleRows) and
-  // L1075 (drop_stage_key==="TIMING" hasFebtContractEvidence) silently
-  // skip those rows. Production impact is bounded (the retired guards
-  // never fire on live signals), but historical dataset rows lose the
-  // febt-eligible classification. Fixing this needs a production code
-  // change, not a test patch — defer to a separate PR.
-  ["best-self-evolution-dataset.test.js", "TIMING→LEGACY_RETIRED downstream allowlist drift (production code, not fixture)"],
+  // best-self-evolution-dataset.test.js — drift fixed Step 21. The
+  // bestSelfEvolutionDataset.js source was updated to accept both
+  // "TIMING" (pre-retirement) and "LEGACY_RETIRED" (post-Stage X
+  // retire of DROP_WAIT_ONE_BAR_*) in the febt allowlist + wait_verdict
+  // mapping; the test was updated to assert the post-retirement value.
   // febt-phase0-report.test.js — drift fixed Step 12 (active/all-tier line split).
   ["run-v2-promotion-canary-flow.test.js", "canary flow runtime artifact drift"],
   ["select-v2-promotion-canary-candidate.test.js", "candidate selector exit-code drift"],

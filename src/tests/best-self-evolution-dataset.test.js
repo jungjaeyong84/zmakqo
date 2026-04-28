@@ -366,7 +366,12 @@ function run() {
   assert.strictEqual(executed.wait_verdict, "ALLOW");
 
   assert.strictEqual(dropped.source_row_type, "DROP");
-  assert.strictEqual(dropped.drop_stage_key, "TIMING");
+  // 2026-04-28 senior audit Step 21 — DROP_WAIT_ONE_BAR_* timing guards
+  // were retired in src/utils/signalReasonView.js → drop_stage_key now
+  // emits as "LEGACY_RETIRED" (was "TIMING"). The wait_verdict mapping
+  // in bestSelfEvolutionDataset.js was updated alongside to keep the
+  // wait_verdict="DROP" signal flowing for both class names.
+  assert.strictEqual(dropped.drop_stage_key, "LEGACY_RETIRED");
   assert.strictEqual(dropped.wait_verdict, "DROP");
   assert.strictEqual(dropped.realized_ret_net, 0.03);
   assert.strictEqual(dropped.realized_source, "EV_TUNER_COUNTERFACTUAL");

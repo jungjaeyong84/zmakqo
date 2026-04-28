@@ -607,7 +607,13 @@ function resolveVerdictByStage(stageKey, features, hasDownstream) {
   else if (stageKey === "AI") base.quality_verdict = "DROP";
   else if (stageKey === "MARKET") base.state_soft_sizing_verdict = "DROP";
   else if (stageKey === "EV") base.ev_verdict = "DROP";
-  else if (stageKey === "TIMING") base.wait_verdict = "DROP";
+  // 2026-04-28 senior audit Step 21 — accept both "TIMING" (pre-Stage X)
+  // and "LEGACY_RETIRED" (post-Stage X retire of DROP_WAIT_ONE_BAR_*) as
+  // wait-stage drops. The retirement renamed the class but the semantic
+  // is unchanged: any drop from this family means the wait_verdict was
+  // DROP. Without this branch, post-Stage X dataset rows lose their
+  // wait_verdict signal silently.
+  else if (stageKey === "TIMING" || stageKey === "LEGACY_RETIRED") base.wait_verdict = "DROP";
   return base;
 }
 
@@ -1050,18 +1056,30 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
     || row.features_json.febt_edge !== undefined
     || row.features_json.febt_lock_score !== undefined
   ));
+  // 2026-04-28 senior audit Step 21 — drop_stage_key allowlist drift fix.
+  // The DROP_WAIT_ONE_BAR_* / DROP_CHASE_ENTRY_QUALITY guards retired in
+  // src/utils/signalReasonView.js → those drops now classify under
+  // "LEGACY_RETIRED" instead of "TIMING". The allowlist below + the
+  // hasFebtContractEvidence below were keyed on "TIMING" only, so
+  // historical drops from those retired guards silently fell out of
+  // febtEligibleRows / FEBT contract evidence after the rename. Production
+  // impact is bounded (the retired guards never fire on live signals
+  // anymore) but historical dataset replay loses those rows. Accept both
+  // tokens so pre-Stage X dataset rows remain eligible.
+  const FEBT_DROP_STAGE_ALLOWLIST = ["EV", "TIMING", "LEGACY_RETIRED", "OPS", "FILLED"];
   const febtEligibleRows = scoped.filter((row) => {
     const rowType = toUpper(row && row.source_row_type, "UNKNOWN");
     const dropStage = toUpper(row && row.drop_stage_key, "");
     if (rowType === "EXIT_ONLY") return false;
     if (hasFebt(row)) return true;
     if (["EXECUTED", "PARTIAL", "FALLBACK", "MISSED", "REJECTED"].includes(rowType)) return true;
-    if (rowType === "DROP" && ["EV", "TIMING", "OPS", "FILLED"].includes(dropStage)) return true;
+    if (rowType === "DROP" && FEBT_DROP_STAGE_ALLOWLIST.includes(dropStage)) return true;
     return false;
   });
   const hasFebtContractEvidence = (row) => {
     const features = resolveFeatures(row);
     const waitAction = String(features.wait_one_bar_market_state_action || features.legacy_wait_action || "").trim();
+    const dropStage = toUpper(row && row.drop_stage_key, "");
     return (
       hasFebt(row)
       || features.febt_payload_missing === true
@@ -1072,7 +1090,10 @@ function summarizeBestSelfEvolutionDataset(rows = []) {
       || hasValue(features.febt_mode)
       || hasValue(features.febt_phase)
       || hasValue(waitAction)
-      || toUpper(row && row.drop_stage_key, "") === "TIMING"
+      // Accept both "TIMING" (pre-retirement) and "LEGACY_RETIRED"
+      // (post-retirement) — same semantic class.
+      || dropStage === "TIMING"
+      || dropStage === "LEGACY_RETIRED"
     );
   };
   const nullRealizedExecuted = executedRows.filter((row) => !Number.isFinite(toNum(row.realized_ret_net)));
