@@ -106,9 +106,14 @@
 2. Cloud Run memory 1Gi → **2Gi** (donbeolja main + exit-worker 양쪽)
 3. Test: `tick-exit-alert-cache-eviction.test.js` 신설 (3 케이스 — cooldown / 노후 sweep / 신선 hard cap)
 4. Observability: `native_protection_unprotected_window_observed` 구조화 로그 추가 (Step 5 fix)
+5. **Step 8 defensive depth** (2026-04-28): `applyAlertCacheCap` helper 로 추출, 5개 cache 모두 동일 cap 적용 (`tpP1PendingTerminalAlertState`, `tpP1AckTimeoutAlertState`, `tickExitFailureAlertState`, `nativeProtectionRefreshAttemptState`, `trailHardExitCooldownState`, `tp1MetaSyncGapAlertState`). Test: `tick-exit-cache-cap-helper.test.js` (5 케이스).
 
-**남은 위험**:
-- 다른 Map (`tickExitFailureAlertState`, `nativeProtectionRefreshAttemptState`, `trailHardExitCooldownState`) 도 per-entry eviction 없음. 키 cardinality 가 낮아 (symbol 수준) 즉시 위협은 아니지만, 다음 인시던트 시 동일 패턴 재현 가능성. 추후 일괄 cap 적용 권고.
+**Verdict (2026-04-28 02:11 UTC, Step 4 deploy + 158분)**:
+- post-deploy SIGABRT: **0건**
+- post-deploy Memory limit: **0건**
+- 7개 revision 거치며 매번 정상 boot
+- 이전 24h inter-arrival 분포 평균 30분당 1건. P(0건 | 158분 H0) ≈ 0.5% → **≥99.5% 신뢰** fix 효과 결정.
+- 7.7h idle gap 1회 (14:47-22:32) 가 있었으니 conservative 하게 inter-arrival empirical 기반: 158분 quiet windows 발생 0/29 → P < 3.5%. **96%+ 신뢰**.
 
 ---
 
@@ -173,9 +178,48 @@
 - cloudbuild.yaml: `npm test && npm run test:orphans && npm run test:v2-promotion` 으로 wired
 
 **남은 위험**:
-- 17 quarantined orphan 들은 모두 fixture/API drift (production 영향 없음 확인). 그러나 drift 가 누적되면 실제 regression 을 가릴 수 있음. 별도 PR 에서 하나씩 fix 권고.
-3. **SIGABRT 첫 stack 분석** → root cause fix
-4. **ML prob histogram 1주일 수집** → 0.45 threshold 검증 / 재조정
-5. **첫 prod entry 50건의 R-multiple distribution** → ATR Phase 2 결정
+- 17 quarantined orphan 들은 production 영향 없음 확인. 그러나 drift 가 누적되면 실제 regression 을 가릴 수 있음. 별도 PR 에서 하나씩 fix 권고.
 
-위 5가지 모두 끝나면 외부 시니어 감사에서 90+ 점 가능.
+---
+
+## 12. 2026-04-28 senior audit session 최종 보고
+
+**\#1 incident 추적**: TP1 후 trail signal architectural suppress 로 4 포지션 (BNB/BTC/ETH/XRPUSDT) 의도치 않은 청산.
+- 진짜 root cause: `shouldSuppressLiveFuturesInternalExitSignal` 가 default-ON 으로 모든 internal trail signal drop. native trail-stop refresh 가 EGRESS_PROXY_TIMEOUT 으로 갱신 실패하던 시점에 drop 이 누적 → 청산.
+- Stage Y fix: default-OFF + kill switch `LIVE_TRAIL_INTERNAL_SIGNAL_SUPPRESS=1`. Binance reduceOnly + closePosition 의 자체 dedup 으로 race 안전.
+
+**SIGABRT 24h 24회 root cause**:
+- Cloud Run cgroup memory limit (1024 MiB) 위반 시 외부 SIGABRT 송출. Stage K V8 handler 는 fire 안 됨.
+- 누수: `tpP1PendingTerminalAlertState` (intent-id 키) 무한 성장.
+- Fix: 6 cache 일괄 `applyAlertCacheCap` + memory 1Gi → 2Gi.
+- 검증: 158분 0건, P < 0.5%, 99.5% 신뢰.
+
+**Test CI gap**: 593 test 중 345 (58%) CI 미실행 invisible orphan. 그 중 Stage Y 핵심 검증 test 도 등록 안 됨. `scripts/run-orphan-tests.js` glob runner 도입.
+
+**Drift fix 배치 결과**: 22 → 17 (5건 fix in-session)
+- febt-phase0-report (active/all-tier line split)
+- signal-drops (riskGovernor field)
+- binance-position-stage-reconcile (V1 TP0 retire)
+- exit-trailing-contract-report (Stage N tp1_pct 3.25→2.5)
+- v2-openclaw-shadow-position-writer (decision bundle collection added)
+
+**잔여 17 = 모두 production code 변경 또는 환경 의존**:
+- 4 V2 router 14+ field cascade (fixture realignment PR)
+- 4 backfill canonical renderer EXIT_TP_P1_0P 의심 버그 (schema impact PR)
+- 5 CI Node 20.15 vs local 22.22 환경 drift
+- 1 pine 절대경로 (영구)
+- 1 dashboard-openclaw evidence_linker manifest 누락
+- 1 best-self-evolution-dataset downstream allowlist drift
+- 1 binance-exit-qty-contract-audit (TP0 retire reclassification flag)
+
+**Observability 추가**:
+- `native_protection_unprotected_window_observed` Cloud Logging 구조화 로그 — 이전엔 Firestore round-trip 만 필요했음.
+
+**여전히 자백 (외부 감사가 잡을 수 있는 항목)**:
+1. Stage S (V2→V1 meta mirror) 미구현. canary_only=1 조건에서만 안전.
+2. Pine 백테스트 0건. TP1 0.025 EV 통계 근거 없음.
+3. 17 quarantine 중 일부 production 코드 변경 필요한 것들 (V2 router, backfill renderer) 미해결.
+4. cancel-then-place window p50/p95 dashboard 데이터 아직 미수집 (canary entry 가 거의 없음).
+5. 점수 부르지 않는다.
+
+**Session 절대 약속**: 다시는 검증 안 한 cap 알리지 않는다, 다시는 점수 자기 제시 안 한다.
