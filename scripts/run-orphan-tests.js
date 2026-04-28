@@ -29,22 +29,15 @@ const PACKAGE_JSON = path.join(__dirname, "..", "package.json");
 // Known-stale orphans — kept separate so a drift in one doesn't mask
 // regressions in the other 320+. Add a reason and a TODO owner.
 const SKIP = new Map([
-  // V2 router progressively gated entries on a chain of new validators
-  // (Step 16 investigation, 2026-04-28):
-  //   1. MARKET_DATA_QUALITY_REQUIRED — canonical_evidence_summary
-  //      .market_data_quality must be `{present:true, ok:true, ...}`
-  //   2. SIGNAL_CRITERIA_BLOCKED — expectedGrossR, expectedNetRAfterCost,
-  //      costEstimateBps, costREquivalent, signalScore, setupType,
-  //      setupQualityScore, triggerConfirmed, volumeZScore, rsiEntryTf,
-  //      marketQualityScore, spreadBps, markIndexGapBps,
-  //      fundingPenaltyBps all required for SERVER_NATIVE_ML_AI mode.
-  // Each test would need ~14 new fixture fields to exercise the router
-  // past these gates. That's a contract-realignment PR scope, not a
-  // drift fix — keep quarantined.
-  ["v2-protection-writer.test.js", "V2 router added 14+ gate fields (market_data_quality + signal_criteria); fixture realignment PR"],
-  ["v2-runtime-chain-audit.test.js", "V2 router added 14+ gate fields (market_data_quality + signal_criteria); fixture realignment PR"],
-  ["v2-entry-protection-handoff.test.js", "V2 router added 14+ gate fields (market_data_quality + signal_criteria); fixture realignment PR"],
-  ["v2-entry-protection-storage.test.js", "V2 router added 14+ gate fields (market_data_quality + signal_criteria); fixture realignment PR"],
+  // V2 router 4 tests (v2-protection-writer / v2-runtime-chain-audit /
+  // v2-entry-protection-handoff / v2-entry-protection-storage) — drift
+  // fixed Step 23. Stamped marketDataQuality + 14 signal-criteria fields
+  // (setupType, setupQualityScore, triggerLevel, triggerConfirmed,
+  // volumeZScore, rsiEntryTf, marketQualityScore, spreadBps,
+  // markIndexGapBps, expectedGrossR, expectedNetRAfterCost,
+  // costEstimateBps, costREquivalent, fundingPenaltyBps, signalScore)
+  // on each buildOpenClawDecisionBundle fixture so resolveEntryIntentFromOpenClaw
+  // returns ok:true past the new gates.
 
   // Contract/fixture drift — assertions reference older schemas or
   // counts. None indicate runtime regressions; stale fixtures only.

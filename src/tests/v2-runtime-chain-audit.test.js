@@ -41,6 +41,26 @@ function buildBaseExecutedEntry() {
     featuresHash: "feat_hash_runtime_chain",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "runtime chain canary long approved",
+    // 2026-04-28 senior audit Step 23 — V2 router added a chain of gates
+    // (market_data_quality + signal_criteria) since this fixture was
+    // authored. Stamp the canonical evidence so resolveEntryIntentFromOpenClaw
+    // returns ok:true past those gates.
+    marketDataQuality: { present: true, ok: true, blockers: [], metrics: {} },
+    setupType: "BREAKOUT",
+    setupQualityScore: 0.75,
+    triggerLevel: 2480,
+    triggerConfirmed: true,
+    volumeZScore: 1.5,
+    rsiEntryTf: 55,
+    marketQualityScore: 0.7,
+    spreadBps: 1.2,
+    markIndexGapBps: 0.8,
+    expectedGrossR: 1.6,
+    expectedNetRAfterCost: 1.4,
+    costEstimateBps: 5,
+    costREquivalent: 0.2,
+    fundingPenaltyBps: 0.5,
+    signalScore: 0.75,
   });
   const routed = resolveEntryIntentFromOpenClaw(bundle);
   return buildV2ExecutedEntryFromIntent({
