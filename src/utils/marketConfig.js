@@ -4,7 +4,19 @@ const { BINANCE_ONLY_PROVIDER } = require("./providerUtils");
 const SUPPORTED_TF = [TF_15M, TF_60M];
 const PRIMARY_TF = defaultExecTfFromEnv() || TF_15M;
 const PRIMARY_TF_MS = tfToMs(PRIMARY_TF) || BAR_INTERVAL_MS_15M;
+// 2026-04-29 — Universe expanded 8 → 16 to add BTC-decoupled symbols
+// (AI / L2 / DeFi / Game / Modular). CORE_MARKETS is the single source
+// of truth that every market-resolution path consults:
+//   - allowedMarketsForProvider() returns this list
+//   - normalizeMarketsList() / ensureProviderMarkets() filter inputs
+//     against this list (anything not in CORE is dropped)
+//   - defaultMarketsFromEnv() falls back to this list when
+//     BINANCEFUT_MARKETS is unset
+// So the only correct way to add new symbols is to extend this array.
+// cloudbuild.yaml's BINANCEFUT_MARKETS / DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS
+// must stay in sync.
 const BINANCEFUT_CORE_MARKETS = [
+  // BTC + L1 majors (kept from the original 8-symbol set)
   "BTCUSDT",
   "ETHUSDT",
   "BNBUSDT",
@@ -13,6 +25,16 @@ const BINANCEFUT_CORE_MARKETS = [
   "AXSUSDT",
   "DOGEUSDT",
   "LINKUSDT",
+  // 2026-04-29 additions — chosen for low BTC correlation across
+  // distinct narratives so the strategy gets non-redundant signals.
+  "WLDUSDT",   // AI: Worldcoin
+  "TAOUSDT",   // AI: Bittensor
+  "ARBUSDT",   // L2: Arbitrum
+  "INJUSDT",   // L1 DEX: Injective
+  "SUIUSDT",   // L1: Sui
+  "AAVEUSDT",  // DeFi blue chip
+  "SANDUSDT",  // Game/Metaverse: The Sandbox
+  "TIAUSDT",   // Modular: Celestia
 ];
 const BINANCEFUT_BLOCKED_MARKETS = (() => {
   const base = [];
