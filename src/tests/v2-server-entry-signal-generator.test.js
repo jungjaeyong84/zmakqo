@@ -328,6 +328,29 @@ function buildSyntheticBars(n, opts = {}) {
     assert.ok(Number.isFinite(sig.target_price));
     assert.ok(Number.isFinite(sig.rr));
     assert.ok(Number.isFinite(sig.opportunity_score));
+
+    // V2 signalCriteria gate inputs (hotfix #7) — must be present so
+    // buildSignalCriteriaSeedFromIntent can map into htf_regime /
+    // setup_gate / trigger_gate / no_trade_gate / expected_edge_gate.
+    const f = sig.features;
+    assert.ok(Number.isFinite(Number(f.htf_alignment_score)),
+      `(H) features.htf_alignment_score must be finite (got ${f.htf_alignment_score})`);
+    assert.ok(Number.isFinite(Number(f.setup_quality_score)),
+      `(H) features.setup_quality_score must be finite (got ${f.setup_quality_score})`);
+    assert.strictEqual(typeof f.trigger_confirmed, "boolean",
+      "(H) features.trigger_confirmed must be a boolean");
+    assert.ok(Number.isFinite(Number(f.trigger_level)),
+      `(H) features.trigger_level must be finite (got ${f.trigger_level})`);
+    assert.ok(Number.isFinite(Number(f.expected_gross_r)),
+      `(H) features.expected_gross_r must be finite (got ${f.expected_gross_r})`);
+    // sub-scores can be null when generator didn't compute, but for
+    // a CORE/EARLY signal they should always be present.
+    assert.ok(Number.isFinite(Number(f.directional_pressure)),
+      `(H) features.directional_pressure must be finite for a fired signal (got ${f.directional_pressure})`);
+    assert.ok(Number.isFinite(Number(f.participation)),
+      `(H) features.participation must be finite for a fired signal (got ${f.participation})`);
+    assert.ok(Number.isFinite(Number(f.rsi_entry_tf)),
+      `(H) features.rsi_entry_tf must be finite for a fired signal (got ${f.rsi_entry_tf})`);
   }
 })();
 

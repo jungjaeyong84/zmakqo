@@ -665,6 +665,42 @@ function generateV2EntrySignals({
   const short_early_pulse = short_early_raw && !short_core_pulse && short_can_fire;
 
   // (M) signal payload(s)
+  // Per-direction inputs the V2 signalCriteria gate inspects via
+  // buildSignalCriteriaSeedFromIntent. We expose them here through
+  // buildPayload's `criteriaInputs` so the criteria gate finds the
+  // values it needs (htf_alignment_score / setup_quality_score /
+  // trigger_level / volume_zscore / rsi_entry_tf / directional_pressure
+  // / participation / expected_gross_r / etc.). Pine v6.1.1.0 already
+  // computes all of these — just plumb them out.
+  const longCriteriaInputs = Object.freeze({
+    structure_alignment: structure_alignment_long,
+    pullback_quality: pullback_quality_long,
+    directional_pressure: directional_pressure_long,
+    continuation_pressure: continuation_pressure_long,
+    risk_efficiency: risk_efficiency_long,
+    confidence: long_opportunity,
+  });
+  const shortCriteriaInputs = Object.freeze({
+    structure_alignment: structure_alignment_short,
+    pullback_quality: pullback_quality_short,
+    directional_pressure: directional_pressure_short,
+    continuation_pressure: continuation_pressure_short,
+    risk_efficiency: risk_efficiency_short,
+    confidence: short_opportunity,
+  });
+  const sharedCriteriaInputs = Object.freeze({
+    participation,
+    volume_zscore: vol_ratio,            // bridge falls back to volume_ratio / participation; expose vol_ratio explicitly
+    volume_ratio: vol_ratio,
+    rsi_entry_tf: rsi_val,
+    rsi: rsi_val,
+    atr_ratio,
+    market_state_score: market_state === "BULL" || market_state === "BEAR" ? 1.0
+      : market_state === "TRANSITION" ? 0.6
+      : market_state === "RANGE" ? 0.4
+      : 0.1,
+  });
+
   const out = result.signals;
   if (long_core_pulse) {
     out.push(buildPayload({
@@ -673,6 +709,7 @@ function generateV2EntrySignals({
       trigger_type: trigger_type_long, risk_mode: risk_mode_long_core,
       rr: long_rr, stop: long_stop, target: long_target,
       close: close_cur, exchange, symbol, tf, barCloseMs: cur, qtyPct: p.webhook_qty_pct, runId,
+      criteriaInputs: { ...sharedCriteriaInputs, ...longCriteriaInputs },
     }));
     result.cooldownStateNext = {
       ...cd,
@@ -686,6 +723,7 @@ function generateV2EntrySignals({
       trigger_type: trigger_type_long, risk_mode: risk_mode_long_early,
       rr: long_rr, stop: long_stop, target: long_target,
       close: close_cur, exchange, symbol, tf, barCloseMs: cur, qtyPct: p.webhook_qty_pct, runId,
+      criteriaInputs: { ...sharedCriteriaInputs, ...longCriteriaInputs },
     }));
     result.cooldownStateNext = {
       ...cd,
@@ -700,6 +738,7 @@ function generateV2EntrySignals({
       trigger_type: trigger_type_short, risk_mode: risk_mode_short_core,
       rr: short_rr, stop: short_stop, target: short_target,
       close: close_cur, exchange, symbol, tf, barCloseMs: cur, qtyPct: p.webhook_qty_pct, runId,
+      criteriaInputs: { ...sharedCriteriaInputs, ...shortCriteriaInputs },
     }));
     result.cooldownStateNext = {
       ...result.cooldownStateNext,
@@ -713,6 +752,7 @@ function generateV2EntrySignals({
       trigger_type: trigger_type_short, risk_mode: risk_mode_short_early,
       rr: short_rr, stop: short_stop, target: short_target,
       close: close_cur, exchange, symbol, tf, barCloseMs: cur, qtyPct: p.webhook_qty_pct, runId,
+      criteriaInputs: { ...sharedCriteriaInputs, ...shortCriteriaInputs },
     }));
     result.cooldownStateNext = {
       ...result.cooldownStateNext,
@@ -753,8 +793,10 @@ function buildPayload({
   direction, grade, score, market_state, htf_bias,
   trigger_type, risk_mode, rr, stop, target,
   close, exchange, symbol, tf, barCloseMs, qtyPct, runId,
+  criteriaInputs = null,
 }) {
   const side = direction === "LONG" ? "BUY" : "SELL";
+  const ci = (criteriaInputs && typeof criteriaInputs === "object") ? criteriaInputs : {};
   const features = {
     strategy_id: STRATEGY_ID,
     engine_mode: ENGINE_MODE,
@@ -775,6 +817,44 @@ function buildPayload({
     source: SIGNAL_SOURCE,
     v2_server_native: true,
     engine_version: ENGINE_VERSION,
+    // ── V2 signalCriteria gate inputs (Pine v6.1.1.0 derived series).
+    //    buildSignalCriteriaSeedFromIntent maps these into the bridge's
+    //    htf_regime / setup_gate / trigger_gate / no_trade_gate /
+    //    expected_edge_gate doc shape.
+    htf_alignment_score: Number.isFinite(Number(ci.structure_alignment))
+      ? Number(ci.structure_alignment)
+      : (htf_bias === "BULL" || htf_bias === "BEAR" ? 1.0 : 0.5),
+    structure_alignment: Number.isFinite(Number(ci.structure_alignment))
+      ? Number(ci.structure_alignment) : null,
+    confidence: Number.isFinite(Number(ci.confidence)) ? Number(ci.confidence) : score,
+    canonical_engine_field_alignment: Number.isFinite(Number(ci.structure_alignment))
+      ? Number(ci.structure_alignment) : null,
+    setup_quality_score: Number.isFinite(Number(ci.pullback_quality))
+      ? Number(ci.pullback_quality) : score,
+    pullback_quality: Number.isFinite(Number(ci.pullback_quality))
+      ? Number(ci.pullback_quality) : null,
+    setup_type: trigger_type && trigger_type !== "NONE" ? trigger_type : "NONE",
+    trigger_confirmed: !!(trigger_type && trigger_type !== "NONE"),
+    trigger_level: Number.isFinite(Number(close)) ? Number(close) : null,
+    directional_pressure: Number.isFinite(Number(ci.directional_pressure))
+      ? Number(ci.directional_pressure) : null,
+    continuation_pressure: Number.isFinite(Number(ci.continuation_pressure))
+      ? Number(ci.continuation_pressure) : null,
+    risk_efficiency: Number.isFinite(Number(ci.risk_efficiency))
+      ? Number(ci.risk_efficiency) : null,
+    participation: Number.isFinite(Number(ci.participation))
+      ? Number(ci.participation) : null,
+    volume_ratio: Number.isFinite(Number(ci.volume_ratio))
+      ? Number(ci.volume_ratio) : null,
+    volume_zscore: Number.isFinite(Number(ci.volume_zscore))
+      ? Number(ci.volume_zscore) : null,
+    rsi_entry_tf: Number.isFinite(Number(ci.rsi_entry_tf))
+      ? Number(ci.rsi_entry_tf) : null,
+    atr_ratio: Number.isFinite(Number(ci.atr_ratio))
+      ? Number(ci.atr_ratio) : null,
+    market_quality_score: Number.isFinite(Number(ci.market_state_score))
+      ? Number(ci.market_state_score) : null,
+    expected_gross_r: Number.isFinite(Number(rr)) ? Number(rr) : null,
   };
   return {
     exchange: String(exchange || "").toUpperCase(),
