@@ -18371,6 +18371,41 @@ async function runPaperFuturesForBar({
         const transitionApplicable = oppositeTransitionCfg.enabled && (!oppositeTransitionCfg.coreRealOnly || isCoreOrRealEvent(eventUpper));
         const signalMsForStage = Number(s.signal_bar_close_time_utc_ms);
         const stageBarMs = Number.isFinite(signalMsForStage) ? signalMsForStage : (Number.isFinite(signalBarCloseMs) ? signalBarCloseMs : Number(barCloseMs));
+        // 2026-04-29 — when DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1 the V1
+        // executor refuses every order (`V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED`).
+        // Injecting EXIT_OPPOSITE_SIGNAL in that mode generates a drop on
+        // every bar that carries an opposite-direction core signal, with
+        // no actual exit happening on the exchange. Skip the V1 inject
+        // entirely; the position is left in place and the operator-level
+        // alert spam stops. Transition meta is still cleared below so a
+        // future V2 path that takes over opposite handling can pick up
+        // a clean state.
+        const v1OppositeInjectionDisabled = !!(liveCfg && liveCfg.legacy_runtime_disabled === true);
+        if (v1OppositeInjectionDisabled) {
+          // Clear any in-flight transition meta so V1 doesn't carry
+          // stage-1 state forward into a V2-handled future.
+          metaUpdates.opposite_transition_dir = null;
+          metaUpdates.opposite_transition_event = null;
+          metaUpdates.opposite_transition_until_ms = null;
+          metaUpdates.opposite_transition_stage = null;
+          metaUpdates.opposite_transition_seen_ms = null;
+          try {
+            console.log(JSON.stringify({
+              event: "v1_exit_opposite_inject_skipped_v2_legacy_disabled",
+              ts: new Date().toISOString(),
+              exchange,
+              symbol,
+              tf: signalTf,
+              pos_side: posSide,
+              pos_size_pct: posSizeNow,
+              incoming_event: s.event,
+              incoming_intent_dir: intentDir,
+              signal_id: s.signal_id || (s.features && s.features.signal_id) || null,
+              note: "V1 EXIT_OPPOSITE_SIGNAL injection bypassed; V2 path owns opposite-flip handling post cutover.",
+            }));
+          } catch (_) { /* observability only */ }
+          continue;
+        }
         if (transitionApplicable) {
           const pendingDir = String((metaUpdates.opposite_transition_dir ?? posMeta.opposite_transition_dir) || "").toUpperCase();
           const pendingUntil = Number(metaUpdates.opposite_transition_until_ms ?? posMeta.opposite_transition_until_ms);

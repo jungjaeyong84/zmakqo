@@ -204,6 +204,86 @@
 
 ---
 
+## 13. Stage T (2026-04-29) — V1 paperBinanceRunner architectural leak
+
+**증상**: production 운영 중 BTCUSDT 등에서 매 bar 마다 다음 alert 반복:
+
+```
+[V2 DISCOVERY_CANARY] BTCUSDT 서버 신호 드롭
+이벤트: EXIT_OPPOSITE_SIGNAL
+사유: V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED
+드롭 위치: 운영/쿨다운 필터
+```
+
+**operator 진단** (정확): "V1 자체가 작동하면 안 되는데 작동하고 있는 것이
+누수. V1 작동 해도 V2 에서 작동해야지."
+
+### Root cause cascade
+
+1. `scheduler/scheduler.js` 매 tick 마다 `runOneMarket()` (V1 marketRunner) 호출 — `DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1` 검사 0
+2. `webhook.routes.js` 도 webhook 받으면 `runOneMarket()` 직접 호출 — 동일 검사 0
+3. `runOneMarket` → `runPaperMarket` → V1 paperBinanceRunner signal loop
+4. signal loop 가 반대 신호 감지하면 `EXIT_OPPOSITE_SIGNAL` inject (line 18420 부근)
+5. injected signal 이 V1 executor 도달
+6. V1 executor 가 `legacy_runtime_disabled=true` 라 reject → drop
+7. 매 bar 반복
+
+### 수정 (defense in depth)
+
+**Layer 1 (root, scheduler/marketRunner.js)** — V1 entry 자체 차단:
+```js
+async function runOneMarket(...) {
+  if (isV1MarketRunnerDisabledByEnv(process.env)) {
+    return { ok: true, skipped: true, reason: "V1_MARKET_RUNNER_LEGACY_RUNTIME_DISABLED" };
+  }
+  // ...rest
+}
+```
+
+**Layer 2 (symptom, paperBinanceRunner.js)** — V1 이 만에 하나 실행되더라도 EXIT_OPPOSITE inject 차단:
+```js
+if (liveCfg && liveCfg.legacy_runtime_disabled === true) {
+  // skip V1 inject + clear opposite_transition_* meta + log
+  continue;
+}
+```
+
+두 layer 모두 들어감 (root + symptom 동시).
+
+### 검증
+
+- `src/tests/v1-market-runner-legacy-disabled-skip.test.js` — 5 case
+  structural + runtime test (root layer)
+- `src/tests/v1-exit-opposite-inject-legacy-disabled-skip.test.js` —
+  6 case structural test (symptom layer)
+- npm test + npm run test:orphans 모두 PASS
+
+### V2 path 가 인계받아야 할 것 (별도 PR)
+
+V1 의 EXIT_OPPOSITE_SIGNAL 로직은 "반대 신호 시 자동 청산" 안전망.
+V2 cutover 후 이 안전망을 V2 path 가 owning 해야 함:
+
+- V2 productionEntryRoute 가 reverse signal 감지
+- V2 의 entry rejection + V2 exit (canonical exit reducer) trigger
+- 또는 명시적으로 "V2 는 opposite-flip auto-close 안 한다" 정책 결정
+
+**현재 상태**: V1 의 자동 청산이 차단된 결과 = 반대 신호 시 포지션은
+그대로 유지. operator 의 의도와 일치 (operator: "의도된 방향이야 놔둬").
+하지만 **시장이 반대로 크게 가면 SL 까지 갈 수 있는 것을 더 일찍 청산
+못 함**. 별도 PR 에서 V2 path 의 opposite handling 정책 결정 필요.
+
+### 자백
+
+- V1 marketRunner 가 production 에서 매 bar 돌고 있었던 사실이 audit
+  에서 잡히지 않았음. operator 가 alert spam 으로 발견.
+- V1 entry 차단 후 production 에서 실제 V1 logic 이 0 회 동작하는지
+  검증 = 24h 이상 prod 운영 후 가능. 즉시 검증 0.
+- Cloud Build CI 가 production 환경 변수 (LEGACY_RUNTIME_DISABLED=1)
+  를 설정하지 않은 상태로 test 돌므로 fix 의 production 효과는 deploy
+  후 cloud logging 으로만 확인 가능.
+
+---
+
 ## 12-late. 2026-04-28 senior audit session — Step 21~24 추가 진행
 
 이전 §12 작성 후 추가 작업:

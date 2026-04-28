@@ -426,7 +426,54 @@ async function computeGateForMarket({ exchange, market, tf, lastProcessedBarClos
   return gate;
 }
 
+// 2026-04-29 — runOneMarket invokes the V1 paperBinanceRunner pipeline
+// (gate compute → server-signal generation → V1 signal loop with
+// EXIT_OPPOSITE_SIGNAL injection → V1 executor). Under
+// `DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1` every order the V1 executor
+// produces is rejected with `V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED`,
+// but the V1 logic still runs every bar — generating drop alerts,
+// touching positions_paper meta, and potentially racing the V2 path.
+//
+// Operator's diagnosis (2026-04-29): "V1 자체가 작동하면 안 되는데
+// 작동하고 있는 것이 누수" — exactly correct. The previous "skip
+// EXIT_OPPOSITE_SIGNAL inject under legacy_runtime_disabled" patch
+// (paperBinanceRunner.js v1OppositeInjectionDisabled) only suppressed
+// the most visible alert symptom. The architectural fix is to refuse
+// V1 entry at the scheduler/webhook entry point so V1 cannot run at
+// all during V2-runtime-only operation. Defense in depth: keep both
+// the symptom guard and this entry-point guard.
+function isV1MarketRunnerDisabledByEnv(env = process.env) {
+  const raw = env && env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED;
+  if (raw === undefined || raw === null || raw === "") return false;
+  const norm = String(raw).trim().toLowerCase();
+  return norm === "1" || norm === "true" || norm === "yes" || norm === "on";
+}
+
 async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHint, executionEnabled, executionMode, allowReplaySameBar }) {
+  if (isV1MarketRunnerDisabledByEnv(process.env)) {
+    try {
+      console.log(JSON.stringify({
+        event: "v1_market_runner_skipped_legacy_runtime_disabled",
+        ts: new Date().toISOString(),
+        exchange,
+        market,
+        signal_tf: signalTf,
+        exec_tf: execTf,
+        run_id: runIdHint,
+        note: "DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1; V1 paperBinanceRunner pipeline must not execute. V2 productionEntryRoute owns entry/exit during cutover.",
+      }));
+    } catch (_) { /* observability only */ }
+    return {
+      ok: true,
+      exchange,
+      market,
+      symbol_or_pair_id: market,
+      signal_tf: signalTf,
+      exec_tf: execTf,
+      skipped: true,
+      reason: "V1_MARKET_RUNNER_LEGACY_RUNTIME_DISABLED",
+    };
+  }
   const signalTfFinal = normalizeTf(signalTf || DEFAULT_EXEC_TF) || DEFAULT_EXEC_TF;
   const execTfFinal = normalizeTf(execTf || signalTfFinal) || signalTfFinal;
 
