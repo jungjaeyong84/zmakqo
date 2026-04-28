@@ -277,7 +277,13 @@ function buildSyntheticBars(n, opts = {}) {
   };
   const a = generateV2EntrySignals(args);
   const b = generateV2EntrySignals(args);
-  assert.deepStrictEqual(a.diagnostics, b.diagnostics);
+  // generated_at differs by ms between the two calls — exclude it.
+  const stripGeneratedAt = (d) => {
+    const out = { ...d };
+    delete out.generated_at;
+    return out;
+  };
+  assert.deepStrictEqual(stripGeneratedAt(a.diagnostics), stripGeneratedAt(b.diagnostics));
   assert.deepStrictEqual(a.signals, b.signals);
 })();
 

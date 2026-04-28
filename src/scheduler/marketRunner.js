@@ -306,12 +306,21 @@ function persistServerSignalGenerationTrace(entry) {
   });
 }
 
-async function refreshLatestBarSnapshot({ exchange, market, tf, runId } = {}) {
+async function refreshLatestBarSnapshot({ exchange, market, tf, runId, countOverride = null } = {}) {
   const enabled = env.bars.snapshotRefresh === true;
   if (!enabled) return { ok: false, skipped: true, reason: "DISABLED" };
 
   try {
-    const count = Math.max(2, Math.min(10, Number(env.bars.snapshotRefreshCount || 3)));
+    // Default cadence is 2-10 bars (env.bars.snapshotRefreshCount, default 3) —
+    // enough for the entry-tf hot path. For HTF (240m) bars used by the V2
+    // server-native ENTRY signal generator we need ~70 bars warmup
+    // (EMA55 + safety margin), so callers may pass `countOverride` to
+    // bypass the env cap. The hard ceiling is 200 bars to avoid runaway
+    // fetches.
+    const baseCount = Math.max(2, Math.min(10, Number(env.bars.snapshotRefreshCount || 3)));
+    const count = Number.isFinite(Number(countOverride)) && Number(countOverride) > 0
+      ? Math.max(2, Math.min(200, Math.floor(Number(countOverride))))
+      : baseCount;
     const bars = await fetchCandles(exchange, market, tf, count);
     if (!Array.isArray(bars) || bars.length === 0) {
       return { ok: false, error: "NO_BARS" };
@@ -488,6 +497,39 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
     console.warn(
       `[snapshot_refresh_fail] ex=${exchange} sym=${market} tf=${signalTfFinal} err=${signalSnapshotRefresh.error || signalSnapshotRefresh.reason || "UNKNOWN"}`
     );
+  }
+
+  // 2026-04-28 F2 Phase 2.5 — HTF (240m) bars cache refresh for the V2
+  // server-native ENTRY signal generator. The generator needs HTF EMA21
+  // and HTF EMA55 (240m) for `htf_bias` BULL/BEAR/NEUTRAL classification
+  // (pine line 101-105). Best-effort: failure here logs a warning and
+  // continues; the generator's `computeHtfBias` will report
+  // HTF_INSUFFICIENT_BARS on its own.
+  // Only fired when the V2 server-native ENTRY generator is enabled,
+  // to avoid the extra binance API call/symbol/tick when not needed.
+  const v2EntrySignalGeneratorEnabled = (function() {
+    const raw = String(process.env.DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED || "0").trim().toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+  })();
+  if (v2EntrySignalGeneratorEnabled) {
+    try {
+      const htfRefresh = await refreshLatestBarSnapshot({
+        exchange,
+        market,
+        tf: "240",
+        runId: runIdHint,
+        countOverride: 70,
+      });
+      if (htfRefresh && htfRefresh.ok === false && !htfRefresh.skipped) {
+        console.warn(
+          `[snapshot_refresh_fail] ex=${exchange} sym=${market} tf=240 err=${htfRefresh.error || htfRefresh.reason || "UNKNOWN"}`
+        );
+      }
+    } catch (htfErr) {
+      console.warn(
+        `[snapshot_refresh_htf_fail] ex=${exchange} sym=${market} tf=240 err=${htfErr && htfErr.message ? htfErr.message : String(htfErr)}`
+      );
+    }
   }
 
   const cursorId = `${exchange}__${market}__${execTfFinal}`;
