@@ -289,7 +289,7 @@ validation 등 일체 진행 안 함.
 | 영역 | 현재 | V2 가 owning 해야 함 |
 |---|---|---|
 | Native protection refresh | binanceTickExit 자체 owning (V1 무관) | OK — 이미 V1 무관 |
-| Emit-driven exit (TP1/SL/TRAIL automated close) | V1 fast-lane → 차단됨 → 실효성 0 | V2 routing 으로 broker call |
+| ~~Emit-driven exit (TP1/SL/TRAIL automated close)~~ | ~~V1 fast-lane → 차단됨~~ | ✅ Stage U-followup-1: binanceTickExit fast-lane skip → V2 direct reduceOnly market 직접 호출 (`v2DirectExitDispatch.js` helper). reduceOnly 라 over-close 불가능. native STOP refresh fail 시 backup 안전망 복원. |
 | Anomaly auto-flatten | V1 path → 차단됨 → 실효성 0 | V2 anomaly worker |
 | Manual retry entry | V1 path → 503 응답 | V2 manual-retry endpoint |
 | Reverse signal auto-close (EXIT_OPPOSITE) | V1 inject → 차단됨 (Stage T) | V2 의 reverse handling 정책 |

@@ -60,6 +60,7 @@ const {
   resolveSimplifiedExitV2FlagFromSnapshot,
 } = require("./simplifiedExitV2");
 const { writeOpenClawShadowTrailActivation } = require("../v2/openclawShadowExitWriter");
+const { buildV2DirectExitDispatch } = require("./v2DirectExitDispatch");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const BINANCE_TICK_EXIT_AUDIT_PATH = path.join(REPO_ROOT, "ops", "runtime", "binance_tick_exit_audit.jsonl");
@@ -3457,6 +3458,86 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         const raw = String(process.env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED || "0").trim().toLowerCase();
         return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
       })()) {
+        // Stage U-followup-1 (option A) — V2 direct exit dispatch.
+        // Instead of just skipping the V1 fast-lane and relying solely
+        // on broker-side native STOP_MARKET, place a reduceOnly market
+        // order directly via the same exchange client that
+        // refreshBinanceTickExitNativeProtection uses. This restores
+        // the emit-driven exit safety net (TP1/SL/TRAIL/BE close)
+        // without going through the V1 paperBinanceRunner path.
+        // reduceOnly:true makes over-close impossible (Binance dedup
+        // when qty > position). Helper is pure + unit-tested in
+        // v2-direct-exit-dispatch.test.js. The exchange call is
+        // best-effort: failures log + continue; the next fast-lane
+        // cycle (~15 s later) retries naturally.
+        let v2DirectDispatch = null;
+        try {
+          const positionQtyBase = Number(effectivePos && effectivePos.qty_base);
+          v2DirectDispatch = buildV2DirectExitDispatch({
+            triggeredKinds,
+            positionSide: resolvedPosSide,
+            positionQtyBase,
+            symbol,
+            runId,
+            // stepSize/minQty intentionally omitted here — Binance will
+            // round / reject as needed. Tighter pre-rounding can be
+            // added later by piping in symbol info.
+          });
+          if (v2DirectDispatch && v2DirectDispatch.dispatch === true) {
+            const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
+            if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && !liveCfg.liveDryRun) {
+              try {
+                await placeFuturesMarketOrder({
+                  apiKey: liveCfg.apiKey,
+                  apiSecret: liveCfg.apiSecret,
+                  symbol: v2DirectDispatch.symbol,
+                  side: v2DirectDispatch.closeSide,
+                  quantity: v2DirectDispatch.qty,
+                  reduceOnly: true,
+                  idempotencyKey: v2DirectDispatch.idempotencyKey,
+                });
+                structuredLog("v2_direct_exit_dispatch_placed", {
+                  exchange: "BINANCEFUT",
+                  symbol,
+                  run_id: runId,
+                  triggered_kinds: v2DirectDispatch.triggeredKinds,
+                  close_side: v2DirectDispatch.closeSide,
+                  fraction: v2DirectDispatch.fraction,
+                  order_qty: v2DirectDispatch.qty,
+                  trigger_reason: v2DirectDispatch.triggerReason,
+                  idempotency_key: v2DirectDispatch.idempotencyKey,
+                });
+              } catch (placeErr) {
+                structuredLog("v2_direct_exit_dispatch_place_fail", {
+                  exchange: "BINANCEFUT",
+                  symbol,
+                  run_id: runId,
+                  triggered_kinds: v2DirectDispatch.triggeredKinds,
+                  close_side: v2DirectDispatch.closeSide,
+                  order_qty: v2DirectDispatch.qty,
+                  idempotency_key: v2DirectDispatch.idempotencyKey,
+                  error: placeErr && placeErr.message ? placeErr.message : String(placeErr),
+                }, "warn");
+              }
+            } else {
+              structuredLog("v2_direct_exit_dispatch_skipped_no_live_cfg", {
+                exchange: "BINANCEFUT",
+                symbol,
+                run_id: runId,
+                live_dry_run: liveCfg && liveCfg.liveDryRun === true,
+                has_api_key: !!(liveCfg && liveCfg.apiKey),
+              });
+            }
+          }
+        } catch (dispatchErr) {
+          structuredLog("v2_direct_exit_dispatch_fail", {
+            exchange: "BINANCEFUT",
+            symbol,
+            run_id: runId,
+            triggered_kinds: triggeredKinds,
+            error: dispatchErr && dispatchErr.message ? dispatchErr.message : String(dispatchErr),
+          }, "warn");
+        }
         try {
           structuredLog("v1_tick_exit_fast_lane_skipped_legacy_runtime_disabled", {
             exchange: "BINANCEFUT",
@@ -3465,7 +3546,8 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             run_id: runId,
             triggered_kinds: triggeredKinds,
             pending_forced: pendingForced === true,
-            note: "V1 EXIT_ONLY runPaperMarket bypassed; broker-side native STOP_MARKET is the sole exit channel under V2 runtime ownership.",
+            v2_direct_dispatch: !!(v2DirectDispatch && v2DirectDispatch.dispatch === true),
+            note: "V1 EXIT_ONLY runPaperMarket bypassed; V2 direct dispatch placed reduceOnly close (Stage U-followup-1).",
           });
         } catch (_) { /* observability only */ }
         continue;
