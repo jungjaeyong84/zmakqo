@@ -289,7 +289,7 @@ validation 등 일체 진행 안 함.
 | 영역 | 현재 | V2 가 owning 해야 함 |
 |---|---|---|
 | Native protection refresh | binanceTickExit 자체 owning (V1 무관) | OK — 이미 V1 무관 |
-| ~~Emit-driven exit (TP1/SL/TRAIL automated close)~~ | ~~V1 fast-lane → 차단됨~~ | ✅ Stage U-followup-1: binanceTickExit fast-lane skip → V2 direct reduceOnly market 직접 호출 (`v2DirectExitDispatch.js` helper). reduceOnly 라 over-close 불가능. native STOP refresh fail 시 backup 안전망 복원. |
+| ~~Emit-driven exit (TP1/SL/TRAIL automated close)~~ | ~~V1 fast-lane → 차단됨~~ | ✅ Stage U-followup-1: binanceTickExit fast-lane skip → V2 direct reduceOnly market 직접 호출 (`v2DirectExitDispatch.js` helper). reduceOnly 라 over-close 불가능. native STOP refresh fail 시 backup 안전망 복원. **Stage U-followup-2 (2026-04-28) 추가 보강**: (A) `fetchFuturesExchangeInfo` 로 stepSize/minQty 사전 round (Binance reject 최소화), (B) 성공 시 `upsertExitOrderContract` 로 V2 evidence ledger stamp (canonical exit reducer 가 fill 시 dispatch 로 correlate), (C) `runId` 에 `crypto.randomUUID().slice(0,8)` suffix 부착 (동일 ms 충돌도 0 보장). ledger fail 은 best-effort (order 는 성공 처리). |
 | Anomaly auto-flatten | V1 path → 차단됨 → 실효성 0 | V2 anomaly worker |
 | Manual retry entry | V1 path → 503 응답 | V2 manual-retry endpoint |
 | Reverse signal auto-close (EXIT_OPPOSITE) | V1 inject → 차단됨 (Stage T) | V2 의 reverse handling 정책 |
@@ -317,6 +317,17 @@ gcloud logging read 'jsonPayload.event="native_protection_refresh_price_decision
 - 사용자 의도와 일치하지만 architectural risk 보유.
 - V2 가 emit-driven exit (signal → V2 router → V2 exit place) 인계받기
   전까지 broker side native STOP 단독 의존.
+- ✅ **Stage U-followup-2 (2026-04-28)**: 위 3가지 자백 항목 (qty pre-rounding,
+  V2 evidence chain, runId entropy) 동시 해소.
+  - (A) `fetchFuturesExchangeInfo` 캐시 1d → stepSize/minQty 정확히 사전 round.
+  - (B) `upsertExitOrderContract` 로 V2 evidence ledger 에 stamp
+    (`event=EXIT_TRAIL` or `EXIT_TP_P1_2.5P`, `source=V2_DIRECT_EXIT_DISPATCH`,
+    `triggerSource=V2_DIRECT_TICK_EXIT_DISPATCH`, `extra.run_id`,
+    `extra.idempotency_key`).
+  - (C) `runId` 에 `randomUUID().slice(0,8)` suffix → 동일 ms 충돌도 0.
+  - **Stage V scope (남은 자백)**: V2 canonical exit reducer 가 위 ledger
+    stamp 를 입력으로 받아 fill ack 까지 lifecycle 전체 owning. 현재는 fill 발생 시
+    canonicalExitReducer 가 별도 경로로 ledger 를 다시 stamp.
 
 ---
 

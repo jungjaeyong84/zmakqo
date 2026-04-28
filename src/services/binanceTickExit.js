@@ -32,6 +32,7 @@ const {
   fetchFuturesOrder,
   fetchFuturesAlgoOrder,
   placeFuturesMarketOrder,
+  fetchFuturesExchangeInfo,
   __test: binancePrivateTest,
 } = require("../exchanges/binanceFuturesPrivate");
 const { sendAlert } = require("../utils/alerts");
@@ -3459,35 +3460,61 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
       })()) {
         // Stage U-followup-1 (option A) — V2 direct exit dispatch.
-        // Instead of just skipping the V1 fast-lane and relying solely
-        // on broker-side native STOP_MARKET, place a reduceOnly market
-        // order directly via the same exchange client that
-        // refreshBinanceTickExitNativeProtection uses. This restores
-        // the emit-driven exit safety net (TP1/SL/TRAIL/BE close)
-        // without going through the V1 paperBinanceRunner path.
-        // reduceOnly:true makes over-close impossible (Binance dedup
-        // when qty > position). Helper is pure + unit-tested in
-        // v2-direct-exit-dispatch.test.js. The exchange call is
-        // best-effort: failures log + continue; the next fast-lane
-        // cycle (~15 s later) retries naturally.
+        // Stage U-followup-2 (this turn) — pre-round qty via symbol
+        //   exchangeInfo, stamp the dispatch into exit_order_contracts
+        //   (V2 evidence ledger), and harden idempotency key entropy
+        //   (runId + per-call randomUUID suffix).
         let v2DirectDispatch = null;
+        let v2DispatchPlaced = false;
+        let v2DispatchPlaceError = null;
+        let v2DispatchOrderId = null;
+        let v2DispatchClientOrderId = null;
+        let v2DispatchSymbolInfo = null;
         try {
           const positionQtyBase = Number(effectivePos && effectivePos.qty_base);
+
+          // Stage U-followup-2 step A — fetch symbol info (cached 1d in
+          // fetchFuturesExchangeInfo). Pass stepSize + minQty to the
+          // helper so qty pre-rounding is exact and dust is caught
+          // before the exchange call.
+          try {
+            v2DispatchSymbolInfo = await fetchFuturesExchangeInfo(symbol);
+          } catch (infoErr) {
+            structuredLog("v2_direct_exit_dispatch_symbol_info_fail", {
+              exchange: "BINANCEFUT",
+              symbol,
+              error: infoErr && infoErr.message ? infoErr.message : String(infoErr),
+              note: "Falling back to no-step-rounding dispatch; Binance will reject if invalid.",
+            });
+          }
+
+          // Stage U-followup-2 step C — strengthen runId entropy. The
+          // base runId is `RUN__BINANCEFUT__${symbol}__TICK_EXIT__${ms}`
+          // which collides only if two cycles fire in the same ms.
+          // Cloud Run never produces that today, but a per-dispatch
+          // random suffix guarantees uniqueness at no cost.
+          let dispatchRunId = runId;
+          try {
+            const { randomUUID } = require("crypto");
+            dispatchRunId = `${runId}__${randomUUID().slice(0, 8)}`;
+          } catch (_) { /* fall back to plain runId */ }
+
           v2DirectDispatch = buildV2DirectExitDispatch({
             triggeredKinds,
             positionSide: resolvedPosSide,
             positionQtyBase,
             symbol,
-            runId,
-            // stepSize/minQty intentionally omitted here — Binance will
-            // round / reject as needed. Tighter pre-rounding can be
-            // added later by piping in symbol info.
+            runId: dispatchRunId,
+            stepSize: v2DispatchSymbolInfo && Number.isFinite(Number(v2DispatchSymbolInfo.stepSize))
+              ? Number(v2DispatchSymbolInfo.stepSize) : null,
+            minQty: v2DispatchSymbolInfo && Number.isFinite(Number(v2DispatchSymbolInfo.minQty))
+              ? Number(v2DispatchSymbolInfo.minQty) : null,
           });
           if (v2DirectDispatch && v2DirectDispatch.dispatch === true) {
             const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
             if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && !liveCfg.liveDryRun) {
               try {
-                await placeFuturesMarketOrder({
+                const placeRes = await placeFuturesMarketOrder({
                   apiKey: liveCfg.apiKey,
                   apiSecret: liveCfg.apiSecret,
                   symbol: v2DirectDispatch.symbol,
@@ -3496,34 +3523,88 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                   reduceOnly: true,
                   idempotencyKey: v2DirectDispatch.idempotencyKey,
                 });
+                v2DispatchPlaced = true;
+                v2DispatchOrderId = placeRes && (placeRes.orderId ?? placeRes.order_id) ? String(placeRes.orderId ?? placeRes.order_id) : null;
+                v2DispatchClientOrderId = placeRes && (placeRes.clientOrderId ?? placeRes.client_order_id) ? String(placeRes.clientOrderId ?? placeRes.client_order_id) : null;
                 structuredLog("v2_direct_exit_dispatch_placed", {
                   exchange: "BINANCEFUT",
                   symbol,
-                  run_id: runId,
+                  run_id: dispatchRunId,
                   triggered_kinds: v2DirectDispatch.triggeredKinds,
                   close_side: v2DirectDispatch.closeSide,
                   fraction: v2DirectDispatch.fraction,
                   order_qty: v2DirectDispatch.qty,
                   trigger_reason: v2DirectDispatch.triggerReason,
                   idempotency_key: v2DirectDispatch.idempotencyKey,
+                  step_size: v2DispatchSymbolInfo && v2DispatchSymbolInfo.stepSize,
+                  min_qty: v2DispatchSymbolInfo && v2DispatchSymbolInfo.minQty,
+                  order_id: v2DispatchOrderId,
+                  client_order_id: v2DispatchClientOrderId,
                 });
+
+                // Stage U-followup-2 step B — V2 evidence chain:
+                // stamp the dispatch into exit_order_contracts so the
+                // canonical exit ledger / dashboards can correlate the
+                // V2 dispatch with the eventual fill. Best-effort — a
+                // ledger write failure must NOT undo the exchange
+                // order.
+                try {
+                  await upsertExitOrderContract({
+                    exchange: "BINANCEFUT",
+                    symbol: v2DirectDispatch.symbol,
+                    orderId: v2DispatchOrderId,
+                    clientOrderId: v2DispatchClientOrderId || v2DirectDispatch.idempotencyKey,
+                    event: v2DirectDispatch.fraction >= 1 ? "EXIT_TRAIL" : "EXIT_TP_P1_2.5P",
+                    stage: v2DirectDispatch.fraction >= 1 ? "TRAIL" : "TP1",
+                    intentId: null,
+                    signalId: null,
+                    signalDocId: null,
+                    entryEventId: effectivePos && effectivePos.meta && effectivePos.meta.entry_event_id || null,
+                    positionSide: resolvedPosSide,
+                    closeSide: v2DirectDispatch.closeSide,
+                    expectedQtyBase: v2DirectDispatch.qty,
+                    expectedQtyRatio: v2DirectDispatch.fraction,
+                    triggerPrice: Number(price) || null,
+                    triggerSource: "V2_DIRECT_TICK_EXIT_DISPATCH",
+                    reduceOnly: true,
+                    closePosition: false,
+                    status: "OPEN",
+                    source: "V2_DIRECT_EXIT_DISPATCH",
+                    extra: {
+                      v2_direct_dispatch: true,
+                      triggered_kinds: v2DirectDispatch.triggeredKinds,
+                      run_id: dispatchRunId,
+                      idempotency_key: v2DirectDispatch.idempotencyKey,
+                    },
+                  });
+                } catch (ledgerErr) {
+                  structuredLog("v2_direct_exit_dispatch_ledger_fail", {
+                    exchange: "BINANCEFUT",
+                    symbol,
+                    run_id: dispatchRunId,
+                    order_id: v2DispatchOrderId,
+                    error: ledgerErr && ledgerErr.message ? ledgerErr.message : String(ledgerErr),
+                    note: "Order placed successfully; ledger stamp failed. fillSync will pick up the fill via exchange poll.",
+                  }, "warn");
+                }
               } catch (placeErr) {
+                v2DispatchPlaceError = placeErr && placeErr.message ? placeErr.message : String(placeErr);
                 structuredLog("v2_direct_exit_dispatch_place_fail", {
                   exchange: "BINANCEFUT",
                   symbol,
-                  run_id: runId,
+                  run_id: dispatchRunId,
                   triggered_kinds: v2DirectDispatch.triggeredKinds,
                   close_side: v2DirectDispatch.closeSide,
                   order_qty: v2DirectDispatch.qty,
                   idempotency_key: v2DirectDispatch.idempotencyKey,
-                  error: placeErr && placeErr.message ? placeErr.message : String(placeErr),
+                  error: v2DispatchPlaceError,
                 }, "warn");
               }
             } else {
               structuredLog("v2_direct_exit_dispatch_skipped_no_live_cfg", {
                 exchange: "BINANCEFUT",
                 symbol,
-                run_id: runId,
+                run_id: dispatchRunId,
                 live_dry_run: liveCfg && liveCfg.liveDryRun === true,
                 has_api_key: !!(liveCfg && liveCfg.apiKey),
               });
@@ -3547,7 +3628,9 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             triggered_kinds: triggeredKinds,
             pending_forced: pendingForced === true,
             v2_direct_dispatch: !!(v2DirectDispatch && v2DirectDispatch.dispatch === true),
-            note: "V1 EXIT_ONLY runPaperMarket bypassed; V2 direct dispatch placed reduceOnly close (Stage U-followup-1).",
+            v2_direct_dispatch_placed: v2DispatchPlaced,
+            v2_direct_dispatch_place_error: v2DispatchPlaceError,
+            note: "V1 EXIT_ONLY runPaperMarket bypassed; V2 direct dispatch handled reduceOnly close (Stage U-followup-1+2).",
           });
         } catch (_) { /* observability only */ }
         continue;

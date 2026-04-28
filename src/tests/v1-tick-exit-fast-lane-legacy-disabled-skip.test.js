@@ -29,9 +29,10 @@ function run() {
   assert.ok(fastLaneCallIdx > 0, "fast-lane runPaperMarket call site not found");
 
   // Stage U-followup-1 expanded the skip block (V2 direct dispatch
-  // placement). Widen the lookback so the structural anchors still
-  // land inside `region`.
-  const region = src.slice(Math.max(0, fastLaneCallIdx - 6000), fastLaneCallIdx);
+  // placement). Stage U-followup-2 expanded it further (symbol info
+  // fetch + ledger stamp + runId entropy). Widen the lookback so the
+  // structural anchors still land inside `region`.
+  const region = src.slice(Math.max(0, fastLaneCallIdx - 12000), fastLaneCallIdx);
 
   // (B) The skip branch must exist with the structured skip log.
   assert.ok(
