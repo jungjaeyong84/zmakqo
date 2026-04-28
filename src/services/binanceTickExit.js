@@ -3439,6 +3439,37 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
           },
         }).catch(() => null);
       }
+      // 2026-04-29 Stage U-1 — operator decision: "V1 자체가 작동하면 안 되고
+      // V2 가 모든 처리를 인계받아야 한다." binanceTickExit's V1 fast-lane
+      // (runPaperMarket EXIT_ONLY) is the last V1 emit-driven exit path.
+      // Under DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1 this call's V1
+      // executor would in any case be rejected with
+      // V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED — so the
+      // call is wasted CPU + alert noise. The actual exit safety in
+      // this configuration is provided by the broker-side native
+      // protection (closePosition STOP_MARKET) which binanceTickExit
+      // itself manages via refreshBinanceTickExitNativeProtection
+      // (placeFuturesMarketOrder directly, no V1 paperBinanceRunner
+      // dependency). Skip the V1 fast-lane outright.
+      // Inline env parse to avoid pulling in a parseBoolEnv helper —
+      // pattern matches the surrounding String(process.env.X || "1") usage.
+      if ((function legacyRuntimeDisabledNow() {
+        const raw = String(process.env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED || "0").trim().toLowerCase();
+        return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+      })()) {
+        try {
+          structuredLog("v1_tick_exit_fast_lane_skipped_legacy_runtime_disabled", {
+            exchange: "BINANCEFUT",
+            symbol,
+            tf: signalTf,
+            run_id: runId,
+            triggered_kinds: triggeredKinds,
+            pending_forced: pendingForced === true,
+            note: "V1 EXIT_ONLY runPaperMarket bypassed; broker-side native STOP_MARKET is the sole exit channel under V2 runtime ownership.",
+          });
+        } catch (_) { /* observability only */ }
+        continue;
+      }
       const pre = await runActionPreHooks({
         action: "BINANCE_TICK_EXIT_MARKET_RUN",
         runId,

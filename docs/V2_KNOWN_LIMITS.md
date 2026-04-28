@@ -204,6 +204,64 @@
 
 ---
 
+## 14. Stage U (2026-04-29) — V1 emit-driven exit fast-lane 차단
+
+**Operator escalation** (Stage T 후속): "V1 자체가 작동하면 안 되고 V2
+가 모든 처리를 인계받아야 한다."
+
+### 직전 상태 (Stage T 이후)
+
+| Path | 차단 여부 |
+|---|---|
+| webhook → runOneMarket (V1 entry) | ✅ Stage T |
+| scheduler → runOneMarket (V1 entry) | ✅ Stage T |
+| `binanceTickExit` fast-lane → runPaperMarket(EXIT_ONLY) | ❌ V1 호출 자체 됨 (writer 만 거부) |
+| `binanceTickExit` native protection refresh | V1 무관 (직접 placeFuturesMarketOrder) |
+| `systemAnomalyRemediation` → runPaperFuturesForBar | ❌ V1 호출 (별도 PR) |
+| `trading.actions` manual override → runPaperFuturesForBar | ❌ V1 호출 (별도 PR — operator escape hatch) |
+
+### Stage U fix
+
+`src/services/binanceTickExit.js` line 3456 부근 fast-lane 호출 직전에
+`DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1` guard 추가. fast-lane V1 호출
+자체를 skip + structured log `v1_tick_exit_fast_lane_skipped_legacy_runtime_disabled` 발생.
+
+### 의미
+
+- 실제 청산 channel = **broker-side native protection** (closePosition
+  STOP_MARKET). binanceTickExit 가 자체 owning (cancel + place 직접 호출).
+- V1 fast-lane 의 backup 안전망 손실 — native STOP refresh 가 fail 하면
+  자동 청산 채널 부재. 거래소 측 native STOP 가 stale 시 risk.
+
+### 남은 누수 (Stage U 후속)
+
+| Path | risk | 우선순위 |
+|---|---|---|
+| `systemAnomalyRemediation` 의 V1 emergency exit | breaker 시 청산 안 됨 | P1 |
+| `trading.actions` 의 manual override | operator 수동 청산 시 V1 거부 | P2 (manual 이라 visible) |
+
+### 검증 (deploy 후 24h)
+
+```bash
+# fast-lane skip log 발생 (V1 차단 working)
+gcloud logging read 'jsonPayload.event="v1_tick_exit_fast_lane_skipped_legacy_runtime_disabled"' --freshness=24h
+
+# V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED drop 다시 0건
+gcloud logging read 'textPayload:"V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED"' --freshness=24h
+
+# native protection refresh 가 정상 작동하는지 (binanceTickExit 의 직접 호출)
+gcloud logging read 'jsonPayload.event="native_protection_refresh_price_decision"' --freshness=24h
+```
+
+### 자백
+
+- V1 fast-lane backup 안전망 손실. native STOP refresh fail 시 청산 못 함.
+- 사용자 의도와 일치하지만 architectural risk 보유.
+- V2 가 emit-driven exit (signal → V2 router → V2 exit place) 인계받기
+  전까지 broker side native STOP 단독 의존.
+
+---
+
 ## 13. Stage T (2026-04-29) — V1 paperBinanceRunner architectural leak
 
 **증상**: production 운영 중 BTCUSDT 등에서 매 bar 마다 다음 alert 반복:
