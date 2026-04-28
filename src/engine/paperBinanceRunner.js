@@ -14673,23 +14673,18 @@ async function runPaperBinanceForBar({
     ? buildTimeStopExitSignal({ position: pos, bar, posMeta, barCloseMs, signalTfMs, maxHoldBars })
     : null;
 
-  // 2026-04-28 F2 Phase 3 — V2 server-native ENTRY signal generator
-  // (Pine v6.1.1.0 parity port). Disabled by default; enable via
-  // DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED=1. Generated
-  // signals join `internalSignalsRaw` so they flow through the existing
-  // dedupeEntrySignalsByFamily + V2 discovery canary handoff bridge.
-  // The generator only fires when the position is flat (handled inside
-  // generateV2EntrySignals via `position.state !== "ACTIVE"`) so it
-  // never collides with the V1 `generateSignals` EXIT-only path above.
-  let v2ServerEntrySignals = [];
+  // 2026-04-28 F2 Phase 5 hotfix #5 — V2 server-native ENTRY signal
+  // generator + direct-batch handoff. Mirror of the runPaperFuturesForBar
+  // inject below. This sibling function is dead under BinanceFut today
+  // (runPaperMarket dispatches BINANCE* to runPaperFuturesForBar) but
+  // we keep the inject in case a non-BinanceFut caller reaches this
+  // function in the future.
   try {
     const v2EntryGeneratorEnabled = (function() {
       const raw = String(process.env.DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED || "0").trim().toLowerCase();
       return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
     })();
     if (v2EntryGeneratorEnabled) {
-      // Same-tf and HTF (240m) bars are sourced from the bars_snapshots
-      // cache that runOneMarket has just refreshed (Phase 2.5).
       const sameTfBars = await queryBars({ exchange, symbol, tf: signalTf, limit: 200 });
       const htfBars = await queryBars({ exchange, symbol, tf: "4h", limit: 70 });
       const cooldownState = await getV2ServerEntryCooldownState({ exchange, symbol, tf: signalTf });
@@ -14704,7 +14699,6 @@ async function runPaperBinanceForBar({
         runId,
         barCloseMs: Number(barCloseMs),
       });
-      // Persist cooldownStateNext if a signal fired (or cooldown moved).
       if (v2GenResult && Array.isArray(v2GenResult.signals) && v2GenResult.signals.length > 0) {
         try {
           await setV2ServerEntryCooldownState({
@@ -14717,7 +14711,6 @@ async function runPaperBinanceForBar({
           console.warn("[V2_SERVER_ENTRY_COOLDOWN_PERSIST_FAIL]", cdErr?.message || cdErr);
         }
       }
-      // Diagnostic structured log every cycle (very small payload).
       try {
         console.log(JSON.stringify({
           event: "v2_server_entry_signal_generator_run",
@@ -14743,23 +14736,25 @@ async function runPaperBinanceForBar({
             : null,
         }));
       } catch (_) { /* observability only */ }
-      // Convert generator-output payloads into the same shape that
-      // dedupeEntrySignalsByFamily / V2 discovery handoff expect from
-      // an external signal: { signal_id, event, side, qty_pct, reason,
-      //   features, signal_bar_close_time_utc_ms, signal_price, ... }.
-      // The handoff bridge then routes them through productionEntryRoute.
-      v2ServerEntrySignals = (v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [])
-        .map((sig) => {
+
+      const v2GenSignals = v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [];
+      for (const sig of v2GenSignals) {
+        try {
           const sigBarMs = Number(sig.bar_close_time_utc_ms);
           const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
           const features = { ...(sig.features || {}) };
           if (sig.bar_close_time_utc_ms != null) features.bar_close_time_utc_ms = sig.bar_close_time_utc_ms;
           if (sig.price != null) features.signal_price = sig.price;
-          return {
-            signal_id: `SIG__V2_SERVER__${exchange}__${symbol}__${signalTf}__${sigBarMs || Date.now()}__${sig.event}__${sig.entry_grade}`,
+          features.v2_server_native_signal_bypass = true;
+          features.v2_discovery_signal_fan_in_handoff = true;
+          features.v2_discovery_entry_filter_authority = "PRODUCTION_ENTRY_ROUTE";
+
+          const v2SignalId = `SIG__V2_SERVER__${exchange}__${symbol}__${signalTf}__${sigBarMs || Date.now()}__${sig.event}__${sig.entry_grade}`;
+          const handoffSignal = {
+            signal_id: v2SignalId,
             signal_doc_id: null,
-            event: sig.event,                    // "LONG" or "SHORT"
-            side: sig.side,                      // "BUY" or "SELL"
+            event: sig.event,
+            side: sig.side,
             qty_pct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
             reason: "V2_SERVER_NATIVE_GENERATOR",
             signal_bar_close_time_utc_ms: Number.isFinite(sigBarMs) ? sigBarMs : null,
@@ -14767,7 +14762,59 @@ async function runPaperBinanceForBar({
             signal_price: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
             features,
           };
-        });
+
+          const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
+            exchange,
+            symbol,
+            tf: signalTf,
+            signal: handoffSignal,
+            features,
+            qtyFraction: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+            intentExecutionMode: "PAPER",
+            signalBarCloseUtcForIntent: sigBarUtc,
+            signalBarCloseMsForIntent: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            intentSignalBarCloseUtc: sigBarUtc,
+            intentSignalBarCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            execBarCloseUtcForIntent: sigBarUtc,
+            execBarCloseMsForIntent: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            signalDocId: null,
+            signalPrice: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
+            runId,
+          });
+
+          const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+            env: process.env,
+            intentRow: handoffIntentRow,
+            liveCfg,
+            referencePrice: Number.isFinite(Number(sig.price)) ? Number(sig.price)
+              : Number(bar && (bar.close ?? bar.c)),
+            requestId: handoffIntentRow.request_id,
+          }).catch((error) => ({
+            ok: false,
+            reason: "V2_DISCOVERY_BRIDGE_THROWN",
+            error_message: error && error.message ? String(error.message) : String(error),
+          }));
+
+          try {
+            console.log(JSON.stringify({
+              event: "v2_server_entry_signal_handoff_dispatched",
+              ts: new Date().toISOString(),
+              exchange,
+              symbol,
+              tf: signalTf,
+              run_id: runId,
+              signal_id: v2SignalId,
+              direction: sig.event,
+              entry_grade: sig.entry_grade,
+              handoff_ok: handoff && handoff.ok === true,
+              handoff_reason: handoff && handoff.reason ? String(handoff.reason) : null,
+              handoff_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
+            }));
+          } catch (_) { /* observability only */ }
+        } catch (handoffErr) {
+          console.warn("[V2_SERVER_ENTRY_SIGNAL_HANDOFF_FAIL]", handoffErr?.message || handoffErr);
+        }
+      }
     }
   } catch (v2GenErr) {
     console.warn("[V2_SERVER_ENTRY_SIGNAL_GENERATOR_FAIL]", v2GenErr?.message || v2GenErr);
@@ -14787,7 +14834,6 @@ async function runPaperBinanceForBar({
       exitProfileMode: liveCfg && liveCfg.exitProfileMode,
       currentBarCloseMs: Number(barCloseMs),
     }),
-    ...v2ServerEntrySignals,
     ...(liqSignal ? [liqSignal] : []),
     ...(timeStopSignal ? [timeStopSignal] : []),
   ];
@@ -18347,15 +18393,25 @@ async function runPaperFuturesForBar({
     : null;
   const signalLeverage = resolvePositionLeverage({ position: pos, fallback: leverage });
 
-  // 2026-04-28 F2 Phase 5 hotfix — V2 server-native ENTRY signal
-  // generator (Pine v6.1.1.0 parity port). The runtime path for
-  // BinanceFut PAPER + LIVE is `runPaperFuturesForBar` (this function),
-  // not `runPaperBinanceForBar` — Phase 3 inject was placed in the
-  // wrong sibling function. Generator output joins internalSignalsRaw
-  // so dedupeEntrySignalsByFamily + V2 discovery handoff bridge picks
-  // it up. Disabled by default; enable via
+  // 2026-04-28 F2 Phase 5 hotfix #5 — V2 server-native ENTRY signal
+  // generator (Pine v6.1.1.0 parity port). The earlier hotfix #1-#4
+  // tried to inject the generator output into `internalSignalsRaw`
+  // and let dedupe/handoff carry it through, but the legacy paper
+  // signal pipeline silently drops V2-server-native signals at
+  // multiple downstream points (firestore signal_doc_id lookup, paper
+  // intent persistence, isExternalEntrySignalCandidate→external path
+  // mismatch, etc.) regardless of the bypass we added at the handoff
+  // gate.
+  //
+  // Direct-batch handoff: the generator output is dispatched
+  // immediately into runV2DiscoveryCanaryServerSignalHandoff (the same
+  // bridge the legacy fan-in calls). It does NOT join
+  // internalSignalsRaw, so the legacy paper pipeline never sees these
+  // signals. Failures are logged + swallowed; nothing falls back to
+  // V1.
+  //
+  // Disabled by default; enable via
   // DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED=1.
-  let v2ServerEntrySignals = [];
   try {
     const v2EntryGeneratorEnabled = (function() {
       const raw = String(process.env.DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED || "0").trim().toLowerCase();
@@ -18413,15 +18469,23 @@ async function runPaperFuturesForBar({
             : null,
         }));
       } catch (_) { /* observability only */ }
-      v2ServerEntrySignals = (v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [])
-        .map((sig) => {
+
+      // Direct-batch handoff per generated signal.
+      const v2GenSignals = v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [];
+      for (const sig of v2GenSignals) {
+        try {
           const sigBarMs = Number(sig.bar_close_time_utc_ms);
           const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
           const features = { ...(sig.features || {}) };
           if (sig.bar_close_time_utc_ms != null) features.bar_close_time_utc_ms = sig.bar_close_time_utc_ms;
           if (sig.price != null) features.signal_price = sig.price;
-          return {
-            signal_id: `SIG__V2_SERVER__${exchange}__${symbol}__${signalTf}__${sigBarMs || Date.now()}__${sig.event}__${sig.entry_grade}`,
+          features.v2_server_native_signal_bypass = true;
+          features.v2_discovery_signal_fan_in_handoff = true;
+          features.v2_discovery_entry_filter_authority = "PRODUCTION_ENTRY_ROUTE";
+
+          const v2SignalId = `SIG__V2_SERVER__${exchange}__${symbol}__${signalTf}__${sigBarMs || Date.now()}__${sig.event}__${sig.entry_grade}`;
+          const handoffSignal = {
+            signal_id: v2SignalId,
             signal_doc_id: null,
             event: sig.event,
             side: sig.side,
@@ -18432,7 +18496,59 @@ async function runPaperFuturesForBar({
             signal_price: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
             features,
           };
-        });
+
+          const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
+            exchange,
+            symbol,
+            tf: signalTf,
+            signal: handoffSignal,
+            features,
+            qtyFraction: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+            intentExecutionMode: "PAPER",
+            signalBarCloseUtcForIntent: sigBarUtc,
+            signalBarCloseMsForIntent: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            intentSignalBarCloseUtc: sigBarUtc,
+            intentSignalBarCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            execBarCloseUtcForIntent: sigBarUtc,
+            execBarCloseMsForIntent: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            signalDocId: null,
+            signalPrice: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
+            runId,
+          });
+
+          const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
+            env: process.env,
+            intentRow: handoffIntentRow,
+            liveCfg,
+            referencePrice: Number.isFinite(Number(sig.price)) ? Number(sig.price)
+              : Number(bar && (bar.close ?? bar.c)),
+            requestId: handoffIntentRow.request_id,
+          }).catch((error) => ({
+            ok: false,
+            reason: "V2_DISCOVERY_BRIDGE_THROWN",
+            error_message: error && error.message ? String(error.message) : String(error),
+          }));
+
+          try {
+            console.log(JSON.stringify({
+              event: "v2_server_entry_signal_handoff_dispatched",
+              ts: new Date().toISOString(),
+              exchange,
+              symbol,
+              tf: signalTf,
+              run_id: runId,
+              signal_id: v2SignalId,
+              direction: sig.event,
+              entry_grade: sig.entry_grade,
+              handoff_ok: handoff && handoff.ok === true,
+              handoff_reason: handoff && handoff.reason ? String(handoff.reason) : null,
+              handoff_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
+            }));
+          } catch (_) { /* observability only */ }
+        } catch (handoffErr) {
+          console.warn("[V2_SERVER_ENTRY_SIGNAL_HANDOFF_FAIL]", handoffErr?.message || handoffErr);
+        }
+      }
     }
   } catch (v2GenErr) {
     console.warn("[V2_SERVER_ENTRY_SIGNAL_GENERATOR_FAIL]", v2GenErr?.message || v2GenErr);
@@ -18452,7 +18568,6 @@ async function runPaperFuturesForBar({
       exitProfileMode: liveCfg && liveCfg.exitProfileMode,
       currentBarCloseMs: Number(barCloseMs),
     }),
-    ...v2ServerEntrySignals,
     ...(timeStopSignal ? [timeStopSignal] : []),
   ];
   const internalSignals = filterLiveFuturesInternalSignals({

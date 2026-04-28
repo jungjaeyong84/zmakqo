@@ -76,11 +76,12 @@ const path = require("path");
     "(C3) env-flag check must precede generateV2EntrySignals call (default off)"
   );
 
-  // (D) the output must merge into internalSignalsRaw — at BOTH call
-  //     sites (paperBinanceRunner has two parallel functions:
-  //     runPaperBinanceForBar and runPaperFuturesForBar; the BinanceFut
-  //     runtime path goes through runPaperFuturesForBar so both must
-  //     have the inject).
+  // (D) Phase-5 hotfix #5: V2 generator output is dispatched directly
+  //     to runV2DiscoveryCanaryServerSignalHandoff; it must NOT join
+  //     internalSignalsRaw (which would route it through the legacy
+  //     paper-signal pipeline that silently drops V2-server-native
+  //     signals at multiple downstream points). Pin the absence so a
+  //     regression that re-spreads into internalSignalsRaw fails CI.
   const arrIndices = [];
   let pos = 0;
   while ((pos = src.indexOf("const internalSignalsRaw = [", pos)) !== -1) {
@@ -91,8 +92,8 @@ const path = require("path");
   for (const idx of arrIndices) {
     const tail = src.slice(idx, idx + 2000);
     assert.ok(
-      tail.includes("...v2ServerEntrySignals"),
-      `(D) generator output must spread into internalSignalsRaw at all sites (missing near offset ${idx})`
+      !tail.includes("...v2ServerEntrySignals"),
+      `(D) generator output must NOT spread into internalSignalsRaw any more (regression near offset ${idx})`
     );
   }
 
@@ -106,23 +107,28 @@ const path = require("path");
     "(E) cooldown state getter must be called"
   );
 
-  // (E2) V2 server-native ENTRY bypass at the handoff gate. The
-  //      paperBinanceRunner must enter the handoff branch when the
-  //      signal is V2 server-native, even if the legacy
-  //      isV2DiscoveryCanaryLegacyEntryWriteBlocked predicate would
-  //      reject (because system_settings stays PAPER intentionally to
-  //      keep V1 LIVE branches dead).
+  // (E2) Direct-batch handoff. Each generator-emitted signal must be
+  //      dispatched into runV2DiscoveryCanaryServerSignalHandoff in the
+  //      same loop iteration, with the bypass features stamped for
+  //      observability and a structured handoff-dispatched log line.
   assert.ok(
-    src.includes("isV2ServerNativeEntry"),
-    "(E2) paperBinanceRunner must compute isV2ServerNativeEntry near the handoff gate"
-  );
-  assert.ok(
-    src.includes("|| isV2ServerNativeEntry"),
-    "(E2) handoff branch condition must OR isV2ServerNativeEntry"
+    src.includes("v2_server_entry_signal_handoff_dispatched"),
+    "(E2) batch handoff must emit v2_server_entry_signal_handoff_dispatched per signal"
   );
   assert.ok(
     src.includes("v2_server_native_signal_bypass"),
-    "(E2) bypass branch must stamp features.v2_server_native_signal_bypass for observability"
+    "(E2) handoff branch must stamp features.v2_server_native_signal_bypass for observability"
+  );
+  assert.ok(
+    src.includes("buildV2DiscoverySignalFanInIntentRow("),
+    "(E2) batch handoff must reuse buildV2DiscoverySignalFanInIntentRow for the intent row"
+  );
+  // Both sibling functions must contain the handoff-dispatched event,
+  // pinning that neither path regresses to the legacy-pipeline route.
+  const dispatchHits = (src.match(/v2_server_entry_signal_handoff_dispatched/g) || []).length;
+  assert.ok(
+    dispatchHits >= 2,
+    `(E2) handoff-dispatched log must appear in both sibling functions (got ${dispatchHits})`
   );
 })();
 
