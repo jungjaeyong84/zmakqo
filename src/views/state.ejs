@@ -308,6 +308,20 @@
       <% if (canceledRejectedProviderN || canceledTimeoutProviderN || canceledFailedInternalN) { %>
         · 실패 <%= fmtNum(canceledRejectedProviderN + canceledTimeoutProviderN + canceledFailedInternalN) %>건
       <% } %>
+      <%
+        // 2026-04-28 V2 audit Step B — V2 entry intent surface.
+        // Visible only when V2 collection has data (post-cutover or canary
+        // entries). Operators can confirm V2 traffic flow without leaving
+        // the trading state page.
+        const v2IntentCount = intent_summary && intent_summary.v2_signal_intent_count;
+        const v2IntentRecent = intent_summary && intent_summary.v2_signal_intent_recent_n;
+      %>
+      <% if (Number.isFinite(Number(v2IntentCount)) && Number(v2IntentCount) > 0) { %>
+        · V2 신호 <%= fmtNum(Number(v2IntentCount)) %>건
+        <% if (Number.isFinite(Number(v2IntentRecent)) && Number(v2IntentRecent) > 0) { %>
+          (24h <%= fmtNum(Number(v2IntentRecent)) %>건)
+        <% } %>
+      <% } %>
     </div>
   </div>
   <div class="metric-card">

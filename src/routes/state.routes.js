@@ -17,6 +17,11 @@ const { buildExitStageView } = require("../utils/exitStageView");
 const { buildSignalDisplayReason } = require("../utils/signalReasonView");
 const { buildFillDisplayReason } = require("../utils/fillReasonView");
 const { isPendingIntentExpired, resolveIntentStatusForView, resolveIntentStatusFamilyForView, isActivePendingIntent } = require("../utils/intentView");
+// 2026-04-28 V2 frontend migration audit Step B — surface V2 signal-intent
+// observation alongside the V1 order_intents_paper view so operators can
+// see V2 traffic flow on /dashboard/trading even before the full V1→V2
+// read migration lands. Best-effort observation: never blocks/throws.
+const { observeRecentV2SignalIntents } = require("../storage/v2IntentsObservation");
 const {
   resolvePositionLeverage,
   resolvePositionLeverageReason,
@@ -303,6 +308,12 @@ function createStateRoutes() {
       const canceledTimeoutProvider = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "TIMEOUT_PROVIDER").length;
       const canceledFailedInternal = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "FAILED_INTERNAL").length;
       const canceledPlain = Math.max(0, canceledLikeRows.length - canceledRejectedProvider - canceledTimeoutProvider - canceledFailedInternal);
+      // 2026-04-28 V2 audit Step B — V2 signal-intent observation.
+      // Best-effort; never blocks the rendering even if Firestore is down.
+      const v2IntentObs = await observeRecentV2SignalIntents({
+        exchange: exchangeNorm,
+        limit: 200,
+      }).catch(() => ({ ok: false, count: 0, recent_n: 0, latest_at_ms: null, error: "OBSERVE_THREW" }));
       const intentSummary = {
         // Exchange + live scope only. Mixed-scope totals make the trading page misleading.
         total: intentsFiltered.length,
@@ -316,6 +327,14 @@ function createStateRoutes() {
         expired_pending: intentsFiltered.filter((x) => {
           return isPendingIntentExpired(x, nowMs);
         }).length,
+        // V2 surface — observation only. Operators reading the trading
+        // page can confirm V2 traffic is flowing even when V1
+        // order_intents_paper is empty (post-cutover scenario).
+        v2_signal_intent_count: v2IntentObs.count,
+        v2_signal_intent_recent_n: v2IntentObs.recent_n,
+        v2_signal_intent_latest_at_ms: v2IntentObs.latest_at_ms,
+        v2_observation_ok: v2IntentObs.ok,
+        v2_observation_error: v2IntentObs.error,
       };
 
       // positions: docId direct lookup (POS__BINANCEFUT__BTCUSDT)
@@ -997,6 +1016,11 @@ function createStateRoutes() {
       const canceledTimeoutProvider = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "TIMEOUT_PROVIDER").length;
       const canceledFailedInternal = canceledLikeRows.filter((x) => normalizeStatus(resolveIntentStatusForView(x, nowMs)) === "FAILED_INTERNAL").length;
       const canceledPlain = Math.max(0, canceledLikeRows.length - canceledRejectedProvider - canceledTimeoutProvider - canceledFailedInternal);
+      // 2026-04-28 V2 audit Step B — V2 signal-intent observation (best-effort).
+      const v2IntentObs2 = await observeRecentV2SignalIntents({
+        exchange: exchangeNorm,
+        limit: 200,
+      }).catch(() => ({ ok: false, count: 0, recent_n: 0, latest_at_ms: null, error: "OBSERVE_THREW" }));
       const intentSummary = {
         total: intentsFiltered.length,
         pending: intentsFiltered.filter((x) => isActivePendingIntent(x, nowMs)).length,
@@ -1006,6 +1030,11 @@ function createStateRoutes() {
         canceled_timeout_provider: canceledTimeoutProvider,
         canceled_failed_internal: canceledFailedInternal,
         canceled_plain: canceledPlain,
+        v2_signal_intent_count: v2IntentObs2.count,
+        v2_signal_intent_recent_n: v2IntentObs2.recent_n,
+        v2_signal_intent_latest_at_ms: v2IntentObs2.latest_at_ms,
+        v2_observation_ok: v2IntentObs2.ok,
+        v2_observation_error: v2IntentObs2.error,
       };
 
       const rows = markets.map((mk) => {
