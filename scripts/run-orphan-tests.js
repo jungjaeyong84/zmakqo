@@ -61,7 +61,12 @@ const SKIP = new Map([
   // V1 TP0 retired by default (DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED=true);
   // legacy projection path preserved behind explicit opt-out.
   ["binance-exit-qty-contract-audit.test.js", "qty contract drift — audit fixture"],
-  ["dashboard-openclaw.test.js", "evidence_linker artifact removed; route shape drift"],
+  // dashboard-openclaw.test.js — drift fixed Step 18. The 3 OpenClaw
+  // agent crons were migrated from launchd to Cloud Scheduler in
+  // 2026-04-18 but dashboard.openclaw.routes still searched only
+  // OPENCLAW_CRON_JOBS — body.artifacts came back empty in production.
+  // Real route regression, not just test drift; route now searches
+  // both arrays + manifest got produces_artifact stamps.
   // exit-trailing-contract-report.test.js — drift fixed Step 14 (Stage N tp1_pct 3.25→2.5).
   ["pine-transition-lead-source.test.js", "pine header version mismatch — generator drift"],
   // signal-drops.test.js — drift fixed Step 12 (riskGovernor field added).

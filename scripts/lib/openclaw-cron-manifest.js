@@ -100,6 +100,11 @@ const OPENCLAW_OPTIONAL_CRON_JOBS = Object.freeze([
 // operator's laptop. The local watchdog deliberately does not check
 // these (Cloud Scheduler state is observable in GCP Console directly).
 const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
+  // 2026-04-28 senior audit Step 18 — produces_artifact + artifact_sla_hours
+  // added so dashboard.openclaw.routes (which reads this manifest to populate
+  // body.artifacts) can locate the artifact filenames after the 2026-04-18
+  // migration moved these jobs from local launchd to Cloud Scheduler.
+  // Without these fields the dashboard surfaced an empty `artifacts` block.
   {
     job_id: "openclaw_agent_evidence_linker",
     scheduler_name: "openclaw-evidence-linker",
@@ -109,6 +114,8 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     http_path: "/api/openclaw/cron/evidence-linker?lookback_days=1",
     owner: "openclaw",
     criticality: "MEDIUM",
+    produces_artifact: "openclaw_evidence_linker_latest.json",
+    artifact_sla_hours: 6,
   },
   {
     job_id: "openclaw_agent_calibration",
@@ -119,6 +126,8 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     http_path: "/api/openclaw/cron/calibration",
     owner: "openclaw",
     criticality: "HIGH",
+    produces_artifact: "openclaw_calibration_latest.json",
+    artifact_sla_hours: 26,
   },
   {
     job_id: "openclaw_agent_retrospect",
@@ -129,6 +138,8 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     http_path: "/api/openclaw/cron/retrospect?lookback_hours=24",
     owner: "openclaw",
     criticality: "MEDIUM",
+    produces_artifact: "openclaw_retrospect_latest.json",
+    artifact_sla_hours: 26,
   },
   {
     job_id: "v2_production_entry_route_canary",

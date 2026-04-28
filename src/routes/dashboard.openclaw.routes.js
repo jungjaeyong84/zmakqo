@@ -22,7 +22,7 @@ const path = require("path");
 const router = express.Router();
 
 const { getRecentEvidence, KINDS, MAX_BUFFER } = require("../services/openclawEvidenceLedger");
-const { OPENCLAW_CRON_JOBS } = require("../../scripts/lib/openclaw-cron-manifest");
+const { OPENCLAW_CRON_JOBS, OPENCLAW_CLOUD_SCHEDULER_JOBS } = require("../../scripts/lib/openclaw-cron-manifest");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 // The test suite sets OPENCLAW_DASHBOARD_OPS_DAILY_DIR to a temp directory so
@@ -46,8 +46,17 @@ const ARTIFACT_JOB_IDS = Object.freeze({
 function resolveArtifactsFromManifest() {
   const out = {};
   const slaOut = {};
+  // 2026-04-28 senior audit Step 18 — the 3 OpenClaw agent-cycle crons
+  // (evidence_linker / calibration / retrospect) were migrated from
+  // local launchd (OPENCLAW_CRON_JOBS) to Cloud Scheduler
+  // (OPENCLAW_CLOUD_SCHEDULER_JOBS) in 2026-04-18. This dashboard route
+  // kept reading only OPENCLAW_CRON_JOBS, so body.artifacts ended up
+  // empty and the dashboard reported all 3 artifacts as missing.
+  // Search both arrays so the manifest single-source contract still
+  // holds across the launchd → Cloud Scheduler migration.
   for (const [key, jobId] of Object.entries(ARTIFACT_JOB_IDS)) {
-    const job = OPENCLAW_CRON_JOBS.find((j) => j.job_id === jobId);
+    const job = OPENCLAW_CRON_JOBS.find((j) => j.job_id === jobId)
+      || OPENCLAW_CLOUD_SCHEDULER_JOBS.find((j) => j.job_id === jobId);
     if (!job || !job.produces_artifact) continue;
     out[key] = job.produces_artifact;
     slaOut[key] = Number(job.artifact_sla_hours) || null;
