@@ -5,7 +5,15 @@
 
 ---
 
-## 1. Stage E/G "single source of truth" — surface 까지만, V1 read 통합 X
+## 1. Stage E/G "single source of truth" — surface + V1 mirror scaffolded (Stage S, default OFF)
+
+> **2026-04-28 update**: Stage S 의 V1 mirror code 가 코드베이스에 들어갔다.
+> Cutover 시 `V2_TO_V1_META_MIRROR_ENABLED=1` 만 설정하면 활성화. 본문 아래는
+> Stage S 도입 전 원본 limit 기록.
+
+---
+
+## 1-orig. Stage E/G "single source of truth" — surface 까지만, V1 read 통합 X
 
 **주장 (이전 commit 메시지)**: "V2 protection_runtime_v2 single source 정착"
 
@@ -23,6 +31,20 @@
 2. 또는 `binanceTickExit` 의 read path 를 V2 collection fallback 추가
 
 **왜 이번에 안 했나**: V1 positions_paper 의 schema / lock 패턴 / writer lease 통과 등 변경 risk 가 크고 cutover 결정 사안과 묶여있어 별도 PR 권고. Stage W 에서 한계 명시 처리.
+
+**2026-04-28 Stage S 진행**:
+- `src/v2/v1MetaMirror.js` 신설 — `buildV2ToV1MetaPatch` (pure) + `writeV2ToV1MetaMirror` (best-effort, never throws)
+- `src/v2/openclawShadowPositionWriter.js` 의 `writeOpenClawShadowEntryBootstrap` 끝에 mirror 호출 wired
+- env gate: `V2_TO_V1_META_MIRROR_ENABLED` (default OFF) — code 는 들어갔지만 production 동작은 변하지 않음
+- 6 case unit test (`src/tests/v2-to-v1-meta-mirror.test.js`) + npm test wired
+- mirror 는 `upsertPositionMetaOnly` (META scope) 사용 → state/sizePct/positionSide 안 건드림. binanceFuturesFillsSync 가 여전히 single writer of those fields.
+
+**Cutover 절차 (2026-04-28 권고)**:
+1. canary 환경에서 `V2_TO_V1_META_MIRROR_ENABLED=1` 설정 → 24h 관찰
+2. Cloud Logging 에 `v2_to_v1_meta_mirror_ok` event 카운트 vs `v2_to_v1_meta_mirror_fail` 비율 측정 (>99%)
+3. positions_paper.meta 에서 `v2_to_v1_mirrored=true` 마커 검증 → V2 entry 마다 stamp 되고 있는지 확인
+4. V1 read path (paperBinanceRunner trail logic, dashboards) 가 mirrored meta 를 읽고 있는지 spot check
+5. 모든 검증 PASS → `DONBEOLJA_V2_CANARY_ONLY=0 + DONBEOLJA_V2_REQUIRE_PRODUCTION_CUTOVER=1` 으로 cutover
 
 ---
 

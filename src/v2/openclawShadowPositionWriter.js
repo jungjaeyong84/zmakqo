@@ -5,6 +5,7 @@ const { buildProtectionRuntimeDoc } = require("./contracts");
 const { putV2Doc } = require("./storage");
 const { writeOpenClawShadowDecision, resolveShadowSignalIdentity } = require("./openclawShadowWriter");
 const { resolveV2RuntimeConfig } = require("./runtime");
+const { writeV2ToV1MetaMirror, isV2ToV1MetaMirrorEnabled } = require("./v1MetaMirror");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -263,6 +264,51 @@ async function writeOpenClawShadowEntryBootstrap({
     protectionRuntime,
   });
 
+  // 2026-04-28 Stage S — V2→V1 positions_paper.meta mirror. Default OFF
+  // behind `V2_TO_V1_META_MIRROR_ENABLED`; turning it on lets V1
+  // (paperBinanceRunner / binanceTickExit / dashboards) see the
+  // entry_event_id, entry_r_distance, initial_stop_price,
+  // native_protection_* and simplified_exit_v2_enabled fields stamped
+  // by V2 entry. Required before the V2 cutover (canary_only=0)
+  // because V1 read paths fall back to leverage-normalized defaults
+  // when these fields are missing — fine in canary, broken in
+  // production. The write is best-effort: failure logs but never
+  // throws into the V2 entry path.
+  let mirror = { skipped: true, reason: "V2_TO_V1_META_MIRROR_DISABLED" };
+  try {
+    mirror = await writeV2ToV1MetaMirror({
+      exchange: upper(input.exchange) || "BINANCEFUT",
+      symbol,
+      positionCycleId: bootstrap.positionCycle.position_cycle_id,
+      patchInputs: {
+        entryEventId,
+        entryIntentId: trimOrNull(fillContext.entryIntentId),
+        positionSide,
+        entryPrice,
+        entryQtyAbs,
+        entryExecBarMs: toNumberOrNull(fillContext.entryExecBarMs ?? input.barCloseMs),
+        initialStopPrice: bootstrap.protectionPlan && bootstrap.protectionPlan.initial_stop_price,
+        entryRDistance: bootstrap.protectionPlan && bootstrap.protectionPlan.entry_r_distance,
+        tp1TargetPct,
+        nativeStopOrderId: protection.slOrderId,
+        nativeStopPrice: protection.nativeStopPrice,
+        nativeTpOrderId: protection.tp1OrderId,
+        nativeTpPrice: protection.nativeTp1Price,
+        nativeTpQtyBase: protection.nativeTp1QtyAbs,
+        nativeTpQtyRatio: tp1QtyRatio,
+        nativeRefreshStatus: protection.nativeRefreshStatus,
+        nativeRefreshAtMs: protection.lastRefreshAt,
+        nativeProtectionUnprotectedWindowMs: protection.lastGapMs,
+      },
+      env,
+    });
+  } catch (mirrorErr) {
+    // Defense-in-depth: writeV2ToV1MetaMirror already swallows errors,
+    // but if a future refactor accidentally lets one escape, we still
+    // must not break the V2 entry write path.
+    mirror = { ok: false, reason: "V2_TO_V1_META_MIRROR_THREW", error: mirrorErr && mirrorErr.message ? mirrorErr.message : String(mirrorErr) };
+  }
+
   return {
     ok: true,
     written: true,
@@ -272,6 +318,8 @@ async function writeOpenClawShadowEntryBootstrap({
     signal_intent_id: signalIntentId,
     openclaw_decision_id: openclawDecisionId,
     writes,
+    mirror,
+    mirror_enabled: isV2ToV1MetaMirrorEnabled(env),
   };
 }
 
