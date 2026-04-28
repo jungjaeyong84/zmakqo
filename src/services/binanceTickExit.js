@@ -2292,10 +2292,35 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
     if (Number.isFinite(tpCPx)) out.push({ kind: "TP_C", price: tpCPx });
   }
 
-  const bePct = computeBePct(rules, leverageEff, pos.exchange);
-  if (Number.isFinite(bePct)) {
-    const bePx = pnlToPrice({ avg, pnlPct: Number(bePct) / leverageEff, side });
-    if (Number.isFinite(bePx)) out.push({ kind: "BE", price: bePx });
+  // 2026-04-28 — BE trigger root-cause fix.
+  //
+  // The BE ("break-even") semantics defined by the strategy is: AFTER
+  // TP1 has been reached, the stop is moved to break-even so the
+  // remaining runner cannot turn into a loss. It is NOT a stand-alone
+  // exit signal that fires on entry.
+  //
+  // Until this guard, computeExitTriggers always pushed { kind: "BE",
+  // price: entry_avg ± bePct } regardless of whether TP1 had been
+  // reached. With the default bePct (= -(feeBps + slippageBps)*2 *
+  // leverage / 10000 ≈ -0.18% to -0.54% depending on leverage), the
+  // BE price sits a few ticks on the loss side of entry. Any tick of
+  // unfavorable noise immediately after entry crossed that price and
+  // the fast-lane fired BE → V2 direct exit dispatch → reduceOnly
+  // close → position auto-closed within seconds of entry.
+  //
+  // Production evidence (2026-04-28 12:31-12:33 UTC, BE auto-close
+  // chain on BTCUSDT/ETHUSDT/LINKUSDT — and the same pattern at 10:17
+  // UTC well before any V2 server-native generator existed, ruling
+  // out the F2 path as the cause): every entry was being chopped.
+  //
+  // Fix: gate the BE trigger on tpP1Done === true. SL/TP_P1/TP_C/TRAIL
+  // semantics already gate themselves correctly; BE was the outlier.
+  if (tpP1Done) {
+    const bePct = computeBePct(rules, leverageEff, pos.exchange);
+    if (Number.isFinite(bePct)) {
+      const bePx = pnlToPrice({ avg, pnlPct: Number(bePct) / leverageEff, side });
+      if (Number.isFinite(bePx)) out.push({ kind: "BE", price: bePx });
+    }
   }
 
   const trailDelay = resolveTrailDelayState({
