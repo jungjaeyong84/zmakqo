@@ -39,8 +39,15 @@ const SKIP = new Map([
 
   // Contract/fixture drift — assertions reference older schemas or
   // counts. None indicate runtime regressions; stale fixtures only.
-  ["backfill-canonical-exit-transitions.test.js", "schema drift — backfill canonical fixture"],
-  ["backfill-canonical-exit-fill-metadata.test.js", "schema drift — backfill canonical fixture"],
+  // backfill-canonical-{exit-transitions,exit-fill-metadata}: producer
+  // reclassifies legacy TP0 fills under simplified_exit_v2 as
+  // `EXIT_TP_P1_0P` (0% suffix). The "0P" suffix looks like a real bug
+  // in the canonical-event renderer (TP1 percent metadata missing for
+  // legacy TP0-shaped fills), but fixing that requires production code
+  // change with downstream impact on Firestore canonical-exit ledger
+  // schema. Defer to a separate PR — keep quarantined.
+  ["backfill-canonical-exit-transitions.test.js", "TP0 retirement reclassification produces EXIT_TP_P1_0P (suspect renderer bug, defer)"],
+  ["backfill-canonical-exit-fill-metadata.test.js", "TP0 retirement reclassification produces EXIT_TP_P1_0P (suspect renderer bug, defer)"],
   // binance-position-stage-reconcile.test.js — drift fixed Step 13.
   // V1 TP0 retired by default (DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED=true);
   // legacy projection path preserved behind explicit opt-out.
@@ -49,7 +56,8 @@ const SKIP = new Map([
   // exit-trailing-contract-report.test.js — drift fixed Step 14 (Stage N tp1_pct 3.25→2.5).
   ["pine-transition-lead-source.test.js", "pine header version mismatch — generator drift"],
   // signal-drops.test.js — drift fixed Step 12 (riskGovernor field added).
-  ["v2-openclaw-shadow-position-writer.test.js", "shadow writer fixture drift"],
+  // v2-openclaw-shadow-position-writer.test.js — drift fixed Step 15
+  // (decision bundle collection added; calls.length expectation 5 → 6).
   // best-self-evolution-dataset: NOT a simple fixture drift — the
   // DROP_WAIT_ONE_BAR_* retirement (TIMING → LEGACY_RETIRED in
   // signalReasonView.js) means bestSelfEvolutionDataset.js downstream

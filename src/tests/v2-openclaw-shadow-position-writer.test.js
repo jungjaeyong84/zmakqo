@@ -137,10 +137,14 @@ function buildFakeDb(store, calls) {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, true);
   assert.strictEqual(result.reason, "V2_SHADOW_ENTRY_BOOTSTRAP_OK");
-  assert.strictEqual(calls.length, 5);
+  // 2026-04-28 senior audit Step 15 — drift fix. The shadow writer now
+  // also persists an OpenClawDecisionBundle (collection
+  // `openclaw_decision_bundles_v2`); the test pre-dated that surface.
+  assert.strictEqual(calls.length, 6);
 
   const intents = store["dbjv2__signal_intents_v2"];
   const decisions = store["dbjv2__openclaw_decisions_v2"];
+  const decisionBundles = store["dbjv2__openclaw_decision_bundles_v2"];
   const cycles = store["dbjv2__position_cycles_v2"];
   const projections = store["dbjv2__exit_runtime_projection_v2"];
   const protections = store["dbjv2__protection_runtime_v2"];
@@ -153,6 +157,7 @@ function buildFakeDb(store, calls) {
 
   assert.ok(intent);
   assert.ok(decision);
+  assert.ok(decisionBundles && Object.keys(decisionBundles).length === 1, "decision bundle written exactly once");
   assert.ok(cycle);
   assert.ok(projection);
   assert.ok(protection);
