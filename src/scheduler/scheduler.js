@@ -42,6 +42,7 @@ const {
   refreshLatestBarSnapshot,
   computeGateForMarket,
   runOneMarket,
+  isV1MarketRunnerDisabledByEnv,
   buildRunId,
   pickTf,
 } = require("./marketRunner");
@@ -340,6 +341,38 @@ function createScheduler() {
       const results = [];
       for (const market of markets) {
         try {
+          // 2026-04-28 Stage T-hotfix — V1 cutover guard moved here
+          // from inside runOneMarket so server-primary-tick (V2 owning
+          // path) can still call runOneMarket for bars refresh + V2
+          // server-signal generation. The legacy scheduler tick is the
+          // V1 path that must skip under DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1.
+          if (isV1MarketRunnerDisabledByEnv(process.env)) {
+            try {
+              console.log(JSON.stringify({
+                event: "v1_scheduler_market_skipped_legacy_runtime_disabled",
+                ts: new Date().toISOString(),
+                exchange: exId,
+                market,
+                signal_tf: signalTf,
+                exec_tf: execTf,
+                run_id: runId,
+                note: "DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1; legacy scheduler tick must not run V1 marketRunner. V2 productionEntryRoute + openclaw server-primary-tick own entry/signal during cutover.",
+              }));
+            } catch (_) { /* observability only */ }
+            const skipped = {
+              ok: true,
+              exchange: exId,
+              market,
+              symbol_or_pair_id: market,
+              signal_tf: signalTf,
+              exec_tf: execTf,
+              skipped: true,
+              reason: "V1_SCHEDULER_LEGACY_RUNTIME_DISABLED",
+            };
+            results.push(skipped);
+            marketResults.push(skipped);
+            continue;
+          }
           const r = await runOneMarket({
             exchange: exId,
             market,

@@ -450,30 +450,18 @@ function isV1MarketRunnerDisabledByEnv(env = process.env) {
 }
 
 async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHint, executionEnabled, executionMode, allowReplaySameBar }) {
-  if (isV1MarketRunnerDisabledByEnv(process.env)) {
-    try {
-      console.log(JSON.stringify({
-        event: "v1_market_runner_skipped_legacy_runtime_disabled",
-        ts: new Date().toISOString(),
-        exchange,
-        market,
-        signal_tf: signalTf,
-        exec_tf: execTf,
-        run_id: runIdHint,
-        note: "DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1; V1 paperBinanceRunner pipeline must not execute. V2 productionEntryRoute owns entry/exit during cutover.",
-      }));
-    } catch (_) { /* observability only */ }
-    return {
-      ok: true,
-      exchange,
-      market,
-      symbol_or_pair_id: market,
-      signal_tf: signalTf,
-      exec_tf: execTf,
-      skipped: true,
-      reason: "V1_MARKET_RUNNER_LEGACY_RUNTIME_DISABLED",
-    };
-  }
+  // 2026-04-28 Stage T-hotfix — the previous early-return guard here
+  // (which short-circuited every runOneMarket call when
+  // DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1) was too broad: it also
+  // blocked the V2 server-primary tick (run-openclaw-server-primary-tick.js)
+  // which legitimately calls runOneMarket to refresh bars + generate
+  // server-native paper signals. Removing that guard here and moving
+  // the V1 cutover guard to the legacy callers (scheduler/scheduler.js
+  // and routes/webhook.routes.js) so server-primary-tick can pass
+  // through. V1 entry/exit are still blocked deeper in the pipeline
+  // (paperBinanceRunner executor reject, binanceTickExit fast-lane
+  // skip, openclawShadowPositionWriter denial). See Stage T-hotfix
+  // commit message for the architectural rationale.
   const signalTfFinal = normalizeTf(signalTf || DEFAULT_EXEC_TF) || DEFAULT_EXEC_TF;
   const execTfFinal = normalizeTf(execTf || signalTfFinal) || signalTfFinal;
 
@@ -792,6 +780,7 @@ module.exports = {
   refreshLatestBarSnapshot,
   computeGateForMarket,
   runOneMarket,
+  isV1MarketRunnerDisabledByEnv,
   __test: {
     summarizeServerSignalTrace,
     buildMarketRunnerBarClaimDocPath,

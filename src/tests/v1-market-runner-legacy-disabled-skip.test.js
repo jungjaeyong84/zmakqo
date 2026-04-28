@@ -1,106 +1,104 @@
 "use strict";
 
 // 2026-04-29 — V1 market runner architectural skip test.
+// 2026-04-28 Stage T-hotfix — guard moved from runOneMarket itself to
+// the legacy scheduler call site (scheduler/scheduler.js) because the
+// V2 server-primary tick (scripts/run-openclaw-server-primary-tick.js)
+// also calls runOneMarket for bars-refresh + V2 server-signal
+// generation, and the prior placement blocked that legitimate V2 path.
+// runOneMarket no longer carries the guard; the guard now lives on
+// the V1-only callers (legacy scheduler tick) so server-primary-tick
+// passes through cleanly.
 //
-// Operator-diagnosed leak: V1 paperBinanceRunner pipeline kept
-// executing on every bar even though `DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1`
-// rejects every resulting order. The architectural fix is to refuse
-// V1 entry at the scheduler/webhook entry point (runOneMarket) so V1
-// logic never starts during V2-runtime-only operation.
-//
-// Structural test: scheduler/marketRunner.js must:
-//   (A) define `isV1MarketRunnerDisabledByEnv` reading
-//       DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED
-//   (B) check it as the very first action inside runOneMarket
-//   (C) emit the structured skip log
-//   (D) return { ok:true, skipped:true, reason:"V1_MARKET_RUNNER_LEGACY_RUNTIME_DISABLED" }
-//   (E) the early-return guard must precede `signalTfFinal` resolution
-//       (so no V1 work is done before bailing)
+// Structural test:
+//   (A) marketRunner.js exports `isV1MarketRunnerDisabledByEnv` so
+//       legacy callers can apply it
+//   (B) scheduler/scheduler.js imports the helper
+//   (C) scheduler/scheduler.js applies the guard immediately before
+//       its runOneMarket call site, emits the structured skip log,
+//       and `continue`s the loop without running V1 logic
+//   (D) marketRunner.js no longer has an early-return guard inside
+//       runOneMarket itself (so V2 server-primary-tick can pass)
 
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 
-function withEnv(name, value, fn) {
-  const prior = process.env[name];
-  if (value === undefined) delete process.env[name];
-  else process.env[name] = value;
-  try { return fn(); } finally {
-    if (prior === undefined) delete process.env[name];
-    else process.env[name] = prior;
-  }
-}
-
 (function testStructural() {
-  const src = fs.readFileSync(
+  const marketRunnerSrc = fs.readFileSync(
     path.join(__dirname, "..", "scheduler", "marketRunner.js"),
     "utf8"
   );
+  const schedulerSrc = fs.readFileSync(
+    path.join(__dirname, "..", "scheduler", "scheduler.js"),
+    "utf8"
+  );
 
-  // (A) helper exists
+  // (A) helper exists + reads env + is exported
   assert.ok(
-    src.includes("function isV1MarketRunnerDisabledByEnv"),
-    "(A) isV1MarketRunnerDisabledByEnv helper must exist"
+    marketRunnerSrc.includes("function isV1MarketRunnerDisabledByEnv"),
+    "(A) isV1MarketRunnerDisabledByEnv helper must exist in marketRunner.js"
   );
   assert.ok(
-    src.includes("DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED"),
+    marketRunnerSrc.includes("DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED"),
     "(A) helper must read DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED"
   );
+  assert.ok(
+    /module\.exports\s*=\s*\{[\s\S]*isV1MarketRunnerDisabledByEnv[\s\S]*\}/.test(marketRunnerSrc),
+    "(A) marketRunner.js must export isV1MarketRunnerDisabledByEnv"
+  );
 
-  // (B) called as first statement in runOneMarket. Find the function
-  //     body opening brace by walking past the destructured-args block.
-  const runOneIdx = src.indexOf("async function runOneMarket(");
+  // (B) scheduler.js imports the helper
+  assert.ok(
+    schedulerSrc.includes("isV1MarketRunnerDisabledByEnv"),
+    "(B) scheduler.js must import isV1MarketRunnerDisabledByEnv"
+  );
+
+  // (C) scheduler.js applies the guard right before its runOneMarket
+  //     call site. Locate the runOneMarket call and require the guard
+  //     to appear within the immediate preceding ~1500 chars.
+  const runOneCallIdx = schedulerSrc.indexOf("await runOneMarket({");
+  assert.ok(runOneCallIdx > 0, "(C) runOneMarket call site not found in scheduler.js");
+  const region = schedulerSrc.slice(Math.max(0, runOneCallIdx - 1500), runOneCallIdx);
+  assert.ok(
+    region.includes("isV1MarketRunnerDisabledByEnv(process.env)"),
+    "(C) scheduler.js must check isV1MarketRunnerDisabledByEnv before runOneMarket"
+  );
+  assert.ok(
+    region.includes("v1_scheduler_market_skipped_legacy_runtime_disabled"),
+    "(C) scheduler.js skip branch must emit structured skip log"
+  );
+  assert.ok(
+    region.includes("V1_SCHEDULER_LEGACY_RUNTIME_DISABLED"),
+    "(C) scheduler.js skip return reason must be V1_SCHEDULER_LEGACY_RUNTIME_DISABLED"
+  );
+  assert.ok(
+    region.includes("continue;"),
+    "(C) skip branch must continue the loop without running V1 logic"
+  );
+
+  // (D) runOneMarket itself must NOT carry the early-return guard any
+  //     more — that placement also blocked V2 server-primary-tick.
+  const runOneIdx = marketRunnerSrc.indexOf("async function runOneMarket(");
   assert.ok(runOneIdx > 0, "runOneMarket function not found");
-  const bodyStart = src.indexOf(") {", runOneIdx);
+  const bodyStart = marketRunnerSrc.indexOf(") {", runOneIdx);
   assert.ok(bodyStart > runOneIdx, "runOneMarket function body brace not found");
-  const firstStmtRegion = src.slice(bodyStart, bodyStart + 1200);
+  const earlyBody = marketRunnerSrc.slice(bodyStart, bodyStart + 1200);
   assert.ok(
-    firstStmtRegion.includes("if (isV1MarketRunnerDisabledByEnv(process.env))"),
-    "(B) guard must be the first statement inside runOneMarket"
-  );
-
-  // (C) structured skip log
-  assert.ok(
-    firstStmtRegion.includes("v1_market_runner_skipped_legacy_runtime_disabled"),
-    "(C) structured skip log event must be emitted"
-  );
-
-  // (D) return shape
-  assert.ok(
-    firstStmtRegion.includes("V1_MARKET_RUNNER_LEGACY_RUNTIME_DISABLED"),
-    "(D) skip return must include reason V1_MARKET_RUNNER_LEGACY_RUNTIME_DISABLED"
-  );
-  assert.ok(
-    firstStmtRegion.includes("skipped: true"),
-    "(D) skip return must include skipped: true"
-  );
-
-  // (E) guard precedes signalTfFinal resolution
-  const signalTfFinalIdx = src.indexOf("const signalTfFinal", bodyStart);
-  const guardIdx = src.indexOf("isV1MarketRunnerDisabledByEnv(process.env)", bodyStart);
-  assert.ok(guardIdx >= 0 && signalTfFinalIdx >= 0, "(E) anchor lines not found");
-  assert.ok(
-    guardIdx < signalTfFinalIdx,
-    "(E) guard must precede signalTfFinal so no V1 work happens before bailing"
+    !earlyBody.includes("isV1MarketRunnerDisabledByEnv(process.env)"),
+    "(D) runOneMarket must NOT call the guard internally — it would block V2 server-primary-tick"
   );
 })();
 
 (function testHelperRuntime() {
-  // Reload after env to test helper directly.
+  // Reload after env to test helper directly via export.
   delete require.cache[require.resolve("../scheduler/marketRunner")];
-  // We can't directly require the helper because it's not exported,
-  // so we re-implement the env parse the same way and assert symmetry.
-  function parse(env) {
-    const raw = env && env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED;
-    if (raw === undefined || raw === null || raw === "") return false;
-    const norm = String(raw).trim().toLowerCase();
-    return norm === "1" || norm === "true" || norm === "yes" || norm === "on";
-  }
-  assert.strictEqual(parse({}), false, "default OFF");
-  assert.strictEqual(parse({ DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "0" }), false, "explicit 0");
+  const { isV1MarketRunnerDisabledByEnv } = require("../scheduler/marketRunner");
+  assert.strictEqual(isV1MarketRunnerDisabledByEnv({}), false, "default OFF");
+  assert.strictEqual(isV1MarketRunnerDisabledByEnv({ DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "0" }), false, "explicit 0");
   for (const truthy of ["1", "true", "yes", "on", "TRUE", "ON"]) {
     assert.strictEqual(
-      parse({ DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: truthy }),
+      isV1MarketRunnerDisabledByEnv({ DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: truthy }),
       true,
       `truthy=${truthy}`
     );
