@@ -36,9 +36,13 @@ async function run() {
     assert.strictEqual(cfg.exec_tf, "15m");
     assert.deepStrictEqual(cfg.markets, BINANCEFUT_CORE_MARKETS);
     assert.deepStrictEqual(defaultMarketsFromEnv("BINANCEFUT"), BINANCEFUT_CORE_MARKETS);
+    // 2026-04-29 — universe expanded to include SUIUSDT (and 7 other
+    // BTC-decoupled symbols). normalizeMarketsList still drops anything
+    // not in BINANCEFUT_CORE_MARKETS; AVAXUSDT remains absent so the
+    // expected output is BTC + ETH + SUI.
     assert.deepStrictEqual(
       normalizeMarketsList(["BTCUSDT", "AVAXUSDT", "ETHUSDT", "SUIUSDT"], "BINANCEFUT"),
-      ["BTCUSDT", "ETHUSDT"]
+      ["BTCUSDT", "ETHUSDT", "SUIUSDT"]
     );
     assert.deepStrictEqual(
       ensureProviderMarkets(["ETHUSDT", "AVAXUSDT"], "BINANCEFUT"),
