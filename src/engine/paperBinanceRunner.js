@@ -18337,6 +18337,98 @@ async function runPaperFuturesForBar({
     ? buildTimeStopExitSignal({ position: pos, bar, posMeta, barCloseMs, signalTfMs, maxHoldBars })
     : null;
   const signalLeverage = resolvePositionLeverage({ position: pos, fallback: leverage });
+
+  // 2026-04-28 F2 Phase 5 hotfix — V2 server-native ENTRY signal
+  // generator (Pine v6.1.1.0 parity port). The runtime path for
+  // BinanceFut PAPER + LIVE is `runPaperFuturesForBar` (this function),
+  // not `runPaperBinanceForBar` — Phase 3 inject was placed in the
+  // wrong sibling function. Generator output joins internalSignalsRaw
+  // so dedupeEntrySignalsByFamily + V2 discovery handoff bridge picks
+  // it up. Disabled by default; enable via
+  // DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED=1.
+  let v2ServerEntrySignals = [];
+  try {
+    const v2EntryGeneratorEnabled = (function() {
+      const raw = String(process.env.DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED || "0").trim().toLowerCase();
+      return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+    })();
+    if (v2EntryGeneratorEnabled) {
+      const sameTfBars = await queryBars({ exchange, symbol, tf: signalTf, limit: 200 });
+      const htfBars = await queryBars({ exchange, symbol, tf: "240", limit: 70 });
+      const cooldownState = await getV2ServerEntryCooldownState({ exchange, symbol, tf: signalTf });
+      const v2GenResult = generateV2EntrySignals({
+        exchange,
+        symbol,
+        tf: signalTf,
+        bars: Array.isArray(sameTfBars) ? sameTfBars : [],
+        htfBars: Array.isArray(htfBars) ? htfBars : [],
+        position: pos,
+        cooldownState,
+        runId,
+        barCloseMs: Number(barCloseMs),
+      });
+      if (v2GenResult && Array.isArray(v2GenResult.signals) && v2GenResult.signals.length > 0) {
+        try {
+          await setV2ServerEntryCooldownState({
+            exchange,
+            symbol,
+            tf: signalTf,
+            state: v2GenResult.cooldownStateNext,
+          });
+        } catch (cdErr) {
+          console.warn("[V2_SERVER_ENTRY_COOLDOWN_PERSIST_FAIL]", cdErr?.message || cdErr);
+        }
+      }
+      try {
+        console.log(JSON.stringify({
+          event: "v2_server_entry_signal_generator_run",
+          ts: new Date().toISOString(),
+          exchange,
+          symbol,
+          tf: signalTf,
+          run_id: runId,
+          skipped: v2GenResult ? v2GenResult.skipped === true : true,
+          skip_reason: v2GenResult ? v2GenResult.skipReason : "GENERATOR_NULL",
+          signals_n: v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals.length : 0,
+          diagnostics: v2GenResult && v2GenResult.diagnostics
+            ? {
+              market_state: v2GenResult.diagnostics.market_state,
+              htf_bias: v2GenResult.diagnostics.htf_bias,
+              long_opportunity: v2GenResult.diagnostics.long_opportunity,
+              short_opportunity: v2GenResult.diagnostics.short_opportunity,
+              trigger_type_long: v2GenResult.diagnostics.trigger_type_long,
+              trigger_type_short: v2GenResult.diagnostics.trigger_type_short,
+              long_can_fire: v2GenResult.diagnostics.long_can_fire,
+              short_can_fire: v2GenResult.diagnostics.short_can_fire,
+            }
+            : null,
+        }));
+      } catch (_) { /* observability only */ }
+      v2ServerEntrySignals = (v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [])
+        .map((sig) => {
+          const sigBarMs = Number(sig.bar_close_time_utc_ms);
+          const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
+          const features = { ...(sig.features || {}) };
+          if (sig.bar_close_time_utc_ms != null) features.bar_close_time_utc_ms = sig.bar_close_time_utc_ms;
+          if (sig.price != null) features.signal_price = sig.price;
+          return {
+            signal_id: `SIG__V2_SERVER__${exchange}__${symbol}__${signalTf}__${sigBarMs || Date.now()}__${sig.event}__${sig.entry_grade}`,
+            signal_doc_id: null,
+            event: sig.event,
+            side: sig.side,
+            qty_pct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+            reason: "V2_SERVER_NATIVE_GENERATOR",
+            signal_bar_close_time_utc_ms: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            signal_bar_close_time_utc: sigBarUtc,
+            signal_price: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
+            features,
+          };
+        });
+    }
+  } catch (v2GenErr) {
+    console.warn("[V2_SERVER_ENTRY_SIGNAL_GENERATOR_FAIL]", v2GenErr?.message || v2GenErr);
+  }
+
   const internalSignalsRaw = [
     ...nativeInitialSignals,
     ...generateSignals({
@@ -18351,6 +18443,7 @@ async function runPaperFuturesForBar({
       exitProfileMode: liveCfg && liveCfg.exitProfileMode,
       currentBarCloseMs: Number(barCloseMs),
     }),
+    ...v2ServerEntrySignals,
     ...(timeStopSignal ? [timeStopSignal] : []),
   ];
   const internalSignals = filterLiveFuturesInternalSignals({

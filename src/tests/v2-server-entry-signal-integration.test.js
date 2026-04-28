@@ -76,16 +76,25 @@ const path = require("path");
     "(C3) env-flag check must precede generateV2EntrySignals call (default off)"
   );
 
-  // (D) the output must merge into internalSignalsRaw
-  const arrIdx = src.indexOf("const internalSignalsRaw = [");
-  assert.ok(arrIdx > 0, "(D) internalSignalsRaw array build site not found");
-  // v2ServerEntrySignals reference must appear inside the array literal.
-  // Slice from `const internalSignalsRaw = [` to the closing `];` and look for the spread.
-  const tail = src.slice(arrIdx, arrIdx + 1500);
-  assert.ok(
-    tail.includes("...v2ServerEntrySignals"),
-    "(D) generator output must spread into internalSignalsRaw"
-  );
+  // (D) the output must merge into internalSignalsRaw — at BOTH call
+  //     sites (paperBinanceRunner has two parallel functions:
+  //     runPaperBinanceForBar and runPaperFuturesForBar; the BinanceFut
+  //     runtime path goes through runPaperFuturesForBar so both must
+  //     have the inject).
+  const arrIndices = [];
+  let pos = 0;
+  while ((pos = src.indexOf("const internalSignalsRaw = [", pos)) !== -1) {
+    arrIndices.push(pos);
+    pos += 1;
+  }
+  assert.ok(arrIndices.length >= 2, "(D) at least two internalSignalsRaw array build sites expected");
+  for (const idx of arrIndices) {
+    const tail = src.slice(idx, idx + 2000);
+    assert.ok(
+      tail.includes("...v2ServerEntrySignals"),
+      `(D) generator output must spread into internalSignalsRaw at all sites (missing near offset ${idx})`
+    );
+  }
 
   // (E) cooldown persistence on signal fire
   assert.ok(
