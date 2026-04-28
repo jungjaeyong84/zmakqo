@@ -325,9 +325,22 @@ gcloud logging read 'jsonPayload.event="native_protection_refresh_price_decision
     `triggerSource=V2_DIRECT_TICK_EXIT_DISPATCH`, `extra.run_id`,
     `extra.idempotency_key`).
   - (C) `runId` 에 `randomUUID().slice(0,8)` suffix → 동일 ms 충돌도 0.
-  - **Stage V scope (남은 자백)**: V2 canonical exit reducer 가 위 ledger
-    stamp 를 입력으로 받아 fill ack 까지 lifecycle 전체 owning. 현재는 fill 발생 시
-    canonicalExitReducer 가 별도 경로로 ledger 를 다시 stamp.
+  - **Stage V (2026-04-28 코드 분석 결과 — 이미 wired up)**: V2 canonical
+    exit reducer 통합 경로가 이미 존재했음. `binanceFuturesFillsSync.js`
+    의 `loadExitOrderContract({exchange, symbol, orderMeta})` 가 fill 도착
+    시 우리가 stamp 한 `exit_order_contracts` 문서를 orderId 로 조회하고,
+    `applyAuthoritativeExitContractOverride(event, exitContract)` 가
+    contract.event (`EXIT_TRAIL`/`EXIT_TP_P1_2.5P`) 를 휴리스틱
+    event 보다 우선 적용함. 따라서 Stage U-followup-2 의 ledger stamp 는
+    fill ack 시 canonical exit reducer 가 자동으로 우리 V2 evidence 를
+    consume 함. 추가 코드 변경 불필요.
+  - **Stage V 검증 (다음 V2 direct dispatch fire 시)**:
+    1. fast-lane fire → `v2_direct_exit_dispatch_placed` log 에
+       `step_size`/`min_qty`/`order_id`/`run_id`(=runId+uuid) 출력 확인
+    2. fill 도착 → fillSync log 에 `applyAuthoritativeExitContractOverride`
+       hit (event 가 `EXIT_TRAIL` 등으로 override 됨) 확인
+    3. `canonical_exit_transitions` 에 동일 orderId 의 transition 작성됨 확인
+    4. `markExitOrderContractConsumed` 가 contract status 를 CONSUMED 로 갱신
 
 ---
 
