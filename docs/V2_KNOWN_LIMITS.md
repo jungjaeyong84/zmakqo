@@ -235,10 +235,38 @@
 
 ### 남은 누수 (Stage U 후속)
 
-| Path | risk | 우선순위 |
+| Path | risk | 우선순위 | 처리 |
+|---|---|---|---|
+| ~~`systemAnomalyRemediation` 의 V1 emergency exit~~ | ~~breaker 시 청산 안 됨~~ | ~~P1~~ | ✅ Stage U-2 차단 |
+| `trading.actions` 의 manual override | operator 수동 청산 시 V1 거부 | P2 (manual 이라 visible) | 별도 PR |
+
+### Stage U-2 (2026-04-29) — systemAnomalyRemediation V1 emergency exit 차단
+
+`runSystemAnomalyRemediation` 의 breaker-open 분기 직후 (anomalyReason
+초기화 후) `DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED` guard 추가. truthy
+시 즉시 return, V1 flatten path (runPaperFuturesForBar) 0회 진입.
+
+**의미**:
+- breaker open 시점의 자동 flatten 손실 — operator 가 alert 받고 manual 개입 필요
+- 거래소 측 native STOP_MARKET 가 단독 안전망
+- V2 anomaly-flatten path 가 인계받아야 함 (Stage U-2 followup, V2
+  productionEntryRoute 의 reverse-side flatten 또는 신규 V2 anomaly
+  worker)
+
+**검증**: `v1_system_anomaly_remediation_skipped_legacy_runtime_disabled`
+log 가 anomaly 발생 시점에 발생하면 OK (breaker close 시는 위 분기에
+도달조차 안 함).
+
+### Stage U 진행 정리
+
+| Stage | 차단 path | 완료 |
 |---|---|---|
-| `systemAnomalyRemediation` 의 V1 emergency exit | breaker 시 청산 안 됨 | P1 |
-| `trading.actions` 의 manual override | operator 수동 청산 시 V1 거부 | P2 (manual 이라 visible) |
+| T (root) | webhook + scheduler 의 V1 entry (runOneMarket 진입) | ✅ |
+| T (symptom) | V1 V2-discovery loop 의 EXIT_OPPOSITE_SIGNAL inject | ✅ |
+| U-1 | `binanceTickExit` 의 V1 fast-lane (runPaperMarket EXIT_ONLY) | ✅ |
+| U-2 | `systemAnomalyRemediation` 의 V1 emergency flatten | ✅ |
+| U-3 (P2) | `trading.actions` 의 manual override | ⏳ |
+| U-followup | V2 가 인계받아야 할 항목들 (P1) | ⏳ |
 
 ### 검증 (deploy 후 24h)
 

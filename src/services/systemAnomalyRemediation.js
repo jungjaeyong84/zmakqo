@@ -104,6 +104,46 @@ async function runSystemAnomalyRemediation({
     };
   }
 
+  // 2026-04-29 Stage U-2 — operator decision: "V1 자체가 작동하면 안 되고
+  // V2 가 모든 처리를 인계받아야 한다." systemAnomalyRemediation calls
+  // runPaperFuturesForBar (V1 path) for emergency flatten when the
+  // circuit breaker opens. Under DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1
+  // the V1 executor would reject every flatten order anyway with
+  // V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED — the call burns
+  // operator-attention noise without actually flattening anything.
+  //
+  // Skip the V1 flatten outright and emit a structured event so the
+  // operator dashboards can surface "anomaly fired but V1 flatten
+  // disabled" as a separate signal. Real protection in this mode is
+  // the broker-side native STOP_MARKET (managed by binanceTickExit
+  // independently of V1). If a V2 anomaly-flatten path lands later
+  // (Stage U-2 followup) it will replace this skip with an active
+  // V2 dispatch.
+  const legacyRuntimeDisabled = (function() {
+    const raw = String(process.env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED || "0").trim().toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+  })();
+  if (legacyRuntimeDisabled) {
+    try {
+      console.log(JSON.stringify({
+        event: "v1_system_anomaly_remediation_skipped_legacy_runtime_disabled",
+        ts: new Date().toISOString(),
+        exchange: ex,
+        anomaly_reason: anomalyReason,
+        breaker_open: true,
+        note: "V1 emergency flatten bypassed under DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1. Operator must verify positions are protected by broker-side native STOP_MARKET. V2 anomaly-flatten path is a follow-up.",
+      }));
+    } catch (_) { /* observability only */ }
+    return {
+      ok: true,
+      skipped: true,
+      reason: "V1_SYSTEM_ANOMALY_REMEDIATION_LEGACY_RUNTIME_DISABLED",
+      exchange: ex,
+      remediated_positions: 0,
+      rows: [],
+    };
+  }
+
   const rows = await listPositions({ exchange: ex }).catch(() => []);
   const activePositions = (Array.isArray(rows) ? rows : []).filter((row) => isExposedPosition(row));
   if (!activePositions.length) {
