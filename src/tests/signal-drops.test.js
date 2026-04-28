@@ -246,6 +246,11 @@ function run() {
       authoritative: true,
       dropGroup: "UNKNOWN",
       dropSubtype: "MIN_ORDER_BUDGET",
+      // 2026-04-28 senior audit Step 12 — drift fix. The payload now
+      // surfaces the V2 risk-governor verdict (or `null` when no V2
+      // discovery surface was attached); test fixture pre-dates that
+      // field so it deepStrictEqual-failed without it.
+      riskGovernor: null,
     }
   );
 

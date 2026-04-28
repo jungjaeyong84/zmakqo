@@ -64,7 +64,20 @@ function run() {
 
   assert.ok(mainMd.includes("FEBT Phase 0 Baseline"));
   assert.ok(mainMd.includes("immediate win 57.00%"));
-  assert.ok(mainMd.includes("bridge latency webhook->fill"));
+  // 2026-04-28 senior audit Step 12 — drift fix. The renderer now emits
+  // two separate `bridge latency(...) webhook->fill` lines (active
+  // LONG/SHORT vs all tiers); the original assertion looked for the
+  // pre-split contiguous "bridge latency webhook->fill" substring which
+  // no longer exists. Assert on the active-LONG/SHORT line directly,
+  // which is the canonical contract the renderer guarantees.
+  assert.ok(
+    mainMd.includes("bridge latency(active LONG/SHORT) webhook->fill"),
+    "main markdown must include active LONG/SHORT bridge latency line"
+  );
+  assert.ok(
+    mainMd.includes("bridge latency(all tiers) webhook->fill"),
+    "main markdown must include all-tiers bridge latency line"
+  );
   assert.ok(baselineMd.includes("saved_loss 31.00%"));
   assert.ok(overlapMd.includes("Wait × Exec Timing"));
   assert.ok(latencyMd.includes("webhook_to_fill_ms"));

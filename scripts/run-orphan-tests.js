@@ -46,10 +46,10 @@ const SKIP = new Map([
   ["dashboard-openclaw.test.js", "evidence_linker artifact removed; route shape drift"],
   ["exit-trailing-contract-report.test.js", "contract report fixture drift"],
   ["pine-transition-lead-source.test.js", "pine header version mismatch — generator drift"],
-  ["signal-drops.test.js", "signal_drops schema drift"],
+  // signal-drops.test.js — drift fixed Step 12 (riskGovernor field added).
   ["v2-openclaw-shadow-position-writer.test.js", "shadow writer fixture drift"],
   ["best-self-evolution-dataset.test.js", "TIMING→LEGACY_RETIRED enum drift"],
-  ["febt-phase0-report.test.js", "phase0 doc text drift"],
+  // febt-phase0-report.test.js — drift fixed Step 12 (active/all-tier line split).
   ["run-v2-promotion-canary-flow.test.js", "canary flow runtime artifact drift"],
   ["select-v2-promotion-canary-candidate.test.js", "candidate selector exit-code drift"],
 
