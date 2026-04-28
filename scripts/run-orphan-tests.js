@@ -41,14 +41,25 @@ const SKIP = new Map([
   // counts. None indicate runtime regressions; stale fixtures only.
   ["backfill-canonical-exit-transitions.test.js", "schema drift — backfill canonical fixture"],
   ["backfill-canonical-exit-fill-metadata.test.js", "schema drift — backfill canonical fixture"],
-  ["binance-position-stage-reconcile.test.js", "stage flag drift — reconcile fixture"],
+  // binance-position-stage-reconcile.test.js — drift fixed Step 13.
+  // V1 TP0 retired by default (DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED=true);
+  // legacy projection path preserved behind explicit opt-out.
   ["binance-exit-qty-contract-audit.test.js", "qty contract drift — audit fixture"],
   ["dashboard-openclaw.test.js", "evidence_linker artifact removed; route shape drift"],
   ["exit-trailing-contract-report.test.js", "contract report fixture drift"],
   ["pine-transition-lead-source.test.js", "pine header version mismatch — generator drift"],
   // signal-drops.test.js — drift fixed Step 12 (riskGovernor field added).
   ["v2-openclaw-shadow-position-writer.test.js", "shadow writer fixture drift"],
-  ["best-self-evolution-dataset.test.js", "TIMING→LEGACY_RETIRED enum drift"],
+  // best-self-evolution-dataset: NOT a simple fixture drift — the
+  // DROP_WAIT_ONE_BAR_* retirement (TIMING → LEGACY_RETIRED in
+  // signalReasonView.js) means bestSelfEvolutionDataset.js downstream
+  // checks at L1059 (`"TIMING"` allowlist for febtEligibleRows) and
+  // L1075 (drop_stage_key==="TIMING" hasFebtContractEvidence) silently
+  // skip those rows. Production impact is bounded (the retired guards
+  // never fire on live signals), but historical dataset rows lose the
+  // febt-eligible classification. Fixing this needs a production code
+  // change, not a test patch — defer to a separate PR.
+  ["best-self-evolution-dataset.test.js", "TIMING→LEGACY_RETIRED downstream allowlist drift (production code, not fixture)"],
   // febt-phase0-report.test.js — drift fixed Step 12 (active/all-tier line split).
   ["run-v2-promotion-canary-flow.test.js", "canary flow runtime artifact drift"],
   ["select-v2-promotion-canary-candidate.test.js", "candidate selector exit-code drift"],

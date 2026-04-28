@@ -45,13 +45,31 @@ async function run() {
     trail_active: false,
   };
 
+  // 2026-04-28 senior audit Step 13 — drift fix. V1 TP0 retired in
+  // Stage Z (DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED=true), so any reconcile
+  // call without an explicit `simplified_exit_v2_enabled: false` falls
+  // through the simplified-exit-v2 short-circuit at line 5760 of
+  // paperBinanceRunner.js → posMeta is returned unchanged. The legacy
+  // "tp0 fill projects tp_p0_done=true" path now requires explicit
+  // opt-out.
   const afterTp0 = __test.reconcileTpP0MetaFromFill({
     posMeta: baseMeta,
     pos: { exchange: "BINANCEFUT", position_side: "LONG" },
     fill: tp0,
   });
-  assert.strictEqual(afterTp0.tp_p0_done, true);
-  assert.strictEqual(afterTp0.tp_p0_price, 0.1);
+  assert.strictEqual(afterTp0.tp_p0_done, false, "post-retirement default — no V1 TP0 projection");
+  assert.strictEqual(afterTp0.tp_p0_price, undefined);
+
+  // Legacy V1 TP0 path is preserved behind explicit
+  // `simplified_exit_v2_enabled: false` — used by historical replay
+  // and the legacy backfill harness.
+  const legacyAfterTp0 = __test.reconcileTpP0MetaFromFill({
+    posMeta: { ...baseMeta, simplified_exit_v2_enabled: false },
+    pos: { exchange: "BINANCEFUT", position_side: "LONG" },
+    fill: tp0,
+  });
+  assert.strictEqual(legacyAfterTp0.tp_p0_done, true, "legacy opt-out — V1 TP0 projection still works");
+  assert.strictEqual(legacyAfterTp0.tp_p0_price, 0.1);
 
   const simplifiedAfterTp0 = __test.reconcileTpP0MetaFromFill({
     posMeta: {
