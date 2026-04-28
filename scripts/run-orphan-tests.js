@@ -48,15 +48,14 @@ const SKIP = new Map([
 
   // Contract/fixture drift — assertions reference older schemas or
   // counts. None indicate runtime regressions; stale fixtures only.
-  // backfill-canonical-{exit-transitions,exit-fill-metadata}: producer
-  // reclassifies legacy TP0 fills under simplified_exit_v2 as
-  // `EXIT_TP_P1_0P` (0% suffix). The "0P" suffix looks like a real bug
-  // in the canonical-event renderer (TP1 percent metadata missing for
-  // legacy TP0-shaped fills), but fixing that requires production code
-  // change with downstream impact on Firestore canonical-exit ledger
-  // schema. Defer to a separate PR — keep quarantined.
-  ["backfill-canonical-exit-transitions.test.js", "TP0 retirement reclassification produces EXIT_TP_P1_0P (suspect renderer bug, defer)"],
-  ["backfill-canonical-exit-fill-metadata.test.js", "TP0 retirement reclassification produces EXIT_TP_P1_0P (suspect renderer bug, defer)"],
+  // backfill-canonical-{exit-transitions,exit-fill-metadata}: drift
+  // fixed Step 19. Two changes:
+  //   1. positionStateMachine.buildCanonicalExitEvent dropped the
+  //      "_0P" suffix when no rules.TP_P1 supplied (Number(null)===0
+  //      bug → bare "EXIT_TP_P1" emitted instead).
+  //   2. Tests now reflect the simplified_exit_v2 reclassification
+  //      contract (legacy TP0 fills → TP1 stage with TP1_REACHED +
+  //      TRAIL_ACTIVATED transitions).
   // binance-position-stage-reconcile.test.js — drift fixed Step 13.
   // V1 TP0 retired by default (DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED=true);
   // legacy projection path preserved behind explicit opt-out.

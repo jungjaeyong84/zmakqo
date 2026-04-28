@@ -59,13 +59,28 @@ function run() {
   assert.ok(Array.isArray(__test.FILL_SELECT_FIELDS));
   assert.ok(__test.FILL_SELECT_FIELDS.includes("extra"));
 
-  assert.strictEqual(__test.buildCanonicalTransitionPayload({
+  // 2026-04-28 senior audit Step 19 — V1 TP0 retirement contract: under
+  // simplified_exit_v2, legacy TP0 fills are reclassified into the TP1
+  // stage (the V1 two-stage TP0 → TP1 sequence collapses to a single
+  // TP1 in V2). The producer therefore returns a valid payload, not
+  // null. The pre-V2 test asserted null; updated to reflect the
+  // reclassification contract.
+  //
+  // Sub-fix: positionStateMachine.buildCanonicalExitEvent previously
+  // rendered "EXIT_TP_P1_0P" when no rules.TP_P1 was supplied (because
+  // `Number(null) === 0`). Step 19 introduced a non-zero token guard
+  // so the bare `EXIT_TP_P1` name is emitted instead — that's a real
+  // production fix surfaced by this orphan test.
+  const tp0SimplifiedV2 = __test.buildCanonicalTransitionPayload({
     fill_id: "fill-btc-tp0-v2",
     exchange: "BINANCEFUT",
     symbol: "BTCUSDT",
     event: "EXIT_TP_P0_0.8P",
     simplified_exit_v2_enabled: true,
-  }), null);
+  });
+  assert.ok(tp0SimplifiedV2, "simplified_v2 + legacy TP0 must reclassify, not skip");
+  assert.strictEqual(tp0SimplifiedV2.canonicalEvent, "EXIT_TP_P1");
+  assert.deepStrictEqual(tp0SimplifiedV2.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
 
   console.log("BACKFILL_CANONICAL_EXIT_TRANSITIONS_TEST_OK");
 }

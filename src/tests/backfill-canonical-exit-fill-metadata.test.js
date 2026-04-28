@@ -50,11 +50,21 @@ function run() {
     canonical_primary_transition_event: "TRAIL_FINAL_EXIT",
   });
 
-  assert.strictEqual(__test.buildCanonicalFillMetadata({
+  // 2026-04-28 senior audit Step 19 — V1 TP0 retirement contract:
+  // simplified_exit_v2 reclassifies legacy TP0 fills into the TP1
+  // stage. Pre-V2 the producer returned null; the new contract emits
+  // a TP1-stage payload so the canonical-exit ledger records exactly
+  // one stage per V2 cycle.
+  assert.deepStrictEqual(__test.buildCanonicalFillMetadata({
     event: "EXIT_TP_P0_0.8P",
     qty_fraction: 0.25,
     simplified_exit_v2_enabled: true,
-  }), null);
+  }), {
+    canonical_exit_event: "EXIT_TP_P1",
+    canonical_exit_stage: "TP1",
+    canonical_transition_events: ["TP1_REACHED", "TRAIL_ACTIVATED"],
+    canonical_primary_transition_event: "TRAIL_ACTIVATED",
+  });
 
   const unchanged = __test.isMetadataUnchanged({
     canonical_exit_event: "EXIT_TRAIL",

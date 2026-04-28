@@ -213,6 +213,23 @@ function requiresCanonicalExitEntryLineage({
   return stage === "TP0" || stage === "TP1" || stage === "TRAIL";
 }
 
+// 2026-04-28 senior audit Step 19 — `rules && rules.TP_P1` evaluates to
+// `null` when rules is undefined/null, and `ratioToPctToken(null)`
+// returns "0" because `Number(null) === 0`. The previous renderer
+// emitted `EXIT_TP_P1_0P` for any caller that didn't supply rules
+// (notably scripts/backfill-canonical-exit-transitions.js and
+// scripts/backfill-canonical-exit-fill-metadata.js). A 0% TP1 trigger
+// is not a meaningful contract — it confused operators reading the
+// canonical-exit ledger and broke `EXIT_TP_P1_0P` substring checks.
+// The local helper drops "0" / null / non-positive tokens so the
+// renderer falls back to the bare `EXIT_TP_P1` / `EXIT_SL` / `EXIT_TRAIL`
+// names when no positive percent is available.
+function nonZeroPctToken(rawRatio) {
+  const n = Number(rawRatio);
+  if (!Number.isFinite(n) || n === 0) return null;
+  return ratioToPctToken(rawRatio);
+}
+
 function buildCanonicalExitEvent({
   stage = null,
   rules = null,
@@ -221,7 +238,7 @@ function buildCanonicalExitEvent({
   const resolvedStage = normalizeExitStage(stage);
   const fallback = toUpper(fallbackEvent, null);
   if (resolvedStage === "TP0" || resolvedStage === "TP1") {
-    const token = ratioToPctToken(rules && rules.TP_P1);
+    const token = nonZeroPctToken(rules && rules.TP_P1);
     if (fallback && (fallback.startsWith("EXIT_TP_P1") || fallback.startsWith("EXIT_TP_C"))) return fallback;
     return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
   }
@@ -229,11 +246,11 @@ function buildCanonicalExitEvent({
     if (fallback && fallback.startsWith("EXIT_TRAIL")) return fallback;
     const trailR = toNum(rules && rules.TRAIL_R_MULTIPLE);
     if (Number.isFinite(trailR) && trailR > 0) return "EXIT_TRAIL";
-    const token = ratioToPctToken(rules && rules.TRAIL_PCT);
+    const token = nonZeroPctToken(rules && rules.TRAIL_PCT);
     return token ? `EXIT_TRAIL_${token}P` : "EXIT_TRAIL";
   }
   if (resolvedStage === "SL") {
-    const token = ratioToPctToken(rules && rules.SL);
+    const token = nonZeroPctToken(rules && rules.SL);
     if (fallback && fallback.startsWith("EXIT_SL")) return fallback;
     return token ? `EXIT_SL_${token}P` : "EXIT_SL";
   }
