@@ -228,6 +228,17 @@ async function executeServerPrimaryTick({
     const signalTf = pickTf({ stateTf: exCfg.exec_tf, tfAllowlist: exCfg.tf_allowlist });
     const execTf = trimOrNull(exCfg.exec_tf) || signalTf;
     const markets = Array.isArray(exCfg.markets) ? exCfg.markets : [];
+    // 2026-04-28 F2 Phase 5 — executionMode now env-driven so V2
+    // server-native ENTRY signals can take the V2 discovery canary
+    // bridge path (which requires LIVE mode in
+    // evaluateV2DiscoveryCanaryLiveBridge). Default stays PAPER for
+    // backward compatibility. V1 paperBinanceRunner exchange writers
+    // remain blocked by legacy_runtime_disabled regardless of mode, so
+    // flipping to LIVE does NOT resurrect V1 trading.
+    const tickExecutionMode = (function() {
+      const raw = String(env.DONBEOLJA_OPENCLAW_SERVER_PRIMARY_TICK_EXECUTION_MODE || "PAPER").trim().toUpperCase();
+      return raw === "LIVE" ? "LIVE" : "PAPER";
+    })();
     for (const market of markets) {
       const row = await runOneMarketFn({
         exchange,
@@ -237,7 +248,7 @@ async function executeServerPrimaryTick({
         nowMs,
         runIdHint: runId,
         executionEnabled: true,
-        executionMode: "PAPER",
+        executionMode: tickExecutionMode,
         allowReplaySameBar,
       });
       results.push(row);
