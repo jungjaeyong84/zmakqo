@@ -10,14 +10,21 @@ function run() {
   assert.strictEqual(__test.classifyExitEvent("FORCE_EXIT_ALL"), "FORCE_EXIT_ALL");
   assert.strictEqual(__test.classifyExitEvent("EXIT_SL_1.65P"), "SL");
 
+  // 2026-04-28 senior audit Step 22 — Stage R retired V1 TP0
+  // (TP_P0_QTY=0 by default). The pre-Stage R "OK" fixture had TP0
+  // (0.25) + TP1 (0.375) + TRAIL (0.375) = 1.0; this is now flagged as
+  // TP0_ABS_OVER because the audit script uses current rules (TP_P0_QTY=0)
+  // for evaluation. Updated fixture reflects the post-retirement
+  // simplified-exit-v2 shape: TP1 (0.5) + TRAIL (0.5) = 1.0, no TP0
+  // partial close.
   const rows = [
     {
       exchange: "BINANCEFUT",
       symbol: "BTCUSDT",
       entry_event_id: "ENTRY_A",
       fill_id: "F1",
-      event: "EXIT_TP_P0_0.8P",
-      qty_pct: 0.25,
+      event: "EXIT_TP_P1_2.5P",
+      qty_pct: 0.5,
       created_at: "2026-04-12T00:00:00.000Z",
     },
     {
@@ -25,18 +32,9 @@ function run() {
       symbol: "BTCUSDT",
       entry_event_id: "ENTRY_A",
       fill_id: "F2",
-      event: "EXIT_TP_P1_1.65P",
-      qty_pct: 0.375,
-      created_at: "2026-04-12T00:01:00.000Z",
-    },
-    {
-      exchange: "BINANCEFUT",
-      symbol: "BTCUSDT",
-      entry_event_id: "ENTRY_A",
-      fill_id: "F3",
       event: "EXIT_TRAIL",
-      qty_pct: 0.375,
-      created_at: "2026-04-12T00:02:00.000Z",
+      qty_pct: 0.5,
+      created_at: "2026-04-12T00:01:00.000Z",
     },
   ];
   const okReport = __test.buildReport(rows);

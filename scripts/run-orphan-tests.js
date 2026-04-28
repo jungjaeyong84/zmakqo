@@ -59,7 +59,9 @@ const SKIP = new Map([
   // binance-position-stage-reconcile.test.js — drift fixed Step 13.
   // V1 TP0 retired by default (DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED=true);
   // legacy projection path preserved behind explicit opt-out.
-  ["binance-exit-qty-contract-audit.test.js", "qty contract drift — audit fixture"],
+  // binance-exit-qty-contract-audit.test.js — drift fixed Step 22.
+  // Stage R retired V1 TP0 (TP_P0_QTY=0). Updated OK fixture to the
+  // post-retirement simplified-exit-v2 shape (TP1 0.5 + TRAIL 0.5 = 1.0).
   // dashboard-openclaw.test.js — drift fixed Step 18. The 3 OpenClaw
   // agent crons were migrated from launchd to Cloud Scheduler in
   // 2026-04-18 but dashboard.openclaw.routes still searched only
