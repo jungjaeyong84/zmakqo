@@ -47,7 +47,12 @@ substitutions:
   _DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "0"
   _DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "1"
   _DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED: "1"
-  _DONBEOLJA_OPENCLAW_SERVER_PRIMARY_TICK_EXECUTION_MODE: "LIVE"
+  # 2026-04-28 — kept PAPER so legacy V1 LIVE-only branches
+  # (resolveLiveFuturesConfig.executionMode, syncFuturesPositionOnly,
+  # etc.) never trigger. V2 server-native ENTRY signals reach
+  # productionEntryRoute via an explicit isV2ServerNativeEntry bypass
+  # in paperBinanceRunner — system_settings + executionMode stay PAPER.
+  _DONBEOLJA_OPENCLAW_SERVER_PRIMARY_TICK_EXECUTION_MODE: "PAPER"
   _DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES: "0"
   _DONBEOLJA_V2_LEGACY_ENTRY_FILTERS_DISABLED: "1"
   _DONBEOLJA_V2_LEGACY_WAIT_ONE_BAR_HARD_DROP_DISABLED: "1"

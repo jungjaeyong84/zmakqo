@@ -15848,9 +15848,18 @@ async function runPaperBinanceForBar({
       metaUpdates.tp_p1_pending_event = s.event;
     }
 
-    if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+    // 2026-04-28 F2 Phase 5 hotfix #4 — V2 server-native ENTRY signal
+    // bypass (mirror of the runPaperFuturesForBar inject below). Keeps
+    // both sibling functions consistent so neither path can silently
+    // drop V2 generator output.
+    const isV2ServerNativeEntry = !!(s && s.features && s.features.v2_server_native === true)
+      && (intent === "ENTRY" || intent === "ADD");
+    if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent }) || isV2ServerNativeEntry) {
       features.v2_discovery_signal_fan_in_handoff = true;
       features.v2_discovery_entry_filter_authority = "PRODUCTION_ENTRY_ROUTE";
+      if (isV2ServerNativeEntry) {
+        features.v2_server_native_signal_bypass = true;
+      }
       const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
         exchange,
         symbol,
@@ -19804,9 +19813,27 @@ async function runPaperFuturesForBar({
       metaUpdates.tp_p1_pending_event = s.event;
     }
 
-    if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+    // 2026-04-28 F2 Phase 5 hotfix #4 — V2 server-native ENTRY signal
+    // bypass. The legacy bridge gate (isV2DiscoveryCanaryLegacyEntryWriteBlocked)
+    // requires liveCfg.v2DiscoveryCanaryBridge === true, which itself
+    // requires Firestore system_settings_BINANCEFUT.execution_mode = "LIVE".
+    // We deliberately keep system_settings = PAPER so V1 LIVE-only branches
+    // never trigger; the trade-off is that V2 server-native ENTRY signals
+    // (features.v2_server_native === true, source = V2_SERVER_ENTRY_SIGNAL_GENERATOR)
+    // would be silently dropped at this gate. Bypass: any signal explicitly
+    // tagged as V2 server-native enters the discovery handoff regardless
+    // of liveCfg.executionMode. The handoff bridge / productionEntryRoute
+    // still apply discovery_canary blockers (DISCOVERY_CANARY_ENABLED,
+    // RISK_GOVERNOR_REQUIRED, MAX_NOTIONAL_QUOTE, etc.) so this does not
+    // re-enable any unsafe path.
+    const isV2ServerNativeEntry = !!(s && s.features && s.features.v2_server_native === true)
+      && (intent === "ENTRY" || intent === "ADD");
+    if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent }) || isV2ServerNativeEntry) {
       features.v2_discovery_signal_fan_in_handoff = true;
       features.v2_discovery_entry_filter_authority = "PRODUCTION_ENTRY_ROUTE";
+      if (isV2ServerNativeEntry) {
+        features.v2_server_native_signal_bypass = true;
+      }
       const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
         exchange,
         symbol,

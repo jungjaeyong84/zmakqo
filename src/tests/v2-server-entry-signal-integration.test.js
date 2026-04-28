@@ -105,6 +105,25 @@ const path = require("path");
     src.includes("getV2ServerEntryCooldownState("),
     "(E) cooldown state getter must be called"
   );
+
+  // (E2) V2 server-native ENTRY bypass at the handoff gate. The
+  //      paperBinanceRunner must enter the handoff branch when the
+  //      signal is V2 server-native, even if the legacy
+  //      isV2DiscoveryCanaryLegacyEntryWriteBlocked predicate would
+  //      reject (because system_settings stays PAPER intentionally to
+  //      keep V1 LIVE branches dead).
+  assert.ok(
+    src.includes("isV2ServerNativeEntry"),
+    "(E2) paperBinanceRunner must compute isV2ServerNativeEntry near the handoff gate"
+  );
+  assert.ok(
+    src.includes("|| isV2ServerNativeEntry"),
+    "(E2) handoff branch condition must OR isV2ServerNativeEntry"
+  );
+  assert.ok(
+    src.includes("v2_server_native_signal_bypass"),
+    "(E2) bypass branch must stamp features.v2_server_native_signal_bypass for observability"
+  );
 })();
 
 // (F) marketRunner 240m HTF cache refresh
