@@ -75,16 +75,14 @@ const SKIP = new Map([
   ["run-v2-promotion-canary-flow.test.js", "canary flow runtime artifact drift"],
   ["select-v2-promotion-canary-candidate.test.js", "candidate selector exit-code drift"],
 
-  // CI environment drift — pass on local Node 22.22 but fail on Cloud
-  // Build's Alpine Node 20.15 (different ICU / regex / timer semantics
-  // or filesystem path resolution). Real production code paths are
-  // exercised by the wired integration tests; these orphans test
-  // ancillary tooling. TODO investigate per-file in a separate PR.
-  ["binance-exit-integrity-cycle.test.js", "Node 20.15 vs 22.22 env drift on CI"],
-  ["control-plane-view-models.test.js", "Node 20.15 vs 22.22 env drift on CI"],
-  ["objective-supervisor.test.js", "Node 20.15 vs 22.22 env drift on CI"],
-  ["run-binance-active-exit-watchdog.test.js", "Node 20.15 module-load drift on CI"],
-  ["self-evolution-report-cycle.test.js", "Node 20.15 vs 22.22 env drift on CI"],
+  // 2026-04-28 senior audit Step 24 — these 5 tests were originally
+  // quarantined as "Node 20.15 vs 22.22 env drift" because the first
+  // CI build that wired the orphan runner saw them fail on Cloud Build
+  // Alpine. Re-running locally on Node 22 they all pass; given the
+  // intervening drift fixes (Step 12-23) may have moved their indirect
+  // dependencies, we unquarantine here and let the next CI build
+  // validate. If they fail again on CI, they will be re-added to the
+  // SKIP list with the actual Node 20 stack trace recorded.
 ]);
 
 function loadWiredSet() {
