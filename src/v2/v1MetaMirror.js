@@ -125,9 +125,9 @@ function buildV2ToV1MetaPatch({
     entry_r_distance: numOrNull(entryRDistance),
     tp_p1_target_pct: numOrNull(tp1TargetPct),
 
-    // V2 simplified-exit-v2 contract — V1 logic short-circuits TP0
-    // reconcile when this flag is true (src/engine/paperBinanceRunner.js
-    // resolveSimplifiedExitV2PositionFlag).
+    // V2 simplified-exit-v2 contract — V1 logic short-circuits the
+    // legacy partial-take reconcile path when this flag is true (see
+    // src/engine/paperBinanceRunner.js resolveSimplifiedExitV2PositionFlag).
     simplified_exit_v2_enabled: true,
 
     // Native protection mirror — tickExit reads these to verify the
