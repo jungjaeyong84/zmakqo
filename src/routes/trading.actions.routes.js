@@ -245,6 +245,35 @@ function createTradingActionsRoutes() {
   router.post("/api/trading/manual-retry-entry", async (req, res) => {
     let actionEnvelope = null;
     try {
+      // 2026-04-29 Stage U-3 — operator decision: "V1 자체가 작동하면 안
+      // 되고 V2 가 모든 처리를 인계받아야 한다." This endpoint invokes
+      // runPaperFuturesForBar (V1 path) for "manual retry" of a missed
+      // entry. Under DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1 the V1
+      // executor would reject the resulting order anyway with
+      // V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED, so the
+      // endpoint cannot succeed regardless. Return an explicit
+      // operator-facing error so the user knows to use the exchange UI
+      // directly (or wait for the V2 manual-retry endpoint, which is
+      // a Stage U-3 followup).
+      const legacyRuntimeDisabledNow = (function() {
+        const raw = String(process.env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED || "0").trim().toLowerCase();
+        return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+      })();
+      if (legacyRuntimeDisabledNow) {
+        try {
+          console.log(JSON.stringify({
+            event: "v1_manual_retry_entry_blocked_legacy_runtime_disabled",
+            ts: new Date().toISOString(),
+            request_id: String(req.headers["x-request-id"] || req.headers["x-correlation-id"] || "").trim() || null,
+            note: "V1 manual-retry-entry blocked under DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1. Operator should use the exchange UI or wait for the V2 manual-retry endpoint.",
+          }));
+        } catch (_) { /* observability only */ }
+        return res.status(503).json({
+          ok: false,
+          error: "V1_MANUAL_RETRY_LEGACY_RUNTIME_DISABLED",
+          reason: "V1 manual retry path is disabled under V2 runtime ownership. Use the exchange UI for emergency manual entry. A V2 manual-retry endpoint is a follow-up.",
+        });
+      }
       const body = req.body || {};
       const requestId = String(req.headers["x-request-id"] || req.headers["x-correlation-id"] || "").trim() || null;
       const rawMarket = String(body.market || body.symbol || "").trim();

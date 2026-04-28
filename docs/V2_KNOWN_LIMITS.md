@@ -265,8 +265,38 @@ log 가 anomaly 발생 시점에 발생하면 OK (breaker close 시는 위 분�
 | T (symptom) | V1 V2-discovery loop 의 EXIT_OPPOSITE_SIGNAL inject | ✅ |
 | U-1 | `binanceTickExit` 의 V1 fast-lane (runPaperMarket EXIT_ONLY) | ✅ |
 | U-2 | `systemAnomalyRemediation` 의 V1 emergency flatten | ✅ |
-| U-3 (P2) | `trading.actions` 의 manual override | ⏳ |
+| U-3 | `trading.actions` `/api/trading/manual-retry-entry` | ✅ Stage U-3 |
 | U-followup | V2 가 인계받아야 할 항목들 (P1) | ⏳ |
+
+### Stage U-3 (2026-04-29) — manual-retry-entry V1 차단
+
+`POST /api/trading/manual-retry-entry` handler 진입 첫 줄에 guard
+추가. `DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1` 시 503 + error
+`V1_MANUAL_RETRY_LEGACY_RUNTIME_DISABLED` 반환. body parse / market
+validation 등 일체 진행 안 함.
+
+**의미**:
+- operator 가 false-exit retry 시도하면 명시적 503 + 안내 메시지
+- "use exchange UI directly" 권장
+- V2 의 manual-retry endpoint 가 별도 PR 로 신설 권장
+
+**검증**: `v1_manual_retry_entry_blocked_legacy_runtime_disabled` log
+가 endpoint 호출 시 발생. operator 측 UI 가 503 응답 받으면 사용자에게
+설명 표시.
+
+### V2 가 인계받아야 할 missing piece (Stage U-followup, P1)
+
+| 영역 | 현재 | V2 가 owning 해야 함 |
+|---|---|---|
+| Native protection refresh | binanceTickExit 자체 owning (V1 무관) | OK — 이미 V1 무관 |
+| Emit-driven exit (TP1/SL/TRAIL automated close) | V1 fast-lane → 차단됨 → 실효성 0 | V2 routing 으로 broker call |
+| Anomaly auto-flatten | V1 path → 차단됨 → 실효성 0 | V2 anomaly worker |
+| Manual retry entry | V1 path → 503 응답 | V2 manual-retry endpoint |
+| Reverse signal auto-close (EXIT_OPPOSITE) | V1 inject → 차단됨 (Stage T) | V2 의 reverse handling 정책 |
+
+**현재 단독 의존 채널** = broker-side native protection (closePosition
+STOP_MARKET). 이게 fail 하면 어떤 자동 청산도 fire 안 함. operator
+수동 개입만 가능.
 
 ### 검증 (deploy 후 24h)
 
