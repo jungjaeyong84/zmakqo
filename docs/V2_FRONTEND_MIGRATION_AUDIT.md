@@ -76,7 +76,12 @@ Discovery canary entry 는 webhook 안 거치고 V2 path 로 간다. 그 entry �
 signal 은 `signal_intents_v2` 에만 write. `signals` collection 에는 없음.
 
 **영향 페이지**:
-- `/dashboard/journal` — signals 직접 read 면 V2 canary entry 의 신호가 안 보임
+- `/dashboard/ai` — `signals` + `signals_dropped` 두 collection 직접 read.
+  V2 canary entry 의 신호가 안 보임. (P1)
+- `/dashboard/home` — `signals`, `signals_dropped`, `fills_paper`,
+  `order_intents_paper` 4종 직접 read (5 V1 refs 의 실체)
+- ~~`/dashboard/journal`~~ — 정정: `fills_paper` 만 read. fillSync 가
+  V2 cutover 후에도 채우니 OK.
 
 ### (3) 추상화 layer 이지만 V1 view 만 read 하는 helper
 
@@ -130,3 +135,29 @@ entry traffic 자체가 거의 0 이기 때문에 fix 효과가 prod 에서 즉�
 - service / API endpoint (`/api/state`, `/api/dashboard/pulse`) 의 V2
   영향은 별도 분석 필요
 - 실제 V2 cutover 시뮬레이션 (`canary_only=0` 임시 flip) 안 함
+
+---
+
+## 2026-04-28 Step 28 menu coverage smoke test 결과
+
+`src/tests/menu-routes-coverage.test.js` — 18 menu paths 모두 GET 요청.
+
+| group | total | OK | slow (Firestore I/O) | broken |
+|---|---|---|---|---|
+| topnav | 6 | 3-6 (변동) | 0-3 | 0 |
+| trading-subnav | 2 | 2 | 0 | 0 |
+| v2-control | 4 | 4 | 0 | 0 |
+| legacy-report | 4 | 3-4 | 0-1 | 0 |
+| side-rail | 4 | 4 | 0 | 0 |
+
+**broken = 0** (404 또는 hard error 없음).
+
+slow path 들은 local Firestore I/O 가 8s 안에 응답 못해서 발생 — 라우트
+자체는 등록되어 있고 production Firestore 환경에서는 정상 응답.
+
+**해석**: 모든 메뉴 페이지가 V2 cutover 와 무관하게 **기본적으로 동작**.
+"빈 데이터" 표시는 됐을 수 있지만 "깨진 페이지" (404) 는 없음.
+
+진짜 V2 cutover 후 깨질 위험은 §"진짜 깨질 항목" 섹션의 P1 항목들 —
+`/dashboard/ai` 와 `/dashboard/home` 의 signals union, 그리고 다른
+service abstraction layer 의 V1-only read.
