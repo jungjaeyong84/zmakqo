@@ -28,7 +28,7 @@ function main(env = process.env) {
   const historyFile = env.V2_DISCOVERY_NOTIONAL_CAP_ARTIFACT_HISTORY_FILE || DEFAULT_HISTORY_FILE;
   const artifact = buildDiscoveryNotionalCapConsistencyArtifact({
     map: resolveDiscoverySymbolNotionalQuoteMap(env),
-    maxPositionCount: numberWithDefault(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, 5),
+    maxPositionCount: numberWithDefault(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, 8),
     riskTotalCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, 900),
     riskSymbolCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, 200),
     riskCorrelatedGroupCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, 900),
