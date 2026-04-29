@@ -21,6 +21,56 @@ const { DISCOVERY_CONFIRM_PHRASE } = require("./discoveryCanaryContract");
 const { evaluateMarketDataQualityGate } = require("./marketDataQualityGate");
 const { resolveV2CollectionRef } = require("./storage");
 const { collectBinanceMicrostructureFeatures } = require("./binanceMicrostructureFeatures");
+// 2026-04-29 — entry-time trade alert dispatch. Until today the only
+// ENTRY alert path was fillSync's polling-driven flushFillSyncAlertBatches
+// (3-min cadence), so a successful V2 production entry route execution
+// (V2_PRODUCTION_ENTRY_LIVE_EXECUTED_AND_PROTECTED) could close the
+// loop on the broker but the operator wouldn't see a Telegram alert
+// until the next fillSync poll — and not at all when fillSync wasn't
+// running for any reason. Operator-reported symptom on 2026-04-29:
+// XRPUSDT entered at 06:31:17 UTC, no Telegram alert. The fix is the
+// mirror of the exit α/β path in src/services/binanceTickExit.js: emit
+// `sendTradeExecutionAlert` at the place-success boundary inside this
+// bridge, with a dedupe Map keyed by (symbol, intent, signal_id) so
+// fillSync's later authoritative echo lands inside the dedupe TTL and
+// doesn't double-fire to the operator.
+const { sendTradeExecutionAlert } = require("../services/tradeExecutionAlert");
+const entryAlertDedupeState = new Map();
+const ENTRY_ALERT_DEDUPE_TTL_MS = (() => {
+  const raw = Number(process.env.V2_DISCOVERY_BRIDGE_ENTRY_ALERT_DEDUPE_TTL_MS);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return 10 * 60 * 1000;
+})();
+function buildEntryAlertDedupeKey({ symbol, signalId, intentId }) {
+  const sym = String(symbol || "").trim().toUpperCase() || "?";
+  const idem = String(signalId || intentId || "NA").trim();
+  return `${sym}__ENTRY__${idem}`;
+}
+function shouldDispatchEntryAlert(key, nowMs = Date.now()) {
+  if (!key) return true;
+  const last = entryAlertDedupeState.get(key);
+  if (!Number.isFinite(last)) return true;
+  if (nowMs - last >= ENTRY_ALERT_DEDUPE_TTL_MS) {
+    entryAlertDedupeState.delete(key);
+    return true;
+  }
+  return false;
+}
+function recordEntryAlertDispatched(key, nowMs = Date.now()) {
+  if (!key) return;
+  entryAlertDedupeState.set(key, nowMs);
+}
+function clearEntryAlertDedupeForTest() {
+  entryAlertDedupeState.clear();
+}
+function resolveEntrySideFromIntent(intentRow = {}) {
+  const explicit = String(intentRow && intentRow.side || "").trim().toUpperCase();
+  if (explicit === "LONG" || explicit === "SHORT") return explicit;
+  const event = String(intentRow && intentRow.event || "").toUpperCase();
+  if (event.includes("LONG")) return "LONG";
+  if (event.includes("SHORT")) return "SHORT";
+  return null;
+}
 const { loadLatestLiquidationSnapshot } = require("./binanceLiquidationStreamCollector");
 
 function trimOrNull(value) {
@@ -793,6 +843,59 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
       discovery_canary_state: built.discovery_canary_state,
     });
   }
+
+  // 2026-04-29 — ENTRY α alert. The V2 production entry route
+  // executed and protection is in place (the only success branch);
+  // emit the operator alert immediately rather than waiting for
+  // fillSync's 3-min polling echo. dedupe by signal_id so fillSync's
+  // later trade-alert dispatch is muted within ENTRY_ALERT_DEDUPE_TTL_MS.
+  try {
+    const intentSym = upper(intentRow && (intentRow.symbol_or_pair_id || intentRow.symbol)) || null;
+    const signalId = trimOrNull(intentRow && (intentRow.signal_id || intentRow.signal_intent_id))
+      || trimOrNull(built && built.request && built.request.body && built.request.body.signalIntent && built.request.body.signalIntent.signal_intent_id);
+    const intentId = trimOrNull(intentRow && intentRow.intent_id);
+    const dedupeKey = buildEntryAlertDedupeKey({ symbol: intentSym, signalId, intentId });
+    if (shouldDispatchEntryAlert(dedupeKey)) {
+      recordEntryAlertDispatched(dedupeKey);
+      const side = resolveEntrySideFromIntent(intentRow) || "LONG";
+      const refPrice = Number.isFinite(Number(referencePrice)) ? Number(referencePrice) : null;
+      const sizingDecision = (built && built.request && built.request.body && built.request.body.entrySizingDecision) || null;
+      const execQty = Number.isFinite(Number(sizingDecision && sizingDecision.entry_qty_abs))
+        ? Number(sizingDecision.entry_qty_abs) : null;
+      const notional = Number.isFinite(Number(sizingDecision && sizingDecision.notional_quote))
+        ? Number(sizingDecision.notional_quote) : null;
+      sendTradeExecutionAlert({
+        exchange: upper(intentRow && intentRow.exchange) || "BINANCEFUT",
+        symbol: intentSym,
+        event: side === "SHORT" ? "ENTRY_SHORT" : "ENTRY_LONG",
+        intent: "ENTRY",
+        side,
+        executionMode: "LIVE",
+        execPrice: refPrice,
+        execQty,
+        execQtyBase: execQty,
+        notional,
+        signalId,
+        runId: trimOrNull(intentRow && intentRow.run_id) || trimOrNull(requestId),
+        // ENTRY alerts don't go through the canonical-exit gate;
+        // sendTradeExecutionAlert recognises intent=ENTRY and skips
+        // canonicalRequirement.
+        rawEvidenceEvent: side === "SHORT" ? "ENTRY_SHORT" : "ENTRY_LONG",
+        note: "V2 discovery bridge — entry executed and protected; alert emitted at place boundary (fillSync echo dedupe by signal_id).",
+      }).catch((alertErr) => {
+        console.warn(
+          "[V2_DISCOVERY_BRIDGE_ENTRY_ALERT_FAIL]",
+          alertErr && alertErr.message ? alertErr.message : String(alertErr),
+        );
+      });
+    }
+  } catch (alertGuardErr) {
+    console.warn(
+      "[V2_DISCOVERY_BRIDGE_ENTRY_ALERT_GUARD]",
+      alertGuardErr && alertGuardErr.message ? alertGuardErr.message : String(alertGuardErr),
+    );
+  }
+
   return Object.freeze({
     ok: true,
     reason: "V2_DISCOVERY_BRIDGE_EXECUTED",
@@ -817,6 +920,13 @@ module.exports = {
     toNumberOrNull,
     sideFromIntent,
     setupTypeFromFeatures,
+    // 2026-04-29 — entry α alert helpers
+    buildEntryAlertDedupeKey,
+    shouldDispatchEntryAlert,
+    recordEntryAlertDispatched,
+    clearEntryAlertDedupeForTest,
+    resolveEntrySideFromIntent,
+    ENTRY_ALERT_DEDUPE_TTL_MS,
     resolveReferencePrice,
     stepSafeNotional,
     buildStrategyFilterResultFromIntent,
