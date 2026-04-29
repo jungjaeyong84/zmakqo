@@ -30,9 +30,13 @@ function run() {
 
   // Stage U-followup-1 expanded the skip block (V2 direct dispatch
   // placement). Stage U-followup-2 expanded it further (symbol info
-  // fetch + ledger stamp + runId entropy). Widen the lookback so the
-  // structural anchors still land inside `region`.
-  const region = src.slice(Math.max(0, fastLaneCallIdx - 12000), fastLaneCallIdx);
+  // fetch + ledger stamp + runId entropy). 2026-04-29 R1 root-cause
+  // fix added an exit-in-flight mark inside the place-success branch.
+  // Each expansion widens the gap between the legacy-disabled skip
+  // and the eventual fast-lane runPaperMarket call. Widen the
+  // lookback again so the structural anchors still land inside
+  // `region`.
+  const region = src.slice(Math.max(0, fastLaneCallIdx - 16000), fastLaneCallIdx);
 
   // (B) The skip branch must exist with the structured skip log.
   assert.ok(

@@ -543,6 +543,65 @@ function isV2DirectExitInRejectCooldown(symbol, nowMs = Date.now()) {
   return true;
 }
 
+// 2026-04-29 — ROOT-CAUSE FIX (R1) for the V2 direct exit reduceOnly
+// retry-storm. The earlier 60 s reject-cooldown only masked the
+// symptom; the underlying cause is that `binanceTickExit` derives the
+// `active` filter from a Firestore-cached position read view
+// (`getPositionReadViewsBySymbols`) which lags `fillSync` by up to
+// 3 minutes. When we successfully place a V2 direct dispatch reduceOnly
+// market order, the broker may close the position within milliseconds,
+// but the next fast-lane tick still sees the stale "ACTIVE" view and
+// re-fires the same TRAIL/SL/BE trigger, producing the duplicate
+// dispatch that the broker then rejects with -2022.
+//
+// Optimistic close: as soon as a place succeeds, mark the symbol as
+// "exit in flight" with a 30 s TTL safety net. The next tick's active
+// filter excludes any in-flight symbol from trigger evaluation. The
+// TTL bounds the inhibit so a stuck/lost ack cannot permanently silence
+// the symbol — fillSync will catch up well within 30 s by reconciling
+// the actual fill into the position document, and `clearExitInFlight`
+// is also exported so the broker truth pre-filter (R2) and fillSync
+// hooks can release the inhibit early when they observe broker-flat
+// position state.
+const exitInFlightState = new Map();
+const EXIT_IN_FLIGHT_TTL_MS = (() => {
+  const raw = Number(process.env.TICK_EXIT_IN_FLIGHT_TTL_MS);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return 30_000;
+})();
+function markExitInFlight(symbol, { runId = null, fraction = null, triggeredKinds = null, source = "V2_DIRECT_EXIT_DISPATCH" } = {}) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) return;
+  exitInFlightState.set(sym, {
+    runId: runId ? String(runId) : null,
+    placedAt: Date.now(),
+    fraction: Number.isFinite(Number(fraction)) ? Number(fraction) : null,
+    triggeredKinds: Array.isArray(triggeredKinds) ? triggeredKinds.slice() : null,
+    source: String(source || "").toUpperCase(),
+  });
+}
+function clearExitInFlight(symbol) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) return false;
+  return exitInFlightState.delete(sym);
+}
+function isExitInFlight(symbol, nowMs = Date.now()) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) return false;
+  const rec = exitInFlightState.get(sym);
+  if (!rec || !Number.isFinite(rec.placedAt)) return false;
+  if (nowMs - rec.placedAt >= EXIT_IN_FLIGHT_TTL_MS) {
+    exitInFlightState.delete(sym);
+    return false;
+  }
+  return true;
+}
+function getExitInFlightRecord(symbol) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) return null;
+  return exitInFlightState.get(sym) || null;
+}
+
 const pendingIntentState = new Map();
 const pendingIntentLogState = new Map();
 const tpP1PendingTerminalAlertState = new Map();
@@ -2488,11 +2547,39 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
     symbols: symbolsToCheck,
   }).catch(() => ({}));
   const positions = symbolsToCheck.map((symbol) => positionMap[symbol] || null);
-  const active = positions.filter((p) => {
+  const activeRaw = positions.filter((p) => {
     const size = Number(p && p.size_pct);
     const state = String(p && p.state || "").toUpperCase();
     return Number.isFinite(size) && size > 0 && state !== "FLAT";
   });
+  // 2026-04-29 ROOT-CAUSE (R1) — exclude symbols whose V2 direct exit
+  // dispatch we just successfully placed. The Firestore read view lags
+  // fillSync by up to 3 minutes; without this filter the next tick
+  // would re-evaluate the same TRAIL/SL/BE trigger and dispatch a
+  // duplicate reduceOnly order that Binance rejects with -2022. The
+  // `exitInFlightState` Map carries a 30 s TTL safety net so a stuck
+  // ack can't permanently inhibit the symbol.
+  const active = [];
+  for (const p of activeRaw) {
+    const sym = String(p.symbol_or_pair_id || p.symbol || "").trim().toUpperCase();
+    if (sym && isExitInFlight(sym)) {
+      const rec = getExitInFlightRecord(sym);
+      structuredLog("tick_exit_skip_exit_in_flight", {
+        exchange: "BINANCEFUT",
+        symbol: sym,
+        in_flight_run_id: rec && rec.runId,
+        in_flight_placed_at: rec && rec.placedAt,
+        in_flight_age_ms: rec && Number.isFinite(rec.placedAt) ? (Date.now() - rec.placedAt) : null,
+        in_flight_fraction: rec && rec.fraction,
+        in_flight_triggered_kinds: rec && rec.triggeredKinds,
+        in_flight_source: rec && rec.source,
+        ttl_ms: EXIT_IN_FLIGHT_TTL_MS,
+        note: "Skipping trigger evaluation — V2 direct exit dispatch already placed; Firestore read view is stale until fillSync catches up.",
+      });
+      continue;
+    }
+    active.push(p);
+  }
   if (!active.length) return { ok: true, checked: 0, triggered: 0 };
 
   const [operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
@@ -3620,6 +3707,17 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                 v2DispatchPlaced = true;
                 v2DispatchOrderId = placeRes && (placeRes.orderId ?? placeRes.order_id) ? String(placeRes.orderId ?? placeRes.order_id) : null;
                 v2DispatchClientOrderId = placeRes && (placeRes.clientOrderId ?? placeRes.client_order_id) ? String(placeRes.clientOrderId ?? placeRes.client_order_id) : null;
+                // 2026-04-29 ROOT-CAUSE (R1) — mark this symbol as
+                // exit-in-flight immediately on place success. The next
+                // tick's active filter will skip it until fillSync
+                // commits the close (or the 30 s TTL expires as a
+                // safety net).
+                markExitInFlight(symbol, {
+                  runId: dispatchRunId,
+                  fraction: v2DirectDispatch.fraction,
+                  triggeredKinds: v2DirectDispatch.triggeredKinds,
+                  source: "V2_DIRECT_EXIT_DISPATCH",
+                });
                 structuredLog("v2_direct_exit_dispatch_placed", {
                   exchange: "BINANCEFUT",
                   symbol,
@@ -4323,6 +4421,13 @@ module.exports = {
     isV2DirectExitInRejectCooldown,
     _v2DirectExitRejectCooldownState: v2DirectExitRejectCooldownState,
     V2_DIRECT_EXIT_REJECT_COOLDOWN_MS,
+    // 2026-04-29 ROOT-CAUSE (R1) — Optimistic exit-in-flight inhibit
+    markExitInFlight,
+    clearExitInFlight,
+    isExitInFlight,
+    getExitInFlightRecord,
+    _exitInFlightState: exitInFlightState,
+    EXIT_IN_FLIGHT_TTL_MS,
     applyAlertCacheCap,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;
