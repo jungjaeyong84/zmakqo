@@ -283,6 +283,46 @@ async function runV2EntrySubmitter({
     });
   }
   let protectionEvidence = validateProtectionActivationResult(protectionResult);
+  // 2026-04-29 — diagnostic: surface which of the 8 evidence checks
+  // is failing. Operator-reported pattern (ETH/DOGE 07:01–07:16):
+  // broker actually places STOP+TP and native_protection_unprotected_window_observed
+  // closes status=OK in 514–690 ms, yet productionEntryRoute classifies
+  // the entry as POST_FILL_PROTECTION_CRITICAL. The judgement comes
+  // from `protectionEvidence.ok !== true`, but until now no log
+  // exposed *which* check among:
+  //   ENTRY_PROTECTION_RESULT_OK / ACTIVATION_COMMIT_OK /
+  //   ACTIVE_STATUS / CHAIN_AUDIT_OK / WRITE_DECISION_OK /
+  //   RUNTIME_HEALTHY / SL_ORDER_PRESENT / TP1_ORDER_PRESENT
+  // tripped. This emit gives the operator the unambiguous failed-check
+  // list (and the same list for the post-recovery evidence) so the
+  // root cause can be addressed directly.
+  try {
+    if (protectionEvidence.ok !== true) {
+      console.log(JSON.stringify({
+        event: "v2_entry_protection_evidence_blocked",
+        ts: new Date().toISOString(),
+        symbol: executedEntry && executedEntry.symbol,
+        side: executedEntry && executedEntry.side,
+        position_cycle_id: executedEntry && executedEntry.positionCycle && executedEntry.positionCycle.position_cycle_id,
+        entry_order_id: executedEntry && executedEntry.entry_order_id,
+        stage: "INITIAL",
+        evidence_reason: protectionEvidence.reason,
+        failed_check_ids: Array.isArray(protectionEvidence.failed_check_ids)
+          ? protectionEvidence.failed_check_ids.slice(0, 16)
+          : null,
+        protection_result_ok: protectionResult && protectionResult.ok === true,
+        protection_result_reason: protectionResult && protectionResult.reason,
+        sl_ack_status: protectionResult && protectionResult.slAck && protectionResult.slAck.status,
+        tp1_ack_status: protectionResult && protectionResult.tp1Ack && protectionResult.tp1Ack.status,
+        sl_order_id: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.sl_order_id,
+        tp1_order_id: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.tp1_order_id,
+        runtime_health_status: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.health_status,
+        chain_audit_ok: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.chainAudit && protectionResult.activationCommit.chainAudit.ok,
+        chain_audit_fail_n: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.chainAudit && protectionResult.activationCommit.chainAudit.fail_n,
+        activation_position_cycle_status: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.position_cycle_status,
+      }));
+    }
+  } catch (_) { /* observability only */ }
   const recoveryResult = protectionEvidence.ok === true
     ? null
     : await recoverUnprotectedEntryProtection({
@@ -300,6 +340,35 @@ async function runV2EntrySubmitter({
     protectionEvidence = recoveryResult.protectionEvidence;
     protectionResult = recoveryResult.protectionResult;
   }
+  // 2026-04-29 — also surface post-recovery evidence so operators see
+  // whether the recovery path actually fixed the failed checks.
+  try {
+    if (protectionEvidence.ok !== true) {
+      console.log(JSON.stringify({
+        event: "v2_entry_protection_evidence_blocked",
+        ts: new Date().toISOString(),
+        symbol: executedEntry && executedEntry.symbol,
+        side: executedEntry && executedEntry.side,
+        position_cycle_id: executedEntry && executedEntry.positionCycle && executedEntry.positionCycle.position_cycle_id,
+        entry_order_id: executedEntry && executedEntry.entry_order_id,
+        stage: "POST_RECOVERY",
+        evidence_reason: protectionEvidence.reason,
+        failed_check_ids: Array.isArray(protectionEvidence.failed_check_ids)
+          ? protectionEvidence.failed_check_ids.slice(0, 16)
+          : null,
+        recovery_attempted: recoveryResult ? recoveryResult.attempted === true : false,
+        recovery_ok: recoveryResult ? recoveryResult.ok === true : null,
+        recovery_reason: recoveryResult ? recoveryResult.reason : null,
+        sl_ack_status: protectionResult && protectionResult.slAck && protectionResult.slAck.status,
+        tp1_ack_status: protectionResult && protectionResult.tp1Ack && protectionResult.tp1Ack.status,
+        sl_order_id: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.sl_order_id,
+        tp1_order_id: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.tp1_order_id,
+        runtime_health_status: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.health_status,
+        chain_audit_fail_n: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.chainAudit && protectionResult.activationCommit.chainAudit.fail_n,
+        activation_position_cycle_status: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.position_cycle_status,
+      }));
+    }
+  } catch (_) { /* observability only */ }
 
   return Object.freeze({
     ok: protectionEvidence.ok === true,
