@@ -9233,7 +9233,13 @@ async function syncBinanceFuturesPosition({ runId, exchange, symbol, riskBudget,
     symbol,
     side,
     syncEventMs,
-    signalTfMs: Number.isFinite(Number(prevMeta && prevMeta.entry_exec_tf_ms))
+    // 2026-04-29 — prevMeta is null on cold (positionless) symbols.
+    // Number(null) === 0, and 0 is finite, so the original short-circuit
+    // `prevMeta && prevMeta.entry_exec_tf_ms` produced 0 → the ternary
+    // selected the true branch → `prevMeta.entry_exec_tf_ms` was a
+    // null-deref TypeError. Rewrite the guard to test prevMeta itself,
+    // then the field, before we use the value.
+    signalTfMs: prevMeta && Number.isFinite(Number(prevMeta.entry_exec_tf_ms))
       ? Number(prevMeta.entry_exec_tf_ms)
       : null,
   });
