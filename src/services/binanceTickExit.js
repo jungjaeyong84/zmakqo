@@ -502,46 +502,27 @@ async function runTrailHardExit({
 const symbolCooldownState = new Map();
 const symbolCooldownLogState = new Map();
 
-// 2026-04-29 — V2 direct exit dispatch reduceOnly-reject cooldown.
-//
-// When the position has just closed (e.g. via the V2 direct dispatch
-// itself, or an external close, or a native STOP fill on the
-// exchange), the next fast-lane tick can still see stale local state
-// that triggers the same kind (BE/SL/TRAIL) and dispatches another
-// reduceOnly market order. Binance answers `-2022 ReduceOnly Order
-// is rejected.` because the position is already 0. The dispatch
-// then keeps firing every tick until the local position state syncs
-// — typically dozens of duplicate `v2_direct_exit_dispatch_place_fail`
-// alerts per closed position.
-//
-// Cooldown: when a -2022 reject is observed, mark the symbol as
-// "recently rejected" for V2_DIRECT_EXIT_REJECT_COOLDOWN_MS (60 s by
-// default). Subsequent fast-lane ticks skip the V2 direct dispatch
-// for that symbol until the cooldown expires. The native STOP_MARKET
-// path is unaffected — it owns the actual exit safety. The cooldown
-// only suppresses the wasteful duplicate market order.
-const v2DirectExitRejectCooldownState = new Map();
-const V2_DIRECT_EXIT_REJECT_COOLDOWN_MS = 60_000;
+// 2026-04-29 — V2 direct exit reduceOnly -2022 detection (diagnostics
+// only). The 60 s post-rejection cooldown that was introduced as the
+// initial "Issue 4" fix has been retired (R3) — it modelled the bug
+// backwards: it reacted to the *symptom* (the rejection) instead of
+// preventing the duplicate dispatch from happening. The real fixes:
+//   R1 (cf2b8e3b): markExitInFlight on place success → next tick's
+//     active filter excludes the symbol until fillSync catches up
+//     (or the 30 s TTL safety net expires).
+//   R2 (838c43a8): broker truth pre-filter → fetch the broker's
+//     positions[] once per cycle (5 s cache) and exclude any symbol
+//     whose positionAmt is already zero, so we never *attempt* a
+//     reduceOnly close into a flat position in the first place.
+// Together R1 + R2 prevent the retry-storm at the source. The only
+// surviving role of `isReduceOnlyReject` is as a diagnostic tag on
+// the rare race where the broker closes a position inside R2's 5 s
+// snapshot cache window — that single -2022 still surfaces, but R2
+// will absorb it on the very next cycle.
 function isReduceOnlyReject(errMsg) {
   if (!errMsg) return false;
   const s = String(errMsg);
   return s.includes("-2022") || /ReduceOnly\s+Order\s+is\s+rejected/i.test(s);
-}
-function markV2DirectExitRecentReject(symbol) {
-  const sym = String(symbol || "").trim().toUpperCase();
-  if (!sym) return;
-  v2DirectExitRejectCooldownState.set(sym, Date.now());
-}
-function isV2DirectExitInRejectCooldown(symbol, nowMs = Date.now()) {
-  const sym = String(symbol || "").trim().toUpperCase();
-  if (!sym) return false;
-  const lastMs = v2DirectExitRejectCooldownState.get(sym);
-  if (!Number.isFinite(lastMs)) return false;
-  if (nowMs - lastMs >= V2_DIRECT_EXIT_REJECT_COOLDOWN_MS) {
-    v2DirectExitRejectCooldownState.delete(sym);
-    return false;
-  }
-  return true;
 }
 
 // 2026-04-29 — ROOT-CAUSE FIX (R1) for the V2 direct exit reduceOnly
@@ -3748,32 +3729,23 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         const raw = String(process.env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED || "0").trim().toLowerCase();
         return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
       })()) {
-        // 2026-04-29 Issue 4 — reduceOnly -2022 retry-storm cooldown.
-        // After a fresh ENTRY fills, the broker can take a few seconds
-        // before the long/short position is visible to reduceOnly
-        // requests, and every TICK_EXIT cycle in that window dispatches
-        // a fresh V2 direct exit that the exchange rejects with
-        // -2022 "ReduceOnly Order is rejected". The previous behaviour
-        // produced dozens of duplicate `v2_direct_exit_dispatch_place_fail`
-        // warnings for the same symbol within ~30 s.
-        //
-        // Cooldown contract: once a -2022 reject lands for a symbol, we
-        // suppress further V2 direct exit dispatches for that symbol
-        // for V2_DIRECT_EXIT_REJECT_COOLDOWN_MS (60 s). The native
-        // protection (closePosition STOP_MARKET) still owns the actual
-        // exit safety; this only mutes the duplicate place attempts.
-        if (isV2DirectExitInRejectCooldown(symbol)) {
-          structuredLog("v2_direct_exit_dispatch_reject_cooldown_skip", {
-            exchange: "BINANCEFUT",
-            symbol,
-            run_id: runId,
-            triggered_kinds: triggeredKinds,
-            cooldown_ms: V2_DIRECT_EXIT_REJECT_COOLDOWN_MS,
-            note: "Skipping V2 direct dispatch — last attempt was rejected with reduceOnly -2022 within cooldown window.",
-          });
-          continue;
-        }
-
+        // 2026-04-29 R3 — Retired the post-rejection cooldown that
+        // used to live here. Retry-storm prevention now lives upstream
+        // in the active-list build:
+        //   R1 (cf2b8e3b): symbols with a freshly-placed dispatch are
+        //     excluded via the in-flight inhibit (markExitInFlight on
+        //     place success → next tick's filter skips them with
+        //     `tick_exit_skip_exit_in_flight`).
+        //   R2 (838c43a8): symbols whose broker positionAmt is already
+        //     zero are excluded via the broker truth pre-filter
+        //     (5 s cached fetchBinanceFuturesAccount snapshot →
+        //     `tick_exit_skip_broker_flat`).
+        // Together R1 + R2 prevent the duplicate dispatch from being
+        // attempted in the first place. The only -2022 we now expect
+        // is a single reject inside R2's 5 s cache window, which R2
+        // absorbs on the next cycle. There is no longer any value in
+        // a post-hoc cooldown — it would only delay legitimate exits
+        // for a position that genuinely re-opened.
         // Stage U-followup-1 (option A) — V2 direct exit dispatch.
         // Stage U-followup-2 (this turn) — pre-round qty via symbol
         //   exchangeInfo, stamp the dispatch into exit_order_contracts
@@ -3915,14 +3887,17 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                 }
               } catch (placeErr) {
                 v2DispatchPlaceError = placeErr && placeErr.message ? placeErr.message : String(placeErr);
-                // 2026-04-29 Issue 4 — start the reject cooldown when
-                // Binance rejects with -2022 ReduceOnly. The native
-                // protection (closePosition STOP_MARKET) still owns
-                // the actual exit; we only need to stop the dispatch
-                // retry storm until the position is observable to the
-                // reduceOnly endpoint.
+                // 2026-04-29 R3 — `reduce_only_reject` is now a pure
+                // diagnostic tag. With R1+R2 in place, a -2022 here
+                // means we lost a sub-5 s race against the broker's
+                // own close (e.g. native STOP fired during this tick
+                // after the snapshot was cached). Force-invalidate
+                // the broker snapshot so the *very next* cycle does a
+                // fresh fetchBinanceFuturesAccount and R2 catches the
+                // now-flat broker state — instead of waiting up to
+                // 5 s for the existing snapshot to expire naturally.
                 if (isReduceOnlyReject(v2DispatchPlaceError)) {
-                  markV2DirectExitRecentReject(symbol);
+                  invalidateBrokerPositionSnapshotCache();
                 }
                 structuredLog("v2_direct_exit_dispatch_place_fail", {
                   exchange: "BINANCEFUT",
@@ -3934,8 +3909,10 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                   idempotency_key: v2DirectDispatch.idempotencyKey,
                   error: v2DispatchPlaceError,
                   reduce_only_reject: isReduceOnlyReject(v2DispatchPlaceError),
-                  cooldown_started: isReduceOnlyReject(v2DispatchPlaceError),
-                  cooldown_ms: V2_DIRECT_EXIT_REJECT_COOLDOWN_MS,
+                  // R3 follow-up: if this fires repeatedly for the
+                  // same symbol within a single 5 s R2 cache window,
+                  // that's a real signal — open a follow-up to
+                  // tighten R2 (e.g. invalidate snapshot on -2022).
                 }, "warn");
               }
             } else {
@@ -4549,12 +4526,10 @@ module.exports = {
     _tickExitFailureAlertState: tickExitFailureAlertState,
     _nativeProtectionRefreshAttemptState: nativeProtectionRefreshAttemptState,
     _trailHardExitCooldownState: trailHardExitCooldownState,
-    // 2026-04-29 Issue 4 — V2 direct exit reduceOnly reject cooldown helpers
+    // 2026-04-29 R3 — Retired the post-rejection cooldown (replaced by
+    // R1 + R2). isReduceOnlyReject is kept as a diagnostic tag for the
+    // place_fail log path (race detection).
     isReduceOnlyReject,
-    markV2DirectExitRecentReject,
-    isV2DirectExitInRejectCooldown,
-    _v2DirectExitRejectCooldownState: v2DirectExitRejectCooldownState,
-    V2_DIRECT_EXIT_REJECT_COOLDOWN_MS,
     // 2026-04-29 ROOT-CAUSE (R1) — Optimistic exit-in-flight inhibit
     markExitInFlight,
     clearExitInFlight,
