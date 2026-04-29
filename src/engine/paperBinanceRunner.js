@@ -150,6 +150,16 @@ const {
   normalizeFuturesExitProfileMode,
   resolveConfiguredFuturesExitProfileMode,
 } = require("../utils/futuresExitProfileMode");
+// 2026-04-29 P1-1.10 — OpenClaw cohort + TP1-ladder profile
+// normalizers extracted to src/utils/openClawCohort.js. Two pure
+// helpers covering the cohort/ladder enum sets. AUDIT NOTE:
+// `normalizeOpenClawCohort` has 1 byte-identical sibling at
+// signalEngine.js:210 that will be consolidated in a follow-up
+// audit-driven sub-step (same pattern as P1-1.4/P1-1.8).
+const {
+  normalizeOpenClawCohort,
+  normalizeTp1LadderProfile,
+} = require("../utils/openClawCohort");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -583,17 +593,8 @@ const TP_P1_SKIP_REASONS = new Set([
   "MARGIN_TYPE_SET_FAILED",
 ]);
 
-function normalizeOpenClawCohort(value) {
-  const upper = String(value || "").trim().toUpperCase();
-  if (upper === "RESCUE" || upper === "MIXED" || upper === "KEEP_DROP" || upper === "HOLD_SAMPLE") return upper;
-  return null;
-}
-
-function normalizeTp1LadderProfile(value) {
-  const upper = String(value || "").trim().toUpperCase();
-  if (upper === "RESCUE" || upper === "MIXED" || upper === "BASE") return upper;
-  return null;
-}
+// 2026-04-29 P1-1.10 — `normalizeOpenClawCohort` and
+// `normalizeTp1LadderProfile` extracted to ../utils/openClawCohort.js.
 
 function resolveCooldownProfileFromMeta(posMeta = null) {
   const metaSafe = posMeta && typeof posMeta === "object" ? posMeta : {};
