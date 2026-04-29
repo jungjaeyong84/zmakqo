@@ -16319,14 +16319,15 @@ async function runPaperFuturesForBar({
         mode: liveCfg.executionMode,
         error: errMsg,
       };
-      // Intermittent ReferenceError like "sleep is not defined" has been
-      // firing in LIVE mode without a stack trace (catch swallows it). Attach
-      // the stack for ReferenceError so the NEXT occurrence pinpoints the
-      // actual lexical site. For other errors keep the log terse.
-      if (e instanceof ReferenceError || /is not defined/i.test(errMsg)) {
-        payload.error_name = e && e.name ? e.name : "ReferenceError";
-        payload.stack = e && e.stack ? String(e.stack).slice(0, 2000) : null;
-      }
+      // 2026-04-29 — production saw "Cannot read properties of null
+      // (reading 'entry_exec_tf_ms')" wave on every newly-added symbol
+      // (WLD/TAO/ARB/INJ/AAVE/SAND/TIA) the moment the universe
+      // expanded; stack was suppressed because the matcher only
+      // emitted on ReferenceError. Always attach the stack so the
+      // NEXT occurrence points at the offending lexical site for any
+      // exception class.
+      payload.error_name = e && e.name ? e.name : "Error";
+      payload.stack = e && e.stack ? String(e.stack).slice(0, 2000) : null;
       console.warn("[FUT_POS_SYNC_FAIL]", payload);
     }
   }
