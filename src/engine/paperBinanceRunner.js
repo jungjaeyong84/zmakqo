@@ -128,6 +128,20 @@ const {
   isBinanceMultiAssetsIsolatedMarginBlocked,
   isBinanceMarginTypeOpenOrdersConflict,
 } = require("../utils/binanceMarginType");
+// 2026-04-29 P1-1.8 — three signal-type normalization helpers
+// extracted to src/utils/signalTypeNormalization.js. The two
+// remaining helpers in the original cluster
+// (`resolveBinanceRealTradingEnabled` and `resolveTradeableSignalTypes`)
+// stay inline because they depend on `normalizeBool`, which is
+// scheduled for a later P1-1.x sub-step. AUDIT NOTE:
+// `normalizeTpP1EventForExchange` has 3 identical sibling copies
+// elsewhere (signals.js / webhook.routes.js / tradeExecutionAlert.js)
+// that will be consolidated in follow-up steps.
+const {
+  normalizeSignalTypeList,
+  normalizeTpP1EventForExchange,
+  filterOutRealSignalTypes,
+} = require("../utils/signalTypeNormalization");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -3393,30 +3407,10 @@ function ensureLogicalAddCapState(state, {
 // this file; same function references re-exposed via __test below so
 // live-rescue-add-plan and friends keep passing.
 
-function normalizeSignalTypeList(raw) {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map((x) => String(x || "").toUpperCase()).filter(Boolean);
-  if (typeof raw === "string") {
-    return raw.split(/[,\s]+/).map((x) => String(x || "").toUpperCase()).filter(Boolean);
-  }
-  return [];
-}
-
-function normalizeTpP1EventForExchange(eventRaw, exchange) {
-  const ev = String(eventRaw || "").trim().toUpperCase();
-  const ex = String(exchange || "").toUpperCase();
-  if (ex.includes("BINANCE") && ev === "EXIT_TP_P1_5P") return "EXIT_TP_P1_3P";
-  return ev;
-}
-
-function filterOutRealSignalTypes(list) {
-  if (!Array.isArray(list)) return [];
-  return list.filter((x) => {
-    const v = String(x || "").toUpperCase();
-    if (!v) return false;
-    return v !== "REAL" && v !== "REAL_LONG" && v !== "REAL_SHORT";
-  });
-}
+// 2026-04-29 P1-1.8 — `normalizeSignalTypeList`,
+// `normalizeTpP1EventForExchange`, `filterOutRealSignalTypes`
+// extracted to ../utils/signalTypeNormalization.js. Same
+// references re-imported at the top of this file.
 
 function resolveBinanceRealTradingEnabled(sysCfg) {
   const envRaw = process.env.BINANCE_REAL_TRADING_ENABLED;
