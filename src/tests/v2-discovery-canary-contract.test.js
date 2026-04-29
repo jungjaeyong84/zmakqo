@@ -204,8 +204,12 @@ const env = {
     runtime: { enabled: true, dry_run: false, canary_only: true },
     decisionMode: "CANARY",
     body: {
+      // 2026-04-29 — concurrent-position cap raised 5 → 8. The
+      // MAX_POSITION_COUNT_REACHED blocker now fires at active_position_n
+      // ≥ 8, so we trip it with 8 to keep the test's structural intent
+      // (cap-reached blocker fires) intact.
       discoveryCanaryState: {
-        active_position_n: 5,
+        active_position_n: 8,
         trade_count_24h: 5,
         daily_loss_quote: 6,
       },
