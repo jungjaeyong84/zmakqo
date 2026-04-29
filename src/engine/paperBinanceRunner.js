@@ -6098,8 +6098,16 @@ function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null,
   }
   if (policy.max_notional_quote == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_NOTIONAL_REQUIRED");
   if (policy.max_position_count == null) blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_REQUIRED");
-  if (policy.max_position_count != null && policy.max_position_count > 5) {
-    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_5");
+  // 2026-04-29 — Hard cap raised 5 → 8 at operator request. The cap
+  // exists to prevent a misconfiguration (e.g. accidentally setting
+  // max_position_count=100) from saturating the discovery canary.
+  // 8 was chosen as the next safe step that keeps total notional
+  // headroom inside the existing risk-cap consistency check
+  // (largest symbol notional × 8 ≤ MAX_TOTAL_NOTIONAL). Operator
+  // safe-mode (src/v2/operatorSafeMode.js) intentionally still pins
+  // the value to 5 as an emergency reduce.
+  if (policy.max_position_count != null && policy.max_position_count > 8) {
+    blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_8");
   }
   if (policy.max_trades_per_day == null) {
     blockers.push("V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_REQUIRED");

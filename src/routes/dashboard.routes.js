@@ -118,7 +118,7 @@ function summarizeDiscoveryCanaryPolicy() {
       .map((x) => x.trim().toUpperCase())
       .filter(Boolean),
     max_notional_quote: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE", "6")),
-    max_position_count: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT", "5")),
+    max_position_count: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT", "8")),
     max_trades_per_day: discoveryTradeLimitValue(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY", "UNLIMITED")),
     daily_loss_halt_quote: numOrNull(runtimeFlag("DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE", "10")),
     confirm_phrase: "EXECUTE_V2_DISCOVERY_CANARY",

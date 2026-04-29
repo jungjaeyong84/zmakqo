@@ -275,7 +275,7 @@ function explainSignalReason(reason) {
     "V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_REQUIRED": "V2 discovery canary 하루 최대 진입 횟수 한도가 없어 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:MAX_TRADES_PER_DAY_EXCEEDS_5": "V2 discovery canary 하루 최대 진입 횟수 한도가 5회를 초과해 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_REQUIRED": "V2 discovery canary 동시 포지션 한도가 없어 실제 주문을 보류했습니다.",
-    "V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_5": "V2 discovery canary 동시 포지션 한도가 5개를 초과해 실제 주문을 보류했습니다.",
+    "V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_8": "V2 discovery canary 동시 포지션 한도가 8개를 초과해 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:ML_LIVE_ARMED": "ML live serving이 켜져 있어 discovery canary 안전 계약과 맞지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:AGENT_APPLY_ENABLED": "OpenClaw agent live apply가 켜져 있어 discovery canary 안전 계약과 맞지 않아 실제 주문을 보류했습니다.",
     "V2_DISCOVERY_CANARY_BRIDGE:RISK_GOVERNOR_REQUIRED": "V2 risk governor 필수 플래그가 확인되지 않아 discovery canary 주문을 보류했습니다.",

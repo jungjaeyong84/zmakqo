@@ -50,7 +50,7 @@ function run() {
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "25",
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
-      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "5",
+      DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "8",
       DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
       DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
       DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "400",
@@ -71,7 +71,7 @@ function run() {
   assert.ok(v2Text.includes("fallback_notional=25"));
   assert.ok(!v2Text.includes("max_notional=25"));
   assert.ok(v2Text.includes("symbol_notional=SOLUSDT:15|XRPUSDT:15"));
-  assert.ok(v2Text.includes("max_pos=5"));
+  assert.ok(v2Text.includes("max_pos=8"));
   assert.ok(v2Text.includes("max_trades=UNLIMITED"));
   assert.ok(v2Text.includes("daily_loss_halt=10"));
   assert.ok(v2Text.includes("risk_total=400"));

@@ -69,7 +69,10 @@ function resolveDiscoveryCanaryPolicy(env = process.env) {
     max_symbol_count: Number.isFinite(maxSymbols) && maxSymbols > 0 ? maxSymbols : 2,
     max_notional_quote: Number.isFinite(maxNotional) && maxNotional > 0 ? maxNotional : 25,
     symbol_notional_quote_map: resolveDiscoverySymbolNotionalQuoteMap(env),
-    max_position_count: Number.isFinite(maxPositions) && maxPositions >= 0 ? maxPositions : 5,
+    // 2026-04-29 — Default raised 5 → 8 (operator request). Operator
+    // safe-mode in src/v2/operatorSafeMode.js still pins this to 5 as
+    // an emergency reduce.
+    max_position_count: Number.isFinite(maxPositions) && maxPositions >= 0 ? maxPositions : 8,
     max_trades_per_day: maxTradesUnlimited
       ? "UNLIMITED"
       : (Number.isFinite(maxTrades) && maxTrades >= 0 ? maxTrades : "UNLIMITED"),

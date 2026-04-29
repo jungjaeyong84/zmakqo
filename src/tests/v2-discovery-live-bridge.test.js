@@ -14,7 +14,7 @@ function buildEnv(overrides = {}) {
     DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS: "SOLUSDT|XRPUSDT",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE: "25",
     DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "SOLUSDT:15|XRPUSDT:15",
-    DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "5",
+    DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "8",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
     DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
     DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "1",
@@ -71,13 +71,24 @@ function discoveryBridgeRequiresSafetyEnvelope() {
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_ENTRY_FILTERS_NOT_RETIRED"));
   assert.ok(blocked.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:LEGACY_WAIT_ONE_BAR_HARD_DROP_NOT_RETIRED"));
 
+  // 2026-04-29 — hard cap raised 5 → 8. Use 9 to trip the new
+  // EXCEEDS_8 blocker; 6 used to trip EXCEEDS_5 but is now legal.
   const tooManyPositions = __test.evaluateV2DiscoveryCanaryLiveBridge({
-    env: buildEnv({ DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "6" }),
+    env: buildEnv({ DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "9" }),
     symbol: "XRPUSDT",
     executionMode: "LIVE",
   });
   assert.strictEqual(tooManyPositions.ok, false);
-  assert.ok(tooManyPositions.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_5"));
+  assert.ok(tooManyPositions.blockers.includes("V2_DISCOVERY_CANARY_BRIDGE:MAX_POSITION_COUNT_EXCEEDS_8"));
+
+  // And the now-legal 8 must not trip the cap blocker.
+  const eightAllowed = __test.evaluateV2DiscoveryCanaryLiveBridge({
+    env: buildEnv({ DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "8" }),
+    symbol: "XRPUSDT",
+    executionMode: "LIVE",
+  });
+  assert.ok(!eightAllowed.blockers.some((b) => /MAX_POSITION_COUNT_EXCEEDS/.test(b)),
+    "max_position_count=8 must be inside the new hard cap");
 }
 
 function discoveryBridgeClampsLegacyMaxOrder() {
