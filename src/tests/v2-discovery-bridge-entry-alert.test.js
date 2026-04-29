@@ -58,41 +58,68 @@ const bridgeSrc = fs.readFileSync(
   );
 })();
 
-// (B) Alert dispatch is wired into the success branch — between the
-//     "blocked" early return and the freezing OK return. Specifically
-//     it must call sendTradeExecutionAlert with intent="ENTRY".
+// (B) maybeDispatchEntryAlert helper exists, calls
+//     sendTradeExecutionAlert with intent="ENTRY", and is invoked
+//     from BOTH the success branch AND the ok=false-but-post-fill-
+//     reachable branch (so broker fills with protection failures
+//     still alert the operator).
 (function testAlertSitePlacement() {
-  const okReturnIdx = bridgeSrc.indexOf('reason: "V2_DISCOVERY_BRIDGE_EXECUTED"');
-  assert.ok(okReturnIdx > 0, "(B1) success-return reason marker not found");
-  // Look back ~5000 chars from the OK return; the alert dispatch must
-  // sit inside that window.
-  const before = bridgeSrc.slice(Math.max(0, okReturnIdx - 5000), okReturnIdx);
   assert.ok(
-    /sendTradeExecutionAlert\(\s*\{[\s\S]{0,2000}intent:\s*"ENTRY"/.test(before),
-    "(B2) success branch must call sendTradeExecutionAlert with intent=\"ENTRY\" before the OK return"
+    /function\s+maybeDispatchEntryAlert\s*\(/.test(bridgeSrc),
+    "(B1) maybeDispatchEntryAlert helper must be declared inside the bridge function"
+  );
+  // The helper must call sendTradeExecutionAlert with intent="ENTRY".
+  const helperIdx = bridgeSrc.indexOf("function maybeDispatchEntryAlert(");
+  assert.ok(helperIdx > 0, "(B2) helper anchor missing");
+  const helperWin = bridgeSrc.slice(helperIdx, helperIdx + 6000);
+  assert.ok(
+    /sendTradeExecutionAlert\(\s*\{[\s\S]{0,3000}intent:\s*"ENTRY"/.test(helperWin),
+    "(B3) helper must call sendTradeExecutionAlert with intent=\"ENTRY\""
   );
   assert.ok(
-    /shouldDispatchEntryAlert\s*\(/.test(before),
-    "(B3) success branch must dedupe via shouldDispatchEntryAlert"
+    /shouldDispatchEntryAlert\s*\(/.test(helperWin),
+    "(B4) helper must dedupe via shouldDispatchEntryAlert"
   );
   assert.ok(
-    /buildEntryAlertDedupeKey\s*\(/.test(before),
-    "(B4) success branch must compute dedupeKey via buildEntryAlertDedupeKey"
+    /classifyEntryAlertReachability\s*\(/.test(helperWin),
+    "(B5) helper must call classifyEntryAlertReachability and bail on !reachable"
+  );
+
+  // The helper must be invoked from BOTH branches: ok=false (post-fill
+  // exposure) AND ok=true (success). Use lastIndexOf to land on the
+  // ACTUAL return statements (the reason string also appears inside
+  // classifyEntryAlertReachability literals, which is fine — we want
+  // the last occurrence which is always the return).
+  const blockedReturnIdx = bridgeSrc.lastIndexOf('reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED"');
+  assert.ok(blockedReturnIdx > 0, "(B6) blocked-return marker not found");
+  const beforeBlocked = bridgeSrc.slice(Math.max(0, blockedReturnIdx - 2000), blockedReturnIdx);
+  assert.ok(
+    /maybeDispatchEntryAlert\s*\(/.test(beforeBlocked),
+    "(B7) maybeDispatchEntryAlert must be invoked before the BLOCKED return so post-fill exposure still alerts"
+  );
+
+  const successReturnIdx = bridgeSrc.lastIndexOf('reason: "V2_DISCOVERY_BRIDGE_EXECUTED"');
+  assert.ok(successReturnIdx > 0, "(B8) success-return marker not found");
+  const beforeSuccess = bridgeSrc.slice(Math.max(0, successReturnIdx - 2000), successReturnIdx);
+  assert.ok(
+    /maybeDispatchEntryAlert\s*\(/.test(beforeSuccess),
+    "(B9) maybeDispatchEntryAlert must be invoked before the SUCCESS return"
   );
 })();
 
-// (C) Alert failures must not crash the handoff. Wrap in try/catch +
-//     .catch on the returned Promise.
+// (C) Alert failures must not crash the handoff — helper has both
+//     a .catch on the sendTradeExecutionAlert Promise and an outer
+//     try/catch (alertGuardErr).
 (function testAlertFailureFallthrough() {
-  const okReturnIdx = bridgeSrc.indexOf('reason: "V2_DISCOVERY_BRIDGE_EXECUTED"');
-  const before = bridgeSrc.slice(Math.max(0, okReturnIdx - 5000), okReturnIdx);
+  const helperIdx = bridgeSrc.indexOf("function maybeDispatchEntryAlert(");
+  const helperWin = bridgeSrc.slice(helperIdx, helperIdx + 6000);
   assert.ok(
-    /\.catch\(\(alertErr\)\s*=>/.test(before),
+    /\.catch\(\(alertErr\)\s*=>/.test(helperWin),
     "(C1) sendTradeExecutionAlert promise must have .catch fallthrough"
   );
   assert.ok(
-    /\}\s*catch\s*\(\s*alertGuardErr\s*\)/.test(before),
-    "(C2) entire alert dispatch must be wrapped in try/catch (alertGuardErr)"
+    /\}\s*catch\s*\(\s*alertGuardErr\s*\)/.test(helperWin),
+    "(C2) helper must wrap its body in try/catch (alertGuardErr)"
   );
 })();
 
@@ -152,6 +179,58 @@ const bridgeSrc = fs.readFileSync(
   assert.strictEqual(resolveEntrySideFromIntent({}), null, "(D11) no info → null");
 
   clearEntryAlertDedupeForTest();
+})();
+
+// (E) classifyEntryAlertReachability — broker side reached
+//     classification covers the operator-reported DOGE 07:01:31 case.
+(function testReachabilityClassification() {
+  delete require.cache[require.resolve("../v2/discoveryCanaryServerSignalBridge")];
+  const { __test } = require("../v2/discoveryCanaryServerSignalBridge");
+  const f = __test.classifyEntryAlertReachability;
+
+  // Clean success.
+  const ok = f({ ok: true, reason: "V2_DISCOVERY_BRIDGE_EXECUTED", endpoint_result: null });
+  assert.strictEqual(ok.reachable, true, "(E1) success path is reachable");
+  assert.strictEqual(ok.severity, "INFO", "(E2) success severity INFO");
+  assert.strictEqual(ok.post_fill_only, false, "(E3) success not post-fill-only");
+
+  // Operator-reported DOGE 07:01:31 case — broker filled but protection critical.
+  const postFillCritical = f({
+    ok: false,
+    reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED",
+    endpoint_result: { reason: "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL" },
+  });
+  assert.strictEqual(postFillCritical.reachable, true,
+    "(E4) post-fill-protection-critical MUST be reachable — broker has the position");
+  assert.strictEqual(postFillCritical.severity, "CRITICAL", "(E5) severity CRITICAL");
+  assert.strictEqual(postFillCritical.post_fill_only, true, "(E6) post-fill-only flag");
+
+  // Post-fill route failure (protected).
+  const postFillProtected = f({
+    ok: false,
+    reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED",
+    endpoint_result: { reason: "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED" },
+  });
+  assert.strictEqual(postFillProtected.reachable, true,
+    "(E7) post-fill-route-failure-protected reachable");
+  assert.strictEqual(postFillProtected.severity, "WARN", "(E8) severity WARN (protected)");
+
+  // Pre-fill blocked (no broker exposure) — must NOT alert.
+  const blockedPreFill = f({
+    ok: false,
+    reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED",
+    endpoint_result: { reason: "V2_PRODUCTION_ENTRY_LIVE_ROUTER_NOT_EXECUTABLE" },
+  });
+  assert.strictEqual(blockedPreFill.reachable, false,
+    "(E9) pre-fill block (router not executable) MUST NOT trigger entry alert");
+
+  // No endpoint result at all.
+  const noEndpoint = f({ ok: false, reason: "V2_DISCOVERY_BRIDGE_LEDGER_PERSIST_BLOCKED" });
+  assert.strictEqual(noEndpoint.reachable, false, "(E10) no endpoint result → not reachable");
+
+  // Null/undefined input.
+  assert.strictEqual(f(null).reachable, false, "(E11) null input → not reachable");
+  assert.strictEqual(f().reachable, false, "(E12) missing input → not reachable");
 })();
 
 console.log("V2_DISCOVERY_BRIDGE_ENTRY_ALERT_TEST_OK");

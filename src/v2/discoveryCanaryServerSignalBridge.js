@@ -71,6 +71,31 @@ function resolveEntrySideFromIntent(intentRow = {}) {
   if (event.includes("SHORT")) return "SHORT";
   return null;
 }
+
+// 2026-04-29 — recognise the "broker side actually entered" reasons.
+// V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL and
+// V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED both
+// arrive on a bridge `ok=false` return path, but the broker order has
+// already filled — the operator's capital is exposed on the exchange
+// and they need to know about it (often more urgently than a clean
+// success). Treat these the same as the success path for the purpose
+// of dispatching the entry α alert; only the severity / note text
+// differs.
+function classifyEntryAlertReachability(handoffResult = null) {
+  const ok = handoffResult && handoffResult.ok === true;
+  if (ok && String(handoffResult.reason || "") === "V2_DISCOVERY_BRIDGE_EXECUTED") {
+    return { reachable: true, severity: "INFO", post_fill_only: false, reason: "V2_DISCOVERY_BRIDGE_EXECUTED" };
+  }
+  const endpoint = handoffResult && handoffResult.endpoint_result;
+  const endpointReason = endpoint && String(endpoint.reason || "");
+  if (endpointReason === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL") {
+    return { reachable: true, severity: "CRITICAL", post_fill_only: true, reason: endpointReason };
+  }
+  if (endpointReason === "V2_PRODUCTION_ENTRY_LIVE_POST_FILL_ROUTE_FAILURE_PROTECTED") {
+    return { reachable: true, severity: "WARN", post_fill_only: true, reason: endpointReason };
+  }
+  return { reachable: false, severity: null, post_fill_only: false, reason: null };
+}
 const { loadLatestLiquidationSnapshot } = require("./binanceLiquidationStreamCollector");
 
 function trimOrNull(value) {
@@ -832,30 +857,21 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
     },
     requestId: trimOrNull(requestId) || trimOrNull(intentRow && intentRow.intent_id),
   });
-  if (!result || result.ok !== true) {
-    return Object.freeze({
-      ok: false,
-      reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED",
-      request: built.request,
-      ledger_persistence: ledgerPersistence,
-      endpoint_result: result || null,
-      market_data_quality: built.market_data_quality,
-      discovery_canary_state: built.discovery_canary_state,
-    });
-  }
-
-  // 2026-04-29 — ENTRY α alert. The V2 production entry route
-  // executed and protection is in place (the only success branch);
-  // emit the operator alert immediately rather than waiting for
-  // fillSync's 3-min polling echo. dedupe by signal_id so fillSync's
-  // later trade-alert dispatch is muted within ENTRY_ALERT_DEDUPE_TTL_MS.
-  try {
-    const intentSym = upper(intentRow && (intentRow.symbol_or_pair_id || intentRow.symbol)) || null;
-    const signalId = trimOrNull(intentRow && (intentRow.signal_id || intentRow.signal_intent_id))
-      || trimOrNull(built && built.request && built.request.body && built.request.body.signalIntent && built.request.body.signalIntent.signal_intent_id);
-    const intentId = trimOrNull(intentRow && intentRow.intent_id);
-    const dedupeKey = buildEntryAlertDedupeKey({ symbol: intentSym, signalId, intentId });
-    if (shouldDispatchEntryAlert(dedupeKey)) {
+  // 2026-04-29 — ENTRY α alert dispatcher. Called for both the clean
+  // success path AND the post-fill-failure branches where broker
+  // order has already filled (operator capital is exposed). dedupe
+  // by signal_id so fillSync's later authoritative echo never
+  // double-fires.
+  function maybeDispatchEntryAlert(handoffResult) {
+    try {
+      const reachability = classifyEntryAlertReachability(handoffResult);
+      if (!reachability.reachable) return;
+      const intentSym = upper(intentRow && (intentRow.symbol_or_pair_id || intentRow.symbol)) || null;
+      const signalId = trimOrNull(intentRow && (intentRow.signal_id || intentRow.signal_intent_id))
+        || trimOrNull(built && built.request && built.request.body && built.request.body.signalIntent && built.request.body.signalIntent.signal_intent_id);
+      const intentId = trimOrNull(intentRow && intentRow.intent_id);
+      const dedupeKey = buildEntryAlertDedupeKey({ symbol: intentSym, signalId, intentId });
+      if (!shouldDispatchEntryAlert(dedupeKey)) return;
       recordEntryAlertDispatched(dedupeKey);
       const side = resolveEntrySideFromIntent(intentRow) || "LONG";
       const refPrice = Number.isFinite(Number(referencePrice)) ? Number(referencePrice) : null;
@@ -864,6 +880,15 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
         ? Number(sizingDecision.entry_qty_abs) : null;
       const notional = Number.isFinite(Number(sizingDecision && sizingDecision.notional_quote))
         ? Number(sizingDecision.notional_quote) : null;
+      const noteFor = (() => {
+        if (reachability.severity === "CRITICAL") {
+          return "V2 discovery bridge — broker order filled but native protection setup CRITICAL. Operator must verify position exposure manually.";
+        }
+        if (reachability.severity === "WARN") {
+          return "V2 discovery bridge — broker order filled and protected, but downstream route step failed. Position is in place; downstream reconciliation will follow.";
+        }
+        return "V2 discovery bridge — entry executed and protected; alert emitted at place boundary (fillSync echo dedupe by signal_id).";
+      })();
       sendTradeExecutionAlert({
         exchange: upper(intentRow && intentRow.exchange) || "BINANCEFUT",
         symbol: intentSym,
@@ -877,24 +902,52 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
         notional,
         signalId,
         runId: trimOrNull(intentRow && intentRow.run_id) || trimOrNull(requestId),
-        // ENTRY alerts don't go through the canonical-exit gate;
-        // sendTradeExecutionAlert recognises intent=ENTRY and skips
-        // canonicalRequirement.
         rawEvidenceEvent: side === "SHORT" ? "ENTRY_SHORT" : "ENTRY_LONG",
-        note: "V2 discovery bridge — entry executed and protected; alert emitted at place boundary (fillSync echo dedupe by signal_id).",
+        note: noteFor,
+        severity: reachability.severity,
+        post_fill_only: reachability.post_fill_only,
+        bridge_reason: reachability.reason,
       }).catch((alertErr) => {
         console.warn(
           "[V2_DISCOVERY_BRIDGE_ENTRY_ALERT_FAIL]",
           alertErr && alertErr.message ? alertErr.message : String(alertErr),
         );
       });
+    } catch (alertGuardErr) {
+      console.warn(
+        "[V2_DISCOVERY_BRIDGE_ENTRY_ALERT_GUARD]",
+        alertGuardErr && alertGuardErr.message ? alertGuardErr.message : String(alertGuardErr),
+      );
     }
-  } catch (alertGuardErr) {
-    console.warn(
-      "[V2_DISCOVERY_BRIDGE_ENTRY_ALERT_GUARD]",
-      alertGuardErr && alertGuardErr.message ? alertGuardErr.message : String(alertGuardErr),
-    );
   }
+
+  if (!result || result.ok !== true) {
+    const blockedHandoffResult = {
+      ok: false,
+      reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED",
+      endpoint_result: result || null,
+    };
+    // Even on bridge ok=false, broker may have already filled (post-fill
+    // protection critical / post-fill route failure). Operator MUST know
+    // about that exposure.
+    maybeDispatchEntryAlert(blockedHandoffResult);
+    return Object.freeze({
+      ok: false,
+      reason: "V2_DISCOVERY_BRIDGE_ENDPOINT_BLOCKED",
+      request: built.request,
+      ledger_persistence: ledgerPersistence,
+      endpoint_result: result || null,
+      market_data_quality: built.market_data_quality,
+      discovery_canary_state: built.discovery_canary_state,
+    });
+  }
+
+  const successHandoffResult = {
+    ok: true,
+    reason: "V2_DISCOVERY_BRIDGE_EXECUTED",
+    endpoint_result: result,
+  };
+  maybeDispatchEntryAlert(successHandoffResult);
 
   return Object.freeze({
     ok: true,
@@ -926,6 +979,7 @@ module.exports = {
     recordEntryAlertDispatched,
     clearEntryAlertDedupeForTest,
     resolveEntrySideFromIntent,
+    classifyEntryAlertReachability,
     ENTRY_ALERT_DEDUPE_TTL_MS,
     resolveReferencePrice,
     stepSafeNotional,
