@@ -4500,6 +4500,32 @@ function finalizeInternalSignals({ signals, posMeta, barCloseMs, fallbackUtc, ex
 
 async function loadServerNativeInitialSignals({ exchange, symbol, signalTf, barCloseMs } = {}) {
   if (!symbol || !signalTf || !Number.isFinite(Number(barCloseMs))) return [];
+  // 2026-04-29 — Emergency kill-switch. The server-native initial
+  // signal builder (services/serverNativeInitialSignal.js) was
+  // discovered to be the actual entry-firing path on production
+  // (00:46 UTC DOGEUSDT LONG → V2_DISCOVERY_CANARY_ENTRY_EXECUTED_PROTECTION_CRITICAL
+  // → trail/BE chop → force-exit). Until the downstream issues
+  // (RECENT_ENTRY_GRACE force-exit + trail-after-TP1 inhibit) are
+  // root-cause-fixed, this kill-switch lets us cut the only active
+  // V2 entry source. The flag is also useful longer-term for
+  // canary rollouts of the parallel v2/serverEntrySignalGenerator.js.
+  // Default OFF; setting DONBEOLJA_SERVER_NATIVE_INITIAL_SIGNALS_DISABLED=1
+  // disables the builder.
+  const disabledRaw = String(process.env.DONBEOLJA_SERVER_NATIVE_INITIAL_SIGNALS_DISABLED || "0").trim().toLowerCase();
+  if (disabledRaw === "1" || disabledRaw === "true" || disabledRaw === "yes" || disabledRaw === "on") {
+    try {
+      console.log(JSON.stringify({
+        event: "server_native_initial_signals_disabled_by_env",
+        ts: new Date().toISOString(),
+        exchange,
+        symbol,
+        tf: signalTf,
+        bar_close_ms: Number(barCloseMs),
+        env: "DONBEOLJA_SERVER_NATIVE_INITIAL_SIGNALS_DISABLED",
+      }));
+    } catch (_) { /* observability only */ }
+    return [];
+  }
   try {
     let [bars, htfBars] = await Promise.all([
       queryBars({ exchange, symbol, tf: signalTf, limit: 220 }),
