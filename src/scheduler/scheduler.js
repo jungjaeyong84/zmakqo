@@ -42,7 +42,6 @@ const {
   refreshLatestBarSnapshot,
   computeGateForMarket,
   runOneMarket,
-  isV1MarketRunnerDisabledByEnv,
   buildRunId,
   pickTf,
 } = require("./marketRunner");
@@ -341,38 +340,37 @@ function createScheduler() {
       const results = [];
       for (const market of markets) {
         try {
-          // 2026-04-28 Stage T-hotfix — V1 cutover guard moved here
-          // from inside runOneMarket so server-primary-tick (V2 owning
-          // path) can still call runOneMarket for bars refresh + V2
-          // server-signal generation. The legacy scheduler tick is the
-          // V1 path that must skip under DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1.
-          if (isV1MarketRunnerDisabledByEnv(process.env)) {
-            try {
-              console.log(JSON.stringify({
-                event: "v1_scheduler_market_skipped_legacy_runtime_disabled",
-                ts: new Date().toISOString(),
-                exchange: exId,
-                market,
-                signal_tf: signalTf,
-                exec_tf: execTf,
-                run_id: runId,
-                note: "DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1; legacy scheduler tick must not run V1 marketRunner. V2 productionEntryRoute + openclaw server-primary-tick own entry/signal during cutover.",
-              }));
-            } catch (_) { /* observability only */ }
-            const skipped = {
-              ok: true,
-              exchange: exId,
-              market,
-              symbol_or_pair_id: market,
-              signal_tf: signalTf,
-              exec_tf: execTf,
-              skipped: true,
-              reason: "V1_SCHEDULER_LEGACY_RUNTIME_DISABLED",
-            };
-            results.push(skipped);
-            marketResults.push(skipped);
-            continue;
-          }
+          // 2026-04-29 — RETIRED: the previous "V1 cutover guard"
+          // here used to short-circuit `runOneMarket` whenever
+          // DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1, on the premise
+          // that the call would otherwise let V1 trade through. That
+          // premise is no longer true:
+          //
+          //   - paperBinanceRunner now calls
+          //     `isV2DiscoveryCanaryLegacyExchangeWriteBlocked` at
+          //     every V1 exchange-write boundary; legacy_runtime_disabled
+          //     causes every V1 entry/exit write to return
+          //     `V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED`
+          //     (paperBinanceRunner.js:12120-12135). V1 cannot trade.
+          //   - binanceTickExit's V1 fast-lane has its own
+          //     `legacyRuntimeDisabledNow()` self-skip (V2 direct
+          //     dispatch + R1/R2 in-flight + broker-flat refinement
+          //     own the exit path).
+          //   - The V1 EXIT_OPPOSITE_SIGNAL inject inside
+          //     runPaperFuturesForBar (line ~18891) self-skips on
+          //     liveCfg.legacy_runtime_disabled.
+          //
+          // The outer scheduler-level skip was therefore redundant
+          // safety AND it had a real cost: the only code path that
+          // reaches the F2 server-native ENTRY signal generator
+          // (paperBinanceRunner.runPaperFuturesForBar inject, line
+          // ~18564) was being short-circuited every tick, so no ENTRY
+          // signals fired at all. Operator symptom on 2026-04-29:
+          // "신호가 안 나오는 것 같다."
+          //
+          // Removing the guard lets `runOneMarket` flow through
+          // normally; V1 writes are still denied at the writer
+          // boundary, and the F2 generator inject finally runs.
           const r = await runOneMarket({
             exchange: exId,
             market,

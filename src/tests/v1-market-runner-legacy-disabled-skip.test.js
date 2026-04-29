@@ -1,24 +1,31 @@
 "use strict";
 
-// 2026-04-29 — V1 market runner architectural skip test.
-// 2026-04-28 Stage T-hotfix — guard moved from runOneMarket itself to
-// the legacy scheduler call site (scheduler/scheduler.js) because the
-// V2 server-primary tick (scripts/run-openclaw-server-primary-tick.js)
-// also calls runOneMarket for bars-refresh + V2 server-signal
-// generation, and the prior placement blocked that legitimate V2 path.
-// runOneMarket no longer carries the guard; the guard now lives on
-// the V1-only callers (legacy scheduler tick) so server-primary-tick
-// passes through cleanly.
+// 2026-04-29 — V1 trade denial architectural test (rewritten).
 //
-// Structural test:
-//   (A) marketRunner.js exports `isV1MarketRunnerDisabledByEnv` so
-//       legacy callers can apply it
-//   (B) scheduler/scheduler.js imports the helper
-//   (C) scheduler/scheduler.js applies the guard immediately before
-//       its runOneMarket call site, emits the structured skip log,
-//       and `continue`s the loop without running V1 logic
-//   (D) marketRunner.js no longer has an early-return guard inside
-//       runOneMarket itself (so V2 server-primary-tick can pass)
+// The previous version of this test enforced a "V1 cutover guard" at
+// the scheduler call site (scheduler/scheduler.js: skip runOneMarket
+// when DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1). That outer guard was
+// retired on 2026-04-29 because it was redundant safety AND it had
+// the side effect of short-circuiting the F2 server-native ENTRY
+// signal generator inject inside paperBinanceRunner.runPaperFuturesForBar.
+// Operator symptom: "신호가 안 나오는 것 같다" — V1 cutover skip
+// blocked F2 generator from ever running.
+//
+// V1 trade is now blocked at the *writer* boundary, not the
+// scheduler boundary:
+//   1. paperBinanceRunner.js calls
+//      `isV2DiscoveryCanaryLegacyExchangeWriteBlocked` at every V1
+//      exchange-write site; legacy_runtime_disabled=true returns
+//      `V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED`. V1 cannot
+//      enter or exit the exchange.
+//   2. binanceTickExit's V1 fast-lane self-skips on
+//      `legacyRuntimeDisabledNow()` (V2 direct dispatch + R1/R2 own
+//      the exit path).
+//   3. The V1 EXIT_OPPOSITE_SIGNAL inject inside
+//      runPaperFuturesForBar self-skips on liveCfg.legacy_runtime_disabled.
+//
+// The scheduler tick now flows through `runOneMarket` cleanly,
+// letting the F2 ENTRY signal generator inject finally fire.
 
 const assert = require("assert");
 const fs = require("fs");
@@ -33,76 +40,78 @@ const path = require("path");
     path.join(__dirname, "..", "scheduler", "scheduler.js"),
     "utf8"
   );
-
-  // (A) helper exists + reads env + is exported
-  assert.ok(
-    marketRunnerSrc.includes("function isV1MarketRunnerDisabledByEnv"),
-    "(A) isV1MarketRunnerDisabledByEnv helper must exist in marketRunner.js"
-  );
-  assert.ok(
-    marketRunnerSrc.includes("DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED"),
-    "(A) helper must read DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED"
-  );
-  assert.ok(
-    /module\.exports\s*=\s*\{[\s\S]*isV1MarketRunnerDisabledByEnv[\s\S]*\}/.test(marketRunnerSrc),
-    "(A) marketRunner.js must export isV1MarketRunnerDisabledByEnv"
+  const paperRunnerSrc = fs.readFileSync(
+    path.join(__dirname, "..", "engine", "paperBinanceRunner.js"),
+    "utf8"
   );
 
-  // (B) scheduler.js imports the helper
+  // (A) The retired scheduler-level V1 cutover guard must be gone.
+  //     scheduler.js no longer imports `isV1MarketRunnerDisabledByEnv`
+  //     and no longer emits `v1_scheduler_market_skipped_legacy_runtime_disabled`.
   assert.ok(
-    schedulerSrc.includes("isV1MarketRunnerDisabledByEnv"),
-    "(B) scheduler.js must import isV1MarketRunnerDisabledByEnv"
+    !schedulerSrc.includes("isV1MarketRunnerDisabledByEnv"),
+    "(A1) scheduler.js must no longer import isV1MarketRunnerDisabledByEnv (guard retired 2026-04-29)"
+  );
+  assert.ok(
+    !schedulerSrc.includes("v1_scheduler_market_skipped_legacy_runtime_disabled"),
+    "(A2) scheduler.js must no longer emit the v1_scheduler_market_skipped_legacy_runtime_disabled log (guard retired)"
+  );
+  assert.ok(
+    !schedulerSrc.includes("V1_SCHEDULER_LEGACY_RUNTIME_DISABLED"),
+    "(A3) scheduler.js must no longer return V1_SCHEDULER_LEGACY_RUNTIME_DISABLED (guard retired)"
   );
 
-  // (C) scheduler.js applies the guard right before its runOneMarket
-  //     call site. Locate the runOneMarket call and require the guard
-  //     to appear within the immediate preceding ~1500 chars.
+  // (B) `runOneMarket` flows through unconditionally — no V1 guard
+  //     wrapping it, so the F2 ENTRY generator inject inside
+  //     paperBinanceRunner can fire.
   const runOneCallIdx = schedulerSrc.indexOf("await runOneMarket({");
-  assert.ok(runOneCallIdx > 0, "(C) runOneMarket call site not found in scheduler.js");
-  const region = schedulerSrc.slice(Math.max(0, runOneCallIdx - 1500), runOneCallIdx);
+  assert.ok(runOneCallIdx > 0, "(B1) runOneMarket call site not found in scheduler.js");
+  // Look back ~3000 chars from the call: there must NOT be a guard
+  // that short-circuits the loop with `continue;` on
+  // legacy_runtime_disabled. (A normal try/catch is fine; we're
+  // checking specifically that there is no V1 cutover skip.)
+  const before = schedulerSrc.slice(Math.max(0, runOneCallIdx - 3000), runOneCallIdx);
   assert.ok(
-    region.includes("isV1MarketRunnerDisabledByEnv(process.env)"),
-    "(C) scheduler.js must check isV1MarketRunnerDisabledByEnv before runOneMarket"
-  );
-  assert.ok(
-    region.includes("v1_scheduler_market_skipped_legacy_runtime_disabled"),
-    "(C) scheduler.js skip branch must emit structured skip log"
-  );
-  assert.ok(
-    region.includes("V1_SCHEDULER_LEGACY_RUNTIME_DISABLED"),
-    "(C) scheduler.js skip return reason must be V1_SCHEDULER_LEGACY_RUNTIME_DISABLED"
-  );
-  assert.ok(
-    region.includes("continue;"),
-    "(C) skip branch must continue the loop without running V1 logic"
+    !/legacy_runtime_disabled[\s\S]{0,500}continue\s*;/i.test(before),
+    "(B2) scheduler.js must not short-circuit runOneMarket on legacy_runtime_disabled"
   );
 
-  // (D) runOneMarket itself must NOT carry the early-return guard any
-  //     more — that placement also blocked V2 server-primary-tick.
+  // (C) The authoritative V1-trade denial lives at the writer boundary
+  //     in paperBinanceRunner. This is the *real* safety layer.
+  assert.ok(
+    paperRunnerSrc.includes("V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED"),
+    "(C1) paperBinanceRunner.js must define V2_LEGACY_RUNTIME_DISABLED_LEGACY_V1_WRITER_DENIED"
+  );
+  assert.ok(
+    paperRunnerSrc.includes("isV2DiscoveryCanaryLegacyExchangeWriteBlocked"),
+    "(C2) paperBinanceRunner.js must call isV2DiscoveryCanaryLegacyExchangeWriteBlocked at the writer boundary"
+  );
+
+  // (D) runOneMarket itself must NOT carry the early-return guard
+  //     (Stage T-hotfix invariant — V2 server-primary-tick must pass
+  //     through cleanly).
   const runOneIdx = marketRunnerSrc.indexOf("async function runOneMarket(");
-  assert.ok(runOneIdx > 0, "runOneMarket function not found");
+  assert.ok(runOneIdx > 0, "(D1) runOneMarket function not found");
   const bodyStart = marketRunnerSrc.indexOf(") {", runOneIdx);
-  assert.ok(bodyStart > runOneIdx, "runOneMarket function body brace not found");
+  assert.ok(bodyStart > runOneIdx, "(D2) runOneMarket function body brace not found");
   const earlyBody = marketRunnerSrc.slice(bodyStart, bodyStart + 1200);
   assert.ok(
     !earlyBody.includes("isV1MarketRunnerDisabledByEnv(process.env)"),
-    "(D) runOneMarket must NOT call the guard internally — it would block V2 server-primary-tick"
+    "(D3) runOneMarket must NOT call the guard internally — it would block V2 server-primary-tick + F2 generator inject"
   );
 })();
 
-(function testHelperRuntime() {
-  // Reload after env to test helper directly via export.
+(function testHelperRuntimePreserved() {
+  // The helper itself is kept exported (dead code path for now) so
+  // ad-hoc operator scripts that read the env via this name keep
+  // working. If a future cleanup retires the helper, delete this
+  // block too.
   delete require.cache[require.resolve("../scheduler/marketRunner")];
   const { isV1MarketRunnerDisabledByEnv } = require("../scheduler/marketRunner");
-  assert.strictEqual(isV1MarketRunnerDisabledByEnv({}), false, "default OFF");
-  assert.strictEqual(isV1MarketRunnerDisabledByEnv({ DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "0" }), false, "explicit 0");
-  for (const truthy of ["1", "true", "yes", "on", "TRUE", "ON"]) {
-    assert.strictEqual(
-      isV1MarketRunnerDisabledByEnv({ DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: truthy }),
-      true,
-      `truthy=${truthy}`
-    );
-  }
+  assert.strictEqual(typeof isV1MarketRunnerDisabledByEnv, "function",
+    "(E) helper export still present (dead code; retire in a follow-up cleanup if no callers remain)");
+  assert.strictEqual(isV1MarketRunnerDisabledByEnv({}), false, "(E) default OFF");
+  assert.strictEqual(isV1MarketRunnerDisabledByEnv({ DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "1" }), true, "(E) explicit 1");
 })();
 
 console.log("V1_MARKET_RUNNER_LEGACY_DISABLED_SKIP_TEST_OK");
