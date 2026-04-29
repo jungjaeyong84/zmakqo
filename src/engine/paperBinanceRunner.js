@@ -117,6 +117,17 @@ const {
   isUnlimitedRuntimeLimit,
   positiveNumberOrUnlimited,
 } = require("../utils/runtimeConfigParsers");
+// 2026-04-29 P1-1.7 — Binance futures margin-type helpers extracted
+// to src/utils/binanceMarginType.js. Three pure helpers covering
+// margin-type normalization and the two well-known error-code
+// (-4168 multi-assets, -4067 open-orders) recognition predicates.
+// Re-imported here; same references still re-exposed via __test
+// below for margin-type-multi-assets-fallback.test.js compatibility.
+const {
+  normalizeFuturesMarginType,
+  isBinanceMultiAssetsIsolatedMarginBlocked,
+  isBinanceMarginTypeOpenOrdersConflict,
+} = require("../utils/binanceMarginType");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -3172,34 +3183,11 @@ async function resolveAdaptiveFuturesExitProfile({
   });
 }
 
-function normalizeFuturesMarginType(raw, fallback = "ISOLATED") {
-  const v = String(raw || "").trim().toUpperCase();
-  if (v === "CROSSED" || v === "ISOLATED") return v;
-  return fallback;
-}
-
-function isBinanceMultiAssetsIsolatedMarginBlocked(err, marginType) {
-  const type = normalizeFuturesMarginType(marginType, "");
-  if (type !== "ISOLATED") return false;
-  const code = Number(err && err.code);
-  const body = String(err && err.body || "");
-  const msg = String(err && err.message || err || "");
-  const combined = `${msg} ${body}`;
-  if (Number.isFinite(code) && code === -4168) return true;
-  if (combined.includes("-4168")) return true;
-  return /Unable to adjust to isolated-margin mode under the Multi-Assets mode/i.test(combined);
-}
-
-function isBinanceMarginTypeOpenOrdersConflict(err) {
-  const code = Number(err && err.code);
-  const body = String(err && err.body || "");
-  const msg = String(err && err.message || err || "");
-  const combined = `${msg} ${body}`;
-  if (Number.isFinite(code) && code === -4067) return true;
-  if (combined.includes("-4067")) return true;
-  return /cannot be changed if there exists open orders/i.test(combined)
-    || /open orders/i.test(combined);
-}
+// 2026-04-29 P1-1.7 — `normalizeFuturesMarginType`,
+// `isBinanceMultiAssetsIsolatedMarginBlocked`,
+// `isBinanceMarginTypeOpenOrdersConflict` extracted to
+// ../utils/binanceMarginType.js. Same references re-imported at the
+// top of this file; still re-exported via __test below.
 
 function normalizeFuturesExitProfileMode(raw, fallback = "BASE") {
   const v = String(raw || "").trim().toUpperCase();
