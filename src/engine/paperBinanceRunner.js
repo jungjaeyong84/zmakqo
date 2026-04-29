@@ -83,6 +83,18 @@ const {
   isPreRealEventName,
   isCoreOrRealEvent,
 } = require("../utils/eventNamePredicates");
+// 2026-04-29 P1-1.4 — telegram channel-list helpers extracted to
+// src/utils/channelList.js. The runner's previous inline copies
+// at lines 1529 + 1536 were two of SEVEN identical sibling copies
+// in the codebase (others in alerts.js, scheduler.js,
+// signalLifecycleAlert.js, binanceFuturesFillsSync.js,
+// tradeExecutionAlert.js, aiAllocation.js). Subsequent
+// audit-driven steps will collapse the remaining five duplicates;
+// for P1-1.4 only the runner's copy is migrated.
+const {
+  parseChannelList,
+  filterTelegramChannels,
+} = require("../utils/channelList");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -1526,18 +1538,10 @@ function parseUpperList(raw, fallback = []) {
   return out;
 }
 
-function parseChannelList(raw) {
-  return String(raw || "")
-    .split(/[\n,]/)
-    .map((v) => v.trim())
-    .filter(Boolean);
-}
-
-function filterTelegramChannels(raw) {
-  return parseChannelList(raw)
-    .filter((v) => /^telegram:|^tg:|^telegram:\/\//i.test(String(v || "").trim()))
-    .join(",");
-}
+// 2026-04-29 P1-1.4 — `parseChannelList` and `filterTelegramChannels`
+// extracted to ../utils/channelList.js. Re-imported at the top of
+// this file. Five sibling duplicates remain in the codebase; see
+// the channelList.js module header for the migration list.
 
 function formatAlertNumber(value, digits = 6) {
   const n = Number(value);
