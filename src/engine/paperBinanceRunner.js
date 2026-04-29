@@ -160,6 +160,16 @@ const {
   normalizeOpenClawCohort,
   normalizeTp1LadderProfile,
 } = require("../utils/openClawCohort");
+// 2026-04-29 P1-1.11 — alert-payload number/percentage formatters
+// extracted to src/utils/alertNumberFormat.js. Three pure
+// formatters covering auto-precision number, ratio→percent token,
+// and exit-rules compact summary string. Zero external callers
+// prior to extraction.
+const {
+  formatAlertNumber,
+  formatRatioPctToken,
+  formatExitRulesCompactLocal,
+} = require("../utils/alertNumberFormat");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -1599,40 +1609,9 @@ function parseUpperList(raw, fallback = []) {
 // this file. Five sibling duplicates remain in the codebase; see
 // the channelList.js module header for the migration list.
 
-function formatAlertNumber(value, digits = 6) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "NA";
-  const abs = Math.abs(n);
-  const precision = abs >= 1000 ? 2 : abs >= 100 ? 3 : abs >= 1 ? 4 : digits;
-  return n.toFixed(precision).replace(/\.?0+$/, "");
-}
-
-function formatRatioPctToken(value, { abs = false } = {}) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  const pct = (abs ? Math.abs(n) : n) * 100;
-  const fixed = pct >= 10 ? pct.toFixed(2) : pct.toFixed(3);
-  return fixed.replace(/\.?0+$/, "");
-}
-
-function formatExitRulesCompactLocal(exitRules) {
-  if (!exitRules || typeof exitRules !== "object") return null;
-  const parts = [];
-  const sl = formatRatioPctToken(exitRules.SL, { abs: true });
-  const tp1 = formatRatioPctToken(exitRules.TP_P1);
-  const trailR = Number(exitRules.TRAIL_R_MULTIPLE);
-  const trail = Number.isFinite(trailR) && trailR > 0
-    ? `${String(trailR).replace(/\.?0+$/, "")}R`
-    : formatRatioPctToken(exitRules.TRAIL_PCT);
-  const runnerMin = formatRatioPctToken(exitRules.RUNNER_MIN_PROFIT_PCT);
-  const be = formatRatioPctToken(exitRules.BE_PCT);
-  if (sl) parts.push(`SL_${sl}`);
-  if (tp1) parts.push(`TP1_${tp1}`);
-  if (trail) parts.push(`TRAIL_${trail}`);
-  if (runnerMin) parts.push(`RUNNER_MIN_${runnerMin}`);
-  if (be) parts.push(`BE_${be}`);
-  return parts.length ? parts.join(" / ") : null;
-}
+// 2026-04-29 P1-1.11 — `formatAlertNumber`, `formatRatioPctToken`,
+// `formatExitRulesCompactLocal` extracted to
+// ../utils/alertNumberFormat.js.
 
 function sleepMs(ms) {
   const waitMs = Number(ms);
