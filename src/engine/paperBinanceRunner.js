@@ -14822,6 +14822,27 @@ async function runPaperBinanceForBar({
             const ledgerPersistenceReason = handoff && handoff.ledger_persistence
               && handoff.ledger_persistence.reason
               ? String(handoff.ledger_persistence.reason) : null;
+            // Drill into the actual signalCriteria/strategy-filter
+            // sub-blockers when the OpenClaw decision validation gate
+            // rejects (handoff.reason = ROUTER_NOT_EXECUTABLE,
+            // routedDecision.reason = SIGNAL_CRITERIA_BLOCKED, etc.).
+            const routedDecisionDetail = handoff && handoff.routedDecision && handoff.routedDecision.detail
+              ? handoff.routedDecision.detail : null;
+            const criteriaBlockers = routedDecisionDetail && Array.isArray(routedDecisionDetail.blockers)
+              ? routedDecisionDetail.blockers.slice(0, 20) : null;
+            const criteriaSignalScore = routedDecisionDetail && Number.isFinite(Number(routedDecisionDetail.signal_score))
+              ? Number(routedDecisionDetail.signal_score) : null;
+            const criteriaThresholds = routedDecisionDetail && routedDecisionDetail.thresholds
+              ? routedDecisionDetail.thresholds : null;
+            const builtBundle = handoff && handoff.body && handoff.body.bundle
+              ? handoff.body.bundle : (handoff && handoff.request && handoff.request.body && handoff.request.body.bundle ? handoff.request.body.bundle : null);
+            const bundleSignalCriteria = builtBundle && builtBundle.canonical_evidence_summary
+              && builtBundle.canonical_evidence_summary.signal_criteria
+              ? builtBundle.canonical_evidence_summary.signal_criteria : null;
+            const bundleCriteriaBlockers = bundleSignalCriteria && Array.isArray(bundleSignalCriteria.blockers)
+              ? bundleSignalCriteria.blockers.slice(0, 20) : null;
+            const bundleCriteriaScore = bundleSignalCriteria && Number.isFinite(Number(bundleSignalCriteria.signal_score))
+              ? Number(bundleSignalCriteria.signal_score) : null;
             console.log(JSON.stringify({
               event: "v2_server_entry_signal_handoff_dispatched",
               ts: new Date().toISOString(),
@@ -14839,6 +14860,9 @@ async function runPaperBinanceForBar({
               endpoint_result_reason: endpointResultReason,
               sizing_not_approved_reason: sizingNotApprovedReason,
               ledger_persistence_reason: ledgerPersistenceReason,
+              criteria_blockers: criteriaBlockers || bundleCriteriaBlockers,
+              criteria_signal_score: criteriaSignalScore != null ? criteriaSignalScore : bundleCriteriaScore,
+              criteria_thresholds: criteriaThresholds,
               handoff_keys: handoff ? Object.keys(handoff) : null,
             }));
           } catch (_) { /* observability only */ }
@@ -18582,6 +18606,27 @@ async function runPaperFuturesForBar({
             const ledgerPersistenceReason = handoff && handoff.ledger_persistence
               && handoff.ledger_persistence.reason
               ? String(handoff.ledger_persistence.reason) : null;
+            // Drill into the actual signalCriteria/strategy-filter
+            // sub-blockers when the OpenClaw decision validation gate
+            // rejects (handoff.reason = ROUTER_NOT_EXECUTABLE,
+            // routedDecision.reason = SIGNAL_CRITERIA_BLOCKED, etc.).
+            const routedDecisionDetail = handoff && handoff.routedDecision && handoff.routedDecision.detail
+              ? handoff.routedDecision.detail : null;
+            const criteriaBlockers = routedDecisionDetail && Array.isArray(routedDecisionDetail.blockers)
+              ? routedDecisionDetail.blockers.slice(0, 20) : null;
+            const criteriaSignalScore = routedDecisionDetail && Number.isFinite(Number(routedDecisionDetail.signal_score))
+              ? Number(routedDecisionDetail.signal_score) : null;
+            const criteriaThresholds = routedDecisionDetail && routedDecisionDetail.thresholds
+              ? routedDecisionDetail.thresholds : null;
+            const builtBundle = handoff && handoff.body && handoff.body.bundle
+              ? handoff.body.bundle : (handoff && handoff.request && handoff.request.body && handoff.request.body.bundle ? handoff.request.body.bundle : null);
+            const bundleSignalCriteria = builtBundle && builtBundle.canonical_evidence_summary
+              && builtBundle.canonical_evidence_summary.signal_criteria
+              ? builtBundle.canonical_evidence_summary.signal_criteria : null;
+            const bundleCriteriaBlockers = bundleSignalCriteria && Array.isArray(bundleSignalCriteria.blockers)
+              ? bundleSignalCriteria.blockers.slice(0, 20) : null;
+            const bundleCriteriaScore = bundleSignalCriteria && Number.isFinite(Number(bundleSignalCriteria.signal_score))
+              ? Number(bundleSignalCriteria.signal_score) : null;
             console.log(JSON.stringify({
               event: "v2_server_entry_signal_handoff_dispatched",
               ts: new Date().toISOString(),
@@ -18599,6 +18644,9 @@ async function runPaperFuturesForBar({
               endpoint_result_reason: endpointResultReason,
               sizing_not_approved_reason: sizingNotApprovedReason,
               ledger_persistence_reason: ledgerPersistenceReason,
+              criteria_blockers: criteriaBlockers || bundleCriteriaBlockers,
+              criteria_signal_score: criteriaSignalScore != null ? criteriaSignalScore : bundleCriteriaScore,
+              criteria_thresholds: criteriaThresholds,
               handoff_keys: handoff ? Object.keys(handoff) : null,
             }));
           } catch (_) { /* observability only */ }
