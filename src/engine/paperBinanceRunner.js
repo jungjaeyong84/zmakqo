@@ -95,6 +95,17 @@ const {
   parseChannelList,
   filterTelegramChannels,
 } = require("../utils/channelList");
+// 2026-04-29 P1-1.5 — trading-action enum normalizers extracted to
+// src/utils/tradingActionEnums.js. Four pure predicates/normalizers
+// that classify the action/side/tradingMode enum strings. Re-imported
+// here; no __test re-export was present (no test read these through
+// the runner surface), so the runner's public API is unchanged.
+const {
+  allowByTradingMode,
+  normalizeSideValue,
+  normalizeActionValue,
+  actionAllowsEntry,
+} = require("../utils/tradingActionEnums");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -3302,30 +3313,10 @@ function shouldForceFuturesRefresh(symbol) {
   return true;
 }
 
-function allowByTradingMode(tradingMode, side) {
-  if (tradingMode === "RUNNING") return true;
-  if (tradingMode === "EXIT_ONLY") return side === "SELL";
-  return false;
-}
-
-function normalizeSideValue(side) {
-  const s = String(side || "").toUpperCase();
-  if (s === "LONG") return "BUY";
-  if (s === "SHORT") return "SELL";
-  if (s === "BUY" || s === "SELL") return s;
-  return "HOLD";
-}
-
-function normalizeActionValue(action) {
-  const s = String(action || "").toUpperCase();
-  if (!s) return null;
-  if (s === "ENTRY" || s === "ADD" || s === "EXIT" || s === "DROP") return s;
-  return s;
-}
-
-function actionAllowsEntry(action) {
-  return action === "ENTRY" || action === "ADD";
-}
+// 2026-04-29 P1-1.5 — `allowByTradingMode`, `normalizeSideValue`,
+// `normalizeActionValue`, `actionAllowsEntry` extracted to
+// ../utils/tradingActionEnums.js. Same references re-imported at
+// the top of this file.
 
 function isManualRetryFeatures(features) {
   const f = (features && typeof features === "object") ? features : {};
