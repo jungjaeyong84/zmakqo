@@ -203,6 +203,14 @@ const {
   pickSignalWaveConf,
   pickSignalConflict,
 } = require("../utils/signalFeaturePickers");
+// 2026-04-29 P1-1.15 — signal-claim helpers extracted to
+// src/utils/signalClaimHelpers.js. Two pure helpers covering
+// signal-id extraction (with legacy fallback chain) and claim-
+// result classification.
+const {
+  resolveSignalIdFromSignalLike,
+  isSignalClaimAlreadyHandled,
+} = require("../utils/signalClaimHelpers");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -1428,17 +1436,8 @@ async function consumeDroppedSignals({ drops, runId, execBarCloseMs, execBarClos
   }
 }
 
-function resolveSignalIdFromSignalLike(row = null) {
-  return String(
-    (row && row.signal_id) ||
-    (row && row.signal_doc_id) ||
-    (row && row.features_json && row.features_json.signal_id) ||
-    (row && row.features_json && row.features_json.signal_doc_id) ||
-    (row && row.features && row.features.signal_id) ||
-    (row && row.features && row.features.signal_doc_id) ||
-    ""
-  ).trim() || null;
-}
+// 2026-04-29 P1-1.15 — `resolveSignalIdFromSignalLike` extracted to
+// ../utils/signalClaimHelpers.js.
 
 async function markSignalConsumedIfClaimed({
   signalId = null,
@@ -1465,10 +1464,8 @@ async function markSignalConsumedIfClaimed({
   return { ok: true };
 }
 
-function isSignalClaimAlreadyHandled(result = null) {
-  const reason = String(result && result.reason || "").trim().toUpperCase();
-  return reason === "ALREADY_CONSUMED" || reason === "LOCKED";
-}
+// 2026-04-29 P1-1.15 — `isSignalClaimAlreadyHandled` extracted to
+// ../utils/signalClaimHelpers.js.
 
 async function claimSignalForProgressAlert({
   signalId = null,
