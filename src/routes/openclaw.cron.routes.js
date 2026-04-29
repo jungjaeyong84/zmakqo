@@ -148,6 +148,58 @@ router.post("/api/openclaw/cron/v2-exit-runtime-canary", requireSchedulerToken, 
   }
 });
 
+// 2026-04-30 P0-fix-G follow-up — recurring stale-cycle cleanup.
+//
+// Background: P0-fix-G one-shot script
+// (scripts/cleanup-stale-active-protected-cycles.js) cleared 43
+// stale ACTIVE_PROTECTED cycles whose broker side was already FLAT.
+// The accumulation pattern is structural — every WS user-data
+// stream LEASE_LOST or fill-sync race can leave a cycle stuck in
+// ACTIVE_PROTECTED — so a recurring cleanup is the right long-term
+// posture instead of waiting for the next deploy gate to surface
+// it.
+//
+// Operator gating:
+//   V2_STALE_CYCLE_CLEANUP_APPLY env var
+//     "1"/"true"/"yes" → mutate (status: CLOSED + provenance)
+//     anything else (or unset) → diagnose-only (default)
+//
+// Default OFF for safety: the very first production deploys run
+// in diagnose mode so the operator can review the report and
+// flip the env var to enable mutation only after the classifier
+// truth-table has been observed in live traffic. Same staged-
+// rollout posture as the v2-exit-runtime-canary canary streak
+// (which started observe-only and was promoted to gate-blocking
+// after the streak was clean).
+//
+// The route uses the same hard caps + age floor as the CLI tool
+// (CLEANUP_MAX_WRITES default 50, CLEANUP_CYCLE_AGE_FLOOR_MS
+// default 5 min) — see the script header for the full safety
+// contract.
+router.post("/api/openclaw/cron/v2-stale-cycle-cleanup", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/cleanup-stale-active-protected-cycles");
+    const applyRaw = String(process.env.V2_STALE_CYCLE_CLEANUP_APPLY || "").trim().toLowerCase();
+    const apply = applyRaw === "1" || applyRaw === "true" || applyRaw === "yes" || applyRaw === "on";
+    const outcome = await runWithShortTimeout(
+      "v2_stale_cycle_cleanup",
+      () => main({ argv: apply ? ["--apply"] : [] }),
+      180000
+    );
+    // The cleanup script's main() returns the report directly (not
+    // wrapped in { ok, result }), so we project ok = report.ok.
+    const result = outcome && outcome.result ? outcome.result : null;
+    const resultOk = outcome.ok === true && (!result || result.ok === true);
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+      apply_mode: apply ? "APPLY" : "DIAGNOSE_ONLY",
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // v2-active-protection-reconciliation: live exchange/order reconciliation
 // for active positions. Any unprotected active position must make this
 // endpoint fail so Cloud Scheduler status reflects the safety problem.
