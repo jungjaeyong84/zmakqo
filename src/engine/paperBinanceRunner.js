@@ -267,6 +267,16 @@ const {
   resolveSameDirectionTrailProfitCooldownBlock,
   resolveSameDirectionTrailProfitCooldownSnapshot,
 } = require("../utils/sameDirectionTrailProfitCooldown");
+// 2026-04-29 P1-1.21 — four generic object/value micro-utilities
+// extracted to src/utils/runnerObjectHelpers.js (hasPositionSize,
+// mergeMeta, trimTextOrNull, numOrNull). hasPositionSize composes
+// POS_SIZE_EPSILON (P1-1.2).
+const {
+  hasPositionSize,
+  mergeMeta,
+  trimTextOrNull,
+  numOrNull,
+} = require("../utils/runnerObjectHelpers");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -4556,33 +4566,9 @@ function filterLiveFuturesInternalSignals({
   });
 }
 
-function hasPositionSize(sizePct) {
-  const n = Number(sizePct);
-  if (!Number.isFinite(n)) return false;
-  return n > POS_SIZE_EPSILON;
-}
-
-function mergeMeta(base, patch) {
-  const out = (base && typeof base === "object") ? { ...base } : {};
-  if (patch && typeof patch === "object") {
-    for (const [k, v] of Object.entries(patch)) {
-      if (v === undefined) continue;
-      out[k] = v;
-    }
-  }
-  return out;
-}
-
-function trimTextOrNull(value) {
-  const text = String(value == null ? "" : value).trim();
-  return text || null;
-}
-
-function numOrNull(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
+// 2026-04-29 P1-1.21 — `hasPositionSize`, `mergeMeta`,
+// `trimTextOrNull`, `numOrNull` extracted to
+// ../utils/runnerObjectHelpers.js.
 
 function buildSyntheticV2ExitEvidenceId({ kind, exchange, symbol, entryEventId, observedAtMs }) {
   const resolvedKind = String(kind || "EXIT").trim().toUpperCase() || "EXIT";
