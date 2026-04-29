@@ -464,12 +464,89 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
   const signalTfFinal = normalizeTf(signalTf || DEFAULT_EXEC_TF) || DEFAULT_EXEC_TF;
   const execTfFinal = normalizeTf(execTf || signalTfFinal) || signalTfFinal;
 
-  const snapshotRefresh = await refreshLatestBarSnapshot({
-    exchange,
-    market,
-    tf: execTfFinal,
-    runId: runIdHint,
-  });
+  // 2026-04-30 P0-fix-H — entry-tf bars warmup for cold-start symbols.
+  //
+  // Problem (production verification 2026-04-29): the 8 newly added
+  // symbols (WLDUSDT, TAOUSDT, ARBUSDT, INJUSDT, SUIUSDT, AAVEUSDT,
+  // SANDUSDT, TIAUSDT) had ZERO entries since being added to
+  // BINANCEFUT_MARKETS / DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS even
+  // though F2 generator was running for them. Diagnosis showed
+  // `v2_server_entry_signal_generator_run skip_reason=BARS_INSUFFICIENT`
+  // for every tick — Firestore had 96-97 15m bars per new symbol vs
+  // the F2 generator's 220-bar requirement. The default
+  // refreshLatestBarSnapshot fetch (env.bars.snapshotRefreshCount,
+  // default 3, max 10) trickles bars in at 3-10 per tick; reaching
+  // 220 from a cold start takes 22+ ticks at the maximum, often hours
+  // depending on tick cadence.
+  //
+  // Fix: detect cold-start (queryBars().length < entry-tf threshold)
+  // and trigger a one-shot 230-bar backfill via countOverride,
+  // matching the same pattern P0-fix-A landed for HTF cache (4h, 70
+  // bars). Once the threshold is reached, fall through to the normal
+  // refresh cadence.
+  //
+  // Threshold: SERVER_ENTRY_TF_BARS_WARMUP_THRESHOLD env var, default
+  // 220 (mirrors v2/serverEntrySignalGenerator.js queryBars limit).
+  // Backfill count: SERVER_ENTRY_TF_BARS_WARMUP_COUNT env var,
+  // default 230 (=220 threshold + 10 safety margin so the next tick
+  // still has fresh bars to layer on top).
+  let snapshotRefresh;
+  try {
+    const ENTRY_TF_BARS_WARMUP_THRESHOLD = (() => {
+      const raw = Number(process.env.SERVER_ENTRY_TF_BARS_WARMUP_THRESHOLD);
+      return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 220;
+    })();
+    const ENTRY_TF_BARS_WARMUP_COUNT = (() => {
+      const raw = Number(process.env.SERVER_ENTRY_TF_BARS_WARMUP_COUNT);
+      return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 230;
+    })();
+    const existingBars = await queryBars({
+      exchange: exchange || "BINANCEFUT",
+      symbol: market,
+      tf: execTfFinal,
+      limit: ENTRY_TF_BARS_WARMUP_THRESHOLD,
+    });
+    const existingCount = Array.isArray(existingBars) ? existingBars.length : 0;
+    if (existingCount < ENTRY_TF_BARS_WARMUP_THRESHOLD) {
+      console.log(JSON.stringify({
+        event: "entry_tf_bars_warmup_triggered",
+        ts: new Date().toISOString(),
+        exchange,
+        symbol: market,
+        tf: execTfFinal,
+        existing_bars_n: existingCount,
+        threshold: ENTRY_TF_BARS_WARMUP_THRESHOLD,
+        backfill_count: ENTRY_TF_BARS_WARMUP_COUNT,
+        run_id: runIdHint || null,
+      }));
+      snapshotRefresh = await refreshLatestBarSnapshot({
+        exchange,
+        market,
+        tf: execTfFinal,
+        runId: runIdHint,
+        countOverride: ENTRY_TF_BARS_WARMUP_COUNT,
+      });
+    } else {
+      snapshotRefresh = await refreshLatestBarSnapshot({
+        exchange,
+        market,
+        tf: execTfFinal,
+        runId: runIdHint,
+      });
+    }
+  } catch (warmupErr) {
+    // Never let the warmup-decision query break the tick. Fall back
+    // to the legacy refresh cadence on any error.
+    console.warn(
+      `[entry_tf_bars_warmup_check_fail] ex=${exchange} sym=${market} tf=${execTfFinal} err=${warmupErr && warmupErr.message ? warmupErr.message : String(warmupErr)}`
+    );
+    snapshotRefresh = await refreshLatestBarSnapshot({
+      exchange,
+      market,
+      tf: execTfFinal,
+      runId: runIdHint,
+    });
+  }
   const signalSnapshotRefresh = (signalTfFinal !== execTfFinal)
     ? await refreshLatestBarSnapshot({
       exchange,
