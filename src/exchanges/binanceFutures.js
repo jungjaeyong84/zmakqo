@@ -91,6 +91,63 @@ async function fetchBinanceFuturesCandlesInterval(symbol, interval, count = 2, o
   return mapCandleRows(rows);
 }
 
+// 2026-04-30 P0-fix-E — public ticker price fetcher with egress proxy
+// routing.
+//
+// Background: src/services/binanceTickExit.js' fetchBinanceFuturesPrices
+// (called from the V2 Exit Worker tick loop) was using bare fetch() to
+// fapi.binance.com. Cloud Run IPs are geo-blocked from Binance's public
+// API, which is the entire reason the donbeolja-egress proxy service
+// exists. The bare-fetch path fails with `TypeError: fetch failed`
+// (undici level), surfaces as a tick-exit failure alert, and prevents
+// the exit worker from reading the live tick prices it needs to evaluate
+// SL/TP/TRAIL triggers.
+//
+// This helper mirrors the proven pattern from
+// fetchBinanceFuturesCandlesInterval (above): try the egress proxy when
+// shouldUseEgressProxy() is true; fall through to direct fetch otherwise
+// (test/dev environments). The action name "fetchFuturesPrices" is
+// added to the egress proxy route's handler table in
+// src/routes/egress.proxy.routes.js as part of the same fix.
+//
+// Returns an array of `{symbol, price}` objects (Binance's native
+// /fapi/v1/ticker/price?symbols=[...] response shape). Caller is
+// responsible for keying it into a map.
+async function fetchBinanceFuturesPrices(symbols, opts = {}) {
+  const list = Array.isArray(symbols)
+    ? symbols.map((s) => String(s || "").toUpperCase().trim()).filter(Boolean)
+    : [];
+  if (!list.length) return [];
+
+  const useProxy = opts.useProxy !== false && shouldUseEgressProxy();
+  if (useProxy) {
+    try {
+      const data = await callEgressProxy({
+        provider: "binancefut",
+        action: "fetchFuturesPrices",
+        payload: { symbols: list },
+      });
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      // Older egress deploys may not know this action yet — fall
+      // through to direct fetch only when the action is genuinely
+      // unsupported. Any other error (network, auth, etc.) bubbles
+      // up so the caller's failure-alert path can surface it.
+      const msg = String(e && e.message ? e.message : "").toLowerCase();
+      if (!msg.includes("action_not_supported") && !msg.includes("unknown action")) throw e;
+    }
+  }
+
+  const baseUrl = String(process.env.BINANCE_FUTURES_BASE_URL || "https://fapi.binance.com").trim() || "https://fapi.binance.com";
+  const url = `${baseUrl}/fapi/v1/ticker/price?symbols=` + encodeURIComponent(JSON.stringify(list));
+  const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`BINANCEFUT_HTTP_${res.status}: ${text}`);
+  const rows = JSON.parse(text);
+  return Array.isArray(rows) ? rows : [];
+}
+
 module.exports = {
   fetchBinanceFuturesCandlesInterval,
+  fetchBinanceFuturesPrices,
 };

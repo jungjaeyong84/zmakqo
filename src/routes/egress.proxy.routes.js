@@ -102,6 +102,15 @@ const handlers = {
         payload && payload.limit,
         { useProxy: false }
       ),
+    // 2026-04-30 P0-fix-E — public ticker price (multi-symbol).
+    // Used by V2 Exit Worker tick loop's fetchBinanceFuturesPrices.
+    // useProxy:false breaks the recursion that would otherwise occur
+    // (caller is already running on the egress proxy server).
+    fetchFuturesPrices: (payload) =>
+      binancePublic.fetchBinanceFuturesPrices(
+        payload && payload.symbols,
+        { useProxy: false }
+      ),
     placeFuturesMarketOrder: (payload) => binance.placeFuturesMarketOrder(payload || {}),
     placeFuturesLimitOrder: (payload) => binance.placeFuturesLimitOrder(payload || {}),
     cancelFuturesOrder: (payload) => binance.cancelFuturesOrder(payload || {}),

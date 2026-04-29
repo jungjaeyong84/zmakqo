@@ -36,6 +36,15 @@ const {
   fetchBinanceFuturesAccount,
   __test: binancePrivateTest,
 } = require("../exchanges/binanceFuturesPrivate");
+// 2026-04-30 P0-fix-E — fetchBinanceFuturesPrices used to use bare
+// fetch() to fapi.binance.com which Cloud Run IPs are geo-blocked from.
+// Imported from binanceFutures (public exchanges module) where the
+// canonical implementation routes through the egress proxy when
+// shouldUseEgressProxy() is true and falls back to direct fetch in
+// test/dev only.
+const {
+  fetchBinanceFuturesPrices: fetchBinanceFuturesPricesPublic,
+} = require("../exchanges/binanceFutures");
 const { sendAlert } = require("../utils/alerts");
 const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
 const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../utils/actionExecutionHooks");
@@ -1788,16 +1797,23 @@ async function clearUnackedTpP1Pending({ pos, symbol, tf, now } = {}) {
   return true;
 }
 
+// 2026-04-30 P0-fix-E — refactored to delegate to the canonical public
+// helper at src/exchanges/binanceFutures.js, which routes through the
+// egress proxy when shouldUseEgressProxy() is true. The previous
+// inline bare-fetch path failed in production because Cloud Run IPs
+// are geo-blocked from fapi.binance.com (the entire reason
+// donbeolja-egress exists). Production symptom that triggered this
+// fix: V2 Exit Worker `tick-exit 실패 / TypeError: fetch failed /
+// 가격: 0` alerts. The runner's tick loop relies on these prices to
+// evaluate SL/TP/TRAIL triggers; without them the exit path silently
+// degrades.
+//
+// Contract preserved: caller sees the same { SYMBOL: price } map
+// shape; the helper now does the array-to-map keying that the
+// canonical fetcher returns as a raw array of {symbol,price} rows.
 async function fetchBinanceFuturesPrices(symbols) {
   const out = {};
-  const list = Array.isArray(symbols) ? symbols.map((s) => String(s || "").toUpperCase()).filter(Boolean) : [];
-  if (!list.length) return out;
-  const baseUrl = getFuturesBaseUrl() || "https://fapi.binance.com";
-  const url = `${baseUrl}/fapi/v1/ticker/price?symbols=` + encodeURIComponent(JSON.stringify(list));
-  const res = await fetch(url, { method: "GET" });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`BINANCE_TICKER_FAIL_${res.status}`);
-  const rows = JSON.parse(text);
+  const rows = await fetchBinanceFuturesPricesPublic(symbols);
   if (Array.isArray(rows)) {
     rows.forEach((r) => {
       const sym = String(r && r.symbol || "").toUpperCase();
