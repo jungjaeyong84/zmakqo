@@ -242,6 +242,17 @@ const {
 const {
   ratioToPctTokenLocal,
 } = require("../utils/exitEventPctToken");
+// 2026-04-29 P1-1.19 — three pure price/pnl math helpers extracted
+// to src/utils/priceMathHelpers.js. computeExitTriggerPrice (avgPx
+// + leverage + side + pnl% → trigger price), computeUnrealizedPnlPct
+// (price-distance fraction by side), computeReplayStopDistancePct
+// (signed % distance from close to SL price). All pure; compose
+// the already-extracted normalizePositionSide.
+const {
+  computeExitTriggerPrice,
+  computeUnrealizedPnlPct,
+  computeReplayStopDistancePct,
+} = require("../utils/priceMathHelpers");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -2226,20 +2237,8 @@ function isExitMetaLinkedToEntry({
   return linkedToEntry;
 }
 
-function computeExitTriggerPrice({ avgPrice, leverage, side, pnlPct } = {}) {
-  const px = Number(avgPrice);
-  const levRaw = Number(leverage);
-  const lev = Number.isFinite(levRaw) && levRaw > 0 ? levRaw : 1;
-  const pct = Number(pnlPct);
-  const sideUpper = String(side || "").toUpperCase();
-  if (!Number.isFinite(px) || px <= 0 || !Number.isFinite(pct)) return null;
-  const move = pct / lev;
-  if (sideUpper === "SHORT") {
-    const den = 1 + move;
-    return den > 0 ? (px / den) : null;
-  }
-  return px * (1 + move);
-}
+// 2026-04-29 P1-1.19 — `computeExitTriggerPrice` extracted to
+// ../utils/priceMathHelpers.js.
 
 function computeTpP1TargetPrice({ exchange, position, posMeta, fillPrice } = {}) {
   const rules = resolveExitRulesForPosition({
@@ -3427,14 +3426,8 @@ function resolveImmediateDefaultsForExchange(sysCfg, exchange) {
   return out;
 }
 
-function computeUnrealizedPnlPct({ position, bar, positionSide }) {
-  const pos = position || {};
-  const avg = Number(pos.avg_price);
-  const closePx = Number(bar && (bar.close ?? bar.c ?? bar.closePrice));
-  if (!Number.isFinite(avg) || !Number.isFinite(closePx) || avg === 0) return null;
-  const side = normalizePositionSide(positionSide) || "LONG";
-  return side === "SHORT" ? (avg - closePx) / avg : (closePx - avg) / avg;
-}
+// 2026-04-29 P1-1.19 — `computeUnrealizedPnlPct` extracted to
+// ../utils/priceMathHelpers.js.
 
 function parseReplayRescueSet(raw, fallback = []) {
   const list = Array.isArray(raw)
@@ -3779,22 +3772,8 @@ function applyTrailObservationSnapshotToMeta({
   });
 }
 
-function computeReplayStopDistancePct({ position, bar, positionSide, rules } = {}) {
-  const pos = position || {};
-  const avg = Number(pos.avg_price);
-  const closePx = Number(bar && (bar.close ?? bar.c ?? bar.closePrice));
-  const side = normalizePositionSide(positionSide);
-  const slPct = Number(rules && rules.SL);
-  if (!Number.isFinite(avg) || !Number.isFinite(closePx) || closePx <= 0) return null;
-  if (!side || !Number.isFinite(slPct)) return null;
-  const stopPx = side === "SHORT"
-    ? (avg * (1 - slPct))
-    : (avg * (1 + slPct));
-  if (!Number.isFinite(stopPx)) return null;
-  return side === "SHORT"
-    ? (((stopPx - closePx) / closePx) * 100)
-    : (((closePx - stopPx) / closePx) * 100);
-}
+// 2026-04-29 P1-1.19 — `computeReplayStopDistancePct` extracted to
+// ../utils/priceMathHelpers.js.
 
 function resolveEventRefMs(...candidates) {
   for (const candidate of candidates) {
