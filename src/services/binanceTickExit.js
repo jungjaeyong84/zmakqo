@@ -614,56 +614,23 @@ function getExitInFlightRecord(symbol) {
 // and exclude any symbol whose `positionAmt === 0`. Cost is bounded:
 // fetchBinanceFuturesAccount has Binance weight ≈ 5 and the 5 s TTL
 // caps us at ~12 calls/min/instance even under sub-second tick rates.
-// fillSync (3-min poll cadence) and binanceLiveStateSelfHeal also call
-// the same endpoint independently; if we ever want to share their
-// results to drive the rate to 0 we can fold this cache into a
-// shared module — for now an isolated 5 s cache is the simpler
-// surface.
-let brokerPositionSnapshotCache = null;
-const BROKER_POSITION_SNAPSHOT_TTL_MS = (() => {
-  const raw = Number(process.env.TICK_EXIT_BROKER_SNAPSHOT_TTL_MS);
-  if (Number.isFinite(raw) && raw >= 0) return raw;
-  return 5_000;
-})();
-function buildBrokerPositionSnapshot(account = {}) {
-  const byMap = new Map();
-  const rows = Array.isArray(account && account.positions) ? account.positions : [];
-  for (const row of rows) {
-    const sym = String(row && row.symbol || "").trim().toUpperCase();
-    if (!sym) continue;
-    const positionAmt = Number(row && row.positionAmt);
-    if (!Number.isFinite(positionAmt)) continue;
-    const positionSide = String(row && row.positionSide || "").trim().toUpperCase();
-    byMap.set(sym, {
-      positionAmt,
-      positionSide: positionSide || (positionAmt > 0 ? "LONG" : positionAmt < 0 ? "SHORT" : "FLAT"),
-      isFlat: positionAmt === 0,
-    });
-  }
-  return byMap;
-}
-async function getBrokerPositionSnapshot({ liveCfg, nowMs = Date.now() } = {}) {
-  if (
-    brokerPositionSnapshotCache
-    && Number.isFinite(brokerPositionSnapshotCache.fetchedAt)
-    && (nowMs - brokerPositionSnapshotCache.fetchedAt) < BROKER_POSITION_SNAPSHOT_TTL_MS
-  ) {
-    return brokerPositionSnapshotCache;
-  }
-  if (!liveCfg || !liveCfg.apiKey || !liveCfg.apiSecret) return null;
-  const account = await fetchBinanceFuturesAccount({
-    apiKey: liveCfg.apiKey,
-    apiSecret: liveCfg.apiSecret,
-  });
-  brokerPositionSnapshotCache = {
-    fetchedAt: nowMs,
-    byMap: buildBrokerPositionSnapshot(account || {}),
-  };
-  return brokerPositionSnapshotCache;
-}
-function invalidateBrokerPositionSnapshotCache() {
-  brokerPositionSnapshotCache = null;
-}
+//
+// 2026-04-29 P0-4 — the 5-s broker snapshot cache used to live as
+// module-level state inside this file. It now lives in
+// `src/services/brokerPositionTruth.js` so liveTrailingStageRepair /
+// binanceLiveStateSelfHeal / binanceFuturesFillsSync (which all
+// previously fetched independently) can share the same in-process
+// snapshot and observe the same broker truth at the same wall-clock
+// instant. The contract here is unchanged: same function names, same
+// return shape, same TTL behaviour. The legacy
+// TICK_EXIT_BROKER_SNAPSHOT_TTL_MS env var is still honoured for
+// back-compat (see brokerPositionTruth.js).
+const {
+  buildBrokerPositionSnapshot,
+  getBrokerPositionSnapshot,
+  invalidateBrokerPositionSnapshotCache,
+  BROKER_POSITION_SNAPSHOT_TTL_MS,
+} = require("./brokerPositionTruth");
 
 // 2026-04-29 — V2 direct exit alert dispatch (place-time + broker-flat).
 //

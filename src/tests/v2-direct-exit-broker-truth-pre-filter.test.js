@@ -23,31 +23,51 @@ const tickExitSrc = fs.readFileSync(
   "utf8"
 );
 
-// (A) Helper definitions exist and the snapshot cache is module-level.
+// (A) Helper definitions exist. 2026-04-29 P0-4 — these helpers were
+//     extracted from binanceTickExit.js into the shared
+//     `src/services/brokerPositionTruth.js` module so all callers
+//     (binanceTickExit / liveTrailingStageRepair / fillsSync /
+//     selfHeal) share one in-process snapshot. The R2 contract here
+//     is unchanged: binanceTickExit re-exports the same names by
+//     destructuring the shared module, so existing __test consumers
+//     keep working.
+const brokerTruthSrc = fs.readFileSync(
+  path.join(__dirname, "..", "services", "brokerPositionTruth.js"),
+  "utf8"
+);
 (function testSnapshotHelpersDefined() {
   assert.ok(
-    /let\s+brokerPositionSnapshotCache\s*=\s*null/.test(tickExitSrc),
-    "(A1) brokerPositionSnapshotCache must be a module-level let"
+    /let\s+brokerPositionSnapshotCache\s*=\s*null/.test(brokerTruthSrc),
+    "(A1) brokerPositionSnapshotCache must be a module-level let in brokerPositionTruth.js"
   );
   assert.ok(
-    /BROKER_POSITION_SNAPSHOT_TTL_MS/.test(tickExitSrc),
-    "(A2) BROKER_POSITION_SNAPSHOT_TTL_MS must be declared"
+    /BROKER_POSITION_SNAPSHOT_TTL_MS/.test(brokerTruthSrc),
+    "(A2) BROKER_POSITION_SNAPSHOT_TTL_MS must be declared in brokerPositionTruth.js"
+  );
+  // The legacy env var name is honoured for back-compat — a deployment
+  // with TICK_EXIT_BROKER_SNAPSHOT_TTL_MS set should keep working.
+  assert.ok(
+    /TICK_EXIT_BROKER_SNAPSHOT_TTL_MS/.test(brokerTruthSrc),
+    "(A3) TTL must still honour the legacy TICK_EXIT_BROKER_SNAPSHOT_TTL_MS env var (back-compat)"
   );
   assert.ok(
-    /TICK_EXIT_BROKER_SNAPSHOT_TTL_MS/.test(tickExitSrc),
-    "(A3) TTL must be tunable via TICK_EXIT_BROKER_SNAPSHOT_TTL_MS"
+    /function\s+buildBrokerPositionSnapshot\s*\(/.test(brokerTruthSrc),
+    "(A4) buildBrokerPositionSnapshot must be declared in brokerPositionTruth.js"
   );
   assert.ok(
-    /function\s+buildBrokerPositionSnapshot\s*\(/.test(tickExitSrc),
-    "(A4) buildBrokerPositionSnapshot must be declared"
+    /async\s+function\s+getBrokerPositionSnapshot\s*\(/.test(brokerTruthSrc),
+    "(A5) getBrokerPositionSnapshot must be declared in brokerPositionTruth.js"
   );
   assert.ok(
-    /async\s+function\s+getBrokerPositionSnapshot\s*\(/.test(tickExitSrc),
-    "(A5) getBrokerPositionSnapshot must be declared"
+    /function\s+invalidateBrokerPositionSnapshotCache\s*\(/.test(brokerTruthSrc),
+    "(A6) invalidateBrokerPositionSnapshotCache must be declared in brokerPositionTruth.js"
   );
+  // binanceTickExit must still re-export the same names for callers
+  // that read the helpers via the tick-exit __test surface (R1/R2/R3
+  // tests continue to import via binanceTickExit __test).
   assert.ok(
-    /function\s+invalidateBrokerPositionSnapshotCache\s*\(/.test(tickExitSrc),
-    "(A6) invalidateBrokerPositionSnapshotCache must be declared"
+    /require\(["']\.\/brokerPositionTruth["']\)/.test(tickExitSrc),
+    "(A7) binanceTickExit.js must require the shared brokerPositionTruth helper"
   );
 })();
 
@@ -141,12 +161,14 @@ const tickExitSrc = fs.readFileSync(
 // (F) Runtime: getBrokerPositionSnapshot honours the TTL cache and
 //     calls fetchBinanceFuturesAccount only once across cache hits.
 (function testSnapshotCacheRuntime() {
+  // 2026-04-29 P0-4 — the snapshot lives in `brokerPositionTruth` now,
+  // not in binanceTickExit. To make the stub effective, clear BOTH
+  // module caches AND the new shared module before requiring; the
+  // monkey-patched fetcher will then be captured at module-level
+  // destructure inside brokerPositionTruth.
   delete require.cache[require.resolve("../services/binanceTickExit")];
+  delete require.cache[require.resolve("../services/brokerPositionTruth")];
   delete require.cache[require.resolve("../exchanges/binanceFuturesPrivate")];
-  // Stub the private fetcher BEFORE requiring binanceTickExit so the
-  // module captures the stubbed reference at import time. The simplest
-  // way is to monkey-patch the underlying module; binanceTickExit calls
-  // it directly via destructured import.
   const privateModule = require("../exchanges/binanceFuturesPrivate");
   let fetchCalls = 0;
   const origFetch = privateModule.fetchBinanceFuturesAccount;
@@ -160,7 +182,10 @@ const tickExitSrc = fs.readFileSync(
     };
   };
 
-  // Also clear binanceTickExit so it picks up our stubbed reference.
+  // Re-require BOTH modules in dependency order so binanceTickExit
+  // gets a fresh brokerPositionTruth that already saw the stubbed
+  // fetcher.
+  delete require.cache[require.resolve("../services/brokerPositionTruth")];
   delete require.cache[require.resolve("../services/binanceTickExit")];
   const { __test } = require("../services/binanceTickExit");
   const {
@@ -202,11 +227,13 @@ const tickExitSrc = fs.readFileSync(
       // Restore.
       privateModule.fetchBinanceFuturesAccount = origFetch;
       delete require.cache[require.resolve("../services/binanceTickExit")];
+      delete require.cache[require.resolve("../services/brokerPositionTruth")];
       delete require.cache[require.resolve("../exchanges/binanceFuturesPrivate")];
     })
     .catch((e) => {
       privateModule.fetchBinanceFuturesAccount = origFetch;
       delete require.cache[require.resolve("../services/binanceTickExit")];
+      delete require.cache[require.resolve("../services/brokerPositionTruth")];
       delete require.cache[require.resolve("../exchanges/binanceFuturesPrivate")];
       throw e;
     });

@@ -101,9 +101,12 @@ const tickExitSrc = fs.readFileSync(
 })();
 
 // (E) Runtime: invalidateBrokerPositionSnapshotCache actually clears
-//     the cache so the next call refetches.
+//     the cache so the next call refetches. 2026-04-29 P0-4 — the
+//     snapshot now lives in `brokerPositionTruth`, so we must clear
+//     that module's cache too before the stubbed fetcher is captured.
 (function testInvalidateBehaviour() {
   delete require.cache[require.resolve("../services/binanceTickExit")];
+  delete require.cache[require.resolve("../services/brokerPositionTruth")];
   delete require.cache[require.resolve("../exchanges/binanceFuturesPrivate")];
   const privateModule = require("../exchanges/binanceFuturesPrivate");
   let fetchCalls = 0;
@@ -112,6 +115,7 @@ const tickExitSrc = fs.readFileSync(
     fetchCalls += 1;
     return { positions: [{ symbol: "DOGEUSDT", positionAmt: "0", positionSide: "BOTH" }] };
   };
+  delete require.cache[require.resolve("../services/brokerPositionTruth")];
   delete require.cache[require.resolve("../services/binanceTickExit")];
   const { __test } = require("../services/binanceTickExit");
   const { getBrokerPositionSnapshot, invalidateBrokerPositionSnapshotCache } = __test;
@@ -129,11 +133,13 @@ const tickExitSrc = fs.readFileSync(
       assert.strictEqual(fetchCalls, 2, "(E2) post-invalidate, the next call refetches even within TTL");
       privateModule.fetchBinanceFuturesAccount = origFetch;
       delete require.cache[require.resolve("../services/binanceTickExit")];
+      delete require.cache[require.resolve("../services/brokerPositionTruth")];
       delete require.cache[require.resolve("../exchanges/binanceFuturesPrivate")];
     })
     .catch((e) => {
       privateModule.fetchBinanceFuturesAccount = origFetch;
       delete require.cache[require.resolve("../services/binanceTickExit")];
+      delete require.cache[require.resolve("../services/brokerPositionTruth")];
       delete require.cache[require.resolve("../exchanges/binanceFuturesPrivate")];
       throw e;
     });
