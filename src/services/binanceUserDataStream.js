@@ -11,6 +11,19 @@ const {
 } = require("../exchanges/binanceFuturesPrivate");
 const { syncFuturesPositionOnly } = require("../engine/paperBinanceRunner");
 const { syncBinanceFuturesFills } = require("./binanceFuturesFillsSync");
+// 2026-04-29 P0-1 audit — verified the existing
+//   stream → syncBinanceFuturesFills(force=true, minIntervalMs=0)
+//                         → queueFillSyncAlertBatch
+//                         → flushFillSyncAlertBatches
+//                         → sendTradeExecutionAlert
+// chain is synchronous within a single syncBinanceFuturesFills call,
+// so the WebSocket trade event lands in operator chat within ~1 s
+// AS LONG AS the WS connection is healthy. The previous operator-
+// reported alert silences were not caused by the chain itself but by
+// the WS connection ping-ponging every 30–60 s under multi-instance
+// scaling — fixed in P0-1 Step 1.1 by pinning the service to a
+// single instance (cloudbuild.yaml + rev 01634-ls5). No additional
+// alert wiring is needed here.
 
 const KEEPALIVE_INTERVAL_MS = Math.max(60_000, Number(process.env.BINANCE_USER_STREAM_KEEPALIVE_MS) || (30 * 60 * 1000));
 const RECONNECT_DELAY_MS = Math.max(5_000, Number(process.env.BINANCE_USER_STREAM_RECONNECT_MS) || 10_000);
