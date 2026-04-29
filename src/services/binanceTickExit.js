@@ -37,6 +37,7 @@ const {
   __test: binancePrivateTest,
 } = require("../exchanges/binanceFuturesPrivate");
 const { sendAlert } = require("../utils/alerts");
+const { sendTradeExecutionAlert } = require("./tradeExecutionAlert");
 const { runActionPreHooks, runActionPostHooks, emitActionEvent } = require("../utils/actionExecutionHooks");
 const { auditBinanceExitIntegrity } = require("./exitIntegrityAudit");
 const { runBinanceLiveStateSelfHeal } = require("./binanceLiveStateSelfHeal");
@@ -646,6 +647,120 @@ async function getBrokerPositionSnapshot({ liveCfg, nowMs = Date.now() } = {}) {
 }
 function invalidateBrokerPositionSnapshotCache() {
   brokerPositionSnapshotCache = null;
+}
+
+// 2026-04-29 — V2 direct exit alert dispatch (place-time + broker-flat).
+//
+// Problem: under DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1 the V1
+// `processIntent → dispatchTradeExecutionAlert` path is dead. The only
+// remaining alert source is fillSync, which polls every 3 minutes.
+// Operators stop seeing SL / TP1 / TRAIL fill alerts entirely (or see
+// them up to 3 minutes late). The fix: emit `sendTradeExecutionAlert`
+// at two new points — (α) immediately after a V2 direct exit dispatch
+// place succeeds (we know what we just sent and what fraction we
+// asked the broker to close), and (β) when the R2 broker truth
+// pre-filter notices the broker is already flat (typically a native
+// STOP_MARKET fired). fillSync continues to run as a sanity-check
+// reconciler; the dedupe Map below ensures a single fill never
+// produces two operator alerts.
+//
+// Dedupe key: (symbol, event-bucket, idempotency-key) — idempotency
+// covers V2 direct dispatches (we set the client_order_id), and we
+// fall back to a synthetic key derived from event+symbol+bar for
+// broker-flat observations where there is no client order id we
+// originated. TTL 10 minutes is long enough that fillSync's later
+// echo lands inside the same window; far shorter than the bar
+// cadence so a *new* close (re-entered position) gets its own alert.
+const tradeExecutionAlertSentState = new Map();
+const TRADE_EXECUTION_ALERT_DEDUPE_TTL_MS = (() => {
+  const raw = Number(process.env.TICK_EXIT_TRADE_ALERT_DEDUPE_TTL_MS);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return 10 * 60 * 1000;
+})();
+function buildTradeExecutionAlertDedupeKey({ symbol, event, idempotencyKey, orderId, clientOrderId, fallbackBucketMs }) {
+  const sym = String(symbol || "").trim().toUpperCase() || "?";
+  const ev = String(event || "").trim().toUpperCase() || "?";
+  const idem = String(
+    idempotencyKey
+    || clientOrderId
+    || orderId
+    || (Number.isFinite(Number(fallbackBucketMs)) ? `BAR__${Math.floor(Number(fallbackBucketMs) / 60_000)}` : "")
+    || "NA"
+  ).trim();
+  return `${sym}__${ev}__${idem}`;
+}
+function shouldDispatchTradeExecutionAlert(key, nowMs = Date.now()) {
+  if (!key) return true;
+  const last = tradeExecutionAlertSentState.get(key);
+  if (!Number.isFinite(last)) return true;
+  if (nowMs - last >= TRADE_EXECUTION_ALERT_DEDUPE_TTL_MS) {
+    tradeExecutionAlertSentState.delete(key);
+    return true;
+  }
+  return false;
+}
+function recordTradeExecutionAlertSent(key, nowMs = Date.now()) {
+  if (!key) return;
+  tradeExecutionAlertSentState.set(key, nowMs);
+}
+function clearTradeExecutionAlertDedupeForTest() {
+  tradeExecutionAlertSentState.clear();
+}
+
+// Map a V2 direct dispatch (triggeredKinds + fraction) to the canonical
+// trade-alert event tags that sendTradeExecutionAlert expects. Keeping
+// this in one place keeps α and β consistent and lets future trigger
+// kinds extend the table without touching the dispatch sites.
+function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
+  const kinds = Array.isArray(triggeredKinds) ? triggeredKinds.map((k) => String(k || "").trim().toUpperCase()) : [];
+  const fr = Number(fraction);
+  const pctText = (() => {
+    if (!Number.isFinite(fr)) return null;
+    const pct = Math.round(fr * 1000) / 10; // 0.5 → 50, 1 → 100
+    return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
+  })();
+  if (kinds.includes("TRAIL")) {
+    return {
+      event: pctText ? `EXIT_TRAIL_${pctText}P` : "EXIT_TRAIL",
+      stage: "TRAIL",
+      transitionEvent: "TRAIL_FIRED",
+    };
+  }
+  if (kinds.includes("SL") || kinds.includes("STOP_LOSS")) {
+    return {
+      event: pctText ? `EXIT_SL_${pctText}P` : "EXIT_SL",
+      stage: "SL",
+      transitionEvent: "SL_FIRED",
+    };
+  }
+  if (kinds.includes("TP_P1") || kinds.includes("TP1") || kinds.includes("BE")) {
+    return {
+      event: pctText ? `EXIT_TP_P1_${pctText}P` : "EXIT_TP_P1",
+      stage: "TP1",
+      transitionEvent: "TP1_REACHED",
+    };
+  }
+  return {
+    event: pctText ? `EXIT_GENERIC_${pctText}P` : "EXIT_GENERIC",
+    stage: null,
+    transitionEvent: null,
+  };
+}
+
+// Map a broker-flat observation (R2) to the most likely canonical
+// exit event. Heuristic: trail_active=true → TRAIL native STOP fired,
+// tp_p1_done=true (no trail) → TP1 native fired (rare today), else
+// SL native STOP fired. fillSync still produces the authoritative
+// classification later — this is just for the immediate alert.
+function resolveBrokerFlatAlertEvent({ posMeta = null } = {}) {
+  const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  if (meta.trail_active === true) {
+    return { event: "EXIT_TRAIL_100P", stage: "TRAIL", transitionEvent: "TRAIL_FIRED" };
+  }
+  if (meta.tp_p1_done === true) {
+    return { event: "EXIT_TP_P1_100P", stage: "TP1", transitionEvent: "TP1_REACHED" };
+  }
+  return { event: "EXIT_SL_100P", stage: "SL", transitionEvent: "SL_FIRED" };
 }
 
 const pendingIntentState = new Map();
@@ -2678,6 +2793,60 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             // re-opens the position), the next tick can act on it
             // without waiting out R1's 30 s TTL.
             clearExitInFlight(sym);
+            // 2026-04-29 — V2 direct exit alert (β). When R2 sees the
+            // broker is already flat for a position the local view
+            // still calls ACTIVE, that is almost always a native
+            // STOP/TP fill that fillSync hasn't poll-caught yet.
+            // Emit an immediate alert so the operator hears about the
+            // close in seconds rather than minutes; fillSync's later
+            // authoritative echo lands inside the dedupe TTL so no
+            // second alert ships for the same fill.
+            try {
+              const alertMap = resolveBrokerFlatAlertEvent({ posMeta: p && p.meta });
+              const closePrice = priceMap[sym] || null;
+              // No client order id we originated → fall back to a
+              // 1-minute bar bucket so a re-entry within the bar still
+              // produces a single alert, while a re-entry on a later
+              // bar emits a fresh alert.
+              const alertKey = buildTradeExecutionAlertDedupeKey({
+                symbol: sym,
+                event: alertMap.event,
+                fallbackBucketMs: Date.now(),
+              });
+              if (shouldDispatchTradeExecutionAlert(alertKey)) {
+                recordTradeExecutionAlertSent(alertKey);
+                const localSide = resolvePositionSideFromPosition(p, p && p.meta, "LONG");
+                sendTradeExecutionAlert({
+                  exchange: "BINANCEFUT",
+                  symbol: sym,
+                  event: alertMap.event,
+                  intent: "EXIT",
+                  side: localSide,
+                  executionMode: "LIVE",
+                  execPrice: Number(closePrice) || null,
+                  execQty: Number(p.qty_base) || null,
+                  execQtyBase: Number(p.qty_base) || null,
+                  closeRatio: 1,
+                  fullExit: true,
+                  rawEvidenceEvent: alertMap.event,
+                  canonicalExitEvent: alertMap.event,
+                  canonicalExitStage: alertMap.stage,
+                  canonicalTransitionEvent: alertMap.transitionEvent,
+                  canonicalTransitionEvents: alertMap.transitionEvent ? [alertMap.transitionEvent] : [],
+                  note: "Broker truth pre-filter detected position is already flat (likely native STOP/TP fill); alert emitted before fillSync's poll catches up.",
+                }).catch((alertErr) => {
+                  console.warn(
+                    "[V2_DIRECT_EXIT_BROKER_FLAT_ALERT_FAIL]",
+                    alertErr && alertErr.message ? alertErr.message : String(alertErr),
+                  );
+                });
+              }
+            } catch (alertGuardErr) {
+              console.warn(
+                "[V2_DIRECT_EXIT_BROKER_FLAT_ALERT_GUARD]",
+                alertGuardErr && alertGuardErr.message ? alertGuardErr.message : String(alertGuardErr),
+              );
+            }
             continue;
           }
           filtered.push(p);
@@ -3824,6 +3993,66 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                   triggeredKinds: v2DirectDispatch.triggeredKinds,
                   source: "V2_DIRECT_EXIT_DISPATCH",
                 });
+                // 2026-04-29 — V2 direct exit alert (α). With V1 dead,
+                // operators were missing SL/TP1/TRAIL fill alerts (the
+                // remaining alert source, fillSync, polls every 3 min).
+                // Emit a `sendTradeExecutionAlert` here, at the place
+                // success boundary, with full canonical exit metadata
+                // so the alert clears the canonical-exit gate and lands
+                // in operator chat within seconds. fillSync's later
+                // echo lands inside the dedupe TTL so no second alert
+                // ships for the same fill.
+                try {
+                  const alertMap = resolveV2DirectDispatchAlertEvent({
+                    triggeredKinds: v2DirectDispatch.triggeredKinds,
+                    fraction: v2DirectDispatch.fraction,
+                  });
+                  const alertKey = buildTradeExecutionAlertDedupeKey({
+                    symbol,
+                    event: alertMap.event,
+                    idempotencyKey: v2DirectDispatch.idempotencyKey,
+                    orderId: v2DispatchOrderId,
+                    clientOrderId: v2DispatchClientOrderId,
+                  });
+                  if (shouldDispatchTradeExecutionAlert(alertKey)) {
+                    recordTradeExecutionAlertSent(alertKey);
+                    sendTradeExecutionAlert({
+                      exchange: "BINANCEFUT",
+                      symbol,
+                      event: alertMap.event,
+                      intent: "EXIT",
+                      side: resolvedPosSide,
+                      executionMode: "LIVE",
+                      execPrice: Number(price) || null,
+                      execQty: v2DirectDispatch.qty,
+                      execQtyBase: v2DirectDispatch.qty,
+                      closeRatio: v2DirectDispatch.fraction,
+                      fullExit: Number(v2DirectDispatch.fraction) >= 0.999,
+                      orderId: v2DispatchOrderId,
+                      clientOrderId: v2DispatchClientOrderId,
+                      runId: dispatchRunId,
+                      // Canonical exit metadata so the alert is not
+                      // silenced by canonicalRequirement.satisfied=false.
+                      rawEvidenceEvent: alertMap.event,
+                      canonicalExitEvent: alertMap.event,
+                      canonicalExitStage: alertMap.stage,
+                      canonicalTransitionEvent: alertMap.transitionEvent,
+                      canonicalTransitionEvents: alertMap.transitionEvent ? [alertMap.transitionEvent] : [],
+                      note: "V2 direct exit dispatch place succeeded; alert sent at place boundary (fillSync reconciles later, dedupe key prevents echo).",
+                    }).catch((alertErr) => {
+                      console.warn(
+                        "[V2_DIRECT_EXIT_DISPATCH_PLACE_ALERT_FAIL]",
+                        alertErr && alertErr.message ? alertErr.message : String(alertErr),
+                      );
+                    });
+                  }
+                } catch (alertGuardErr) {
+                  // Never let an alert path crash the dispatch loop.
+                  console.warn(
+                    "[V2_DIRECT_EXIT_DISPATCH_PLACE_ALERT_GUARD]",
+                    alertGuardErr && alertGuardErr.message ? alertGuardErr.message : String(alertGuardErr),
+                  );
+                }
                 structuredLog("v2_direct_exit_dispatch_placed", {
                   exchange: "BINANCEFUT",
                   symbol,
@@ -4542,6 +4771,14 @@ module.exports = {
     getBrokerPositionSnapshot,
     invalidateBrokerPositionSnapshotCache,
     BROKER_POSITION_SNAPSHOT_TTL_MS,
+    // 2026-04-29 — V2 direct exit alert dispatch (α/β) helpers
+    resolveV2DirectDispatchAlertEvent,
+    resolveBrokerFlatAlertEvent,
+    buildTradeExecutionAlertDedupeKey,
+    shouldDispatchTradeExecutionAlert,
+    recordTradeExecutionAlertSent,
+    clearTradeExecutionAlertDedupeForTest,
+    TRADE_EXECUTION_ALERT_DEDUPE_TTL_MS,
     applyAlertCacheCap,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;

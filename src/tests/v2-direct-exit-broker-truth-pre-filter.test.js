@@ -96,8 +96,12 @@ const tickExitSrc = fs.readFileSync(
     "(D2) pre-filter outer failure log site must exist"
   );
   // Outer try/catch must wrap the whole pre-filter block, not throw.
+  // Window widened to {0,12000} on each side because the 2026-04-29
+  // broker-flat alert dispatch (β) added ~60 lines between the skip
+  // log and the catch(preFilterErr) clause. The structural intent
+  // (skip log lives inside the outer try/catch) is unchanged.
   assert.ok(
-    /try\s*\{[\s\S]{0,4000}tick_exit_skip_broker_flat[\s\S]{0,4000}\}\s*catch\s*\(\s*preFilterErr\s*\)/.test(tickExitSrc),
+    /try\s*\{[\s\S]{0,12000}tick_exit_skip_broker_flat[\s\S]{0,12000}\}\s*catch\s*\(\s*preFilterErr\s*\)/.test(tickExitSrc),
     "(D3) pre-filter must be wrapped in try/catch"
   );
 })();

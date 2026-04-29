@@ -186,7 +186,10 @@ function buildExpectedEnv(env = process.env) {
       env,
       "DONBEOLJA_V2_EXPECTED_DISCOVERY_CANARY_MAX_POSITION_COUNT",
       "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT",
-      "5",
+      // 2026-04-29 — default raised 5 → 8 to match cloudbuild.yaml
+      // and src/v2/discoveryCanaryContract.js. Operator safe-mode in
+      // src/v2/operatorSafeMode.js intentionally still pins to 5.
+      "8",
     ),
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: expectedValue(
       env,

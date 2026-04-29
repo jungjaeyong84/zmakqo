@@ -59,7 +59,11 @@ const tickExitSrc = fs.readFileSync(
 (function testMarkOnPlaceSuccess() {
   const placedLogIdx = tickExitSrc.indexOf('structuredLog("v2_direct_exit_dispatch_placed"');
   assert.ok(placedLogIdx > 0, "(B1) v2_direct_exit_dispatch_placed log site not found");
-  const around = tickExitSrc.slice(Math.max(0, placedLogIdx - 1500), placedLogIdx);
+  // Window widened to 6000 bytes — the 2026-04-29 V2 direct exit alert
+  // dispatch (α) inserted ~70 lines of code between markExitInFlight
+  // and the placed log. The structural intent is unchanged: the mark
+  // must precede the placed log.
+  const around = tickExitSrc.slice(Math.max(0, placedLogIdx - 6000), placedLogIdx);
   // Must mark BEFORE the placed log (and AFTER v2DispatchPlaced=true).
   assert.ok(
     /v2DispatchPlaced\s*=\s*true[\s\S]*markExitInFlight\s*\(\s*symbol\s*,/.test(around),
