@@ -45,6 +45,17 @@ const {
 } = require("../utils/entryBudgetGuard");
 const { getFirestore } = require("../storage/firestore");
 const { tfToMs, normalizeTf, defaultExecTfFromEnv } = require("../utils/marketConfig");
+// 2026-04-29 P1-1.1 — TF/bar utility helpers extracted to
+// src/utils/barTfHelpers.js. Function definitions previously inline
+// in this file are imported below; the same names are re-exposed via
+// module.exports.__test below for backward compatibility with test
+// files and external callers that read these through the
+// paperBinanceRunner __test surface.
+const {
+  resolveTfFromMs,
+  scaleBaseBarCountByTf,
+  resolveBinanceMaxHoldBars,
+} = require("../utils/barTfHelpers");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -1968,15 +1979,8 @@ function resolveBinanceBudgetUsedKrw({ position, riskBudget, notionalFallback = 
   return 0;
 }
 
-function resolveTfFromMs(ms) {
-  const tfNum = Number(ms);
-  if (!Number.isFinite(tfNum) || tfNum <= 0) return null;
-  const known = ["15m", "30m", "60m"];
-  for (const tf of known) {
-    if (tfToMs(tf) === tfNum) return tf;
-  }
-  return null;
-}
+// 2026-04-29 P1-1.1 — `resolveTfFromMs` extracted to ../utils/barTfHelpers.js.
+// Imported at the top of this file; re-exported via __test below.
 
 function pickSignalPosterior(features, dir) {
   if (!features || typeof features !== "object") return null;
@@ -6545,21 +6549,9 @@ function normalizeInt(value, fallback) {
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
 }
 
-function scaleBaseBarCountByTf(baseBars, signalTfMs) {
-  const base = normalizeInt(baseBars, 0);
-  if (!Number.isFinite(base) || base <= 0) return 0;
-  if (!Number.isFinite(signalTfMs) || signalTfMs <= 0) return base;
-  const tf60mMs = 60 * 60 * 1000;
-  const scaled = Math.round(base * (tf60mMs / signalTfMs));
-  return Math.max(1, scaled);
-}
-
-function resolveBinanceMaxHoldBars(sysCfg, signalTfMs) {
-  const envDefault = normalizeInt(process.env.BINANCE_MAX_HOLD_BARS, 12);
-  const fallback = Number.isFinite(envDefault) && envDefault > 0 ? envDefault : 12;
-  const configured = Math.max(0, normalizeInt(sysCfg && sysCfg.max_hold_bars, fallback));
-  return scaleBaseBarCountByTf(configured, signalTfMs);
-}
+// 2026-04-29 P1-1.1 — `scaleBaseBarCountByTf` and
+// `resolveBinanceMaxHoldBars` extracted to ../utils/barTfHelpers.js.
+// Imported at the top of this file; re-exported via __test below.
 
 function normalizeNumber(value, fallback) {
   const n = Number(value);
