@@ -283,13 +283,25 @@ function almostEqual(a, b, eps = 1e-9) {
 }
 
 // ── 7) 출력 필드 shape 계약 ────────────────────────────────────────────
+// 2026-04-29 — 새 BE noise-buffer 도입으로 결과 객체에 `bufferPct` 와
+// `totalFloorPct` 두 키가 추가됐다. 호출부의 기존 사용 (avg / bePrice /
+// floorPct / shouldRaiseStop / inputsValid / currentStop / leverage /
+// side) 은 모두 유지되며, 새 키들은 옵저버빌리티/로그 surface 용으로만
+// 호출부에서 읽힌다. 시그니처 호환성: bufferPct 는 기본값 0 이라 옛
+// caller 가 그대로 호출해도 동일한 bePrice 가 나온다.
 {
   const res = compute({ side: "LONG", avgPrice: 100, leverage: 2, floorPct: 0.01, currentStop: 95 });
   assert.deepStrictEqual(
     Object.keys(res).sort(),
-    ["avg", "bePrice", "currentStop", "floorPct", "inputsValid", "leverage", "shouldRaiseStop", "side"].sort(),
-    "결과 객체는 정해진 키 집합만 노출한다 (호출부가 의존하는 계약)"
+    ["avg", "bePrice", "bufferPct", "currentStop", "floorPct", "inputsValid", "leverage", "shouldRaiseStop", "side", "totalFloorPct"].sort(),
+    "결과 객체는 정해진 키 집합만 노출한다 (호출부가 의존하는 계약 — 2026-04-29 bufferPct/totalFloorPct 추가)"
   );
+  // 옛 caller 가 bufferPct 를 안 넘겼을 때 bePrice 는 변하지 않는지 회귀 보호.
+  assert.ok(almostEqual(res.bePrice, 100 * (1 + 0.01 / 2)),
+    "bufferPct 미지정 시 bePrice 는 옛 공식 그대로");
+  assert.strictEqual(res.bufferPct, 0, "bufferPct 미지정 시 0");
+  assert.ok(almostEqual(res.totalFloorPct, 0.01),
+    "bufferPct 미지정 시 totalFloorPct = floorPct");
 }
 
 console.log("BREAK_EVEN_RAISE_DECISION_TEST_OK");

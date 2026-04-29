@@ -268,12 +268,25 @@ function computeBreakEvenRaiseDecision({
   avgPrice,
   leverage,
   floorPct,
+  bufferPct = 0,
   currentStop,
 } = {}) {
   const s = String(side || "").trim().toUpperCase();
   const avg = Number(avgPrice);
   const lev = Number(leverage);
   const floor = Number(floorPct);
+  // 2026-04-29 — BE noise-buffer. Without a buffer the BE-raised stop
+  // sits exactly on the cost-recovery floor, which on mid-cap coins
+  // (e.g. DOGE 07:01–07:30 UTC) is hit by the very first 1-2 candles
+  // of post-TP1 noise — the residual 50 % is closed in seconds and
+  // the partial-take strategy collapses into "TP1 only". A small
+  // buffer (default 0.10 %) keeps the risk-free guarantee on a true
+  // adverse move while letting micro-noise pass through. Quant-best
+  // sweet-spot is roughly fee_round_trip + 1 ATR; 0.10 % is a safe
+  // operator default that fee+spread cleanly absorb. Tunable per-cohort
+  // via ENGINE_BE_RAISE_BUFFER_PCT.
+  const bufferRaw = Number(bufferPct);
+  const buffer = Number.isFinite(bufferRaw) && bufferRaw >= 0 ? bufferRaw : 0;
   const stopRaw = Number(currentStop);
   // "미보호" semantic: finite 하고 양수일 때만 실제 stop 으로 취급한다.
   // 그 외 (NaN / Infinity / 0 / 음수 / null→0 / undefined→NaN) 은 NaN
@@ -285,10 +298,11 @@ function computeBreakEvenRaiseDecision({
   const floorFinite = Number.isFinite(floor) && floor > 0;
   const sideValid = (s === "LONG" || s === "SHORT");
   const inputsValid = avgFinite && levFinite && floorFinite && sideValid;
+  const totalFloor = floor + buffer;
   const bePrice = inputsValid
     ? (s === "SHORT"
-      ? avg * (1 - (floor / lev))
-      : avg * (1 + (floor / lev)))
+      ? avg * (1 - (totalFloor / lev))
+      : avg * (1 + (totalFloor / lev)))
     : null;
   const shouldRaiseStop = inputsValid && (
     !Number.isFinite(stop)
@@ -300,6 +314,8 @@ function computeBreakEvenRaiseDecision({
     avg: avgFinite ? avg : null,
     leverage: levFinite ? lev : null,
     floorPct: floorFinite ? floor : null,
+    bufferPct: buffer,
+    totalFloorPct: floorFinite ? totalFloor : null,
     currentStop: Number.isFinite(stop) ? stop : null,
     inputsValid,
     bePrice,
@@ -719,6 +735,30 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
     const pct = Math.round(fr * 1000) / 10; // 0.5 → 50, 1 → 100
     return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
   })();
+  // 2026-04-29 — classification priority correction. When TP1 fills,
+  // BE-raise lifts the stop to entry+buffer and the next adverse move
+  // simultaneously trips both the BE-raised stop AND the trail level
+  // (because the trail is still anchored to TP1 and is therefore
+  // physically above the BE level). Both kinds end up in
+  // triggered_kinds=['BE','TRAIL']. The previous priority listed TRAIL
+  // first, so the operator saw "EXIT_TRAIL_100P" while the actual
+  // fired stop was the BE-raised one ("TP1 후 잔량이 entry로 회귀 →
+  // risk-free close"). Operator-reported confusion on the DOGE
+  // 07:30:33 UTC dispatch (triggered_kinds=['BE','TRAIL'], fraction=1).
+  //
+  // New priority: BE > TRAIL > SL > TP_P1. BE always wins because:
+  //   (a) BE-raised stop is mathematically closer to entry than the
+  //       freshly-anchored trail in the standard partial-take cycle,
+  //   (b) "EXIT_BE_100P" carries the precise operational meaning
+  //       (TP1 후 entry-회귀로 잔량 risk-free close) that the operator
+  //       needs to read at a glance.
+  if (kinds.includes("BE")) {
+    return {
+      event: pctText ? `EXIT_BE_${pctText}P` : "EXIT_BE",
+      stage: "BE",
+      transitionEvent: "BE_FIRED",
+    };
+  }
   if (kinds.includes("TRAIL")) {
     return {
       event: pctText ? `EXIT_TRAIL_${pctText}P` : "EXIT_TRAIL",
@@ -733,7 +773,7 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
       transitionEvent: "SL_FIRED",
     };
   }
-  if (kinds.includes("TP_P1") || kinds.includes("TP1") || kinds.includes("BE")) {
+  if (kinds.includes("TP_P1") || kinds.includes("TP1")) {
     return {
       event: pctText ? `EXIT_TP_P1_${pctText}P` : "EXIT_TP_P1",
       stage: "TP1",
@@ -3052,11 +3092,17 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
           //   - LONG  : bePrice > currentStop + 1e-9  (stop 을 위로)
           //   - SHORT : bePrice < currentStop - 1e-9  (stop 을 아래로)
           //   - currentStop 이 NaN(=미보호)이면 무조건 raise
+          // 2026-04-29 — BE noise buffer (operator-tunable).
+          const _beBufferPctEnv = Number(process.env.ENGINE_BE_RAISE_BUFFER_PCT);
+          const _beBufferPct = Number.isFinite(_beBufferPctEnv) && _beBufferPctEnv >= 0
+            ? _beBufferPctEnv
+            : 0.0010; // default 0.10 % — see computeBreakEvenRaiseDecision rationale.
           const _beDecision = computeBreakEvenRaiseDecision({
             side: _beSide,
             avgPrice: pos && pos.avg_price,
             leverage: _tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1),
             floorPct: _beRules && _beRules.RUNNER_MIN_PROFIT_PCT,
+            bufferPct: _beBufferPct,
             currentStop: _tMeta && _tMeta.native_protection_stop_price,
           });
           _beAvg = _beDecision.avg;
@@ -3126,6 +3172,8 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
               prev_stop: Number.isFinite(_currentStop) ? _currentStop : null,
               be_price: _bePrice,
               floor_pct: _beFloorPct,
+              be_buffer_pct: _beBufferPct,
+              total_floor_pct: _beDecision.totalFloorPct,
               trail_enabled: _trailEnabled === true,
               ...buildBreakEvenStopRefreshObservability(_beRefreshRes),
             });

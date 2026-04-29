@@ -131,11 +131,59 @@ const tickExitSrc = fs.readFileSync(
   assert.strictEqual(sl.stage, "SL");
   assert.strictEqual(sl.transitionEvent, "SL_FIRED");
 
-  const be = f({ triggeredKinds: ["BE"], fraction: 1 });
-  assert.strictEqual(be.event, "EXIT_TP_P1_100P", "(D4) BE counts as TP1 stage");
+  // 2026-04-29 — classification priority correction. BE now dedicated.
+  const beAlone = f({ triggeredKinds: ["BE"], fraction: 1 });
+  assert.strictEqual(beAlone.event, "EXIT_BE_100P", "(D4) BE alone → EXIT_BE_100P (not TP_P1)");
+  assert.strictEqual(beAlone.stage, "BE");
+  assert.strictEqual(beAlone.transitionEvent, "BE_FIRED");
+
+  // BE+TRAIL simultaneous (DOGE 07:30:33 case): BE wins, the operator
+  // sees the precise stop that fired instead of the upstream trail level.
+  const beAndTrail = f({ triggeredKinds: ["BE", "TRAIL"], fraction: 1 });
+  assert.strictEqual(beAndTrail.event, "EXIT_BE_100P", "(D5) BE+TRAIL together → EXIT_BE_100P (BE priority)");
+  assert.strictEqual(beAndTrail.stage, "BE");
 
   const generic = f({ triggeredKinds: [], fraction: 1 });
-  assert.ok(generic.event && generic.event.startsWith("EXIT_GENERIC"), "(D5) unknown trigger → EXIT_GENERIC");
+  assert.ok(generic.event && generic.event.startsWith("EXIT_GENERIC"), "(D6) unknown trigger → EXIT_GENERIC");
+})();
+
+// (D-BUFFER) computeBreakEvenRaiseDecision honours bufferPct so BE
+//     stop sits at entry × (1 + (floor + buffer)/leverage), not at the
+//     bare cost-recovery floor that gets hit by post-TP1 micro-noise.
+(function testBreakEvenBuffer() {
+  delete require.cache[require.resolve("../services/binanceTickExit")];
+  const { __test } = require("../services/binanceTickExit");
+  const compute = __test.computeBreakEvenRaiseDecision;
+
+  // Baseline: floor=0.001 (0.10 %), no buffer, lev=3.
+  // bePrice = 100 × (1 + 0.001/3) = 100.0333…
+  const baseline = compute({ side: "LONG", avgPrice: 100, leverage: 3, floorPct: 0.001 });
+  const expectedBaseline = 100 * (1 + 0.001 / 3);
+  assert.ok(Math.abs(baseline.bePrice - expectedBaseline) < 1e-6,
+    `(D-B1) baseline bePrice ≈ ${expectedBaseline}, got ${baseline.bePrice}`);
+  assert.strictEqual(baseline.bufferPct, 0, "(D-B2) bufferPct defaults to 0");
+  assert.ok(Math.abs(baseline.totalFloorPct - 0.001) < 1e-12, "(D-B3) totalFloorPct = floor when buffer=0");
+
+  // With buffer=0.001 (0.10 %): totalFloor=0.002, bePrice = 100 × (1 + 0.002/3) = 100.0666…
+  const buffered = compute({ side: "LONG", avgPrice: 100, leverage: 3, floorPct: 0.001, bufferPct: 0.001 });
+  const expectedBuffered = 100 * (1 + 0.002 / 3);
+  assert.ok(Math.abs(buffered.bePrice - expectedBuffered) < 1e-6,
+    `(D-B4) buffered bePrice ≈ ${expectedBuffered}, got ${buffered.bePrice}`);
+  assert.strictEqual(buffered.bufferPct, 0.001, "(D-B5) bufferPct round-trip");
+  assert.ok(Math.abs(buffered.totalFloorPct - 0.002) < 1e-12, "(D-B6) totalFloorPct = floor + buffer");
+  assert.ok(buffered.bePrice > baseline.bePrice,
+    "(D-B7) buffered BE strictly above baseline (buys noise headroom)");
+
+  // SHORT side: BE goes the other way. floor=0.001, buffer=0.001 → totalFloor=0.002.
+  // bePrice = 100 × (1 - 0.002/3) = 99.9333…
+  const buffShort = compute({ side: "SHORT", avgPrice: 100, leverage: 3, floorPct: 0.001, bufferPct: 0.001 });
+  const expectedShort = 100 * (1 - 0.002 / 3);
+  assert.ok(Math.abs(buffShort.bePrice - expectedShort) < 1e-6,
+    `(D-B8) SHORT buffered bePrice ≈ ${expectedShort}, got ${buffShort.bePrice}`);
+
+  // Negative buffer is treated as 0 (defensive).
+  const negBuffer = compute({ side: "LONG", avgPrice: 100, leverage: 3, floorPct: 0.001, bufferPct: -0.005 });
+  assert.strictEqual(negBuffer.bufferPct, 0, "(D-B9) negative buffer → 0 (no shift)");
 })();
 
 // (E) Runtime: resolveBrokerFlatAlertEvent disambiguates by meta.
