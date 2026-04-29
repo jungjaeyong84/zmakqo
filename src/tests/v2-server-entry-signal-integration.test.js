@@ -133,6 +133,14 @@ const path = require("path");
 })();
 
 // (F) marketRunner 240m HTF cache refresh
+//
+// 2026-04-29 P0-fix-A — production verification revealed the F2 generator
+// was silently broken for 24h+ because the runner stored HTF bars under
+// doc id tf="4h" while the reader queried tf="240m" (the
+// SERVER_NATIVE_HTF_TF constant from src/services/serverNativeInitialSignal.js).
+// The fix is the two-keyed contract: storage uses "240m" (matches reader);
+// the fetchCandles boundary converts "240m" → Binance interval "4h"
+// automatically (src/exchanges/index.js → tfToBinanceInterval).
 (function testMarketRunnerHtfRefresh() {
   const src = fs.readFileSync(
     path.join(__dirname, "..", "scheduler", "marketRunner.js"),
@@ -143,8 +151,10 @@ const path = require("path");
     "(F1) marketRunner must check the same env flag"
   );
   assert.ok(
-    /tf:\s*"4h"/.test(src),
-    "(F2) marketRunner must refresh tf=\"4h\" snapshot (binance interval form, not raw \"240\")"
+    /tf:\s*"240m"/.test(src),
+    "(F2) marketRunner must refresh tf=\"240m\" snapshot (matches reader's "
+    + "SERVER_NATIVE_HTF_TF doc-id; fetchCandles converts to Binance \"4h\" "
+    + "internally)"
   );
   assert.ok(
     src.includes("countOverride: 70") || src.includes("countOverride : 70"),

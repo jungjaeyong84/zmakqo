@@ -503,26 +503,43 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
   })();
   if (v2EntrySignalGeneratorEnabled) {
     try {
-      // Binance Futures klines API rejects "240" as an invalid interval
-      // (code -1120). The valid interval string is "4h". Use it both
-      // for fetch (downstream fetchCandles → fetchBinanceFuturesCandlesInterval)
-      // and for the doc id we'll later read via queryBars, so the
-      // generator's queryBars({ tf: "4h" }) finds the upserted bars.
+      // 2026-04-29 P0-fix-A — HTF refresh uses tf="240m" (NOT "4h").
+      //
+      // Two-keyed contract:
+      // (1) Storage doc id: src/engine/paperBinanceRunner.js queries
+      //     queryBars({ tf: SERVER_NATIVE_HTF_TF }) where
+      //     SERVER_NATIVE_HTF_TF = "240m" (defined in
+      //     src/services/serverNativeInitialSignal.js:3). The reader
+      //     and the writer MUST agree on the doc-id form, otherwise
+      //     the reader gets a cache miss and the F2 generator's
+      //     computeHtfBias falls through to the slow derived-from-
+      //     base-tf path (or fails outright with HTF_INSUFFICIENT_BARS).
+      //     This was the production bug for 24h+ before P0-fix-A:
+      //     marketRunner wrote under doc id "4h" while reader queried
+      //     "240m" — Firestore cache always missed.
+      // (2) Binance API interval: Binance Futures klines rejects
+      //     "240" / "240m" with code -1120 ("Invalid interval"). The
+      //     valid interval is "4h". The fetchCandles boundary
+      //     (src/exchanges/index.js → tfToBinanceInterval) handles
+      //     "240m" → "4h" conversion automatically, so this caller
+      //     can pass "240m" for both writes and reads.
+      //
+      // Net: tf="240m" satisfies both contracts simultaneously.
       const htfRefresh = await refreshLatestBarSnapshot({
         exchange,
         market,
-        tf: "4h",
+        tf: "240m",
         runId: runIdHint,
         countOverride: 70,
       });
       if (htfRefresh && htfRefresh.ok === false && !htfRefresh.skipped) {
         console.warn(
-          `[snapshot_refresh_fail] ex=${exchange} sym=${market} tf=4h err=${htfRefresh.error || htfRefresh.reason || "UNKNOWN"}`
+          `[snapshot_refresh_fail] ex=${exchange} sym=${market} tf=240m err=${htfRefresh.error || htfRefresh.reason || "UNKNOWN"}`
         );
       }
     } catch (htfErr) {
       console.warn(
-        `[snapshot_refresh_htf_fail] ex=${exchange} sym=${market} tf=4h err=${htfErr && htfErr.message ? htfErr.message : String(htfErr)}`
+        `[snapshot_refresh_htf_fail] ex=${exchange} sym=${market} tf=240m err=${htfErr && htfErr.message ? htfErr.message : String(htfErr)}`
       );
     }
   }
