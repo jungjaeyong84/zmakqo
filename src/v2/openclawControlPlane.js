@@ -310,6 +310,43 @@ function buildOpenClawDecisionBundle({
       })
     : null;
 
+  // 2026-04-29 — diagnostic surface for ML/AI signal criteria
+  // evaluation. The downstream signalAuthorityRouter will reject
+  // the signal with SIGNAL_CRITERIA_BLOCKED whenever
+  // resolvedSignalCriteria.verdict !== "PASS", but by the time the
+  // router emits its diagnostic, intermediate transformations may
+  // have flattened the gate-by-gate evidence. Emitting the raw
+  // evaluator result here, immediately on creation, gives the
+  // operator the unambiguous "which gate is failing and what input
+  // did it see" snapshot — the input the BlockedDiagnostic in
+  // signalAuthorityRouter is trying to reach.
+  if (resolvedSignalCriteria) {
+    try {
+      console.log(JSON.stringify({
+        event: "v2_signal_criteria_evaluated",
+        ts: new Date().toISOString(),
+        symbol: signalIntent && signalIntent.symbol || null,
+        side: signalIntent && signalIntent.side || null,
+        signal_intent_id: signalIntent && signalIntent.signal_intent_id || null,
+        signal_lineage_id: signalLineageId || null,
+        source_mode: signalSourceMode || null,
+        criteria_profile: resolvedSignalCriteria.criteria_profile || null,
+        verdict: resolvedSignalCriteria.verdict || null,
+        blockers: Array.isArray(resolvedSignalCriteria.blockers) ? resolvedSignalCriteria.blockers.slice(0, 30) : null,
+        signal_score: Number.isFinite(Number(resolvedSignalCriteria.signal_score))
+          ? Number(resolvedSignalCriteria.signal_score) : null,
+        signal_score_components: resolvedSignalCriteria.signal_score_components || null,
+        thresholds: resolvedSignalCriteria.thresholds || null,
+        entry_grade: resolvedSignalCriteria.entry_grade || null,
+        no_trade_gate: resolvedSignalCriteria.no_trade_gate || null,
+        htf_regime: resolvedSignalCriteria.htf_regime || null,
+        setup_gate: resolvedSignalCriteria.setup_gate || null,
+        trigger_gate: resolvedSignalCriteria.trigger_gate || null,
+        expected_edge_gate: resolvedSignalCriteria.expected_edge_gate || null,
+      }));
+    } catch (_) { /* observability only */ }
+  }
+
   const mlAiSignalProposal = hasProposalPayload
     ? buildMlAiSignalProposal({
         signalIntent,
