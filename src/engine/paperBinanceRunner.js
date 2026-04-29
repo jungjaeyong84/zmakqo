@@ -72,6 +72,17 @@ const {
   resolveIntentFillCloseRatio,
   resolveSyncedAddChainBaseQtyPct,
 } = require("../utils/qtyCalculation");
+// 2026-04-29 P1-1.3 — event-name predicates extracted to
+// src/utils/eventNamePredicates.js. The three predicates classify
+// the upper-cased event-label string emitted by the strategy port
+// (LONG/SHORT/CORE_*/PRE_REAL_*/REAL_*). Re-imported here and
+// re-exposed via __test below so opposite-transition-entry-scope
+// and similar tests keep working unchanged.
+const {
+  isPrimaryLongShortEventName,
+  isPreRealEventName,
+  isCoreOrRealEvent,
+} = require("../utils/eventNamePredicates");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -1804,10 +1815,9 @@ function normalizeFuturesSymbolKey(raw) {
   return s.replace(/\.P$/, "");
 }
 
-function isPrimaryLongShortEventName(event) {
-  const ev = String(event || "").toUpperCase();
-  return ev === "LONG" || ev === "SHORT";
-}
+// 2026-04-29 P1-1.3 — `isPrimaryLongShortEventName` extracted to
+// ../utils/eventNamePredicates.js. Re-imported at the top of this
+// file; same reference re-exposed via __test below.
 
 function buildEntryTierContext(event, features) {
   return {
@@ -1816,10 +1826,8 @@ function buildEntryTierContext(event, features) {
   };
 }
 
-function isPreRealEventName(event) {
-  const ev = String(event || "").toUpperCase();
-  return ev.startsWith("PRE_REAL_");
-}
+// 2026-04-29 P1-1.3 — `isPreRealEventName` extracted to
+// ../utils/eventNamePredicates.js.
 
 function resolveSignalQtyProfile(event, features) {
   const qtyProfile = resolveEntryQtyProfile(buildEntryTierContext(event, features));
@@ -3450,10 +3458,9 @@ function resolveTradeableSignalTypes(sysCfg, exchange) {
   return null;
 }
 
-function isCoreOrRealEvent(event) {
-  const ev = String(event || "").toUpperCase();
-  return isPrimaryLongShortEventName(ev) || ev.startsWith("CORE_") || isPreRealEventName(ev) || ev.startsWith("REAL_");
-}
+// 2026-04-29 P1-1.3 — `isCoreOrRealEvent` extracted to
+// ../utils/eventNamePredicates.js. Calls the other two predicates,
+// all three travel together as one cohesive module.
 
 function resolveOppositeTransitionConfig(sysCfg, exchange) {
   const ex = String(exchange || "").toUpperCase();
