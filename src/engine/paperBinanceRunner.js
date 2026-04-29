@@ -223,6 +223,18 @@ const {
   resolveOppositeCooldownWindow,
   resolveOppositeCooldownWindowFromPosition,
 } = require("../utils/oppositeCooldownWindow");
+// 2026-04-29 P1-1.17 — TP1-ladder KPI snapshot helpers extracted to
+// src/utils/tp1LadderKpiHelpers.js. Four pure helpers covering the
+// dual-envelope unwrap, record normalization, scope-map build, and
+// context-driven KPI selection. Already covered by tp1-ladder-kpi-scope
+// integration test via __test (resolveTp1LadderKpiForContext is
+// re-exported below).
+const {
+  unwrapSummaryRecord,
+  normalizeTp1LadderKpiRecord,
+  buildTp1LadderKpiScopeMap,
+  resolveTp1LadderKpiForContext,
+} = require("../utils/tp1LadderKpiHelpers");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -839,66 +851,12 @@ function loadOpenClawMarketRegimeBoard(force = false) {
   }
 }
 
-function unwrapSummaryRecord(raw) {
-  if (!raw || typeof raw !== "object") return null;
-  if (raw.summary && typeof raw.summary === "object") return raw.summary;
-  return raw;
-}
-
-function normalizeTp1LadderKpiRecord(raw = null) {
-  const safe = unwrapSummaryRecord(raw) || raw;
-  if (!safe || typeof safe !== "object") return null;
-  const snapshot = {
-    status: String(safe.status || "").trim().toUpperCase() || null,
-    realized_n: Number(safe.realized_trade_n ?? safe.realized_n),
-    tp0_hit_rate: Number(safe.tp0_hit_rate),
-    tp1_hit_rate: Number(safe.tp1_hit_rate),
-    tp0_to_tp1_conversion: Number(safe.tp0_to_tp1_conversion_rate ?? safe.tp0_to_tp1_conversion),
-    fee_adjusted_expectancy: Number(safe.fee_adjusted_expectancy),
-  };
-  return snapshot;
-}
-
-function buildTp1LadderKpiScopeMap(raw = null, scope = "MARKET") {
-  const result = new Map();
-  const addEntry = (scopeKey, record) => {
-    const normalizedKey = scope === "MARKET"
-      ? String(scopeKey || "").trim().toUpperCase()
-      : normalizeOpenClawCohort(scopeKey);
-    if (!normalizedKey) return;
-    const normalizedRecord = normalizeTp1LadderKpiRecord(record);
-    if (!normalizedRecord) return;
-    result.set(normalizedKey, normalizedRecord);
-  };
-  if (!raw || typeof raw !== "object") return result;
-  if (Array.isArray(raw)) {
-    for (const row of raw) {
-      if (!row || typeof row !== "object") continue;
-      addEntry(scope === "MARKET" ? row.market : row.cohort, row);
-    }
-    return result;
-  }
-  for (const [key, value] of Object.entries(raw)) {
-    addEntry(key, value);
-  }
-  return result;
-}
-
-function resolveTp1LadderKpiForContext(snapshot = null, { market = null, cohort = null } = {}) {
-  const safe = snapshot && typeof snapshot === "object" ? snapshot : null;
-  if (!safe) return { scope: "GLOBAL", kpi: null };
-  const marketKey = String(market || "").trim().toUpperCase();
-  if (marketKey && safe.byMarket instanceof Map) {
-    const marketSnapshot = safe.byMarket.get(marketKey);
-    if (marketSnapshot) return { scope: "MARKET", kpi: marketSnapshot };
-  }
-  const cohortKey = normalizeOpenClawCohort(cohort);
-  if (cohortKey && safe.byCohort instanceof Map) {
-    const cohortSnapshot = safe.byCohort.get(cohortKey);
-    if (cohortSnapshot) return { scope: "COHORT", kpi: cohortSnapshot };
-  }
-  return { scope: "GLOBAL", kpi: safe.global || null };
-}
+// 2026-04-29 P1-1.17 — `unwrapSummaryRecord`,
+// `normalizeTp1LadderKpiRecord`, `buildTp1LadderKpiScopeMap`,
+// `resolveTp1LadderKpiForContext` extracted to
+// ../utils/tp1LadderKpiHelpers.js. Same refs re-imported at the top
+// of this file; resolveTp1LadderKpiForContext still re-exported
+// via __test below.
 
 function loadTp1LadderKpiSnapshot(force = false) {
   const now = Date.now();
