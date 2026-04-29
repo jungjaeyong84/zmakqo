@@ -211,6 +211,18 @@ const {
   resolveSignalIdFromSignalLike,
   isSignalClaimAlreadyHandled,
 } = require("../utils/signalClaimHelpers");
+// 2026-04-29 P1-1.16 — opposite-direction cooldown-window resolvers
+// extracted to src/utils/oppositeCooldownWindow.js. Three pure
+// helpers covering the cohort-aware re-entry cooldown policy.
+// Already covered by opposite-transition-immediate-reentry.test.js
+// via __test (resolveOppositeCooldownWindow +
+// resolveOppositeCooldownWindowFromPosition); the runner re-exports
+// the SAME refs below.
+const {
+  resolveCooldownProfileFromMeta,
+  resolveOppositeCooldownWindow,
+  resolveOppositeCooldownWindowFromPosition,
+} = require("../utils/oppositeCooldownWindow");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -647,51 +659,11 @@ const TP_P1_SKIP_REASONS = new Set([
 // 2026-04-29 P1-1.10 — `normalizeOpenClawCohort` and
 // `normalizeTp1LadderProfile` extracted to ../utils/openClawCohort.js.
 
-function resolveCooldownProfileFromMeta(posMeta = null) {
-  const metaSafe = posMeta && typeof posMeta === "object" ? posMeta : {};
-  const cohort = normalizeOpenClawCohort(
-    metaSafe.openclaw_market_regime_cohort || metaSafe.market_regime_cohort
-  );
-  if (cohort === "RESCUE") return "RESCUE";
-  if (cohort === "MIXED") return "MIXED";
-  return "BASE";
-}
-
-function resolveOppositeCooldownWindow({ sysCfg = {}, posMeta = null } = {}) {
-  const cohort = normalizeOpenClawCohort(
-    posMeta && (posMeta.openclaw_market_regime_cohort || posMeta.market_regime_cohort)
-  );
-  const profile = resolveCooldownProfileFromMeta(posMeta);
-  const defaultBars = Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars, 3));
-  const defaultMs = Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms, 300000));
-  if (profile === "RESCUE") {
-    return {
-      cohort: cohort || "BASE",
-      profile,
-      bars: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars_rescue, 0)),
-      timeMs: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms_rescue, 0)),
-    };
-  }
-  if (profile === "MIXED") {
-    return {
-      cohort: cohort || "BASE",
-      profile,
-      bars: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_signal_cooldown_bars_mixed, 1)),
-      timeMs: Math.max(0, normalizeInt(sysCfg && sysCfg.opposite_time_cooldown_ms_mixed, 60000)),
-    };
-  }
-  return {
-    cohort: cohort || "BASE",
-    profile: "BASE",
-    bars: defaultBars,
-    timeMs: defaultMs,
-  };
-}
-
-function resolveOppositeCooldownWindowFromPosition({ sysCfg = {}, position = null } = {}) {
-  const posMeta = (position && typeof position.meta === "object") ? position.meta : null;
-  return resolveOppositeCooldownWindow({ sysCfg, posMeta });
-}
+// 2026-04-29 P1-1.16 — `resolveCooldownProfileFromMeta`,
+// `resolveOppositeCooldownWindow`,
+// `resolveOppositeCooldownWindowFromPosition` extracted to
+// ../utils/oppositeCooldownWindow.js. Same refs re-imported at the
+// top of this file; still re-exported via __test below.
 
 function resolveLiveMarketRegimeCohort({ symbol = "", posMeta = null } = {}) {
   const marketRegimeRow = readOpenClawMarketRegimeRow(symbol);
