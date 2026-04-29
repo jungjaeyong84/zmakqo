@@ -181,6 +181,16 @@ const {
   sleep,
   isRetryableLiveInfraError,
 } = require("../utils/liveInfraRetry");
+// 2026-04-29 P1-1.13 — three small pure scalar/list/symbol helpers
+// extracted to src/utils/runnerScalarHelpers.js. Cohesion is
+// intentionally weak (the three are co-located only because each
+// is too small to deserve its own module); see module header for
+// future-split notes.
+const {
+  pickMarketOverride,
+  parseUpperList,
+  normalizeFuturesSymbolKey,
+} = require("../utils/runnerScalarHelpers");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -1582,11 +1592,8 @@ function computeTrailingMetaUpdate({ exchange, bar, position, posMeta, positionS
   return updates;
 }
 
-function pickMarketOverride(map, symbol, fallback) {
-  if (!map || typeof map !== "object") return fallback;
-  if (symbol && map[symbol] != null) return Number(map[symbol]);
-  return fallback;
-}
+// 2026-04-29 P1-1.13 — `pickMarketOverride` extracted to
+// ../utils/runnerScalarHelpers.js.
 
 function clamp(num, min, max) {
   const n = Number(num);
@@ -1603,17 +1610,8 @@ function normalizeFuturesLeverage(raw, maxLev = 3) {
   return clamp(rounded, 1, Number.isFinite(maxLev) && maxLev > 0 ? maxLev : 2) || 1;
 }
 
-function parseUpperList(raw, fallback = []) {
-  const src = raw == null ? fallback : raw;
-  const list = Array.isArray(src) ? src : String(src || "").split(/[,\s]+/);
-  const out = [];
-  for (const v of list) {
-    const s = String(v || "").trim().toUpperCase();
-    if (!s) continue;
-    if (!out.includes(s)) out.push(s);
-  }
-  return out;
-}
+// 2026-04-29 P1-1.13 — `parseUpperList` extracted to
+// ../utils/runnerScalarHelpers.js.
 
 // 2026-04-29 P1-1.4 — `parseChannelList` and `filterTelegramChannels`
 // extracted to ../utils/channelList.js. Re-imported at the top of
@@ -1837,11 +1835,8 @@ async function releaseBinanceNativeRefreshLease({
   });
 }
 
-function normalizeFuturesSymbolKey(raw) {
-  const s = String(raw || "").trim().toUpperCase();
-  if (!s) return "";
-  return s.replace(/\.P$/, "");
-}
+// 2026-04-29 P1-1.13 — `normalizeFuturesSymbolKey` extracted to
+// ../utils/runnerScalarHelpers.js.
 
 // 2026-04-29 P1-1.3 — `isPrimaryLongShortEventName` extracted to
 // ../utils/eventNamePredicates.js. Re-imported at the top of this
