@@ -101,17 +101,30 @@ const path = require("path");
   );
 })();
 
-(function testHelperRuntimePreserved() {
-  // The helper itself is kept exported (dead code path for now) so
-  // ad-hoc operator scripts that read the env via this name keep
-  // working. If a future cleanup retires the helper, delete this
-  // block too.
+// 2026-04-29 P0-2 Step 2.1 — `isV1MarketRunnerDisabledByEnv` helper
+// fully retired (no callers, no exports). The previous (E) test
+// kept the helper alive as dead code "for ad-hoc operator scripts";
+// in practice the only effect of leaving it exported was that any
+// future maintainer could rebuild the outer-guard pattern that
+// 59edc900 removed (which had short-circuited the F2 server-native
+// ENTRY signal generator inject for hours of operator silence). The
+// helper, its export, and this preservation test are deleted; (A1)
+// above already verifies scheduler.js does not import the name, and
+// the writer-boundary denial in paperBinanceRunner.js:12120 remains
+// the authoritative V1 trade blocker.
+(function testHelperFullyRetired() {
   delete require.cache[require.resolve("../scheduler/marketRunner")];
-  const { isV1MarketRunnerDisabledByEnv } = require("../scheduler/marketRunner");
-  assert.strictEqual(typeof isV1MarketRunnerDisabledByEnv, "function",
-    "(E) helper export still present (dead code; retire in a follow-up cleanup if no callers remain)");
-  assert.strictEqual(isV1MarketRunnerDisabledByEnv({}), false, "(E) default OFF");
-  assert.strictEqual(isV1MarketRunnerDisabledByEnv({ DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "1" }), true, "(E) explicit 1");
+  const mod = require("../scheduler/marketRunner");
+  assert.strictEqual(mod.isV1MarketRunnerDisabledByEnv, undefined,
+    "(E) isV1MarketRunnerDisabledByEnv must no longer be exported (helper retired 2026-04-29 P0-2)");
+  const marketRunnerSrc = fs.readFileSync(
+    path.join(__dirname, "..", "scheduler", "marketRunner.js"),
+    "utf8"
+  );
+  assert.ok(
+    !/function\s+isV1MarketRunnerDisabledByEnv\s*\(/.test(marketRunnerSrc),
+    "(E) helper function definition must be removed from marketRunner.js"
+  );
 })();
 
 console.log("V1_MARKET_RUNNER_LEGACY_DISABLED_SKIP_TEST_OK");
