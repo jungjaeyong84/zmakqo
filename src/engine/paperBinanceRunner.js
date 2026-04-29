@@ -142,6 +142,14 @@ const {
   normalizeTpP1EventForExchange,
   filterOutRealSignalTypes,
 } = require("../utils/signalTypeNormalization");
+// 2026-04-29 P1-1.9 — futures exit-profile mode normalizers
+// extracted to src/utils/futuresExitProfileMode.js. Two pure
+// helpers covering the BASE/AGGRESSIVE enum; the pair is already
+// covered by live-exit-profile-config.test.js via __test.
+const {
+  normalizeFuturesExitProfileMode,
+  resolveConfiguredFuturesExitProfileMode,
+} = require("../utils/futuresExitProfileMode");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -3203,17 +3211,9 @@ async function resolveAdaptiveFuturesExitProfile({
 // ../utils/binanceMarginType.js. Same references re-imported at the
 // top of this file; still re-exported via __test below.
 
-function normalizeFuturesExitProfileMode(raw, fallback = "BASE") {
-  const v = String(raw || "").trim().toUpperCase();
-  if (v === "BASE" || v === "AGGRESSIVE") return v;
-  return String(fallback || "BASE").trim().toUpperCase() || "BASE";
-}
-
-function resolveConfiguredFuturesExitProfileMode(raw, fallback = null) {
-  const text = String(raw ?? "").trim();
-  if (!text) return fallback == null ? null : normalizeFuturesExitProfileMode(fallback, "BASE");
-  return normalizeFuturesExitProfileMode(text, fallback == null ? "BASE" : fallback);
-}
+// 2026-04-29 P1-1.9 — `normalizeFuturesExitProfileMode` and
+// `resolveConfiguredFuturesExitProfileMode` extracted to
+// ../utils/futuresExitProfileMode.js.
 
 function resolvePositionExitProfile({ posMeta, fallbackMode } = {}) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
