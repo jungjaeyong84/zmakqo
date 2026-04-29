@@ -99,6 +99,43 @@ function validateProtectionActivationResult(result) {
   const runtimeDoc = protectionWriteResult && protectionWriteResult.runtimeDoc && typeof protectionWriteResult.runtimeDoc === "object"
     ? protectionWriteResult.runtimeDoc
     : null;
+
+  // 2026-04-29 P0-3 — broker truth is the authoritative protection
+  // signal. Operator-reported pattern (DOGE 07:01:31, ETH 07:16:11):
+  // both broker side STOP and TP placements ack'd within 514–690 ms
+  // (native_protection_unprotected_window_observed status=OK), yet the
+  // 8-check AND below tripped on internal write-side stamping race
+  // (runtimeDoc / chainAudit fields populated milliseconds AFTER the
+  // broker ack arrived). Result: V2_PRODUCTION_ENTRY_LIVE_POST_FILL_PROTECTION_CRITICAL
+  // for positions that were in fact fully protected on the exchange.
+  //
+  // New separation:
+  //   - BROKER-TRUTH gate (slAck=PLACED && tp1Ack=PLACED) decides
+  //     whether the position is *operationally* protected. This is
+  //     the only signal that affects ok/critical.
+  //   - INTERNAL evidence quality checks (8 below) become a quality
+  //     metric — surfaced as `quality_check_fails` so operators see
+  //     stamping races / chainAudit issues, but they do not raise
+  //     POST_FILL_PROTECTION_CRITICAL when the broker side is sound.
+  //
+  // If the broker did not ack STOP+TP, we still return ok=false; in
+  // that case the position is genuinely exposed and the existing
+  // recovery path (recoverUnprotectedEntryProtection) is invoked.
+  const slAck = (row.slAck && typeof row.slAck === "object") ? row.slAck : null;
+  const tp1Ack = (row.tp1Ack && typeof row.tp1Ack === "object") ? row.tp1Ack : null;
+  const slAckStatus = slAck ? upper(slAck.status) : null;
+  const tp1AckStatus = tp1Ack ? upper(tp1Ack.status) : null;
+  const slPlaced = slAckStatus === "PLACED";
+  const tp1Placed = tp1AckStatus === "PLACED";
+  const brokerTruthOk = !!(slPlaced && tp1Placed);
+  // Whether the caller actually supplied broker-truth evidence. If the
+  // protectionResult shape doesn't include slAck/tp1Ack at all (legacy
+  // fixtures, alternate code paths), we fall back to the 8-check AND
+  // for backward compatibility — only the production path that wires
+  // up `slAck`/`tp1Ack` from the broker placement gets the new
+  // broker-truth contract.
+  const brokerTruthAvailable = (slAck !== null && tp1Ack !== null);
+
   const checks = [
     ["ENTRY_PROTECTION_RESULT_OK", row.ok === true],
     ["ENTRY_PROTECTION_ACTIVATION_COMMIT_OK", activationCommit && activationCommit.ok === true],
@@ -110,9 +147,40 @@ function validateProtectionActivationResult(result) {
     ["ENTRY_PROTECTION_TP1_ORDER_PRESENT", runtimeDoc && !!trimOrNull(runtimeDoc.tp1_order_id)],
   ];
   const failed = checks.filter(([, ok]) => ok !== true).map(([id]) => id);
+
+  // Decision matrix:
+  //   broker truth available + PLACED+PLACED → ok=true
+  //                          + anything else → ok=false (true exposure)
+  //   broker truth NOT available             → fall back to 8-check AND
+  //                                            (legacy contract preserved)
+  let ok;
+  let reason;
+  if (brokerTruthAvailable) {
+    ok = brokerTruthOk;
+    if (ok) {
+      reason = failed.length === 0
+        ? "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_OK"
+        : "ENTRY_PROTECTION_BROKER_TRUTH_OK_INTERNAL_QUALITY_DEGRADED";
+    } else {
+      reason = "ENTRY_PROTECTION_BROKER_TRUTH_BLOCKED";
+    }
+  } else {
+    // Legacy / fixture path — no broker ack info, fall back to the
+    // pre-2026-04-29 8-check AND.
+    ok = failed.length === 0;
+    reason = ok ? "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_OK" : "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_INVALID";
+  }
   return Object.freeze({
-    ok: failed.length === 0,
-    reason: failed.length === 0 ? "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_OK" : "ENTRY_PROTECTION_ACTIVATION_EVIDENCE_INVALID",
+    ok,
+    reason,
+    broker_truth_ok: brokerTruthOk,
+    broker_truth_available: brokerTruthAvailable,
+    sl_ack_status: slAckStatus,
+    tp1_ack_status: tp1AckStatus,
+    quality_check_fails: Object.freeze(failed),
+    // Back-compat: legacy callers and dashboards still read
+    // `failed_check_ids` for evidence diagnostics. Surface the same
+    // list under the legacy name as well so observability is preserved.
     failed_check_ids: Object.freeze(failed),
   });
 }
@@ -283,19 +351,22 @@ async function runV2EntrySubmitter({
     });
   }
   let protectionEvidence = validateProtectionActivationResult(protectionResult);
-  // 2026-04-29 — diagnostic: surface which of the 8 evidence checks
-  // is failing. Operator-reported pattern (ETH/DOGE 07:01–07:16):
-  // broker actually places STOP+TP and native_protection_unprotected_window_observed
-  // closes status=OK in 514–690 ms, yet productionEntryRoute classifies
-  // the entry as POST_FILL_PROTECTION_CRITICAL. The judgement comes
-  // from `protectionEvidence.ok !== true`, but until now no log
-  // exposed *which* check among:
-  //   ENTRY_PROTECTION_RESULT_OK / ACTIVATION_COMMIT_OK /
-  //   ACTIVE_STATUS / CHAIN_AUDIT_OK / WRITE_DECISION_OK /
-  //   RUNTIME_HEALTHY / SL_ORDER_PRESENT / TP1_ORDER_PRESENT
-  // tripped. This emit gives the operator the unambiguous failed-check
-  // list (and the same list for the post-recovery evidence) so the
-  // root cause can be addressed directly.
+  // 2026-04-29 P0-3 — observability split. Two distinct conditions
+  // worth surfacing now that broker truth (slAck/tp1Ack PLACED) is the
+  // critical-path signal:
+  //   1. evidence_blocked — broker truth says NOT placed
+  //                         (ENTRY_PROTECTION_BROKER_TRUTH_BLOCKED).
+  //                         This is the real exposure case → recovery path.
+  //   2. evidence_quality_degraded — broker truth says PLACED but
+  //                         internal stamping (chainAudit / runtimeDoc /
+  //                         activationCommit / writeDecision) didn't
+  //                         finish atomically. NOT a critical event;
+  //                         positions are protected on the exchange.
+  //                         Surface it as a warning so operators can
+  //                         track stamping-race rates and address
+  //                         them at a slower cadence (chainAudit
+  //                         strictening, writer fence, etc.) without
+  //                         blocking entries.
   try {
     if (protectionEvidence.ok !== true) {
       console.log(JSON.stringify({
@@ -318,6 +389,29 @@ async function runV2EntrySubmitter({
         tp1_order_id: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.tp1_order_id,
         runtime_health_status: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.health_status,
         chain_audit_ok: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.chainAudit && protectionResult.activationCommit.chainAudit.ok,
+        chain_audit_fail_n: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.chainAudit && protectionResult.activationCommit.chainAudit.fail_n,
+        activation_position_cycle_status: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.position_cycle_status,
+      }));
+    } else if (Array.isArray(protectionEvidence.quality_check_fails)
+        && protectionEvidence.quality_check_fails.length > 0) {
+      // Broker truth OK but stamping race(s) — operator-visible warning,
+      // does not block the entry. See P0-3 audit comment above.
+      console.log(JSON.stringify({
+        event: "v2_entry_protection_evidence_quality_degraded",
+        ts: new Date().toISOString(),
+        symbol: executedEntry && executedEntry.symbol,
+        side: executedEntry && executedEntry.side,
+        position_cycle_id: executedEntry && executedEntry.positionCycle && executedEntry.positionCycle.position_cycle_id,
+        entry_order_id: executedEntry && executedEntry.entry_order_id,
+        stage: "INITIAL",
+        evidence_reason: protectionEvidence.reason,
+        quality_check_fails: protectionEvidence.quality_check_fails.slice(0, 16),
+        broker_truth_ok: protectionEvidence.broker_truth_ok === true,
+        sl_ack_status: protectionEvidence.sl_ack_status,
+        tp1_ack_status: protectionEvidence.tp1_ack_status,
+        sl_order_id: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.sl_order_id,
+        tp1_order_id: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.tp1_order_id,
+        runtime_health_status: protectionResult && protectionResult.runtimeDoc && protectionResult.runtimeDoc.health_status,
         chain_audit_fail_n: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.chainAudit && protectionResult.activationCommit.chainAudit.fail_n,
         activation_position_cycle_status: protectionResult && protectionResult.activationCommit && protectionResult.activationCommit.position_cycle_status,
       }));
