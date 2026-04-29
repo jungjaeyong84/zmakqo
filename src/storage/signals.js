@@ -6,6 +6,16 @@ const { normalizeMarketSymbolForProvider } = require("../utils/marketConfig");
 const { normalizeProviderId } = require("../utils/providerUtils");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
+// 2026-04-30 Step 2 — sibling consolidation. The normalizeTpP1EventForExchange
+// helper was previously inlined here; canonicalised in
+// src/utils/signalTypeNormalization.js (P1-1.8 commit 11760325) and
+// migrated here. The 4 historical variants used different exchange
+// normalisers (.includes("BINANCE") / normalizeProviderId() /
+// normalizeExchangeId() / local normalizeExchange()) but all converge
+// in production because the system is Binance-only
+// (BINANCE_ONLY_PROVIDER constant); see canonical module header for
+// the deep-dive write-up.
+const { normalizeTpP1EventForExchange } = require("../utils/signalTypeNormalization");
 
 function nowIso() {
   return new Date().toISOString();
@@ -31,12 +41,10 @@ function normalizeExecutionMode(v) {
   return null;
 }
 
-function normalizeTpP1EventForExchange(eventRaw, exchange) {
-  const ev = String(eventRaw || "").trim().toUpperCase();
-  const ex = normalizeProviderId(exchange || "");
-  if (ex === "BINANCEFUT" && ev === "EXIT_TP_P1_5P") return "EXIT_TP_P1_3P";
-  return ev;
-}
+// 2026-04-30 Step 2 — local normalizeTpP1EventForExchange removed;
+// imported from ../utils/signalTypeNormalization at the top of this
+// file. See canonical module header for the production-equivalence
+// proof across the 4 historical variants.
 
 /**
  * ✅ 표준 signals 업서트 (운영형)

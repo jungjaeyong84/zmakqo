@@ -9,6 +9,12 @@ const { resolveEventMapping } = require("./signalStandard");
 const { resolveCanonicalAlertExitStage } = require("./positionStateMachine");
 const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
 const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../utils/liveEntryTaxonomy");
+// 2026-04-30 Step 2 — sibling consolidation. The
+// normalizeTpP1EventForExchange helper was previously inlined here;
+// canonicalised in src/utils/signalTypeNormalization.js (P1-1.8
+// commit 11760325) and migrated here. Production-equivalent across
+// the 4 historical variants — see canonical module header.
+const { normalizeTpP1EventForExchange } = require("../utils/signalTypeNormalization");
 
 const channelCache = new Map();
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -28,12 +34,12 @@ function normalizeExchange(exchange) {
   return "BINANCEFUT";
 }
 
-function normalizeTpP1EventForExchange(eventRaw, exchange) {
-  const ev = String(eventRaw || "").trim().toUpperCase();
-  const ex = normalizeExchange(exchange);
-  if (ex === "BINANCEFUT" && ev === "EXIT_TP_P1_5P") return "EXIT_TP_P1_3P";
-  return ev;
-}
+// 2026-04-30 Step 2 — local normalizeTpP1EventForExchange removed;
+// imported from ../utils/signalTypeNormalization at the top of this
+// file. The local normalizeExchange() helper is kept because it is
+// used by 9 other call sites in this file (isAllowedExchange,
+// payload-event resolution, etc.) — only the TpP1-event variant is
+// consolidated here.
 
 function parseList(raw) {
   return String(raw || "")

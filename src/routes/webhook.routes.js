@@ -13,6 +13,15 @@ const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
 const { inferExchangeFromMarket } = require("../utils/marketExchange");
 const { normalizeMarketSymbolForProvider, normalizeMarketsList, normalizeTf, tfToMs, defaultTfAllowlistFromEnv, defaultExecTfFromEnv } = require("../utils/marketConfig");
 const { normalizeExchangeId } = require("../exchanges");
+// 2026-04-30 Step 2 — sibling consolidation. The nested
+// normalizeTpP1EventForExchange helper inside createWebhookRoutes()
+// previously wrapped a local copy that called normalizeExchangeId().
+// Canonicalised in src/utils/signalTypeNormalization.js (P1-1.8
+// commit 11760325). The 4 historical variants used different
+// exchange normalisers but converge in production because the
+// system is Binance-only (BINANCE_ONLY_PROVIDER constant) — see
+// canonical module header for the deep-dive.
+const { normalizeTpP1EventForExchange } = require("../utils/signalTypeNormalization");
 const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { buildWebhookRequestId, recordWebhookIngress, recordWebhookOutcome } = require("../storage/webhookLedger");
@@ -651,12 +660,12 @@ function createWebhookRoutes() {
     return ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL" || ev === "FORCE_EXIT_ALL";
   }
 
-  function normalizeTpP1EventForExchange(eventRaw, exchange) {
-    const ev = String(eventRaw || "").trim().toUpperCase();
-    const ex = normalizeExchangeId(exchange || "");
-    if (ex === "BINANCEFUT" && ev === "EXIT_TP_P1_5P") return "EXIT_TP_P1_3P";
-    return ev;
-  }
+  // 2026-04-30 Step 2 — local nested normalizeTpP1EventForExchange
+  // removed; imported from ../utils/signalTypeNormalization at the
+  // top of this file. The downstream usage at the original line 1427
+  // resolves to the imported helper unchanged (function name in
+  // module scope shadows nothing — the closure was just a local
+  // helper).
 
   function allowSideByExchange({ exchange, intent, side }) {
     if (!isSpotExchange(exchange)) return true;
