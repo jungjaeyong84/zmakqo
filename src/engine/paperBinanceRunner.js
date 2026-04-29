@@ -191,6 +191,18 @@ const {
   parseUpperList,
   normalizeFuturesSymbolKey,
 } = require("../utils/runnerScalarHelpers");
+// 2026-04-29 P1-1.14 — five signal-feature picker helpers extracted
+// to src/utils/signalFeaturePickers.js. Pre-existing operator-facing
+// contract: each picker has a fallback chain over Pine version
+// renames (e.g. score → score_norm → signal_strength → strength).
+// Zero external callers prior to extraction.
+const {
+  pickSignalScore,
+  pickSignalScoreExtended,
+  pickSignalConfidence,
+  pickSignalWaveConf,
+  pickSignalConflict,
+} = require("../utils/signalFeaturePickers");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -6465,44 +6477,10 @@ function resolveSignalScaledFlags(features) {
   };
 }
 
-function pickSignalScore(features) {
-  if (!features || typeof features !== "object") return null;
-  const keys = ["score", "score_norm", "signal_strength", "strength"];
-  for (const key of keys) {
-    const v = Number(features[key]);
-    if (Number.isFinite(v)) return v;
-  }
-  return null;
-}
-
-function pickSignalScoreExtended(features) {
-  const base = pickSignalScore(features);
-  if (Number.isFinite(base)) return base;
-  if (!features || typeof features !== "object") return null;
-  const line = features.pro_score_line || features.score_line || features.score_text || null;
-  if (!line) return null;
-  const m = String(line).match(/-?\d+(?:\.\d+)?/);
-  return m ? Number(m[0]) : null;
-}
-
-function pickSignalConfidence(features) {
-  if (!features || typeof features !== "object") return null;
-  const n = Number(features.confidence ?? features.signal_confidence ?? features.conf);
-  return Number.isFinite(n) ? n : null;
-}
-
-function pickSignalWaveConf(features) {
-  if (!features || typeof features !== "object") return null;
-  const n = Number(features.zz_wave_conf ?? features.wave_conf ?? features.wave_confidence);
-  return Number.isFinite(n) ? n : null;
-}
-
-function pickSignalConflict(features) {
-  if (!features || typeof features !== "object") return null;
-  if (features.pro_conflict != null) return normalizeBool(features.pro_conflict, null);
-  if (features.conflict != null) return normalizeBool(features.conflict, null);
-  return null;
-}
+// 2026-04-29 P1-1.14 — `pickSignalScore`, `pickSignalScoreExtended`,
+// `pickSignalConfidence`, `pickSignalWaveConf`, `pickSignalConflict`
+// extracted to ../utils/signalFeaturePickers.js. Same references
+// re-imported at the top of this file.
 
 function normalizeSignalStateToken(raw) {
   return normalizeSignalStateTokenShared(raw);
