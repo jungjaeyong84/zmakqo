@@ -170,6 +170,17 @@ const {
   formatRatioPctToken,
   formatExitRulesCompactLocal,
 } = require("../utils/alertNumberFormat");
+// 2026-04-29 P1-1.12 — sleep + retry-eligibility helpers extracted
+// to src/utils/liveInfraRetry.js. AUDIT NOTE: `sleepMs` has 2
+// byte-identical siblings (aiSignalGuard.js, newsFetch.js) that
+// will be consolidated in follow-up audit-driven sub-steps.
+// `isRetryableLiveInfraError` is re-exported via __test below for
+// live-execution-runtime-guards.test.js.
+const {
+  sleepMs,
+  sleep,
+  isRetryableLiveInfraError,
+} = require("../utils/liveInfraRetry");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -1613,32 +1624,10 @@ function parseUpperList(raw, fallback = []) {
 // `formatExitRulesCompactLocal` extracted to
 // ../utils/alertNumberFormat.js.
 
-function sleepMs(ms) {
-  const waitMs = Number(ms);
-  if (!Number.isFinite(waitMs) || waitMs <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, waitMs));
-}
-
-function sleep(ms) {
-  return sleepMs(ms);
-}
-
-function isRetryableLiveInfraError(err) {
-  const code = String(err && err.code || "").trim().toUpperCase();
-  const msg = String(err && err.message || err || "").trim().toUpperCase();
-  if (code === "EGRESS_PROXY_TIMEOUT" || code === "EGRESS_PROXY_FETCH_FAIL") return true;
-  if (code === "ETIMEDOUT" || code === "ECONNRESET" || code === "ECONNREFUSED" || code === "EAI_AGAIN") return true;
-  if (msg.includes("EGRESS_PROXY_TIMEOUT")) return true;
-  if (msg.includes("EGRESS_PROXY_FETCH_FAIL")) return true;
-  if (msg.includes("FETCH FAILED")) return true;
-  if (msg.includes("TIMEOUT")) return true;
-  if (msg.includes("ECONNRESET")) return true;
-  if (msg.includes("ECONNREFUSED")) return true;
-  if (msg.includes("SERVICE UNAVAILABLE")) return true;
-  if (msg.includes("INTERNAL ERROR")) return true;
-  if (msg.includes("TRY AGAIN")) return true;
-  return false;
-}
+// 2026-04-29 P1-1.12 — `sleepMs`, `sleep`, `isRetryableLiveInfraError`
+// extracted to ../utils/liveInfraRetry.js. Same references re-imported
+// at the top of this file; isRetryableLiveInfraError still re-exported
+// via __test below.
 
 async function fetchFuturesExchangeInfoWithCache(symbol, {
   fetchFn = fetchFuturesExchangeInfo,
