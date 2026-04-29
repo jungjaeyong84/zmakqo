@@ -235,6 +235,13 @@ const {
   buildTp1LadderKpiScopeMap,
   resolveTp1LadderKpiForContext,
 } = require("../utils/tp1LadderKpiHelpers");
+// 2026-04-29 P1-1.18 — exit-event pct-token formatter extracted to
+// src/utils/exitEventPctToken.js. AUDIT NOTE: 1 byte-identical
+// sibling at services/binanceTickExit.js:130 will be consolidated
+// in follow-up audit-driven sub-step.
+const {
+  ratioToPctTokenLocal,
+} = require("../utils/exitEventPctToken");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -356,12 +363,8 @@ const tp1LadderKpiCache = {
   value: null,
 };
 
-function ratioToPctTokenLocal(ratio) {
-  const n = Math.abs(Number(ratio));
-  if (!Number.isFinite(n) || n <= 0) return null;
-  const pct = Math.round(n * 10000) / 100;
-  return String(pct).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
-}
+// 2026-04-29 P1-1.18 — `ratioToPctTokenLocal` extracted to
+// ../utils/exitEventPctToken.js.
 
 function buildExitContractAlertPayload({ pos = null, posMeta = null, exitRules = null, observedQtyAbs = null } = {}) {
   const position = pos && typeof pos === "object" ? pos : {};
