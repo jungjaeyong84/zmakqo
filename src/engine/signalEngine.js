@@ -425,8 +425,33 @@ function resolveTrailDelayState({
     && tfMs > 0
     && currentMs >= (tp1BarMs + (barsRequired * tfMs))
   );
-  const mfeMove = Number.isFinite(mfePctRequired) && mfePctRequired > 0 && Number.isFinite(lev) && lev > 0
-    ? (mfePctRequired / lev)
+  // 2026-04-29 — Trail-after-TP1 inhibit fix.
+  //
+  // Previous formula: mfeMove = mfePctRequired / leverageEff. With the
+  // default mfePctRequired=0.005 (i.e. "0.5% leveraged PnL after TP1
+  // before trail engages") and leverage=3, mfeMove was 0.00167 (price
+  // moves 0.167% past TP1) → the trail flipped active on the same bar
+  // TP1 was hit because intra-bar noise alone covers 0.167%. The
+  // observed DOGEUSDT 00:46-00:50 chop was exactly this: TP1 reached →
+  // mfeReady=true within seconds → trail floor near entry → reduceOnly
+  // close on next downtick → force-exit cascade.
+  //
+  // Fix: treat mfePctRequired as an ABSOLUTE PRICE move from TP1
+  // (no leverage division). 0.5% absolute past TP1 is a meaningful
+  // move that won't be eaten by tick noise. This matches how the
+  // pine v6.1.1.0 trail policy is documented (price-based MFE).
+  // Operators can still tighten via ENGINE_TRAIL_DELAY_MFE_PCT for a
+  // specific cohort. The leverage-divided shape is preserved as a
+  // legacy fallback when the new env flag is set so we don't break
+  // any cohort already tuned around the old behaviour.
+  const mfeAbsoluteMode = (function() {
+    const raw = String(process.env.ENGINE_TRAIL_DELAY_MFE_PCT_LEVERAGE_DIVIDED || "0").trim().toLowerCase();
+    return raw !== "1" && raw !== "true" && raw !== "yes" && raw !== "on";
+  })();
+  const mfeMove = Number.isFinite(mfePctRequired) && mfePctRequired > 0
+    ? (mfeAbsoluteMode
+        ? mfePctRequired
+        : (Number.isFinite(lev) && lev > 0 ? (mfePctRequired / lev) : null))
     : null;
   let mfeReady = rawTrailActive;
   if (!mfeReady && tpP1Done === true && Number.isFinite(mfeMove) && Number.isFinite(tp1Price) && tp1Price > 0 && Number.isFinite(closePx) && closePx > 0) {

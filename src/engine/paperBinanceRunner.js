@@ -2522,6 +2522,60 @@ async function repairActivePositionExitRuntimeState({
   allowNativeProtectionWrite = false,
 } = {}) {
   const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
+
+  // 2026-04-29 — RECENT_ENTRY_GRACE force-exit inhibit.
+  //
+  // Right after an entry fills, the native SL/TP haven't been placed
+  // on the exchange yet (placeFuturesStopMarketOrder is dispatched
+  // immediately but the round-trip and the read-back through
+  // user-data stream can take a couple of seconds). During that
+  // window, exchange_projection_invariants legitimately contains
+  // NATIVE_STOP_MISSING and refresh_status is null/MISSING — that
+  // is the expected transient state, not a violation.
+  //
+  // Until this guard, this function dispatched a repair
+  // (executeImmediately=true) on every tick that observed the
+  // missing state, and the repair path (which feeds active position
+  // runtime, trail logic, and FORCE_EXIT_ALL when downstream throws)
+  // contributed to the chop pattern observed on DOGEUSDT 00:46-00:50:
+  //   entry → invariant violation (RECENT_ENTRY_GRACE in log only,
+  //   doesn't actually defer here) → repair dispatch → trail hard
+  //   exit error → FORCE_EXIT_ALL.
+  //
+  // Skip the repair dispatch entirely while we are inside the grace
+  // window. The native protection writer (the legitimate path) still
+  // places SL/TP on its own deadline; the repair was only meant for
+  // long-stale active positions, never for fresh fills.
+  const RECENT_ENTRY_GRACE_MS = 120_000; // 2 minutes
+  const lastFillMs = Number(metaSafe.last_fill_at_ms);
+  const entryExecBarMs = Number(metaSafe.entry_exec_bar_ms);
+  const refreshAtMs = Number(metaSafe.native_protection_refresh_at_ms);
+  const recentRefMs = [
+    Number.isFinite(lastFillMs) && lastFillMs > 0 ? lastFillMs : null,
+    Number.isFinite(entryExecBarMs) && entryExecBarMs > 0 ? entryExecBarMs : null,
+    Number.isFinite(refreshAtMs) && refreshAtMs > 0 ? refreshAtMs : null,
+  ].filter((v) => v != null).sort((a, b) => b - a)[0]; // most-recent
+  if (recentRefMs != null) {
+    const ageMs = Date.now() - recentRefMs;
+    if (ageMs >= 0 && ageMs < RECENT_ENTRY_GRACE_MS) {
+      try {
+        console.log(JSON.stringify({
+          event: "active_position_exit_runtime_repair_grace_skip",
+          ts: new Date().toISOString(),
+          exchange: String(exchange || "").toUpperCase(),
+          symbol: String(symbol || "").toUpperCase(),
+          age_ms: ageMs,
+          grace_ms: RECENT_ENTRY_GRACE_MS,
+          recent_ref_source:
+            Number.isFinite(lastFillMs) && lastFillMs === recentRefMs ? "last_fill_at_ms"
+            : Number.isFinite(entryExecBarMs) && entryExecBarMs === recentRefMs ? "entry_exec_bar_ms"
+            : "native_protection_refresh_at_ms",
+        }));
+      } catch (_) { /* observability only */ }
+      return metaSafe;
+    }
+  }
+
   const explicitExitPolicySrc = String(metaSafe.exit_policy_source || "").trim().toUpperCase();
   const preserveExplicitExitPolicy = !!(explicitExitPolicySrc && explicitExitPolicySrc !== "BINANCE_DEFAULT");
   const repairSeedMeta = preserveExplicitExitPolicy
