@@ -106,6 +106,17 @@ const {
   normalizeActionValue,
   actionAllowsEntry,
 } = require("../utils/tradingActionEnums");
+// 2026-04-29 P1-1.6 — runtime-config value parsers extracted to
+// src/utils/runtimeConfigParsers.js. Four pure parsers for the
+// operator's runtime-limit surface (UNLIMITED/INF sentinels +
+// positive number coercion). Zero external callers prior to
+// extraction.
+const {
+  splitRuntimeList,
+  positiveNumberOrNull,
+  isUnlimitedRuntimeLimit,
+  positiveNumberOrUnlimited,
+} = require("../utils/runtimeConfigParsers");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -5991,27 +6002,10 @@ function normalizeBool(value, fallback) {
   return fallback;
 }
 
-function splitRuntimeList(raw) {
-  return String(raw || "")
-    .split(/[,\|\s]+/)
-    .map((item) => String(item || "").trim().toUpperCase())
-    .filter(Boolean);
-}
-
-function positiveNumberOrNull(value) {
-  const num = Number(value);
-  return Number.isFinite(num) && num > 0 ? num : null;
-}
-
-function isUnlimitedRuntimeLimit(value) {
-  const raw = String(value == null ? "" : value).trim().toUpperCase();
-  return raw === "UNLIMITED" || raw === "INF" || raw === "INFINITY" || raw === "*";
-}
-
-function positiveNumberOrUnlimited(value) {
-  if (isUnlimitedRuntimeLimit(value)) return "UNLIMITED";
-  return positiveNumberOrNull(value);
-}
+// 2026-04-29 P1-1.6 — `splitRuntimeList`, `positiveNumberOrNull`,
+// `isUnlimitedRuntimeLimit`, `positiveNumberOrUnlimited` extracted
+// to ../utils/runtimeConfigParsers.js. Same references re-imported
+// at the top of this file.
 
 function evaluateV2DiscoveryCanaryLiveBridge({ env = process.env, symbol = null, executionMode = null } = {}) {
   const mode = String(executionMode || "").trim().toUpperCase();
