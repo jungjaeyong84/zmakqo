@@ -29,7 +29,12 @@ function main(env = process.env) {
   const artifact = buildDiscoveryNotionalCapConsistencyArtifact({
     map: resolveDiscoverySymbolNotionalQuoteMap(env),
     maxPositionCount: numberWithDefault(env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, 8),
-    riskTotalCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, 900),
+    // 2026-04-29 — default raised 900 → 1300 to keep the all-8-position
+    // worst-case basket (BTC 155 + 7×120 = 995) inside the cap. Module-
+    // level default in src/v2/discoveryCanaryRiskCapConsistency.js stays
+    // at 900 because tests that exercise the module directly with
+    // max_position_count=5 still see the legacy budget.
+    riskTotalCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, 1300),
     riskSymbolCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, 200),
     riskCorrelatedGroupCap: numberWithDefault(env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, 900),
   });

@@ -97,7 +97,7 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_SHADOW_EXIT_WRITE_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_SHADOW_ALERT_DELIVERY_ENABLED, "1");
-    assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "900");
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "1300");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, "200");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, "900");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_ALLOW_LEGACY_SCHEDULER_WRITES, "0");

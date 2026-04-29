@@ -51,7 +51,7 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT", value: "8" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY", value: "UNLIMITED" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE", value: "10" }),
-                Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE", value: "900" }),
+                Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE", value: "1300" }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE", value: "200" }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE", value: "900" }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY", value: "UNLIMITED" }),

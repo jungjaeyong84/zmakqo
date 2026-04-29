@@ -46,7 +46,16 @@ substitutions:
   _DONBEOLJA_V2_BLOCK_LEGACY_WEBHOOK_SIGNAL: "1"
   _DONBEOLJA_V2_ALLOW_LEGACY_WEBHOOK_SIGNAL: "0"
   _DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED: "1"
-  _DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED: "0"
+  # 2026-04-29 — F2 server-native ENTRY signal generator default flipped
+  # 0 → 1. The generator IS the entry-signal source after the V1 legacy
+  # runtime was retired (DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED=1) AND the
+  # parallel services/serverNativeInitialSignal.js path was killed
+  # (DONBEOLJA_SERVER_NATIVE_INITIAL_SIGNALS_DISABLED=1). With the
+  # generator off, no ENTRY signals fire at all — operator-reported
+  # symptom on 2026-04-29: "신호가 안 나오는 것 같다." Default-enabling
+  # restores the only remaining entry path on every deploy and prevents
+  # cloudbuild redeploys from silently turning entries off again.
+  _DONBEOLJA_V2_SERVER_ENTRY_SIGNAL_GENERATOR_ENABLED: "1"
   # 2026-04-29 — emergency kill-switch on the OTHER server-native entry
   # source (services/serverNativeInitialSignal.js, fed via
   # paperBinanceRunner.loadServerNativeInitialSignals). DOGEUSDT 00:46 UTC
@@ -70,7 +79,13 @@ substitutions:
   _DONBEOLJA_V2_SHADOW_ALERT_DELIVERY_ENABLED: "1"
   _DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_ENABLED: "1"
   _DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_BARS: "8"
-  _DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "900"
+  # 2026-04-29 — total notional cap raised 900 → 1300 to match the new
+  # 8-position concurrency cap. With BTC's 155 USDT notional and the
+  # other symbols at 120 USDT, the worst-case all-eight-positions
+  # basket = 155 + 7×120 = 995 USDT. 1300 keeps a ~25 % headroom for
+  # operator-tuned single-symbol adjustments without re-blocking
+  # discovery-canary risk consistency.
+  _DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE: "1300"
   _DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: "200"
   _DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE: "900"
   _DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY: "UNLIMITED"

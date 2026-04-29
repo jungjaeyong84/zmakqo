@@ -46,7 +46,7 @@ const {
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE, "10");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
-  assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "900");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "1300");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, "200");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, "900");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_TRADES_PER_DAY, "UNLIMITED");
