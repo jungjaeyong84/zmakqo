@@ -500,6 +500,49 @@ async function runTrailHardExit({
 
 const symbolCooldownState = new Map();
 const symbolCooldownLogState = new Map();
+
+// 2026-04-29 — V2 direct exit dispatch reduceOnly-reject cooldown.
+//
+// When the position has just closed (e.g. via the V2 direct dispatch
+// itself, or an external close, or a native STOP fill on the
+// exchange), the next fast-lane tick can still see stale local state
+// that triggers the same kind (BE/SL/TRAIL) and dispatches another
+// reduceOnly market order. Binance answers `-2022 ReduceOnly Order
+// is rejected.` because the position is already 0. The dispatch
+// then keeps firing every tick until the local position state syncs
+// — typically dozens of duplicate `v2_direct_exit_dispatch_place_fail`
+// alerts per closed position.
+//
+// Cooldown: when a -2022 reject is observed, mark the symbol as
+// "recently rejected" for V2_DIRECT_EXIT_REJECT_COOLDOWN_MS (60 s by
+// default). Subsequent fast-lane ticks skip the V2 direct dispatch
+// for that symbol until the cooldown expires. The native STOP_MARKET
+// path is unaffected — it owns the actual exit safety. The cooldown
+// only suppresses the wasteful duplicate market order.
+const v2DirectExitRejectCooldownState = new Map();
+const V2_DIRECT_EXIT_REJECT_COOLDOWN_MS = 60_000;
+function isReduceOnlyReject(errMsg) {
+  if (!errMsg) return false;
+  const s = String(errMsg);
+  return s.includes("-2022") || /ReduceOnly\s+Order\s+is\s+rejected/i.test(s);
+}
+function markV2DirectExitRecentReject(symbol) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) return;
+  v2DirectExitRejectCooldownState.set(sym, Date.now());
+}
+function isV2DirectExitInRejectCooldown(symbol, nowMs = Date.now()) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  if (!sym) return false;
+  const lastMs = v2DirectExitRejectCooldownState.get(sym);
+  if (!Number.isFinite(lastMs)) return false;
+  if (nowMs - lastMs >= V2_DIRECT_EXIT_REJECT_COOLDOWN_MS) {
+    v2DirectExitRejectCooldownState.delete(sym);
+    return false;
+  }
+  return true;
+}
+
 const pendingIntentState = new Map();
 const pendingIntentLogState = new Map();
 const tpP1PendingTerminalAlertState = new Map();
@@ -3484,6 +3527,32 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         const raw = String(process.env.DONBEOLJA_V2_LEGACY_RUNTIME_DISABLED || "0").trim().toLowerCase();
         return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
       })()) {
+        // 2026-04-29 Issue 4 — reduceOnly -2022 retry-storm cooldown.
+        // After a fresh ENTRY fills, the broker can take a few seconds
+        // before the long/short position is visible to reduceOnly
+        // requests, and every TICK_EXIT cycle in that window dispatches
+        // a fresh V2 direct exit that the exchange rejects with
+        // -2022 "ReduceOnly Order is rejected". The previous behaviour
+        // produced dozens of duplicate `v2_direct_exit_dispatch_place_fail`
+        // warnings for the same symbol within ~30 s.
+        //
+        // Cooldown contract: once a -2022 reject lands for a symbol, we
+        // suppress further V2 direct exit dispatches for that symbol
+        // for V2_DIRECT_EXIT_REJECT_COOLDOWN_MS (60 s). The native
+        // protection (closePosition STOP_MARKET) still owns the actual
+        // exit safety; this only mutes the duplicate place attempts.
+        if (isV2DirectExitInRejectCooldown(symbol)) {
+          structuredLog("v2_direct_exit_dispatch_reject_cooldown_skip", {
+            exchange: "BINANCEFUT",
+            symbol,
+            run_id: runId,
+            triggered_kinds: triggeredKinds,
+            cooldown_ms: V2_DIRECT_EXIT_REJECT_COOLDOWN_MS,
+            note: "Skipping V2 direct dispatch — last attempt was rejected with reduceOnly -2022 within cooldown window.",
+          });
+          continue;
+        }
+
         // Stage U-followup-1 (option A) — V2 direct exit dispatch.
         // Stage U-followup-2 (this turn) — pre-round qty via symbol
         //   exchangeInfo, stamp the dispatch into exit_order_contracts
@@ -3614,6 +3683,15 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                 }
               } catch (placeErr) {
                 v2DispatchPlaceError = placeErr && placeErr.message ? placeErr.message : String(placeErr);
+                // 2026-04-29 Issue 4 — start the reject cooldown when
+                // Binance rejects with -2022 ReduceOnly. The native
+                // protection (closePosition STOP_MARKET) still owns
+                // the actual exit; we only need to stop the dispatch
+                // retry storm until the position is observable to the
+                // reduceOnly endpoint.
+                if (isReduceOnlyReject(v2DispatchPlaceError)) {
+                  markV2DirectExitRecentReject(symbol);
+                }
                 structuredLog("v2_direct_exit_dispatch_place_fail", {
                   exchange: "BINANCEFUT",
                   symbol,
@@ -3623,6 +3701,9 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                   order_qty: v2DirectDispatch.qty,
                   idempotency_key: v2DirectDispatch.idempotencyKey,
                   error: v2DispatchPlaceError,
+                  reduce_only_reject: isReduceOnlyReject(v2DispatchPlaceError),
+                  cooldown_started: isReduceOnlyReject(v2DispatchPlaceError),
+                  cooldown_ms: V2_DIRECT_EXIT_REJECT_COOLDOWN_MS,
                 }, "warn");
               }
             } else {
@@ -4236,6 +4317,12 @@ module.exports = {
     _tickExitFailureAlertState: tickExitFailureAlertState,
     _nativeProtectionRefreshAttemptState: nativeProtectionRefreshAttemptState,
     _trailHardExitCooldownState: trailHardExitCooldownState,
+    // 2026-04-29 Issue 4 — V2 direct exit reduceOnly reject cooldown helpers
+    isReduceOnlyReject,
+    markV2DirectExitRecentReject,
+    isV2DirectExitInRejectCooldown,
+    _v2DirectExitRejectCooldownState: v2DirectExitRejectCooldownState,
+    V2_DIRECT_EXIT_REJECT_COOLDOWN_MS,
     applyAlertCacheCap,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;

@@ -189,6 +189,14 @@ function run() {
   assert.strictEqual(delayedTrail[0].features.trail_delay_bars_ready, true);
   assert.strictEqual(delayedTrail[0].features.trail_delay_release_reason, "BAR_DELAY_RELEASE");
 
+  // 2026-04-29 — Issue 3 fix: trail-delay mfeMove is now absolute (no
+  // longer divided by leverage). closePx must clear tp1_target by
+  // ≥ mfePctRequired (0.5 %) to release MFE_DELAY. For
+  // tp1_target_price=99.175 (SHORT), that's closePx ≤ 98.679. Picking
+  // 98.6 (≈ -0.58 %) keeps the test intent (MFE_DELAY_RELEASE arms)
+  // robust to small re-tunings of mfePctRequired. The legacy
+  // leverage-divided behaviour is covered by the
+  // recent-entry-grace-and-trail-mfe-absolute test (case D, env-gated).
   const targetBasedTrailDelay = resolveTrailDelayState({
     meta: {
       tp_p1_done: true,
@@ -202,7 +210,7 @@ function run() {
     },
     tpP1Done: true,
     currentBarMs: 1_800_000_100_000,
-    closePx: 98.85,
+    closePx: 98.6,
     side: "SHORT",
     leverageEff: 2,
     rules: {},
