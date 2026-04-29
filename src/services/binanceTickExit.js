@@ -33,6 +33,7 @@ const {
   fetchFuturesAlgoOrder,
   placeFuturesMarketOrder,
   fetchFuturesExchangeInfo,
+  fetchBinanceFuturesAccount,
   __test: binancePrivateTest,
 } = require("../exchanges/binanceFuturesPrivate");
 const { sendAlert } = require("../utils/alerts");
@@ -600,6 +601,70 @@ function getExitInFlightRecord(symbol) {
   const sym = String(symbol || "").trim().toUpperCase();
   if (!sym) return null;
   return exitInFlightState.get(sym) || null;
+}
+
+// 2026-04-29 — ROOT-CAUSE FIX (R2) for the V2 direct exit reduceOnly
+// retry-storm. R1 covered the post-place stale-window scenario; R2
+// covers the *pre-place* scenario where the broker's own native
+// STOP_MARKET (closePosition) has already filled — the broker is flat
+// for that symbol — but the Firestore read view we'd otherwise use to
+// build the active filter still says ACTIVE, so a fast-lane tick would
+// dispatch a reduceOnly close into a flat position and earn -2022.
+//
+// Fix: before iterating the active set, fetch the broker's own account
+// snapshot (positions[]) once per cycle, cache it for 5 s in-process,
+// and exclude any symbol whose `positionAmt === 0`. Cost is bounded:
+// fetchBinanceFuturesAccount has Binance weight ≈ 5 and the 5 s TTL
+// caps us at ~12 calls/min/instance even under sub-second tick rates.
+// fillSync (3-min poll cadence) and binanceLiveStateSelfHeal also call
+// the same endpoint independently; if we ever want to share their
+// results to drive the rate to 0 we can fold this cache into a
+// shared module — for now an isolated 5 s cache is the simpler
+// surface.
+let brokerPositionSnapshotCache = null;
+const BROKER_POSITION_SNAPSHOT_TTL_MS = (() => {
+  const raw = Number(process.env.TICK_EXIT_BROKER_SNAPSHOT_TTL_MS);
+  if (Number.isFinite(raw) && raw >= 0) return raw;
+  return 5_000;
+})();
+function buildBrokerPositionSnapshot(account = {}) {
+  const byMap = new Map();
+  const rows = Array.isArray(account && account.positions) ? account.positions : [];
+  for (const row of rows) {
+    const sym = String(row && row.symbol || "").trim().toUpperCase();
+    if (!sym) continue;
+    const positionAmt = Number(row && row.positionAmt);
+    if (!Number.isFinite(positionAmt)) continue;
+    const positionSide = String(row && row.positionSide || "").trim().toUpperCase();
+    byMap.set(sym, {
+      positionAmt,
+      positionSide: positionSide || (positionAmt > 0 ? "LONG" : positionAmt < 0 ? "SHORT" : "FLAT"),
+      isFlat: positionAmt === 0,
+    });
+  }
+  return byMap;
+}
+async function getBrokerPositionSnapshot({ liveCfg, nowMs = Date.now() } = {}) {
+  if (
+    brokerPositionSnapshotCache
+    && Number.isFinite(brokerPositionSnapshotCache.fetchedAt)
+    && (nowMs - brokerPositionSnapshotCache.fetchedAt) < BROKER_POSITION_SNAPSHOT_TTL_MS
+  ) {
+    return brokerPositionSnapshotCache;
+  }
+  if (!liveCfg || !liveCfg.apiKey || !liveCfg.apiSecret) return null;
+  const account = await fetchBinanceFuturesAccount({
+    apiKey: liveCfg.apiKey,
+    apiSecret: liveCfg.apiSecret,
+  });
+  brokerPositionSnapshotCache = {
+    fetchedAt: nowMs,
+    byMap: buildBrokerPositionSnapshot(account || {}),
+  };
+  return brokerPositionSnapshotCache;
+}
+function invalidateBrokerPositionSnapshotCache() {
+  brokerPositionSnapshotCache = null;
 }
 
 const pendingIntentState = new Map();
@@ -2582,6 +2647,75 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
   }
   if (!active.length) return { ok: true, checked: 0, triggered: 0 };
 
+  // 2026-04-29 ROOT-CAUSE (R2) — Broker truth pre-filter. Even if the
+  // local read view shows ACTIVE and we have no in-flight inhibit, the
+  // broker may already be flat (native STOP_MARKET filled, manual
+  // close, or fillSync hasn't yet propagated a recent close). Without
+  // this guard we'd dispatch a reduceOnly close into a flat position
+  // and the broker would answer -2022. Skip such symbols up front,
+  // clear any leftover in-flight inhibit, and let fillSync reconcile
+  // the local view at its own cadence.
+  try {
+    const sampleSymbol = active[0] && String(active[0].symbol_or_pair_id || active[0].symbol || "").trim().toUpperCase();
+    const liveCfg = sampleSymbol
+      ? await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol: sampleSymbol }).catch(() => null)
+      : null;
+    if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && !liveCfg.liveDryRun) {
+      const snapshot = await getBrokerPositionSnapshot({ liveCfg }).catch((e) => {
+        structuredLog("tick_exit_broker_snapshot_fetch_fail", {
+          exchange: "BINANCEFUT",
+          error: e && e.message ? e.message : String(e),
+          note: "Falling through without broker pre-filter; R1 in-flight inhibit and (legacy) reject cooldown remain in effect.",
+        }, "warn");
+        return null;
+      });
+      if (snapshot && snapshot.byMap && snapshot.byMap.size) {
+        const filtered = [];
+        for (const p of active) {
+          const sym = String(p.symbol_or_pair_id || p.symbol || "").trim().toUpperCase();
+          const rec = sym ? snapshot.byMap.get(sym) : null;
+          // Only skip on a *positive* observation that the broker is
+          // flat. If the symbol isn't in the snapshot at all (newly
+          // listed, hedge-mode quirk, dual-side variant, etc.) we
+          // fall through to the legacy path and let the dispatch /
+          // R1 / cooldown layers handle it — no silent drops.
+          if (rec && rec.isFlat === true) {
+            structuredLog("tick_exit_skip_broker_flat", {
+              exchange: "BINANCEFUT",
+              symbol: sym,
+              local_state: String(p.state || "").toUpperCase(),
+              local_size_pct: Number(p.size_pct) || null,
+              local_qty_base: Number(p.qty_base) || null,
+              broker_position_amt: rec.positionAmt,
+              broker_position_side: rec.positionSide,
+              snapshot_age_ms: Date.now() - snapshot.fetchedAt,
+              snapshot_ttl_ms: BROKER_POSITION_SNAPSHOT_TTL_MS,
+              note: "Broker is flat for this symbol; local read view is stale. fillSync will reconcile on its next cycle.",
+            });
+            // Releasing any stale in-flight inhibit so that when
+            // fillSync repopulates the view (e.g. after the user
+            // re-opens the position), the next tick can act on it
+            // without waiting out R1's 30 s TTL.
+            clearExitInFlight(sym);
+            continue;
+          }
+          filtered.push(p);
+        }
+        if (filtered.length !== active.length) {
+          active.length = 0;
+          for (const p of filtered) active.push(p);
+        }
+      }
+    }
+  } catch (preFilterErr) {
+    structuredLog("tick_exit_broker_pre_filter_fail", {
+      exchange: "BINANCEFUT",
+      error: preFilterErr && preFilterErr.message ? preFilterErr.message : String(preFilterErr),
+      note: "Pre-filter failed; falling through to legacy dispatch path with R1 in-flight inhibit.",
+    }, "warn");
+  }
+  if (!active.length) return { ok: true, checked: 0, triggered: 0 };
+
   const [operationalGuard, systemSlo, systemAnomaly] = await Promise.all([
     loadOperationalGuardRuntime({ exchange: "BINANCEFUT" }).catch(() => null),
     loadSystemSloRuntime({ exchange: "BINANCEFUT" }).catch(() => null),
@@ -4428,6 +4562,11 @@ module.exports = {
     getExitInFlightRecord,
     _exitInFlightState: exitInFlightState,
     EXIT_IN_FLIGHT_TTL_MS,
+    // 2026-04-29 ROOT-CAUSE (R2) — Broker truth pre-filter
+    buildBrokerPositionSnapshot,
+    getBrokerPositionSnapshot,
+    invalidateBrokerPositionSnapshotCache,
+    BROKER_POSITION_SNAPSHOT_TTL_MS,
     applyAlertCacheCap,
     clearSelfHealCooldown() {
       lastTickExitSelfHealAt = 0;
