@@ -176,25 +176,67 @@ function resolveSignalCriteriaGate(openclawDecision) {
   const criteria = summary && summary.signal_criteria && typeof summary.signal_criteria === "object"
     ? summary.signal_criteria
     : null;
+
+  // 2026-04-29 — diagnostic surface for SIGNAL_CRITERIA_BLOCKED. The
+  // handoff_dispatched log emitted by paperBinanceRunner only sees
+  // routedDecision.detail and bundle.canonical_evidence_summary.signal_criteria,
+  // both of which arrive here as `criteria.blockers` already populated.
+  // When the verdict isn't PASS, dump every sub-gate's state so the
+  // operator can see exactly which gate (NO_TRADE / HTF_REGIME / SETUP /
+  // TRIGGER / EXPECTED_EDGE / SIGNAL_SCORE) is blocking and what
+  // input it saw — instead of getting a bare reason="SIGNAL_CRITERIA_BLOCKED"
+  // with no blocker list.
+  function emitBlockedDiagnostic(result) {
+    try {
+      console.log(JSON.stringify({
+        event: "v2_signal_criteria_gate_blocked",
+        ts: new Date().toISOString(),
+        signal_intent_id: decision && decision.signal_intent_id || null,
+        signal_lineage_id: decision && decision.signal_lineage_id || null,
+        symbol: decision && decision.symbol || (summary && summary.symbol) || null,
+        side: decision && decision.side || (summary && summary.side) || null,
+        source_mode: sourceMode || null,
+        gate_reason: result.reason || null,
+        gate_verdict: result.verdict || null,
+        gate_blockers: result.blockers || [],
+        criteria_present: !!(criteria && criteria.present === true),
+        criteria_profile: criteria && criteria.criteria_profile || null,
+        criteria_verdict: criteria && criteria.verdict || null,
+        criteria_blockers: (criteria && Array.isArray(criteria.blockers)) ? criteria.blockers.slice(0, 30) : null,
+        signal_score: criteria && Number.isFinite(Number(criteria.signal_score)) ? Number(criteria.signal_score) : null,
+        thresholds: criteria && criteria.thresholds || null,
+        no_trade_gate: criteria && criteria.no_trade_gate || null,
+        htf_regime: criteria && criteria.htf_regime || null,
+        setup_gate: criteria && criteria.setup_gate || null,
+        trigger_gate: criteria && criteria.trigger_gate || null,
+        expected_edge_gate: criteria && criteria.expected_edge_gate || null,
+      }));
+    } catch (_) { /* observability only */ }
+  }
+
   if (sourceMode !== "SERVER_NATIVE_ML_AI" && (!criteria || criteria.present !== true)) {
     return Object.freeze({ ok: true, reason: null, blockers: Object.freeze([]), verdict: null });
   }
   if (!criteria || criteria.present !== true) {
-    return Object.freeze({
+    const result = Object.freeze({
       ok: false,
       reason: "SIGNAL_CRITERIA_REQUIRED",
       blockers: Object.freeze(["SIGNAL_CRITERIA:EVIDENCE_REQUIRED"]),
       verdict: null,
     });
+    emitBlockedDiagnostic(result);
+    return result;
   }
   const verdict = upper(criteria.verdict);
   if (verdict !== "PASS") {
-    return Object.freeze({
+    const result = Object.freeze({
       ok: false,
       reason: "SIGNAL_CRITERIA_BLOCKED",
       blockers: Object.freeze(Array.isArray(criteria.blockers) ? criteria.blockers : []),
       verdict,
     });
+    emitBlockedDiagnostic(result);
+    return result;
   }
   return Object.freeze({
     ok: true,
