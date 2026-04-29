@@ -207,7 +207,9 @@ function buildExpectedEnv(env = process.env) {
       env,
       "DONBEOLJA_V2_EXPECTED_RISK_MAX_TOTAL_NOTIONAL_QUOTE",
       "DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE",
-      "900",
+      // 2026-04-29 — default raised 900 → 1300 to match cloudbuild.yaml
+      // and accommodate the 8-position concurrency cap.
+      "1300",
     ),
     DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE: expectedValue(
       env,
