@@ -253,6 +253,20 @@ const {
   computeUnrealizedPnlPct,
   computeReplayStopDistancePct,
 } = require("../utils/priceMathHelpers");
+// 2026-04-29 P1-1.20 — six same-direction trail-profit cooldown
+// helpers extracted to src/utils/sameDirectionTrailProfitCooldown.js.
+// Implement the entire "after a winning EXIT_TRAIL exit, block
+// same-side re-entries for N ms" policy. Already covered by
+// same-direction-profit-trail-cooldown.test.js via __test; runner
+// re-exports the SAME refs below.
+const {
+  resolveSameDirectionTrailProfitCooldownConfig,
+  buildSameDirectionTrailProfitCooldownMetaPatch,
+  buildSameDirectionTrailProfitObservationPayload,
+  buildSameDirectionTrailProfitLegacyResetMetaPatch,
+  resolveSameDirectionTrailProfitCooldownBlock,
+  resolveSameDirectionTrailProfitCooldownSnapshot,
+} = require("../utils/sameDirectionTrailProfitCooldown");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -3554,134 +3568,10 @@ function resolveReplayRescueAddConfig(features) {
   };
 }
 
-function resolveSameDirectionTrailProfitCooldownConfig(sysCfg = {}) {
-  const enabled = normalizeBool(sysCfg.same_direction_trail_profit_cooldown_enabled, false);
-  const cooldownMsRaw = normalizeInt(sysCfg.same_direction_trail_profit_cooldown_ms, 4 * 60 * 60 * 1000);
-  const cooldownMs = Number.isFinite(cooldownMsRaw) ? Math.max(0, cooldownMsRaw) : (4 * 60 * 60 * 1000);
-  return {
-    enabled,
-    cooldownMs,
-  };
-}
-
-function buildSameDirectionTrailProfitCooldownMetaPatch({
-  event,
-  realizedPnlQuote,
-  positionSide,
-  exitWallMs,
-  source = "INTENT_FILL",
-} = {}) {
-  const ev = String(event || "").trim().toUpperCase();
-  const pnl = Number(realizedPnlQuote);
-  const dir = normalizePositionSide(positionSide);
-  const refMs = Number(exitWallMs);
-  if (!ev.startsWith("EXIT_TRAIL")) return null;
-  if (!Number.isFinite(pnl) || pnl <= 0) return null;
-  if (!dir || !Number.isFinite(refMs) || refMs <= 0) return null;
-  return {
-    same_direction_trail_profit_exit_dir: dir,
-    same_direction_trail_profit_exit_wall_ms: refMs,
-    same_direction_trail_profit_exit_event: ev,
-    same_direction_trail_profit_exit_realized_pnl: pnl,
-    same_direction_trail_profit_exit_source: String(source || "INTENT_FILL").trim().slice(0, 80) || "INTENT_FILL",
-  };
-}
-
-function buildSameDirectionTrailProfitObservationPayload(metaPatch = null) {
-  const patch = (metaPatch && typeof metaPatch === "object") ? metaPatch : {};
-  const exitDir = normalizePositionSide(patch.same_direction_trail_profit_exit_dir);
-  const exitWallMs = Number(patch.same_direction_trail_profit_exit_wall_ms);
-  const exitEvent = String(patch.same_direction_trail_profit_exit_event || "").trim().toUpperCase() || null;
-  const realizedPnl = Number(patch.same_direction_trail_profit_exit_realized_pnl);
-  const source = String(patch.same_direction_trail_profit_exit_source || "").trim().toUpperCase() || null;
-  if (!exitDir || !Number.isFinite(exitWallMs) || exitWallMs <= 0 || !exitEvent) return null;
-  return {
-    exit_dir: exitDir,
-    exit_wall_ms: exitWallMs,
-    exit_event: exitEvent,
-    realized_pnl: Number.isFinite(realizedPnl) ? realizedPnl : null,
-    source,
-  };
-}
-
-function buildSameDirectionTrailProfitLegacyResetMetaPatch() {
-  return {
-    same_direction_trail_profit_exit_dir: null,
-    same_direction_trail_profit_exit_wall_ms: null,
-    same_direction_trail_profit_exit_event: null,
-    same_direction_trail_profit_exit_realized_pnl: null,
-    same_direction_trail_profit_exit_source: null,
-  };
-}
-
-function resolveSameDirectionTrailProfitCooldownBlock({
-  cfg,
-  posMeta,
-  intentDir,
-  eventRefMs,
-} = {}) {
-  const cooldownCfg = (cfg && typeof cfg === "object") ? cfg : {};
-  if (cooldownCfg.enabled !== true) return null;
-  const cooldownMs = Number(cooldownCfg.cooldownMs);
-  if (!Number.isFinite(cooldownMs) || cooldownMs <= 0) return null;
-  const nextDir = normalizePositionSide(intentDir);
-  const exitDir = normalizePositionSide(posMeta && posMeta.same_direction_trail_profit_exit_dir);
-  const exitWallMs = Number(posMeta && posMeta.same_direction_trail_profit_exit_wall_ms);
-  const refMs = Number(eventRefMs);
-  if (!nextDir || !exitDir || nextDir !== exitDir) return null;
-  if (!Number.isFinite(exitWallMs) || !Number.isFinite(refMs) || refMs < exitWallMs) return null;
-  const elapsedMs = refMs - exitWallMs;
-  if (elapsedMs < 0 || elapsedMs >= cooldownMs) return null;
-  return {
-    exit_dir: exitDir,
-    exit_wall_ms: exitWallMs,
-    exit_event: String(posMeta && posMeta.same_direction_trail_profit_exit_event || "").trim().toUpperCase() || null,
-    realized_pnl: Number.isFinite(Number(posMeta && posMeta.same_direction_trail_profit_exit_realized_pnl))
-      ? Number(posMeta.same_direction_trail_profit_exit_realized_pnl)
-      : null,
-    elapsed_ms: elapsedMs,
-    cooldown_ms: cooldownMs,
-    source: String(posMeta && posMeta.same_direction_trail_profit_exit_source || "").trim().toUpperCase() || null,
-  };
-}
-
-function resolveSameDirectionTrailProfitCooldownSnapshot({
-  posMeta = null,
-  observation = null,
-  observationOnly = false,
-} = {}) {
-  const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
-  const observed = (observation && typeof observation === "object" && observation.same_direction_trail_profit && typeof observation.same_direction_trail_profit === "object")
-    ? observation.same_direction_trail_profit
-    : {};
-  if (observationOnly === true) {
-    if (!Number.isFinite(Number(observed.exit_wall_ms))) return {};
-    return {
-      same_direction_trail_profit_exit_dir: observed.exit_dir || null,
-      same_direction_trail_profit_exit_wall_ms: Number(observed.exit_wall_ms),
-      same_direction_trail_profit_exit_event: observed.exit_event || null,
-      same_direction_trail_profit_exit_realized_pnl: Number.isFinite(Number(observed.realized_pnl))
-        ? Number(observed.realized_pnl)
-        : null,
-      same_direction_trail_profit_exit_source: observed.source || null,
-    };
-  }
-  const metaExitWallMs = Number(metaSafe.same_direction_trail_profit_exit_wall_ms);
-  const obsExitWallMs = Number(observed.exit_wall_ms);
-  const useObserved = Number.isFinite(obsExitWallMs)
-    && (!Number.isFinite(metaExitWallMs) || obsExitWallMs > metaExitWallMs);
-  if (!useObserved) return metaSafe;
-  return {
-    ...metaSafe,
-    same_direction_trail_profit_exit_dir: observed.exit_dir || null,
-    same_direction_trail_profit_exit_wall_ms: obsExitWallMs,
-    same_direction_trail_profit_exit_event: observed.exit_event || null,
-    same_direction_trail_profit_exit_realized_pnl: Number.isFinite(Number(observed.realized_pnl))
-      ? Number(observed.realized_pnl)
-      : null,
-    same_direction_trail_profit_exit_source: observed.source || null,
-  };
-}
+// 2026-04-29 P1-1.20 — six same-direction trail-profit cooldown
+// helpers extracted to ../utils/sameDirectionTrailProfitCooldown.js.
+// Same refs re-imported at the top of this file; still re-exported
+// via __test below.
 
 async function loadSameDirectionTrailProfitObservationSafe({
   enabled = false,
