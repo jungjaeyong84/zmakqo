@@ -56,6 +56,22 @@ const {
   scaleBaseBarCountByTf,
   resolveBinanceMaxHoldBars,
 } = require("../utils/barTfHelpers");
+// 2026-04-29 P1-1.2 — qty/budget calculation helpers + POS_SIZE_EPSILON
+// constant extracted to src/utils/qtyCalculation.js. Function bodies
+// and the env-resolved POS_SIZE_EPSILON constant previously lived
+// inline in this file (lines ~151 and ~3372-3443). The same names are
+// re-exposed via module.exports.__test below so live-rescue-add-plan
+// and other tests that read these through the paperBinanceRunner
+// __test surface continue to work unchanged. Re-exports preserve
+// function-reference identity (no fork).
+const {
+  POS_SIZE_EPSILON,
+  resolveCurrentQtyPctForCap,
+  resolveLogicalCurrentQtyPctForBudget,
+  resolveLiveExitCurrentQtyPct,
+  resolveIntentFillCloseRatio,
+  resolveSyncedAddChainBaseQtyPct,
+} = require("../utils/qtyCalculation");
 const {
   toPositiveMs: nativeProtectionWindowToPositiveMs,
   computeWindowMs: computeNativeProtectionWindowMs,
@@ -148,11 +164,10 @@ const {
   writeOpenClawShadowExternalClose,
 } = require("../v2/openclawShadowExitWriter");
 
-const POS_SIZE_EPSILON = (() => {
-  const raw = Number(process.env.POS_SIZE_EPSILON);
-  if (Number.isFinite(raw) && raw >= 0) return raw;
-  return 0.0001;
-})();
+// 2026-04-29 P1-1.2 — POS_SIZE_EPSILON is now imported from
+// ../utils/qtyCalculation (top of file). Same env resolution, same
+// default 0.0001. Kept here as a comment so search lands on the
+// extraction note instead of a missing definition.
 
 const TP_P1_FILL_CACHE_TTL_MS = 10 * 1000;
 const TP_P1_FILL_CACHE_LIMIT = 200;
@@ -3369,78 +3384,12 @@ function ensureLogicalAddCapState(state, {
   };
 }
 
-function resolveCurrentQtyPctForCap(state, fallbackQtyPct = 0) {
-  if (state && typeof state === "object") {
-    const qtyPct = Number(state.currentQtyPct);
-    if (Number.isFinite(qtyPct)) return qtyPct;
-  }
-  const fallback = Number(fallbackQtyPct);
-  return Number.isFinite(fallback) ? fallback : 0;
-}
-
-function resolveLogicalCurrentQtyPctForBudget({
-  budgetMaxKrw,
-  budgetUsedKrw,
-} = {}) {
-  const max = Number(budgetMaxKrw);
-  const used = Number(budgetUsedKrw);
-  if (!Number.isFinite(max) || max <= 0 || !Number.isFinite(used) || used <= 0) return null;
-  return clamp(used / max, 0, 1);
-}
-
-function resolveLiveExitCurrentQtyPct({
-  exchange,
-  position,
-  fallbackQtyPct,
-} = {}) {
-  const ex = String(exchange || "").toUpperCase();
-  const pos = position && typeof position === "object" ? position : {};
-  if (ex.includes("BINANCE")) {
-    const logicalQtyPct = resolveLogicalCurrentQtyPctForBudget({
-      budgetMaxKrw: pos.budget_max_krw,
-      budgetUsedKrw: pos.budget_used_krw,
-    });
-    if (Number.isFinite(logicalQtyPct) && logicalQtyPct > POS_SIZE_EPSILON) {
-      return clamp(logicalQtyPct, POS_SIZE_EPSILON, 1);
-    }
-  }
-  const fallback = Number(fallbackQtyPct);
-  if (Number.isFinite(fallback) && fallback > POS_SIZE_EPSILON) {
-    return clamp(fallback, POS_SIZE_EPSILON, 1);
-  }
-  return null;
-}
-
-function resolveIntentFillCloseRatio({
-  qtyFraction,
-  prevSize,
-  useBudget,
-} = {}) {
-  const qty = Number(qtyFraction);
-  if (!Number.isFinite(qty) || qty <= 0) return null;
-  if (useBudget === true) return Math.max(0, Math.min(1, qty));
-  const current = Number(prevSize);
-  if (Number.isFinite(current) && current > 0) {
-    return Math.max(0, Math.min(1, qty / current));
-  }
-  return Math.max(0, Math.min(1, qty));
-}
-
-function resolveSyncedAddChainBaseQtyPct({
-  active,
-  posMeta,
-  budgetMaxKrw,
-  budgetUsedKrw,
-} = {}) {
-  if (!active) return null;
-  const currentQtyPct = resolveLogicalCurrentQtyPctForBudget({ budgetMaxKrw, budgetUsedKrw });
-  if (!Number.isFinite(currentQtyPct) || currentQtyPct <= POS_SIZE_EPSILON) return null;
-  const addCountRaw = Number(posMeta && posMeta.add_chain_count);
-  const addCount = Number.isFinite(addCountRaw) ? Math.max(0, Math.trunc(addCountRaw)) : 0;
-  const baseQtyPct = currentQtyPct / (1 + addCount);
-  if (!Number.isFinite(baseQtyPct) || baseQtyPct <= POS_SIZE_EPSILON) return null;
-  return Math.min(1, baseQtyPct);
-}
+// 2026-04-29 P1-1.2 — `resolveCurrentQtyPctForCap`,
+// `resolveLogicalCurrentQtyPctForBudget`, `resolveLiveExitCurrentQtyPct`,
+// `resolveIntentFillCloseRatio`, `resolveSyncedAddChainBaseQtyPct`
+// extracted to ../utils/qtyCalculation.js. Re-imported at the top of
+// this file; same function references re-exposed via __test below so
+// live-rescue-add-plan and friends keep passing.
 
 function normalizeSignalTypeList(raw) {
   if (!raw) return [];
