@@ -4917,12 +4917,6 @@ async function syncMarketTrades({
           && legacyCanonicalTp1Gate.ok === true
           && legacyCanonicalStopGate.ok === true
           && legacyCanonicalExternalCloseGate.ok === true;
-        const canonicalTransitionAuditAllowed = canonicalExitWriteAllowed
-          || (
-            canonicalExitMutationAllowed
-            && canonicalTransitionDecision.transitionEvents.length > 0
-            && isTrackedInternalClientOrder(clientOrderId)
-          );
         if (canonicalExitMutationAllowed && legacyCanonicalWriteDecision.write !== true) {
           console.warn("[BINANCEFUT_LEGACY_CANONICAL_EXIT_WRITE_SKIPPED]", JSON.stringify({
             symbol: sym,
@@ -4933,7 +4927,7 @@ async function syncMarketTrades({
           }));
         }
         try {
-          if (canonicalTransitionAuditAllowed) {
+          if (canonicalExitWriteAllowed) {
             await recordCanonicalExitTransitionsForFill({
               exchange: "BINANCEFUT",
               symbol: sym,
