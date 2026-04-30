@@ -249,6 +249,59 @@ function parseExitEventMeta(event, { simplifiedExitV2Enabled = false } = {}) {
   return { token: "EXIT", label: "청산" };
 }
 
+function firstFinitePositiveRatio(...values) {
+  for (const value of values) {
+    const num = Number(value);
+    if (Number.isFinite(num) && Math.abs(num) > 0) return Math.abs(num);
+  }
+  return null;
+}
+
+function resolveV2Tp1TargetPctForAlert(payload = {}) {
+  const feat = (payload.features && typeof payload.features === "object")
+    ? payload.features
+    : ((payload.features_json && typeof payload.features_json === "object") ? payload.features_json : {});
+  const meta = (payload.meta && typeof payload.meta === "object") ? payload.meta : {};
+  const protection = (payload.protectionRuntime && typeof payload.protectionRuntime === "object")
+    ? payload.protectionRuntime
+    : ((payload.protection_runtime && typeof payload.protection_runtime === "object") ? payload.protection_runtime : {});
+  const explicitTarget = firstFinitePositiveRatio(
+    payload.tp1TargetPct,
+    payload.tp1_target_pct,
+    payload.protectionTp1TargetPct,
+    payload.protection_tp1_target_pct,
+    payload.nativeTp1TargetPct,
+    payload.native_tp1_target_pct,
+    meta.tp1TargetPct,
+    meta.tp1_target_pct,
+    meta.tp_p1_target_pct,
+    protection.tp1TargetPct,
+    protection.tp1_target_pct,
+    protection.tp_p1_target_pct,
+    feat.tp1TargetPct,
+    feat.tp1_target_pct,
+    feat.tp_p1_target_pct
+  );
+  if (explicitTarget) return explicitTarget;
+
+  const rules = (payload.exitRules && typeof payload.exitRules === "object")
+    ? payload.exitRules
+    : ((payload.exit_rules && typeof payload.exit_rules === "object") ? payload.exit_rules : null);
+  const rulesTp1 = firstFinitePositiveRatio(rules && rules.TP_P1);
+  // In V2 live-write the historical 1.65% TP1 token is a legacy/rescue
+  // signal-engine label, not the protected-entry TP1 contract. Without this
+  // guard operators see "TP1_1.65" even though native protection was placed at
+  // the V2 default 2.5% leveraged-PnL target.
+  if (rulesTp1 && Math.abs(rulesTp1 - 0.0165) > 1e-9) return rulesTp1;
+  return 0.025;
+}
+
+function buildV2Tp1AlertMeta(payload = {}) {
+  const pct = resolveV2Tp1TargetPctForAlert(payload);
+  const token = ratioToPctToken(pct) || "2.5";
+  return { token: `TP1_${token}`, label: `익절(TP1) ${token}%` };
+}
+
 function isSimplifiedExitV2Enabled(payload = {}) {
   if (payload.simplifiedExitV2Enabled === true || payload.simplified_exit_v2_enabled === true) return true;
   const shadow = payload.simplifiedExitV2Shadow || payload.simplified_exit_v2_shadow;
@@ -336,15 +389,14 @@ function normalizeSimplifiedExitV2TransitionEvents(payload = {}) {
 function resolveSimplifiedExitV2MetaFromTransition({
   transitionEvent = null,
   canonicalExitEvent = null,
+  payload = {},
 } = {}) {
   const transition = String(transitionEvent || "").trim().toUpperCase();
   const canonicalMeta = canonicalExitEvent
     ? parseExitEventMeta(canonicalExitEvent, { simplifiedExitV2Enabled: true })
     : null;
   if (transition === "TP1_REACHED") {
-    return canonicalMeta && String(canonicalMeta.token || "").startsWith("TP1")
-      ? canonicalMeta
-      : { token: "TP1", label: "익절(TP1)" };
+    return buildV2Tp1AlertMeta(payload);
   }
   if (transition === "TRAIL_ACTIVATED" || transition === "TRAIL_FINAL_EXIT") {
     return canonicalMeta && String(canonicalMeta.token || "").startsWith("TRAIL")
@@ -371,6 +423,7 @@ function resolveSimplifiedExitV2AlertProjection(payload = {}, rawEvent = null) {
   const meta = resolveSimplifiedExitV2MetaFromTransition({
     transitionEvent: primaryTransitionEvent,
     canonicalExitEvent,
+    payload,
   });
   const stage = primaryTransitionEvent === "TP0_REACHED" || primaryTransitionEvent === "TP1_REACHED"
     ? "TP1"
@@ -699,6 +752,20 @@ function formatExitRulesCompact(exitRules) {
   return parts.length ? parts.join(" / ") : null;
 }
 
+function resolveExitRulesForAlertDisplay(payload = {}, resolvedExitMeta = null) {
+  const rules = (payload.exitRules && typeof payload.exitRules === "object")
+    ? payload.exitRules
+    : ((payload.exit_rules && typeof payload.exit_rules === "object") ? payload.exit_rules : null);
+  if (!rules) return null;
+  const simplified = resolvedExitMeta && resolvedExitMeta.simplifiedExitV2;
+  const isV2Tp1 = simplified && simplified.enabled === true && simplified.primaryTransitionEvent === "TP1_REACHED";
+  if (!isV2Tp1) return rules;
+  return {
+    ...rules,
+    TP_P1: resolveV2Tp1TargetPctForAlert(payload),
+  };
+}
+
 function resolveSizingLines(payload = {}) {
   const feat = (payload.features && typeof payload.features === "object")
     ? payload.features
@@ -986,7 +1053,7 @@ function buildMessage(payload) {
     lines.push(...resolveCanonicalStageLines(payload, resolvedExitMeta));
     lines.push(...resolveExitIntegrityLines(payload));
     lines.push(...resolveMarketRegimeLines(payload, feat));
-    const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
+    const rulesTxt = formatExitRulesCompact(resolveExitRulesForAlertDisplay(payload, resolvedExitMeta));
     if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
     const replayReason = resolveTradeAlertReplayReason(payload);
     if (replayReason) lines.push(`재발송사유: ${replayReason}`);
@@ -1122,7 +1189,7 @@ function buildFailureMessage(payload) {
   lines.push(...resolveCanonicalStageLines(payload, resolvedExitMeta));
   lines.push(...resolveExitIntegrityLines(payload));
   lines.push(...resolveMarketRegimeLines(payload, feat));
-  const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
+  const rulesTxt = formatExitRulesCompact(resolveExitRulesForAlertDisplay(payload, resolvedExitMeta));
   if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
   lines.push(`실패사유: ${reason}`);
   if (note) lines.push(`메모: ${note.slice(0, 240)}`);

@@ -395,6 +395,33 @@ async function run() {
   assert.ok(simplifiedTp1.body.includes("실행계약: TP1_2.5"), "v2 projection should prefer canonical executed contract");
   assert.ok(simplifiedTp1.body.includes("정본전이: TP1_REACHED"), "v2 projection should expose canonical transition only");
 
+  const simplifiedTp1LegacyRescueLabel = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    intent: "EXIT",
+    side: "BUY",
+    positionSideBefore: "SHORT",
+    executionMode: "LIVE",
+    notional: 58.11,
+    execPrice: 2233.06,
+    closeRatio: 0.5,
+    fullExit: false,
+    realizedPnl: 0.493,
+    appliedLeverage: 3,
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_TP_P1_1.65P",
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvent: "TP1_REACHED",
+    canonicalTransitionEvents: ["TP1_REACHED"],
+    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(simplifiedTp1LegacyRescueLabel, "simplified v2 tp1 message with legacy rescue label should exist");
+  assert.strictEqual(simplifiedTp1LegacyRescueLabel.title, "ETHUSDT 정본재분류 TP1_1.65->TP1_2.5 50% 청산");
+  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("종류: 익절(TP1) 2.5%"), "v2 tp1 alert must not display legacy rescue 1.65% as the executed TP1 target");
+  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("실행계약: TP1_2.5"), "v2 tp1 executed contract must remain the protected-entry 2.5% PnL target");
+  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("전략계약: SL_1.65 / TP1_2.5 / TRAIL_0.6R / RUNNER_MIN_1.65 / BE_0.15"), "v2 tp1 strategy line must display the actual TP1 protection target");
+
   const invalidSimplifiedV2Requirement = __test.resolveCanonicalExitAlertRequirement({
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
