@@ -1753,18 +1753,18 @@ function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, phys
   const evFresh = ev ? ev.fresh !== false : true;
   return {
     integrity: {
-      label: "1차 상태/무결성",
+      label: "V2 신호 기준/서버 정본",
       server_mode: String(leadCandidate && leadCandidate.server_stage1_mode || "INTEGRITY_GUARD_ONLY"),
       expectation: String(leadCandidate && leadCandidate.server_stage1_expectation || "N/A"),
       coverage_pass: Boolean(changeControl && changeControl.coverage_guard && changeControl.coverage_guard.pass === true),
     },
     entry_quality: {
-      label: "2차 진입 품질",
+      label: "V2 진입 품질/시장 데이터",
       pine_candidate_verdict: String(patchCandidates.verdict || "N/A"),
       quality_actions: Array.isArray(ml && ml.recommendations && ml.recommendations.QUALITY) ? ml.recommendations.QUALITY.length : 0,
     },
     state_soft_sizing: {
-      label: "3차 상태 기반 Soft Sizing",
+      label: "V2 리스크 거버너/사이징",
       ml_action: String(ml && ml.recommendations && ml.recommendations.MARKET && ml.recommendations.MARKET.action || "N/A"),
       physics_action: String(physicsSummary && physicsSummary.action || "ALLOW"),
       qty_scale: Number.isFinite(Number(physicsSummary && physicsSummary.qty_scale)) ? Number(physicsSummary.qty_scale) : null,
@@ -1772,7 +1772,7 @@ function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, phys
       dominant_action: topBreakdownValue(featureBreakdown.market_action),
     },
     ev_time_value: {
-      label: "4차 EV/시간가치층",
+      label: "V2 기대값 게이트",
       tuner_reason: evFresh ? evReasonRaw : "STALE_ARTIFACT",
       observed_tuner_reason: evReasonRaw,
       fresh: evFresh,
@@ -1781,7 +1781,7 @@ function buildFilterLayerSummary({ governance, changeControl, ml, ev, wait, phys
       policy_source: evFresh ? topBreakdownValue(featureBreakdown.ev_policy_source) : "STALE_TUNER_ARTIFACT",
     },
     wait_timing: {
-      label: "5차 WAIT 타이밍층",
+      label: "V2 retired timing evidence",
       tuner_reason: String(wait && wait.reason || "N/A"),
       wait_action: waitPhysics,
       febt_calc_ok_rate: febtShadow.calc_ok_rate,
@@ -1839,13 +1839,13 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
-      header: "필터 계층",
+      header: "V2 게이트 체인",
       lines: [
-        `1차 상태/무결성 ${report.filter_layers && report.filter_layers.integrity ? `${report.filter_layers.integrity.server_mode} / coverage ${report.filter_layers.integrity.coverage_pass ? "PASS" : "BLOCK"}` : "N/A"}`,
-        `2차 진입 품질 ${report.filter_layers && report.filter_layers.entry_quality ? `candidate ${report.filter_layers.entry_quality.pine_candidate_verdict} / ml quality ${report.filter_layers.entry_quality.quality_actions}` : "N/A"}`,
-        `3차 상태 기반 Soft Sizing ${report.filter_layers && report.filter_layers.state_soft_sizing ? `${report.filter_layers.state_soft_sizing.ml_action} / physics ${report.filter_layers.state_soft_sizing.physics_action} / qty ${report.filter_layers.state_soft_sizing.qty_scale != null ? report.filter_layers.state_soft_sizing.qty_scale : "N/A"}` : "N/A"}`,
-        `4차 EV/시간가치층 ${report.filter_layers && report.filter_layers.ev_time_value ? `${report.filter_layers.ev_time_value.tuner_reason} / policy ${report.filter_layers.ev_time_value.policy_version || "N/A"} / source ${report.filter_layers.ev_time_value.policy_source || "N/A"}` : "N/A"}`,
-        `5차 WAIT 타이밍층 ${report.filter_layers && report.filter_layers.wait_timing ? `${report.filter_layers.wait_timing.tuner_reason} / ${report.filter_layers.wait_timing.wait_action} / FEBT calc ${pct(report.filter_layers.wait_timing.febt_calc_ok_rate)} / phase_known ${pct(report.filter_layers.wait_timing.febt_phase_known)} / fire ${report.filter_layers.wait_timing.febt_fire_n ?? 0} / late ${report.filter_layers.wait_timing.febt_late_n ?? 0} / void ${report.filter_layers.wait_timing.febt_void_n ?? 0} / disagree ${report.filter_layers.wait_timing.febt_disagreement_n ?? 0} / fallback ${report.filter_layers.wait_timing.febt_fallback_legacy_n ?? 0} / missing ${pct(report.filter_layers.wait_timing.febt_missing_rate)}` : "N/A"}`,
+        `V2 신호 기준/서버 정본 ${report.filter_layers && report.filter_layers.integrity ? `${report.filter_layers.integrity.server_mode} / coverage ${report.filter_layers.integrity.coverage_pass ? "PASS" : "BLOCK"}` : "N/A"}`,
+        `V2 진입 품질/시장 데이터 ${report.filter_layers && report.filter_layers.entry_quality ? `candidate ${report.filter_layers.entry_quality.pine_candidate_verdict} / ml quality ${report.filter_layers.entry_quality.quality_actions}` : "N/A"}`,
+        `V2 리스크 거버너/사이징 ${report.filter_layers && report.filter_layers.state_soft_sizing ? `${report.filter_layers.state_soft_sizing.ml_action} / physics ${report.filter_layers.state_soft_sizing.physics_action} / qty ${report.filter_layers.state_soft_sizing.qty_scale != null ? report.filter_layers.state_soft_sizing.qty_scale : "N/A"}` : "N/A"}`,
+        `V2 기대값 게이트 ${report.filter_layers && report.filter_layers.ev_time_value ? `${report.filter_layers.ev_time_value.tuner_reason} / policy ${report.filter_layers.ev_time_value.policy_version || "N/A"} / source ${report.filter_layers.ev_time_value.policy_source || "N/A"}` : "N/A"}`,
+        `V2 retired timing evidence ${report.filter_layers && report.filter_layers.wait_timing ? `${report.filter_layers.wait_timing.tuner_reason} / ${report.filter_layers.wait_timing.wait_action} / calc ${pct(report.filter_layers.wait_timing.febt_calc_ok_rate)} / phase_known ${pct(report.filter_layers.wait_timing.febt_phase_known)} / fire ${report.filter_layers.wait_timing.febt_fire_n ?? 0} / late ${report.filter_layers.wait_timing.febt_late_n ?? 0} / void ${report.filter_layers.wait_timing.febt_void_n ?? 0} / disagree ${report.filter_layers.wait_timing.febt_disagreement_n ?? 0} / fallback ${report.filter_layers.wait_timing.febt_fallback_legacy_n ?? 0} / missing ${pct(report.filter_layers.wait_timing.febt_missing_rate)}` : "N/A"}`,
       ],
     },
     {
@@ -1856,15 +1856,15 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
-      header: "FEBT Phase 0",
+      header: "V2 retired WAIT evidence",
       lines: [
-        `legacy WAIT coverage ${report.phase0 && report.phase0.legacy_wait_coverage_rate != null ? pct(report.phase0.legacy_wait_coverage_rate) : "N/A"} / observed ${report.phase0 && report.phase0.legacy_wait_observed_chain_n != null ? report.phase0.legacy_wait_observed_chain_n : "N/A"}`,
-        `legacy WAIT immediate win ${report.phase0 && report.phase0.immediate_win_rate != null ? pct(report.phase0.immediate_win_rate) : "N/A"} / saved_loss ${report.phase0 && report.phase0.saved_loss_pct != null ? pct(report.phase0.saved_loss_pct) : "N/A"} / missed_gain ${report.phase0 && report.phase0.missed_gain_pct != null ? pct(report.phase0.missed_gain_pct) : "N/A"} / delta ${report.phase0 && report.phase0.saved_loss_minus_missed_gain != null ? signedPct(report.phase0.saved_loss_minus_missed_gain) : "N/A"}`,
+        `retired WAIT evidence coverage ${report.phase0 && report.phase0.legacy_wait_coverage_rate != null ? pct(report.phase0.legacy_wait_coverage_rate) : "N/A"} / observed ${report.phase0 && report.phase0.legacy_wait_observed_chain_n != null ? report.phase0.legacy_wait_observed_chain_n : "N/A"}`,
+        `retired WAIT evidence immediate win ${report.phase0 && report.phase0.immediate_win_rate != null ? pct(report.phase0.immediate_win_rate) : "N/A"} / saved_loss ${report.phase0 && report.phase0.saved_loss_pct != null ? pct(report.phase0.saved_loss_pct) : "N/A"} / missed_gain ${report.phase0 && report.phase0.missed_gain_pct != null ? pct(report.phase0.missed_gain_pct) : "N/A"} / delta ${report.phase0 && report.phase0.saved_loss_minus_missed_gain != null ? signedPct(report.phase0.saved_loss_minus_missed_gain) : "N/A"}`,
         `bridge webhook->fill p95 ${report.phase0 && report.phase0.webhook_to_fill_p95_ms != null ? `${Number(report.phase0.webhook_to_fill_p95_ms).toFixed(0)}ms` : "N/A"} / dup ${report.phase0 && report.phase0.duplicate_count != null ? report.phase0.duplicate_count : "N/A"} / reject ${report.phase0 && report.phase0.reject_count != null ? report.phase0.reject_count : "N/A"} / fresh ${report.phase0 && report.phase0.fresh ? "YES" : "NO"}`,
       ],
     },
     {
-      header: "BEST/FEBT 공통 계약",
+      header: "V2 Discovery 기회 보존 계약",
       lines: [
         `mode ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.mode || "N/A"} / tightening ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.recovery_priority ? "FIRST" : "NORMAL"}`,
         `replacement ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_replacement_ratio != null ? pct(report.best_febt_tuning_contract.projected_replacement_ratio) : "N/A"} / count ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_count_ratio_global != null ? `${Number(report.best_febt_tuning_contract.projected_count_ratio_global).toFixed(2)}x` : "N/A"} / net delta ${report.best_febt_tuning_contract && report.best_febt_tuning_contract.projected_net_signal_delta_n != null ? report.best_febt_tuning_contract.projected_net_signal_delta_n : "N/A"}`,
@@ -1965,7 +1965,7 @@ function buildObjectiveSupervisorTelegramSections(report = {}) {
       ],
     },
     {
-      header: "시장별 BEST/FEBT 계약",
+      header: "시장별 V2 Discovery 기회 보존 계약",
       lines: Array.isArray(report.best_febt_market_contracts) && report.best_febt_market_contracts.length
         ? report.best_febt_market_contracts.slice(0, 4).map((row) => formatBestFebtMarketContractLine(row))
         : ["시장별 계약 없음"],

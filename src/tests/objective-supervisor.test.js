@@ -218,9 +218,9 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   });
   assert.strictEqual(allowPromote.verdict, "PATCH_CANDIDATE");
   assert.strictEqual(allowPromote.reason, "AUTO_PROMOTION_READY");
-  assert.strictEqual(allowPromote.filter_layers.integrity.label, "1차 상태/무결성");
-  assert.strictEqual(allowPromote.filter_layers.state_soft_sizing.label, "3차 상태 기반 Soft Sizing");
-  assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "4차 EV/시간가치층");
+  assert.strictEqual(allowPromote.filter_layers.integrity.label, "V2 신호 기준/서버 정본");
+  assert.strictEqual(allowPromote.filter_layers.state_soft_sizing.label, "V2 리스크 거버너/사이징");
+  assert.strictEqual(allowPromote.filter_layers.ev_time_value.label, "V2 기대값 게이트");
   assert.strictEqual(allowPromote.filter_layers.ev_time_value.fresh, true);
   assert.strictEqual(allowPromote.self_evolution_canonical_provenance.available, false);
   assert.strictEqual(allowPromote.self_evolution_pine_shadow_drift.available, false);
@@ -1424,20 +1424,20 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
   const physicsSection = telegramSections.find((section) => section.header === "상태층(시장 물리)");
   assert.ok(physicsSection.lines[0].includes("action DROP"));
   assert.ok(physicsSection.lines[0].includes("wait HARD"));
-  const filterLayerSection = telegramSections.find((section) => section.header === "필터 계층");
-  assert.ok(filterLayerSection.lines[4].includes("FEBT calc 75.00%"));
+  const filterLayerSection = telegramSections.find((section) => section.header === "V2 게이트 체인");
+  assert.ok(filterLayerSection.lines[4].includes("calc 75.00%"));
   assert.ok(filterLayerSection.lines[4].includes("fire 3"));
   assert.ok(filterLayerSection.lines[4].includes("disagree 2"));
   assert.ok(filterLayerSection.lines[4].includes("fallback 1"));
-  assert.ok(telegramSections.some((section) => section.header === "FEBT Phase 0"));
-  assert.ok(telegramSections.some((section) => section.header === "BEST/FEBT 공통 계약"));
+  assert.ok(telegramSections.some((section) => section.header === "V2 retired WAIT evidence"));
+  assert.ok(telegramSections.some((section) => section.header === "V2 Discovery 기회 보존 계약"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 정책"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 배포 가드"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 배포 handoff"));
   assert.ok(telegramSections.some((section) => section.header === "외부 권한"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 가중치 튜닝"));
   assert.ok(telegramSections.some((section) => section.header === "자기 진화 메모리"));
-  assert.ok(telegramSections.some((section) => section.header === "시장별 BEST/FEBT 계약"));
+  assert.ok(telegramSections.some((section) => section.header === "시장별 V2 Discovery 기회 보존 계약"));
 
   const derivedContract = __test.deriveBestFebtTuningContract({
     governance: {

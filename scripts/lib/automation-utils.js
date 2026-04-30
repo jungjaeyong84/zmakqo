@@ -97,7 +97,44 @@ function humanizeTelegramText(raw) {
     .replace(/\btrigger\b/g, "발동")
     .replace(/\bstage ledger\b/gi, "단계 기록")
     .replace(/\bnone\b/gi, "없음");
+  text = normalizeV2AutomationTelegramText(text);
   return text;
+}
+
+function normalizeV2AutomationTelegramText(raw) {
+  let text = String(raw == null ? "" : raw);
+  if (!text) return text;
+  const replacements = [
+    [/\[4차 EV\/시간가치층(?:\s+복합 기대값)?\s+자동 조정\]/g, "[V2 기대값 게이트 자동 점검]"],
+    [/\[5차 진입 타이밍\s+자동 조정\]/g, "[V2 retired timing evidence]"],
+    [/\[학습 기반 필터 점검\]/g, "[V2 OpenClaw 학습 점검]"],
+    [/\[Claude 주간 패치 엔진\]/g, "[Codex 주간 패치 엔진]"],
+    [/1차 상태\/무결성/g, "V2 신호 기준/서버 정본"],
+    [/2차 진입 품질/g, "V2 진입 품질/시장 데이터"],
+    [/3차 상태 기반 Soft Sizing/g, "V2 리스크 거버너/사이징"],
+    [/3차 상태 분포/g, "V2 리스크 상태 분포"],
+    [/3차 상태 action/g, "V2 리스크 상태 action"],
+    [/4차 EV\/시간가치층/g, "V2 기대값 게이트"],
+    [/5차 WAIT 타이밍층/g, "V2 retired timing evidence"],
+    [/BEST\/FEBT 공통 계약/g, "V2 Discovery 기회 보존 계약"],
+    [/시장별 BEST\/FEBT 계약/g, "시장별 V2 Discovery 기회 보존 계약"],
+    [/BEST\/FEBT contract/g, "V2 Discovery opportunity contract"],
+    [/BEST\/FEBT/g, "V2 Discovery opportunity"],
+    [/FEBT Phase\s*0/gi, "V2 retired WAIT evidence"],
+    [/\bFEBT\b/g, "V2 retired timing evidence"],
+    [/공통목표/g, "정식 LIVE 성과 게이트"],
+    [/공통 목표/g, "정식 LIVE 성과 게이트"],
+    [/legacy WAIT/gi, "retired WAIT evidence"],
+    [/legacy wait/gi, "retired WAIT evidence"],
+    [/Pine 품질 기준과 /g, ""],
+    [/Pine full-quality bundle과 /g, ""],
+    [/Pine 번들 fallback/g, "서버 정본 fallback"],
+    [/Pine fallback/g, "서버 정본 fallback"],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+  return text.replace(/\s{2,}/g, " ").trim();
 }
 
 function stripPineTerms(raw) {
@@ -131,7 +168,7 @@ function sanitizeTelegramTitle(raw) {
   if (/\bpine\b/i.test(original) || /\bshadow\b/i.test(original) || /PINE_/i.test(original) || /SHADOW_/i.test(original)) {
     return "[OpenClaw 업데이트]";
   }
-  const text = stripPineTerms(raw)
+  const text = normalizeV2AutomationTelegramText(stripPineTerms(raw))
     .replace(/\[\s*\]/g, "")
     .replace(/\(\s*\)/g, "")
     .replace(/\s{2,}/g, " ")
@@ -443,10 +480,14 @@ const AUTOMATION_TELEGRAM_TITLE_RULES = Object.freeze([
   { category: "SUMMARY", prefix: "[데이터 누락 복구]" },
   { category: "SUMMARY", prefix: "[데이터 무결성 점검]" },
   { category: "SUMMARY", prefix: "[자동화 변경 이상 여부 점검]" },
+  { category: "TUNING", prefix: "[V2 기대값 게이트 자동 점검]" },
+  { category: "TUNING", prefix: "[V2 retired timing evidence]" },
   { category: "TUNING", prefix: "[4차 EV/시간가치층 자동 조정]" },
+  { category: "TUNING", prefix: "[4차 EV/시간가치층 복합 기대값 자동 조정]" },
   { category: "TUNING", prefix: "[5차 진입 타이밍 자동 조정]" },
   { category: "TUNING", prefix: "[V2 OpenClaw 학습 점검]" },
   { category: "TUNING", prefix: "[학습 기반 필터 점검]" },
+  { category: "TUNING", prefix: "[V2 주간 전략 점검]" },
   { category: "TUNING", prefix: "[주간 전략 점검]" },
   { category: "TUNING", prefix: "[Codex 주간 패치 엔진]" },
   { category: "TUNING", prefix: "[Claude 주간 패치 엔진]" },
@@ -668,6 +709,7 @@ module.exports = {
   ensureExchangeApiKeys,
   classifyAutomationTelegramTitle,
   resolveAutomationTelegramPolicyDecision,
+  normalizeV2AutomationTelegramText,
   sanitizeTelegramTitle,
   sanitizeTelegramSections,
 };

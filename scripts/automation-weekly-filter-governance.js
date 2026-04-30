@@ -32,6 +32,7 @@ const {
   readJsonSafe,
   readJsonRawSafe,
   sendKoreanTelegramSummary,
+  normalizeV2AutomationTelegramText,
   toIso,
   writeJson,
   writeText,
@@ -73,11 +74,11 @@ const FEBT_PHASE0_LATEST_JSON = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_l
 const FEBT_PHASE0_LATEST_MD = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.md");
 const STAGE_LABELS = {
   OPS: "0차 운영/보호",
-  QUALITY: "1차 상태/무결성",
-  AI: "2차 진입 품질",
-  MARKET: "3차 상태 기반 Soft Sizing",
-  EV: "4차 EV/시간가치층",
-  TIMING: "5차 WAIT 타이밍층",
+  QUALITY: "V2 신호 기준/서버 정본",
+  AI: "V2 진입 품질/시장 데이터",
+  MARKET: "V2 리스크 거버너/사이징",
+  EV: "V2 기대값 게이트",
+  TIMING: "V2 retired timing evidence",
 };
 
 function toNum(v) {
@@ -293,7 +294,7 @@ function buildWeeklyTelegramLayerLines({ current = {}, recommendations = {}, set
       `BEST/FEBT 공통 계약 ${bestFebtContract.mode || "N/A"} / tightening ${bestFebtContract.tightening_allowed ? "ALLOW" : "BLOCK"} / recovery ${bestFebtContract.recovery_priority ? "FIRST" : "NORMAL"} / replacement ${ratioX(bestFebtContract.projected_replacement_ratio)} / count ${ratioX(bestFebtContract.projected_count_ratio_global)} / delta ${signedNum(bestFebtContract.projected_net_signal_delta_n, 0)}`
     );
   }
-  return lines;
+  return lines.map((line) => normalizeV2AutomationTelegramText(line));
 }
 
 function tfIntervalMs(tf) {
@@ -3142,7 +3143,7 @@ async function main() {
   });
   if (String(process.env.WEEKLY_FILTER_GOVERNANCE_SKIP_TELEGRAM || "0").trim() !== "1") {
     await sendKoreanTelegramSummary({
-      title: `[주간 전략 점검] ${PROVIDER}`,
+      title: `[V2 주간 전략 점검] ${PROVIDER}`,
       severity: current.objective.pass ? "INFO" : (current.objective.enough_sample ? "WARN" : "INFO"),
       provider: PROVIDER,
       sections: [

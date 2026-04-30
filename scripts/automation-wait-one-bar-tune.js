@@ -1072,7 +1072,7 @@ async function main() {
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "wait_one_bar_tune_latest.md"));
 
   await sendKoreanTelegramSummary({
-    title: `[5차 진입 타이밍 자동 조정] ${PROVIDER}`,
+    title: `[V2 retired timing evidence] ${PROVIDER}`,
     provider: PROVIDER,
     severity: plan.changed ? "INFO" : "WARN",
     sections: [

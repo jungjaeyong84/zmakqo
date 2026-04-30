@@ -54,7 +54,7 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
 
   const stageQuality = classifySignalReasonStage('DROP_ENTRY_QUALITY_CONF');
   assert.strictEqual(stageQuality.step, 1);
-  assert.strictEqual(stageQuality.text, '1차 상태/무결성');
+  assert.strictEqual(stageQuality.text, 'V2 신호 기준/서버 정본');
 
   const stagePine = classifySignalReasonStage('DROP_PINE_STAGE1_QUALITY_REJECT');
   assert.strictEqual(stagePine.key, 'PINE');
@@ -62,19 +62,19 @@ const { buildSignalDisplayReason, classifySignalReasonStage } = require('../util
 
   const stageAi = classifySignalReasonStage('DROP_AI_BIAS_OPPOSITE_LONG');
   assert.strictEqual(stageAi.step, 3);
-  assert.strictEqual(stageAi.text, '3차 상태 기반 Soft Sizing');
+  assert.strictEqual(stageAi.text, 'V2 리스크 거버너/사이징');
 
   const stageAiMissing = classifySignalReasonStage('DROP_AI_MISSING');
   assert.strictEqual(stageAiMissing.step, 2);
-  assert.strictEqual(stageAiMissing.text, '2차 진입 품질');
+  assert.strictEqual(stageAiMissing.text, 'V2 진입 품질/시장 데이터');
 
   const stageEv = classifySignalReasonStage('DROP_EV_GATE_TP1_PROB');
   assert.strictEqual(stageEv.step, 4);
-  assert.strictEqual(stageEv.text, '4차 EV/시간가치층');
+  assert.strictEqual(stageEv.text, 'V2 기대값 게이트');
 
   const stageMarket = classifySignalReasonStage('DROP_LONG_GATE_CONF');
   assert.strictEqual(stageMarket.step, 1);
-  assert.strictEqual(stageMarket.text, '1차 상태/무결성');
+  assert.strictEqual(stageMarket.text, 'V2 신호 기준/서버 정본');
 
   const marketReason = buildSignalDisplayReason(
     { reason: 'DROP_LONG_GATE_CONF' },

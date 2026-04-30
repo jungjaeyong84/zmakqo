@@ -10,13 +10,13 @@ const PERIOD_WEIGHTS = Object.freeze({
   MONTHLY: 1,
 });
 const STAGE_LABELS = Object.freeze({
-  PINE: "Pine 품질",
+  PINE: "서버 정본 품질",
   OPS: "0차 운영/보호",
-  QUALITY: "1차 상태/무결성",
-  AI: "2차 진입 품질",
-  MARKET: "3차 상태 기반 Soft Sizing",
-  EV: "4차 EV/시간가치층",
-  TIMING: "5차 WAIT 타이밍층",
+  QUALITY: "V2 신호 기준/서버 정본",
+  AI: "V2 진입 품질/시장 데이터",
+  MARKET: "V2 리스크 거버너/사이징",
+  EV: "V2 기대값 게이트",
+  TIMING: "V2 retired timing evidence",
   EXIT: "청산 엔진",
 });
 

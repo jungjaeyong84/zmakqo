@@ -144,7 +144,7 @@ function classifySignalReasonStage(reason) {
       step: 1,
       key: "QUALITY",
       label: "상태/무결성",
-      text: "1차 상태/무결성",
+      text: "V2 신호 기준/서버 정본",
       code,
     };
   }
@@ -157,7 +157,7 @@ function classifySignalReasonStage(reason) {
       step: 2,
       key: "AI",
       label: "진입 품질",
-      text: "2차 진입 품질",
+      text: "V2 진입 품질/시장 데이터",
       code,
     };
   }
@@ -167,7 +167,7 @@ function classifySignalReasonStage(reason) {
       step: 4,
       key: "EV",
       label: "EV/시간가치층",
-      text: "4차 EV/시간가치층",
+      text: "V2 기대값 게이트",
       code,
     };
   }
@@ -197,7 +197,7 @@ function classifySignalReasonStage(reason) {
       step: 3,
       key: "MARKET",
       label: "상태 기반 Soft Sizing",
-      text: "3차 상태 기반 Soft Sizing",
+      text: "V2 리스크 거버너/사이징",
       code,
     };
   }
@@ -364,16 +364,16 @@ function explainSignalReason(reason) {
   if (direct[code]) return direct[code];
 
   if (code.startsWith("DROP_AI_BIAS_")) {
-    return "3차 상태 기반 Soft Sizing 필터에서 방향 우위가 맞지 않아 진입을 보류했습니다.";
+    return "V2 리스크 거버너/사이징에서 방향 우위가 맞지 않아 진입을 보류했습니다.";
   }
   if (classifyStage1IntegrityReason(code)) {
-    return "1차 상태/무결성에서 Pine 품질 번들 fallback 검사 기준 미달로 진입을 보류했습니다.";
+    return "V2 신호 기준/서버 정본 fallback 검사 기준 미달로 진입을 보류했습니다.";
   }
   if (code.startsWith("DROP_AI_")) {
-    return "2차 진입 품질 필터에서 기준 미달로 진입을 보류했습니다.";
+    return "V2 진입 품질/시장 데이터 기준 미달로 진입을 보류했습니다.";
   }
   if (code.startsWith("DROP_EV_GATE_")) {
-    return "4차 EV/시간가치층 필터에서 기준 미달로 진입을 보류했습니다.";
+    return "V2 기대값 게이트 기준 미달로 진입을 보류했습니다.";
   }
   if (code.startsWith("DROP_WAIT_ONE_BAR_")) {
     return "최근 봉 구조상 지금은 늦은 추격으로 판단되어 다음 봉까지 진입을 연기했습니다.";

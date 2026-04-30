@@ -1218,7 +1218,7 @@ async function main() {
   ) ? "INFO" : "WARN";
 
   await sendKoreanTelegramSummary({
-    title: `[4차 EV/시간가치층 복합 기대값 자동 조정] ${PROVIDER}`,
+    title: `[V2 기대값 게이트 자동 점검] ${PROVIDER}`,
     severity,
     provider: PROVIDER,
     sections: [

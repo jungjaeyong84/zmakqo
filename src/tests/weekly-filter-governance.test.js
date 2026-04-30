@@ -304,17 +304,17 @@ function run() {
     },
   });
   assert.strictEqual(weeklyLayerLines.length >= 9, true);
-  assert.ok(weeklyLayerLines[0].includes("1차 상태/무결성"));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("3차 상태 분포")));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("4차 EV/시간가치층 policy")));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("5차 WAIT 타이밍층")));
+  assert.ok(weeklyLayerLines[0].includes("V2 신호 기준/서버 정본"));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("V2 리스크 상태 분포")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("V2 기대값 게이트 policy")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("V2 retired timing evidence")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("disagree 2") || line.includes("disagree 2 / fallback 1") || line.includes("disagree 2 / fallback 2")));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT Phase0 immediate win")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("V2 retired WAIT evidence immediate win")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("bridge p95")));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT shadow sampled 3")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("V2 retired timing evidence shadow sampled 3")));
   assert.ok(weeklyLayerLines.some((line) => line.includes("replacement proxy recovered 1 / blocked 1 / wait 0") || line.includes("replacement proxy recovered 1 / blocked 1")));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("FEBT overlap compared 12")));
-  assert.ok(weeklyLayerLines.some((line) => line.includes("BEST/FEBT 공통 계약 COUNT_GUARD_ACTIVE")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("V2 retired timing evidence overlap compared 12")));
+  assert.ok(weeklyLayerLines.some((line) => line.includes("V2 Discovery 기회 보존 계약 COUNT_GUARD_ACTIVE")));
 
   const riskCurve = __test.buildCompetingRiskCurve([
     { ok: true, tp1_time_h: 1, sl_time_h: null },
