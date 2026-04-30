@@ -27,6 +27,7 @@ function liveCfg() {
     apiSecret: "secret",
     liveEnabled: true,
     liveDryRun: false,
+    leverage: 3,
   };
 }
 
@@ -220,9 +221,14 @@ async function binanceEntryTransportConsumesSizingDecisionOnly() {
   });
   const resolver = buildEntryQuantityResolverFromSizingDecision(decision);
   const calls = [];
+  const leverageCalls = [];
   const transport = buildBinanceEntryOrderTransport({
     liveCfg: liveCfg(),
     quantityResolver: resolver,
+    setLeverage: async (payload) => {
+      leverageCalls.push(payload);
+      return { leverage: payload.leverage };
+    },
     placeMarketOrder: async (payload) => {
       calls.push(payload);
       return {
@@ -235,6 +241,9 @@ async function binanceEntryTransportConsumesSizingDecisionOnly() {
     },
   });
   const receipt = await transport.submitEntryOrder({ entryIntent: intent });
+  assert.strictEqual(leverageCalls.length, 1);
+  assert.strictEqual(leverageCalls[0].symbol, "ETHUSDT");
+  assert.strictEqual(leverageCalls[0].leverage, 3);
   assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].quantity, decision.entry_qty_abs);
   assert.strictEqual(receipt.executed_qty_abs, decision.entry_qty_abs);
