@@ -15,6 +15,7 @@ const exitAudit = require("../services/exitIntegrityAudit");
   assert.strictEqual(typeof auditTest.normalizeOrderId, "function", "audit normalizeOrderId export missing");
   assert.strictEqual(typeof auditTest.normalizeOrderQuantity, "function", "audit normalizeOrderQuantity export missing");
   assert.strictEqual(typeof auditTest.isStrictTp1OrderCandidate, "function", "isStrictTp1OrderCandidate export missing");
+  assert.strictEqual(typeof auditTest.selectNativeTp1OrderCandidate, "function", "selectNativeTp1OrderCandidate export missing");
   assert.strictEqual(typeof auditTest.isV2LiveWriteRuntime, "function", "isV2LiveWriteRuntime export missing");
 
   const unavailableErr = {
@@ -84,6 +85,18 @@ const exitAudit = require("../services/exitIntegrityAudit");
     reduceOnly: false,
     closePosition: false,
   }, "SELL"), false);
+  const staleTp1 = { orderId: "old", orderType: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, closePosition: false, origQty: "559" };
+  const trackedTp1 = { orderId: "tracked", orderType: "TAKE_PROFIT_MARKET", side: "SELL", reduceOnly: true, closePosition: false, origQty: "566" };
+  assert.strictEqual(
+    auditTest.selectNativeTp1OrderCandidate([staleTp1, trackedTp1], "tracked"),
+    trackedTp1,
+    "tracked native TP1 order id must win over older duplicate candidates"
+  );
+  assert.strictEqual(
+    auditTest.selectNativeTp1OrderCandidate([staleTp1, trackedTp1], "missing"),
+    staleTp1,
+    "missing tracked id should preserve previous first-candidate fallback"
+  );
   assert.strictEqual(auditTest.isV2LiveWriteRuntime({
     DONBEOLJA_V2_ENABLED: "1",
     DONBEOLJA_V2_DRY_RUN: "0",

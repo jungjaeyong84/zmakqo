@@ -182,6 +182,16 @@ function isStrictTp1OrderCandidate(order, closeSide) {
     && closePosition !== true;
 }
 
+function selectNativeTp1OrderCandidate(candidates, expectedOrderId = null) {
+  const rows = Array.isArray(candidates) ? candidates : [];
+  const trackedId = String(expectedOrderId || "").trim();
+  if (trackedId) {
+    const matched = rows.find((order) => String(normalizeOrderId(order) || "").trim() === trackedId);
+    if (matched) return matched;
+  }
+  return rows[0] || null;
+}
+
 function resolveExpectedNativeTrigger({ meta, fallbackExpected } = {}) {
   const tracked = Number(meta);
   if (Number.isFinite(tracked) && tracked > 0) return tracked;
@@ -532,8 +542,8 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = nu
               detail: "실포지션은 있는데 Binance 보호주문 TP1이 없음",
             }));
           } else {
-            const tpOrder = tpCandidates[0];
             const expectedTpOrderId = String(meta.native_protection_tp_order_id || "").trim() || null;
+            const tpOrder = selectNativeTp1OrderCandidate(tpCandidates, expectedTpOrderId);
             const actualTpOrderId = normalizeOrderId(tpOrder);
             if (expectedTpOrderId && actualTpOrderId && String(expectedTpOrderId) !== String(actualTpOrderId)) {
               marketIssues.push(makeIssue({
@@ -582,7 +592,8 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = nu
             });
             const info = await fetchFuturesExchangeInfo(sym).catch(() => null);
             const tickSize = Number(info && info.tickSize);
-            const tpPx = normalizeOrderTriggerPrice(tpCandidates[0]);
+            const tpOrder = selectNativeTp1OrderCandidate(tpCandidates, meta.native_protection_tp_order_id);
+            const tpPx = normalizeOrderTriggerPrice(tpOrder);
             if (Number.isFinite(expectedTp) && Number.isFinite(tpPx)) {
               const tolerance = Number.isFinite(tickSize) && tickSize > 0 ? tickSize * 2 : Math.abs(expectedTp) * 0.0002;
               if (Math.abs(tpPx - expectedTp) > tolerance) {
@@ -643,6 +654,7 @@ module.exports = {
     normalizeOrderQuantity,
     normalizeExpectedTp1QuantityForExchangeInfo,
     isStrictTp1OrderCandidate,
+    selectNativeTp1OrderCandidate,
     isV2LiveWriteRuntime,
     resolveExpectedNativeTrigger,
     isValidTrailReference,
