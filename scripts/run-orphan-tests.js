@@ -25,6 +25,7 @@ const { spawnSync } = require("child_process");
 
 const TESTS_DIR = path.join(__dirname, "..", "src", "tests");
 const PACKAGE_JSON = path.join(__dirname, "..", "package.json");
+const DEFAULT_CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.ORPHAN_TEST_CONCURRENCY || 4) || 4));
 
 // Known-stale orphans — kept separate so a drift in one doesn't mask
 // regressions in the other 320+. Add a reason and a TODO owner.
@@ -168,7 +169,7 @@ async function main() {
     orphans.forEach((f) => console.log(f));
     return;
   }
-  const results = await poolMap(orphans, 8, runOne);
+  const results = await poolMap(orphans, DEFAULT_CONCURRENCY, runOne);
   const fail = results.filter((r) => r.status === "FAIL");
   const timeout = results.filter((r) => r.status === "TIMEOUT");
   const pass = results.filter((r) => r.status === "PASS");
