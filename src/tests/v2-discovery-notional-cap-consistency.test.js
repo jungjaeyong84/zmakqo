@@ -21,7 +21,7 @@ function defaultMapMatchesP1Design() {
   // after stepSize/price-drift jitter. BTCUSDT held at 155.
   assert.strictEqual(
     DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT,
-    "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120"
+    "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120|WLDUSDT:120|TAOUSDT:120|ARBUSDT:120|INJUSDT:120|SUIUSDT:120|AAVEUSDT:120|SANDUSDT:120|TIAUSDT:120"
   );
   assert.deepStrictEqual(DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP, {
     BTCUSDT: 155,
@@ -32,6 +32,14 @@ function defaultMapMatchesP1Design() {
     SOLUSDT: 120,
     AXSUSDT: 120,
     DOGEUSDT: 120,
+    WLDUSDT: 120,
+    TAOUSDT: 120,
+    ARBUSDT: 120,
+    INJUSDT: 120,
+    SUIUSDT: 120,
+    AAVEUSDT: 120,
+    SANDUSDT: 120,
+    TIAUSDT: 120,
   });
 }
 
@@ -56,8 +64,10 @@ function artifactCapturesGroupExposureEvidence() {
   assert.strictEqual(artifact.evidence.btc_beta_configured_notional_quote, 635);
   // group cap 900 - btc_beta 635 = 265 headroom.
   assert.strictEqual(artifact.evidence.btc_beta_group_cap_headroom_quote, 265);
-  // total = 155 + 120*7 = 995.
-  assert.strictEqual(artifact.evidence.total_configured_notional_quote, 995);
+  // total = 155 + 120*15 = 1955. This is portfolio universe exposure,
+  // not simultaneous exposure; simultaneous max-position basket is checked
+  // separately below.
+  assert.strictEqual(artifact.evidence.total_configured_notional_quote, 1955);
   // top-5 (BTC + ETH/LINK/BNB/XRP) = 155 + 120*4 = 635.
   assert.strictEqual(artifact.evidence.largest_notional_position_basket_quote, 635);
   assert.deepStrictEqual(

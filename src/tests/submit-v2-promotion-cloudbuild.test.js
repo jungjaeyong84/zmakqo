@@ -1092,11 +1092,11 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
   assert.strictEqual(request.substitutions._V2_FIRESTORE_COST_GUARD_REQUIRE_BILLING_METRIC, "1");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "0");
-  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "8");
+  assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT, "16");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_NOTIONAL_QUOTE, "6");
   assert.strictEqual(
     request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP,
-    "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120"
+    "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120|WLDUSDT:120|TAOUSDT:120|ARBUSDT:120|INJUSDT:120|SUIUSDT:120|AAVEUSDT:120|SANDUSDT:120|TIAUSDT:120"
   );
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "8");
   assert.strictEqual(request.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "UNLIMITED");

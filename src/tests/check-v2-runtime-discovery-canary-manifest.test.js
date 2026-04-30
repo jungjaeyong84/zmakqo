@@ -4,10 +4,10 @@ const assert = require("assert");
 const checker = require("../../scripts/check-v2-runtime-discovery-canary-manifest");
 
 function serviceJson({
-  symbols = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT",
-  maxSymbolCount = "8",
+  symbols = "BTCUSDT|ETHUSDT|BNBUSDT|XRPUSDT|SOLUSDT|AXSUSDT|DOGEUSDT|LINKUSDT|WLDUSDT|TAOUSDT|ARBUSDT|INJUSDT|SUIUSDT|AAVEUSDT|SANDUSDT|TIAUSDT",
+  maxSymbolCount = "16",
   maxNotionalQuote = "6",
-  symbolNotionalQuoteMap = "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120",
+  symbolNotionalQuoteMap = "BTCUSDT:155|ETHUSDT:120|LINKUSDT:120|BNBUSDT:120|XRPUSDT:120|SOLUSDT:120|AXSUSDT:120|DOGEUSDT:120|WLDUSDT:120|TAOUSDT:120|ARBUSDT:120|INJUSDT:120|SUIUSDT:120|AAVEUSDT:120|SANDUSDT:120|TIAUSDT:120",
   image = "gcr.io/donbeolja-dev/donbeolja:v2-fixture",
   commit = "0123456789abcdef0123456789abcdef01234567",
   endpointEnabled = "1",
