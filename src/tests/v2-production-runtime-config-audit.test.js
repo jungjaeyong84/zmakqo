@@ -46,6 +46,8 @@ const {
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE, "10");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE, "3");
+  assert.strictEqual(result.substitutions._V2_FUTURES_DEFAULT_LEVERAGE, "3");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "1300");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, "200");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, "900");
@@ -67,6 +69,8 @@ const {
   assert.strictEqual(result.main_service_env.ENGINE_VERSION, "2.0.0");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "$_DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "$_DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED");
+  assert.strictEqual(result.main_service_env.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE, "$_DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE");
+  assert.strictEqual(result.main_service_env.V2_FUTURES_DEFAULT_LEVERAGE, "$_V2_FUTURES_DEFAULT_LEVERAGE");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "$_DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, "$_DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, "$_DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE");
@@ -108,6 +112,8 @@ const {
   assert.strictEqual(result.exit_service_env.ENGINE_VERSION, "2.0.0");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "$_DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "$_DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED");
+  assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE, "$_DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE");
+  assert.strictEqual(result.exit_service_env.V2_FUTURES_DEFAULT_LEVERAGE, "$_V2_FUTURES_DEFAULT_LEVERAGE");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "$_DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE, "$_DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE, "$_DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE");
