@@ -223,7 +223,11 @@ router.post("/api/openclaw/cron/v2-active-protection-reconciliation", requireSch
 router.post("/api/openclaw/cron/openclaw-server-primary-tick", requireSchedulerToken, async (req, res) => {
   try {
     const { main } = require("../../scripts/run-openclaw-server-primary-tick");
-    const outcome = await runWithShortTimeout("openclaw_server_primary_tick", () => main({ setProcessExitCode: false }), 180000);
+    // 2026-04-30 P0 production verification — 16-symbol entry-TF warmup can
+    // legitimately exceed the old 180s route guard on cold-start ticks. Keep
+    // this aligned with the Cloud Run request timeout and Cloud Scheduler
+    // attempt deadline so the cron fails only on real script failure.
+    const outcome = await runWithShortTimeout("openclaw_server_primary_tick", () => main({ setProcessExitCode: false }), 300000);
     const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
     return res.status(resultOk ? 200 : 500).json({
       ...outcome,

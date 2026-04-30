@@ -18,6 +18,10 @@ assert.ok(routeSource.includes("v2_active_protection_reconciliation"), "v2 activ
 assert.ok(routeSource.includes("/api/openclaw/cron/openclaw-server-primary-tick"), "server primary tick endpoint missing");
 assert.ok(routeSource.includes("run-openclaw-server-primary-tick"), "server primary tick script binding missing");
 assert.ok(routeSource.includes("openclaw_server_primary_tick"), "server primary tick timeout label missing");
+assert.ok(
+  /openclaw_server_primary_tick[\s\S]{0,260}300000/.test(routeSource),
+  "server primary tick route timeout must allow 16-symbol warmup ticks"
+);
 assert.ok(routeSource.includes("/api/openclaw/cron/v2-signal-shadow-counterfactual-walker"), "shadow counterfactual walker endpoint missing");
 assert.ok(routeSource.includes("walk-v2-signal-shadow-counterfactual-ledger"), "shadow counterfactual walker script binding missing");
 assert.ok(routeSource.includes("v2_signal_shadow_counterfactual_walker"), "shadow counterfactual walker timeout label missing");
