@@ -82,6 +82,7 @@ function renderMarkdown(report = {}) {
     `- window_source: ${report.window_source || "N/A"}`,
     "",
     "## Core",
+    `- learning_scope: ${summary.learning_scope || "N/A"} / v1_learning_blocked: ${summary.v1_learning_blocked === true ? "true" : "false"} / filtered_v1_or_unscoped: ${summary.filtered_out_v1_or_unscoped_n || 0}`,
     `- rows: ${summary.rows_n || 0}`,
     `- executed/drop/missed: ${summary.executed_n || 0} / ${summary.drop_n || 0} / ${summary.missed_n || 0}`,
     `- fallback/rejected/partial: ${summary.fallback_n || 0} / ${summary.rejected_n || 0} / ${summary.partial_n || 0}`,

@@ -36,6 +36,7 @@ const DEFAULT_PROVIDER = String(process.env.BEST_SELF_EVOLUTION_PROVIDER || "BIN
 const DEFAULT_TF = String(process.env.BEST_SELF_EVOLUTION_TF || "15m").trim();
 const DEFAULT_WINDOW_DAYS = Math.max(1, Number(process.env.BEST_SELF_EVOLUTION_WINDOW_DAYS || 7));
 const DEFAULT_REFERENCE_STALE_MS = Math.max(5 * 60 * 1000, Number(process.env.ML_TRAINING_DATASET_REFERENCE_STALE_MS || (60 * 60 * 1000)));
+const REQUIRED_LEARNING_SCOPE = "V2_ONLY_OPENCLAW";
 
 function toNum(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -48,6 +49,23 @@ function readRecentCacheDocs(value) {
   if (Array.isArray(raw.rows)) return raw.rows;
   if (Array.isArray(raw.docs)) return raw.docs;
   return [];
+}
+
+function assertV2OpenClawLearningScope(datasetArtifact) {
+  const summary = datasetArtifact && datasetArtifact.summary && typeof datasetArtifact.summary === "object"
+    ? datasetArtifact.summary
+    : {};
+  const learningScope = String(summary.learning_scope || "").trim().toUpperCase();
+  const v1Blocked = summary.v1_learning_blocked === true;
+  if (learningScope !== REQUIRED_LEARNING_SCOPE || v1Blocked !== true) {
+    const err = new Error(`ML_TRAINING_DATASET_LEARNING_SCOPE_BLOCKED:${learningScope || "MISSING"}`);
+    err.details = {
+      required_learning_scope: REQUIRED_LEARNING_SCOPE,
+      actual_learning_scope: learningScope || null,
+      v1_learning_blocked: v1Blocked,
+    };
+    throw err;
+  }
 }
 
 function resolveReferenceWindow(reference = null, nowMs = Date.now()) {
@@ -144,6 +162,7 @@ function main() {
     if (!datasetArtifact || !Array.isArray(datasetArtifact.rows)) {
       throw new Error(`ML_TRAINING_DATASET_SOURCE_MISSING:${DATASET_LATEST_JSON}`);
     }
+    assertV2OpenClawLearningScope(datasetArtifact);
     source = Promise.resolve({
       source_mode: "ARTIFACT",
       source_dataset_path: DATASET_LATEST_JSON,
@@ -223,5 +242,6 @@ module.exports = {
     readRecentCacheDocs,
     resolveReferenceWindow,
     buildDatasetFromRawCache,
+    assertV2OpenClawLearningScope,
   },
 };

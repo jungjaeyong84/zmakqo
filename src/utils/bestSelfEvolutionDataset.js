@@ -54,6 +54,190 @@ function hasValue(value) {
   return !(value === null || value === undefined || value === "");
 }
 
+const OPENCLAW_LEARNING_SCOPE_V2_ONLY = "V2_ONLY_OPENCLAW";
+const OPENCLAW_LEARNING_SCOPE_LEGACY_MIXED = "LEGACY_MIXED";
+
+function normalizeBool(value, fallback = false) {
+  if (value === true || value === false) return value;
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["1", "true", "yes", "y", "on"].includes(text)) return true;
+  if (["0", "false", "no", "n", "off"].includes(text)) return false;
+  return fallback;
+}
+
+function trimOrNull(value) {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+function firstTrimmed(...values) {
+  for (const value of values) {
+    const text = trimOrNull(value);
+    if (text) return text;
+  }
+  return null;
+}
+
+function valueAtPath(obj, path) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+  const parts = String(path || "").split(".").filter(Boolean);
+  let cur = obj;
+  for (const part of parts) {
+    if (!cur || typeof cur !== "object" || Array.isArray(cur)) return null;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+function resolveLearningScope({ learningScope = null, env = process.env } = {}) {
+  const requested = String(
+    learningScope
+    || env.DONBEOLJA_OPENCLAW_LEARNING_SCOPE
+    || OPENCLAW_LEARNING_SCOPE_V2_ONLY
+  ).trim().toUpperCase();
+  const legacyAllowed = normalizeBool(env.DONBEOLJA_V2_ALLOW_LEGACY_OPENCLAW_LEARNING, false);
+  if (requested === OPENCLAW_LEARNING_SCOPE_LEGACY_MIXED && legacyAllowed === true) {
+    return Object.freeze({
+      mode: OPENCLAW_LEARNING_SCOPE_LEGACY_MIXED,
+      v2_only: false,
+      legacy_allowed: true,
+    });
+  }
+  return Object.freeze({
+    mode: OPENCLAW_LEARNING_SCOPE_V2_ONLY,
+    v2_only: true,
+    legacy_allowed: false,
+  });
+}
+
+function resolveOpenClawLearningEvidence(row) {
+  const features = resolveFeatures(row);
+  const currentPosition = features && features.current_position && typeof features.current_position === "object"
+    ? features.current_position
+    : null;
+  const currentMeta = currentPosition && currentPosition.meta && typeof currentPosition.meta === "object"
+    ? currentPosition.meta
+    : null;
+  const evidence = {
+    openclaw_decision_id: firstTrimmed(
+      row && row.openclaw_decision_id,
+      row && row.openclawDecisionId,
+      features.openclaw_decision_id,
+      features.openclawDecisionId,
+      valueAtPath(features, "openclaw.decision_id"),
+      valueAtPath(features, "decision.openclaw_decision_id")
+    ),
+    openclaw_decision_bundle_id: firstTrimmed(
+      row && row.openclaw_decision_bundle_id,
+      row && row.openclawDecisionBundleId,
+      features.openclaw_decision_bundle_id,
+      features.openclawDecisionBundleId,
+      valueAtPath(features, "openclaw.decision_bundle_id")
+    ),
+    openclaw_execution_permit_id: firstTrimmed(
+      row && row.openclaw_execution_permit_id,
+      row && row.openclawExecutionPermitId,
+      features.openclaw_execution_permit_id,
+      features.openclawExecutionPermitId,
+      valueAtPath(features, "openclaw.execution_permit_id")
+    ),
+    openclaw_execution_audit_id: firstTrimmed(
+      row && row.openclaw_execution_audit_id,
+      row && row.openclawExecutionAuditId,
+      features.openclaw_execution_audit_id,
+      features.openclawExecutionAuditId,
+      valueAtPath(features, "openclaw.execution_audit_id")
+    ),
+    openclaw_outcome_adjudication_id: firstTrimmed(
+      row && row.openclaw_outcome_adjudication_id,
+      row && row.openclawOutcomeAdjudicationId,
+      features.openclaw_outcome_adjudication_id,
+      features.openclawOutcomeAdjudicationId
+    ),
+    position_cycle_id: firstTrimmed(
+      row && row.position_cycle_id,
+      row && row.positionCycleId,
+      features.position_cycle_id,
+      features.positionCycleId,
+      currentPosition && currentPosition.position_cycle_id,
+      currentMeta && currentMeta.position_cycle_id
+    ),
+    v2_collection: firstTrimmed(
+      row && row.v2_collection,
+      row && row.collection_name,
+      features.v2_collection,
+      features.collection_name
+    ),
+    runtime: firstTrimmed(
+      row && row.runtime,
+      row && row.runtime_version,
+      features.runtime,
+      features.runtime_version,
+      features._runtime,
+      features._runtime_version
+    ),
+  };
+  const hasOpenClawId = Boolean(
+    evidence.openclaw_decision_id
+    || evidence.openclaw_decision_bundle_id
+    || evidence.openclaw_execution_permit_id
+    || evidence.openclaw_execution_audit_id
+    || evidence.openclaw_outcome_adjudication_id
+  );
+  const hasV2Collection = String(evidence.v2_collection || "").includes("_v2");
+  const hasV2Runtime = String(evidence.runtime || "").toUpperCase().includes("V2");
+  evidence.has_v2_openclaw_learning_evidence = hasOpenClawId || Boolean(evidence.position_cycle_id && (hasV2Collection || hasV2Runtime));
+  evidence.reason = evidence.has_v2_openclaw_learning_evidence
+    ? "V2_OPENCLAW_LEARNING_EVIDENCE_PRESENT"
+    : "V2_OPENCLAW_LEARNING_EVIDENCE_MISSING";
+  return Object.freeze(evidence);
+}
+
+function applyOpenClawLearningScope(rows = [], { learningScope = null, env = process.env } = {}) {
+  const scope = resolveLearningScope({ learningScope, env });
+  const inputRows = Array.isArray(rows) ? rows : [];
+  if (!scope.v2_only) {
+    return {
+      scope,
+      rows: inputRows.map((row) => ({
+        ...row,
+        learning_scope: scope.mode,
+        openclaw_learning_evidence: resolveOpenClawLearningEvidence(row),
+      })),
+      filtered: [],
+      filtered_out_v1_or_unscoped_n: 0,
+    };
+  }
+  const kept = [];
+  const filtered = [];
+  for (const row of inputRows) {
+    const evidence = resolveOpenClawLearningEvidence(row);
+    if (evidence.has_v2_openclaw_learning_evidence === true) {
+      kept.push({
+        ...row,
+        learning_scope: scope.mode,
+        openclaw_learning_evidence: evidence,
+      });
+    } else {
+      filtered.push({
+        signal_id: row && row.signal_id || null,
+        signal_key: row && row.signal_key || null,
+        entry_event_id: row && row.entry_event_id || null,
+        market: row && row.market || null,
+        event: row && row.event || null,
+        source_row_type: row && row.source_row_type || null,
+        reason: evidence.reason,
+      });
+    }
+  }
+  return {
+    scope,
+    rows: kept,
+    filtered,
+    filtered_out_v1_or_unscoped_n: filtered.length,
+  };
+}
+
 function countPresentKeys(obj, keys = []) {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return 0;
   let n = 0;
@@ -1272,6 +1456,8 @@ async function buildBestSelfEvolutionDataset({
   toMs = null,
   evTunerReport = null,
   loadPathMetrics = false,
+  learningScope = null,
+  env = process.env,
 } = {}) {
   const quality = await summarizePineSignalQuality({
     signals,
@@ -1298,16 +1484,24 @@ async function buildBestSelfEvolutionDataset({
   });
   const scopedRows = rows.filter((row) => isMlPrimarySignalTierAllowed(row));
   const filteredOutN = Math.max(0, rows.length - scopedRows.length);
-  const exitOnlyRows = scopedRows.filter((row) => row.source_row_type === "EXIT_ONLY");
-  const learningRows = scopedRows.filter((row) => row.source_row_type !== "EXIT_ONLY");
+  const learningScopeResult = applyOpenClawLearningScope(scopedRows, { learningScope, env });
+  const scopedLearningRows = learningScopeResult.rows;
+  const exitOnlyRows = scopedLearningRows.filter((row) => row.source_row_type === "EXIT_ONLY");
+  const learningRows = scopedLearningRows.filter((row) => row.source_row_type !== "EXIT_ONLY");
   const learningSummary = summarizeBestSelfEvolutionDataset(learningRows);
   const exitOnlySummary = summarizeExitOnlyDiagnostics(exitOnlyRows);
   return {
     quality,
     rows: learningRows,
     exit_only_rows: exitOnlyRows,
+    filtered_out_v1_or_unscoped_rows: learningScopeResult.filtered,
     summary: {
       ...learningSummary,
+      learning_scope: learningScopeResult.scope.mode,
+      v1_learning_blocked: learningScopeResult.scope.v2_only === true,
+      legacy_learning_allowed: learningScopeResult.scope.legacy_allowed === true,
+      accepted_v2_openclaw_learning_n: learningRows.length,
+      filtered_out_v1_or_unscoped_n: learningScopeResult.filtered_out_v1_or_unscoped_n,
       signal_scope_filter: "EARLY_CORE_ONLY",
       filtered_out_non_primary_signal_n: filteredOutN,
       executed_exit_only_n: exitOnlySummary.rows_n,
@@ -1337,5 +1531,8 @@ module.exports = {
     isRealizedTradeRow,
     summarizeExitOnlyDiagnostics,
     buildEvResolvedCounterfactualMap,
+    resolveLearningScope,
+    resolveOpenClawLearningEvidence,
+    applyOpenClawLearningScope,
   },
 };

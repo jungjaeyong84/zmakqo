@@ -32,6 +32,21 @@ function run() {
   assert.strictEqual(fallbackWindow.toMs, Date.parse("2026-04-05T00:00:00.000Z"));
   assert.ok(fallbackWindow.fromMs < fallbackWindow.toMs);
 
+  assert.doesNotThrow(() => __test.assertV2OpenClawLearningScope({
+    summary: {
+      learning_scope: "V2_ONLY_OPENCLAW",
+      v1_learning_blocked: true,
+    },
+  }));
+  assert.throws(
+    () => __test.assertV2OpenClawLearningScope({ summary: { learning_scope: "LEGACY_MIXED" } }),
+    /ML_TRAINING_DATASET_LEARNING_SCOPE_BLOCKED:LEGACY_MIXED/
+  );
+  assert.throws(
+    () => __test.assertV2OpenClawLearningScope({ summary: {} }),
+    /ML_TRAINING_DATASET_LEARNING_SCOPE_BLOCKED:MISSING/
+  );
+
   console.log("BUILD_ML_TRAINING_DATASET_TEST_OK");
 }
 

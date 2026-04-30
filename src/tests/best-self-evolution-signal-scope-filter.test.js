@@ -17,6 +17,8 @@ async function run() {
         features_json: {
           signal_id: "SIG__BINANCEFUT__BTCUSDT__15m__1000__EARLY_LONG",
           entry_grade: "EARLY",
+          openclaw_decision_id: "OCD__BTCUSDT__1000__LONG",
+          openclaw_execution_permit_id: "OEP__BTCUSDT__1000__LONG",
         },
       },
       {
