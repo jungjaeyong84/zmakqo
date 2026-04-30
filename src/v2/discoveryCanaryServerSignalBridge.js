@@ -517,6 +517,9 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
     ?? toNumberOrNull(features.fee_estimate_bps)
     ?? toNumberOrNull(features.commission_bps_round_trip)
     ?? 8;
+  const marketQualityScore = metricNumber(marketDataQuality, "market_quality_score", "marketQualityScore", "quality_score")
+    ?? (marketDataQuality && marketDataQuality.ok === true ? 1 : null)
+    ?? toNumberOrNull(features.market_quality_score);
   const costEstimateBps = toNumberOrNull(features.cost_estimate_bps)
     ?? (spreadBps !== null ? spreadBps + feeBpsRoundTrip : feeBpsRoundTrip);
   const explicitNetR = toNumberOrNull(features.expected_net_r_after_cost)
@@ -553,7 +556,7 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
           : null),
     },
     no_trade_gate: {
-      market_quality_score: toNumberOrNull(features.market_quality_score) ?? (marketDataQuality && marketDataQuality.ok === true ? 1 : null),
+      market_quality_score: marketQualityScore,
       spread_bps: spreadBps,
       mark_index_gap_bps: markIndexGapBps,
       funding_penalty_bps: resolvedFundingPenaltyBps,

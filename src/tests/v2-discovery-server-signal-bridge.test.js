@@ -124,6 +124,26 @@ function marketDataQuality(overrides = {}) {
   assert.ok(seed.expected_edge_gate.cost_estimate_bps >= 11);
 })();
 
+(function serverSignalSeedPrefersObservedMarketQualityOverRegimeScore() {
+  const seed = buildSignalCriteriaSeedFromIntent({
+    intentRow: buildIntent({
+      features_json: {
+        market_quality_score: 0.6,
+        market_state_score: 0.6,
+      },
+    }),
+    marketDataQuality: marketDataQuality({
+      metrics: {
+        symbol: "BNBUSDT",
+        market_quality_score: 0.95,
+        spread_bps: 2.2,
+        mark_index_divergence_bps: 1.1,
+      },
+    }),
+  });
+  assert.strictEqual(seed.no_trade_gate.market_quality_score, 0.95);
+})();
+
 (function discoveryStateUsesLiveAccountActivePositionsAsHardSource() {
   const state = __test.mergeDiscoveryCanaryStateWithAccount({
     state: {
