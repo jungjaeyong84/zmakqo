@@ -129,7 +129,28 @@ function resolveProductionEntryLeverage({ entryIntent, bundle, env } = {}) {
   const evidence = asObject(decision && decision.canonical_evidence_summary);
   const signalIntent = asObject(row && row.signalIntent);
   const envObj = asObject(env) || {};
-  const candidates = [
+  const toPositiveNumber = (value) => {
+    if (value === undefined || value === null || value === "") return null;
+    const num = Number(value);
+    return Number.isFinite(num) && num > 0 ? num : null;
+  };
+  const maxAccountLeverage = toPositiveNumber(envObj.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE);
+
+  // Production contract: Cloud Run env is the runtime source of truth for
+  // discovery/futures leverage. Upstream bundles may carry stale leverage
+  // hints from older signal settings; they must not silently override the
+  // deployed runtime contract.
+  const envDefaultCandidates = [
+    envObj.V2_FUTURES_DEFAULT_LEVERAGE,
+    envObj.DONBEOLJA_V2_FUTURES_DEFAULT_LEVERAGE,
+  ];
+  for (const cand of envDefaultCandidates) {
+    const num = toPositiveNumber(cand);
+    if (num === null) continue;
+    return maxAccountLeverage !== null ? Math.min(num, maxAccountLeverage) : num;
+  }
+
+  const bundleCandidates = [
     intent && intent.leverage,
     intent && intent.futures_leverage,
     decision && decision.leverage,
@@ -138,13 +159,11 @@ function resolveProductionEntryLeverage({ entryIntent, bundle, env } = {}) {
     evidence && evidence.futures_leverage,
     signalIntent && signalIntent.leverage,
     signalIntent && signalIntent.futures_leverage,
-    envObj.V2_FUTURES_DEFAULT_LEVERAGE,
-    envObj.DONBEOLJA_V2_FUTURES_DEFAULT_LEVERAGE,
   ];
-  for (const cand of candidates) {
-    if (cand === undefined || cand === null || cand === "") continue;
-    const num = Number(cand);
-    if (Number.isFinite(num) && num > 0) return num;
+  for (const cand of bundleCandidates) {
+    const num = toPositiveNumber(cand);
+    if (num === null) continue;
+    return maxAccountLeverage !== null ? Math.min(num, maxAccountLeverage) : num;
   }
   return null;
 }

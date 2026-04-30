@@ -211,7 +211,44 @@ function reload() {
   assert.ok(ret && ret.event === "v2_entry_leverage_missing", "(K2) emit throw 무시, payload 정상 반환");
 }
 
-// (L) integration — runV2ProductionEntryRoute 가 leverage 누락 시 missing emit.
+// (L) production resolver — runtime env default is authoritative over stale
+// upstream leverage hints. This prevents old signal/openclaw payloads with
+// leverage=2 from overriding the deployed V2_FUTURES_DEFAULT_LEVERAGE=3
+// discovery contract.
+{
+  const { __test } = reload();
+  const resolved = __test.resolveProductionEntryLeverage({
+    entryIntent: { leverage: 2, futures_leverage: 2 },
+    bundle: {
+      openclawDecision: {
+        leverage: 2,
+        futures_leverage: 2,
+        canonical_evidence_summary: { leverage: 2, futures_leverage: 2 },
+      },
+      signalIntent: { leverage: 2, futures_leverage: 2 },
+    },
+    env: {
+      V2_FUTURES_DEFAULT_LEVERAGE: "3",
+      DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE: "3",
+    },
+  });
+  assert.strictEqual(resolved, 3, "(L) env default 3 overrides stale upstream 2");
+}
+
+// (M) production resolver — env default is still capped by the account max.
+{
+  const { __test } = reload();
+  const resolved = __test.resolveProductionEntryLeverage({
+    entryIntent: { leverage: 5 },
+    env: {
+      V2_FUTURES_DEFAULT_LEVERAGE: "5",
+      DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE: "3",
+    },
+  });
+  assert.strictEqual(resolved, 3, "(M) max account leverage caps env default");
+}
+
+// (N) integration — runV2ProductionEntryRoute 가 leverage 누락 시 missing emit.
 {
   const path = require.resolve("../v2/productionEntryRoute");
   delete require.cache[path];
@@ -284,7 +321,7 @@ function reload() {
     const matched = captured
       .map((line) => { try { return JSON.parse(line); } catch (_) { return null; } })
       .filter((row) => row && row.event === "v2_entry_leverage_missing");
-    assert.strictEqual(matched.length, 1, "(L) leverage 누락 → 1회 emit");
+    assert.strictEqual(matched.length, 1, "(N) leverage 누락 → 1회 emit");
     assert.strictEqual(matched[0].symbol, "BTCUSDT");
     assert.strictEqual(matched[0].side, "LONG");
     assert.strictEqual(matched[0].entry_intent_id, "EI__L");
@@ -292,7 +329,7 @@ function reload() {
     console.log("V2_ENTRY_LEVERAGE_RESOLVE_OBSERVE_TEST_OK");
   }).catch((err) => {
     console.warn = origWarn;
-    console.error("(L) integration failed:", err);
+    console.error("(N) integration failed:", err);
     process.exitCode = 1;
     throw err;
   });
