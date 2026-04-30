@@ -18,7 +18,8 @@ const { computeExpectedNativeTpPx, computeExpectedNativeStopPx } = __test;
   assert.ok(Math.abs(longRescue - 100 * (1 + 0.0165 / 2)) < 1e-9,
     `RESCUE long expected ${100 * (1 + 0.0165 / 2)} got ${longRescue}`);
 
-  // simplifiedExitV2Active=true must override rules.TP_P1 with the policy 1.68%.
+  // simplifiedExitV2Active=true must override rules.TP_P1 with the V2 policy
+  // TP1 target (currently 2.5% PnL, leverage-normalized by the audit helper).
   // This is the price the writer actually places — audit must match it or every
   // active V2 position emits NATIVE_TP1_TRIGGER_MISMATCH.
   const longSimpV2 = computeExpectedNativeTpPx({
@@ -33,7 +34,7 @@ const { computeExpectedNativeTpPx, computeExpectedNativeStopPx } = __test;
   assert.notStrictEqual(longSimpV2, longRescue,
     "simplifiedExitV2 path must produce a different price than the RESCUE rules path");
 
-  // SHORT side mirror: simplifiedExitV2 1.68% applied symmetrically.
+  // SHORT side mirror: simplifiedExitV2 policy target applied symmetrically.
   const shortSimpV2 = computeExpectedNativeTpPx({
     positionSide: "SHORT",
     entryPrice: 100,

@@ -41,7 +41,7 @@ function reload() {
   assert.strictEqual(plan.sl_trigger_price, 1967,
     "(A) default off → underlying 1.65% raw 적용 (= 2000 * 0.9835).");
   assert.strictEqual(plan.tp1_trigger_price, 2050,
-    "(A) default off → underlying 1.68% raw 적용 (= 2000 * 1.0168).");
+    "(A) default off → underlying 2.5% raw 적용 (= 2000 * 1.025).");
 }
 
 // (B) flag default off + leverage 명시 → V2 raw 유지 (flag off 우선).
@@ -79,9 +79,9 @@ function reload() {
   // SL: 2000 * (1 - 0.0165/2) = 2000 * 0.99175 = 1983.5
   assert.strictEqual(plan.sl_trigger_price, 1983.5,
     "(C) flag on + lev=2 → SL underlying 0.825% (V1 정렬).");
-  // TP1: 2000 * (1 + 0.025/2) = 2000 * 1.0084 = 2025
+  // TP1: 2000 * (1 + 0.025/2) = 2000 * 1.0125 = 2025
   assert.strictEqual(plan.tp1_trigger_price, 2025,
-    "(C) flag on + lev=2 → TP1 underlying 0.84% (V1 정렬).");
+    "(C) flag on + lev=2 → TP1 underlying 1.25% (V1 정렬).");
 }
 
 // (D) flag on + leverage=2 (SHORT) → 대칭.

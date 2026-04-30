@@ -65,7 +65,8 @@ function computeExpectedNativeTpPx({ positionSide, entryPrice, leverage, rules, 
   const side = normalizePositionSide(positionSide);
   const entry = Number(entryPrice);
   const lev = Number(leverage);
-  // simplifiedExitV2 places TP1 at the policy default (1.68%) regardless of the
+  // simplifiedExitV2 places TP1 at the policy default (currently 2.5% PnL
+  // target, leverage-normalized to the underlying price move) regardless of the
   // resolved cohort's TP_P1 (which can be the RESCUE 1.65% safety floor). Using
   // rules.TP_P1 here would emit NATIVE_TP1_TRIGGER_MISMATCH on every active V2
   // position. The expected price must match the order the writer actually placed.
