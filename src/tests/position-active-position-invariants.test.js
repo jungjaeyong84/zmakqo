@@ -173,6 +173,27 @@ for (const missing of [null, undefined, "", "   "]) {
     "(G) TP_P1_REQUIRES_TP_P0 must trigger");
 }
 
+// ── (G2) V2 simplified exit 은 TP0 retired 이므로 TP1_DONE 이 TP0 를 요구하지 않음 ──
+{
+  const res = validateActivePositionInvariants({
+    state: "ACTIVE",
+    positionSide: "SHORT",
+    sizePct: 1,
+    meta: {
+      entry_event_id: "ENTRYV2__ETHUSDT__SHORT__8389766168172990000",
+      position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__SHORT__a97c11bc8741",
+      simplified_exit_v2_enabled: true,
+      tp_p0_done: false,
+      tp_p1_done: true,
+      tp_p1_entry_event_id: "ENTRYV2__ETHUSDT__SHORT__8389766168172990000",
+      trail_active: true,
+    },
+  });
+  assert.ok(!violationsByReason(res).has(VIOLATION_REASONS.TP_P1_REQUIRES_TP_P0),
+    "(G2) V2 simplified exit must not require retired TP0 before TP1");
+  assert.strictEqual(res.ok, true, `(G2) V2 simplified TP1/trail metadata must pass; got ${JSON.stringify(res.violations)}`);
+}
+
 // ── (H) tp_p0_done=true + tp_p0 lineage 부재 ───────────────────────────────
 {
   const res = validateActivePositionInvariants({

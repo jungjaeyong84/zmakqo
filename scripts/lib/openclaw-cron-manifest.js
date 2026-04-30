@@ -176,6 +176,17 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     produces_artifact: "v2_active_protection_reconciliation_latest.json",
   },
   {
+    job_id: "v2_fill_sync",
+    scheduler_name: "v2-fill-sync",
+    scheduler_region: "asia-northeast3",
+    scheduler_schedule: "*/5 * * * *",
+    scheduler_time_zone: "Asia/Seoul",
+    http_path: "/api/openclaw/cron/v2-fill-sync",
+    owner: "openclaw",
+    criticality: "HIGH",
+    runtime_mode: "LIVE_USER_TRADE_FILL_SYNC",
+  },
+  {
     job_id: "openclaw_server_primary_tick",
     scheduler_name: "openclaw-server-primary-tick",
     scheduler_region: "asia-northeast3",

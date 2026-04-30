@@ -51,6 +51,7 @@ const {
   writeOpenClawShadowExternalClose,
 } = require("../v2/openclawShadowExitWriter");
 const { normalizeV2ExitFillEvidence } = require("../v2/exitFillIngestion");
+const { getV2Doc, queryV2DocsByField } = require("../v2/storage");
 const {
   COLLECTION: EXIT_AUTHORITY_STATE_COLLECTION,
   mergeStates: mergeExitAuthorityStates,
@@ -1781,6 +1782,16 @@ function normalizeSymbol(raw) {
   return normalizeMarketSymbolForProvider(raw, "BINANCEFUT");
 }
 
+function finiteNumberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function positiveNumberOrNull(value) {
+  const n = finiteNumberOrNull(value);
+  return n != null && n > 0 ? n : null;
+}
+
 function parseEntryEventId(raw) {
   const text = String(raw || "").trim();
   if (!text) return null;
@@ -1984,13 +1995,26 @@ function applyAuthoritativeExitContractOverride(event, exitContract) {
 function applyAuthoritativeIntentEventOverride(event, intent) {
   const currentEvent = String(event || "").trim().toUpperCase();
   const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
+  if (isSyntheticExternalFillSyncIntent(intent)) return currentEvent;
   if (isAuthoritativeForcedExitIntentEvent(intentEvent)) return intentEvent;
   return currentEvent;
+}
+
+function isSyntheticExternalFillSyncIntent(intent = null) {
+  const row = intent && typeof intent === "object" ? intent : {};
+  const features = row.features_json && typeof row.features_json === "object" ? row.features_json : {};
+  return row.external_sync_synthetic_intent === true
+    || features.external_sync_synthetic_intent === true
+    || (
+      String(row.reason || "").trim().toUpperCase() === "EXTERNAL_FILL_SYNC"
+      && String(row.filled_via || "").trim().toUpperCase() === "BINANCE_USER_TRADES"
+    );
 }
 
 function inferExitEventFromDecisionReason(decisionReason, { intent = null, rules = null, positionCtx = null } = {}) {
   const reason = String(decisionReason || "").trim().toUpperCase();
   if (!reason) return null;
+  if (isSyntheticExternalFillSyncIntent(intent)) return null;
   const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
   if (reason === "EXIT_TAKE_PROFIT_P1") {
     if (intentEvent.startsWith("EXIT_TP_P1")) return intentEvent;
@@ -2039,11 +2063,15 @@ function shouldRunExternalExitSideEffects({
   upserted = null,
   looksLikeExit = false,
   event = null,
+  force = false,
+  canonicalEntryLineageMissing = false,
 } = {}) {
   if (looksLikeExit !== true) return false;
   if (!upserted || upserted.ok !== true) return false;
   const ev = String(event || "").trim().toUpperCase();
   if (!ev.startsWith("EXIT_") && !isAuthoritativeForcedExitIntentEvent(ev)) return false;
+  if (canonicalEntryLineageMissing === true) return false;
+  if (force === true) return true;
   if (upserted.inserted === true) return true;
   if (upserted.event_changed === true) return true;
   const previousEvent = String(upserted.previous_event || "").trim().toUpperCase();
@@ -2060,6 +2088,15 @@ function resolvePostCanonicalPersistedExitEvent({
   const rawEvent = String(rawEvidenceEvent || "").trim().toUpperCase();
   if (rawEvent) return rawEvent;
   return String(event || "").trim().toUpperCase() || null;
+}
+
+function filterRecentExitHintForEntry(recent = null, entryEventId = null) {
+  if (!recent || typeof recent !== "object") return null;
+  const currentEntry = String(entryEventId || "").trim();
+  const recentEntry = String(recent.entryEventId || "").trim();
+  if (currentEntry && recentEntry && currentEntry !== recentEntry) return null;
+  if (currentEntry && !recentEntry) return null;
+  return recent;
 }
 
 function resolveExternalSyncHintStage({
@@ -2343,8 +2380,311 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
         : null,
     };
   } catch (_) {}
+  try {
+    const v2Ctx = await loadV2PositionEntryContext({ exchange, symbol });
+    const legacyHasLineage = !!(ctx && ctx.entryEventId && ctx.positionSide && positiveNumberOrNull(ctx.qtyBase));
+    const legacyMatchesV2 = !!(v2Ctx && legacyHasLineage
+      && String(ctx.entryEventId || "").trim() === String(v2Ctx.entryEventId || "").trim()
+      && String(ctx.positionSide || "").trim().toUpperCase() === String(v2Ctx.positionSide || "").trim().toUpperCase());
+    const v2EntryIsAuthoritative = String(v2Ctx && v2Ctx.entryEventId || "").trim().startsWith("ENTRYV2__");
+    if (v2Ctx && (!legacyMatchesV2 || v2EntryIsAuthoritative)) {
+      ctx = {
+        ...ctx,
+        ...v2Ctx,
+        v2_fallback_applied: true,
+        v2_fallback_reason: v2EntryIsAuthoritative
+          ? "V2_ACTIVE_CYCLE_AUTHORITATIVE"
+          : (legacyHasLineage ? "V2_ACTIVE_CYCLE_SUPERSEDES_LEGACY_CONTEXT" : "LEGACY_CONTEXT_INCOMPLETE"),
+        legacy_context_before_v2_fallback: ctx,
+      };
+    }
+  } catch (error) {
+    if (process.env.BINANCEFUT_FILLS_SYNC_V2_CONTEXT_WARN !== "0") {
+      console.warn(`[FILL_SYNC_V2_CONTEXT_FALLBACK_FAIL] ${key} ${error && error.message ? error.message : String(error)}`);
+    }
+  }
   if (cacheMap) cacheMap.set(key, ctx);
   return ctx;
+}
+
+function parseSortableTimeMs(value) {
+  const direct = Number(value);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function resolveV2PositionEntryTimeMs(positionCycle = null, projection = null, protectionRuntime = null) {
+  const cycle = positionCycle && typeof positionCycle === "object" ? positionCycle : {};
+  const proj = projection && typeof projection === "object" ? projection : {};
+  const runtime = protectionRuntime && typeof protectionRuntime === "object" ? protectionRuntime : {};
+  const candidates = [
+    cycle.entry_time_ms,
+    cycle.entry_at_ms,
+    cycle.entry_fill_time_ms,
+    cycle.created_at_ms,
+    cycle.entry_time,
+    cycle.entry_at,
+    cycle.created_at,
+    cycle.entry_bootstrap_committed_at,
+    proj.entry_time_ms,
+    proj.created_at_ms,
+    proj.created_at,
+    runtime.entry_time_ms,
+    runtime.created_at_ms,
+    runtime.created_at,
+  ];
+  for (const candidate of candidates) {
+    const ms = parseSortableTimeMs(candidate);
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+  return null;
+}
+
+function isTradeBeforePositionEntry(positionCtx = null, tradeMs = null, graceMs = 5000) {
+  const ctx = positionCtx && typeof positionCtx === "object" ? positionCtx : {};
+  const entryMs = Number(ctx.entryTimeMs ?? ctx.entry_time_ms);
+  const observedMs = Number(tradeMs);
+  if (!Number.isFinite(entryMs) || entryMs <= 0) return false;
+  if (!Number.isFinite(observedMs) || observedMs <= 0) return false;
+  const grace = Math.max(0, Number(graceMs) || 0);
+  return observedMs < (entryMs - grace);
+}
+
+async function loadExistingV2CanonicalStageForFill({ db = null, env = process.env, fillId = null } = {}) {
+  const id = String(fillId || "").trim();
+  if (!id) return null;
+  try {
+    const result = await queryV2DocsByField({
+      db: db || getFirestore(),
+      env,
+      collectionKey: "CANONICAL_EXIT_TRANSITIONS",
+      field: "source_fill_id",
+      value: id,
+      limit: 10,
+    });
+    const rows = Array.isArray(result && result.rows) ? result.rows : [];
+    const events = new Set(rows.map((row) => String(row && row.transition_event || "").trim().toUpperCase()).filter(Boolean));
+    if (events.has("SL_HIT")) return "SL";
+    if (events.has("TRAIL_HIT") || events.has("TRAIL_FINAL_EXIT")) return "TRAIL";
+    if (events.has("TP1_REACHED")) return "TP1";
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function buildCanonicalReplayPositionContext(positionCtx = null, existingCanonicalStage = null) {
+  const stage = String(existingCanonicalStage || "").trim().toUpperCase();
+  const ctx = positionCtx && typeof positionCtx === "object" ? positionCtx : null;
+  if (!ctx || stage !== "TP1") return ctx;
+  const entryQty = positiveNumberOrNull(ctx.entry_qty_base)
+    || positiveNumberOrNull(ctx.entry_qty_abs)
+    || positiveNumberOrNull(ctx.meta && (ctx.meta.entry_qty_base || ctx.meta.entry_qty_abs))
+    || positiveNumberOrNull(ctx.qtyBase)
+    || positiveNumberOrNull(ctx.qty_base)
+    || null;
+  const meta = {
+    ...((ctx.meta && typeof ctx.meta === "object") ? ctx.meta : {}),
+    tp_p1_done: false,
+    tp_p1_entry_event_id: null,
+    trail_active: false,
+  };
+  const position = ctx.position && typeof ctx.position === "object"
+    ? {
+        ...ctx.position,
+        qty_base: entryQty || ctx.position.qty_base,
+        meta: {
+          ...((ctx.position.meta && typeof ctx.position.meta === "object") ? ctx.position.meta : {}),
+          tp_p1_done: false,
+          tp_p1_entry_event_id: null,
+          trail_active: false,
+        },
+      }
+    : ctx.position;
+  return {
+    ...ctx,
+    qtyBase: entryQty || ctx.qtyBase,
+    qty_base: entryQty || ctx.qty_base,
+    tpP1Done: false,
+    trailActive: false,
+    meta,
+    position,
+  };
+}
+
+function buildV2PositionEntryContext({
+  exchange = "BINANCEFUT",
+  symbol = null,
+  positionCycle = null,
+  projection = null,
+  protectionRuntime = null,
+} = {}) {
+  const cycle = positionCycle && typeof positionCycle === "object" ? positionCycle : {};
+  const proj = projection && typeof projection === "object" ? projection : {};
+  const runtime = protectionRuntime && typeof protectionRuntime === "object" ? protectionRuntime : {};
+  const normalizedSymbol = normalizeSymbol(symbol || cycle.symbol);
+  const positionCycleId = String(cycle.position_cycle_id || proj.position_cycle_id || runtime.position_cycle_id || "").trim() || null;
+  const entryEventId = String(cycle.entry_event_id || proj.entry_event_id || runtime.entry_event_id || "").trim() || null;
+  const entryTimeMs = resolveV2PositionEntryTimeMs(cycle, proj, runtime);
+  const positionSide = String(cycle.position_side || proj.position_side || runtime.position_side || "").trim().toUpperCase() || null;
+  const entryQtyAbs = positiveNumberOrNull(proj.entry_qty_abs)
+    || positiveNumberOrNull(cycle.entry_qty_abs)
+    || positiveNumberOrNull(runtime.entry_qty_abs)
+    || positiveNumberOrNull(proj.initial_qty_abs)
+    || null;
+  const tp1TargetQtyAbs = positiveNumberOrNull(proj.tp1_target_qty_abs)
+    || positiveNumberOrNull(runtime.tp1_target_qty_abs)
+    || positiveNumberOrNull(runtime.tp1_qty_abs)
+    || (entryQtyAbs != null ? entryQtyAbs * 0.5 : null);
+  const tp1FilledQtyAbs = finiteNumberOrNull(proj.tp1_filled_qty_abs);
+  const runnerRemainingQtyAbs = positiveNumberOrNull(proj.runner_remaining_qty_abs);
+  const stage = String(proj.stage || cycle.stage || "").trim().toUpperCase();
+  const tpP1Done = proj.tp1_done === true || stage === "TP1_DONE" || stage === "TRAIL_ACTIVE" || (tp1FilledQtyAbs != null && tp1TargetQtyAbs != null && tp1FilledQtyAbs >= (tp1TargetQtyAbs * 0.999));
+  const trailActive = proj.trail_active === true || stage === "TRAIL_ACTIVE";
+  const activeQtyAbs = (tpP1Done || trailActive)
+    ? (runnerRemainingQtyAbs || (entryQtyAbs != null && tp1FilledQtyAbs != null ? Math.max(0, entryQtyAbs - tp1FilledQtyAbs) : entryQtyAbs))
+    : entryQtyAbs;
+  const leverage = positiveNumberOrNull(cycle.leverage) || positiveNumberOrNull(runtime.leverage) || null;
+  const entryPrice = positiveNumberOrNull(cycle.entry_price) || positiveNumberOrNull(proj.entry_price) || null;
+  const meta = {
+    entry_event_id: entryEventId,
+    entry_signal_type: String(cycle.entry_signal_type || "V2_PROTECTED_ENTRY").trim() || "V2_PROTECTED_ENTRY",
+    position_cycle_id: positionCycleId,
+    position_side: positionSide,
+    entry_qty_base: entryQtyAbs,
+    entry_qty_abs: entryQtyAbs,
+    tp_p0_done: false,
+    tp_p1_done: tpP1Done,
+    tp_p1_entry_event_id: tpP1Done ? entryEventId : null,
+    trail_active: trailActive,
+    simplified_exit_v2_enabled: true,
+    native_protection_tp_order_id: finiteNumberOrNull(runtime.tp1_order_id || runtime.tp_order_id),
+    native_protection_tp_qty_base: tp1TargetQtyAbs,
+    native_protection_tp_qty_ratio: (tp1TargetQtyAbs != null && entryQtyAbs != null && entryQtyAbs > 0)
+      ? tp1TargetQtyAbs / entryQtyAbs
+      : null,
+    native_protection_refresh_status: String(runtime.native_refresh_status || runtime.native_protection_refresh_status || "OK").trim().toUpperCase() || "OK",
+    native_protection_refresh_context: "V2_POSITION_CYCLE_FALLBACK",
+  };
+  return {
+    entryEventId,
+    entrySignalType: meta.entry_signal_type,
+    positionSide,
+    tpP0Done: false,
+    qtyBase: entryQtyAbs,
+    qty_base: activeQtyAbs,
+    entry_qty_base: entryQtyAbs,
+    entry_qty_abs: entryQtyAbs,
+    leverage,
+    tpP1Done,
+    trailActive,
+    positionCycleId,
+    entryTimeMs,
+    entry_time_ms: entryTimeMs,
+    state: "ACTIVE",
+    position_state: "ACTIVE",
+    position_side: positionSide,
+    execution_mode: "LIVE",
+    simplified_exit_v2_enabled: true,
+    meta,
+    position: {
+      exchange: String(exchange || cycle.exchange || "BINANCEFUT").trim().toUpperCase(),
+      symbol: normalizedSymbol,
+      state: "ACTIVE",
+      position_state: "ACTIVE",
+      position_side: positionSide,
+      qty_base: activeQtyAbs,
+      entry_qty_base: entryQtyAbs,
+      entry_time_ms: entryTimeMs,
+      entry_price: entryPrice,
+      leverage,
+      execution_mode: "LIVE",
+      simplified_exit_v2_enabled: true,
+      meta,
+    },
+    exitStage: stage ? { stage } : null,
+    stopDivergenceItems: [],
+    chosenStopSource: null,
+    chosenStopPrice: null,
+    runnerFloorStop: null,
+    trailStopByR: null,
+    nativeStopPrice: positiveNumberOrNull(runtime.sl_price || runtime.stop_price) || null,
+    nativeProtectionStale: false,
+    nativeProtectionRefreshStatus: meta.native_protection_refresh_status,
+    nativeProtectionRefreshContext: meta.native_protection_refresh_context,
+    nativeProtectionRefreshAtMs: finiteNumberOrNull(runtime.updated_at_ms || runtime.created_at_ms),
+    nativeProtectionTp0OrderId: null,
+    nativeProtectionTpOrderId: meta.native_protection_tp_order_id,
+    nativeProtectionConsumedTp0OrderId: null,
+    nativeProtectionConsumedTpOrderId: null,
+    nativeProtectionTp0QtyBase: null,
+    nativeProtectionTp0QtyRatio: null,
+    nativeProtectionConsumedTp0QtyBase: null,
+    nativeProtectionConsumedTp0QtyRatio: null,
+    nativeProtectionTpQtyBase: tp1TargetQtyAbs,
+    nativeProtectionTpQtyRatio: meta.native_protection_tp_qty_ratio,
+    nativeProtectionConsumedTpQtyBase: tpP1Done ? tp1FilledQtyAbs : null,
+    nativeProtectionConsumedTpQtyRatio: (tpP1Done && tp1FilledQtyAbs != null && entryQtyAbs != null && entryQtyAbs > 0)
+      ? tp1FilledQtyAbs / entryQtyAbs
+      : null,
+    simplifiedExitV2Enabled: true,
+    executionMode: "LIVE",
+    exitRulesOverride: null,
+    v2_position_cycle_context: {
+      position_cycle_id: positionCycleId,
+      entry_time_ms: entryTimeMs,
+      projection_stage: stage || null,
+      protection_runtime_id: String(runtime.protection_runtime_id || "").trim() || null,
+    },
+  };
+}
+
+async function loadV2PositionEntryContext({ exchange = "BINANCEFUT", symbol = null, db = null, env = process.env } = {}) {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  if (!normalizedSymbol) return null;
+  const firestore = db || getFirestore();
+  const query = await queryV2DocsByField({
+    db: firestore,
+    env,
+    collectionKey: "POSITION_CYCLES",
+    field: "symbol",
+    value: normalizedSymbol,
+    limit: 25,
+  });
+  const candidates = (query.rows || [])
+    .filter((row) => String(row.exchange || exchange || "").trim().toUpperCase() === String(exchange || "BINANCEFUT").trim().toUpperCase())
+    .filter((row) => String(row.status || "").trim().toUpperCase() === "ACTIVE_PROTECTED")
+    .sort((a, b) => {
+      const at = parseSortableTimeMs(a.updated_at_ms || a.updated_at || a.created_at_ms || a.created_at);
+      const bt = parseSortableTimeMs(b.updated_at_ms || b.updated_at || b.created_at_ms || b.created_at);
+      return bt - at;
+    });
+  const cycle = candidates[0] || null;
+  if (!cycle) return null;
+  const positionCycleId = String(cycle.position_cycle_id || "").trim();
+  if (!positionCycleId) return null;
+  const [projectionResult, protectionResult] = await Promise.all([
+    getV2Doc({
+      db: firestore,
+      env,
+      collectionKey: "EXIT_RUNTIME_PROJECTIONS",
+      docId: `ERPv2__${positionCycleId}`,
+    }).catch(() => ({ ok: false, doc: null })),
+    getV2Doc({
+      db: firestore,
+      env,
+      collectionKey: "PROTECTION_RUNTIME",
+      docId: `PRTV2__${positionCycleId}`,
+    }).catch(() => ({ ok: false, doc: null })),
+  ]);
+  return buildV2PositionEntryContext({
+    exchange,
+    symbol: normalizedSymbol,
+    positionCycle: cycle,
+    projection: projectionResult.ok ? projectionResult.doc : null,
+    protectionRuntime: protectionResult.ok ? protectionResult.doc : null,
+  });
 }
 
 function resolveAlertExitRules(positionCtx, defaultExitRules) {
@@ -3362,9 +3702,26 @@ function applyActiveExitStageBackstopOverride({
   const matchedIntentEvent = String(intentEvent || "").trim().toUpperCase();
   const currentIsTp0 = isTpP0Event(currentEvent);
   const currentIsTp1 = isTpP1Event(currentEvent);
-  if (!(currentIsTp0 || currentIsTp1)) return currentEvent;
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
   const tp0RetiredRuntime = isTp0RetiredRuntime(ctx);
+  if (!(currentIsTp0 || currentIsTp1)) {
+    if (tp0RetiredRuntime
+      && currentEvent.startsWith("EXIT_TRAIL")
+      && ctx.tpP1Done !== true
+      && ctx.trailActive !== true) {
+      const inferredQtyKind = inferTakeProfitKindFromQtyPct(qtyPct, rules, ctx);
+      const inferredPostFillKind = inferTakeProfitKindFromPostFillRemainingAwareQty(
+        Number(trade && trade.qty),
+        Number(ctx.qtyBase),
+        rules,
+        ctx
+      );
+      if (inferredQtyKind === "TP1" || inferredPostFillKind === "TP1") {
+        return buildExitEventByKind("TP1", rules, ctx);
+      }
+    }
+    return currentEvent;
+  }
 
   // TP0 retirement policy (2026-04-17): under simplified_exit_v2 (the new
   // default) TP0 is NOT an acceptable stage. Any leftover TP0 split fills
@@ -3588,6 +3945,7 @@ async function resolveExternalExitEvent({
   const intentEvent = intent && intent.event
     ? String(intent.event).toUpperCase()
     : null;
+  const syntheticFillSyncIntent = isSyntheticExternalFillSyncIntent(intent);
   const orderType = String(orderMeta && orderMeta.orderType || "").toUpperCase() || null;
   const closePosition = !!(orderMeta && orderMeta.closePosition === true);
   const orderId = Number(orderMeta && orderMeta.orderId);
@@ -3634,7 +3992,7 @@ async function resolveExternalExitEvent({
     tradeMs: Number(trade && trade.time),
   });
 
-  if (intentEvent && isAuthoritativeForcedExitIntentEvent(intentEvent)) {
+  if (!syntheticFillSyncIntent && intentEvent && isAuthoritativeForcedExitIntentEvent(intentEvent)) {
     return intentEvent;
   }
   if (staleTp0IntentShouldYieldTp1 || staleLegacyTp0IntentAfterTp0) {
@@ -3701,7 +4059,7 @@ async function resolveExternalExitEvent({
     }
     return buildExitEventByKind("UNKNOWN", rules);
   }
-  if (intentEvent) {
+  if (intentEvent && !syntheticFillSyncIntent) {
     if (isSyntheticExternalFillExitEvent(intentEvent)) {
       const sym = normalizeSymbol(trade && trade.symbol);
       const detail = `intent_event=${intentEvent} -> EXIT_EXTERNAL_SYNC (synthetic intent event)`;
@@ -3873,12 +4231,20 @@ async function syncMarketTrades({
         }
       }
 
+      const fillId = `EXT__BINANCEFUT__${sym}__${Number.isFinite(tradeId) ? tradeId : String(t.id || t.time || now)}`;
       let intent = pickIntentForTrade(t, intents, matchWindowMs || DEFAULT_MATCH_WINDOW_MS, intentFutureAllowMs);
-      const positionCtx = await loadPositionEntryContext("BINANCEFUT", sym, positionEntryCache);
+      let positionCtx = await loadPositionEntryContext("BINANCEFUT", sym, positionEntryCache);
+      if (isTradeBeforePositionEntry(positionCtx, tradeMs)) {
+        positionCtx = null;
+      }
+      const existingV2CanonicalStage = reprocessExisting === true
+        ? await loadExistingV2CanonicalStageForFill({ db, fillId })
+        : null;
       const exitRules = resolveAlertExitRules(positionCtx, defaultExitRules);
-      const recentTp1 = recentTp1BySymbol.get(sym) || null;
-      const recentTp0 = recentTp0BySymbol.get(sym) || null;
-      const recentTrail = recentTrailBySymbol.get(sym) || null;
+      const contextEntryEventId = String(positionCtx && positionCtx.entryEventId || "").trim() || null;
+      const recentTp1 = filterRecentExitHintForEntry(recentTp1BySymbol.get(sym) || null, contextEntryEventId);
+      const recentTp0 = filterRecentExitHintForEntry(recentTp0BySymbol.get(sym) || null, contextEntryEventId);
+      const recentTrail = filterRecentExitHintForEntry(recentTrailBySymbol.get(sym) || null, contextEntryEventId);
       const execPrice = Number(t.price);
       const execQtyBase = Number(t.qty);
       const notional = Number(t.quoteQty) || (Number.isFinite(execPrice) && Number.isFinite(execQtyBase) ? execPrice * execQtyBase : null);
@@ -3911,6 +4277,10 @@ async function syncMarketTrades({
         rules: exitRules,
         qtyPct,
       });
+      if (positionCtx && existingV2CanonicalStage === "TP1") {
+        event = buildExitEventByKind("TP1", exitRules, positionCtx);
+      }
+      const canonicalPositionCtx = buildCanonicalReplayPositionContext(positionCtx, existingV2CanonicalStage);
       let intentId = intent ? intent.intent_id : null;
       const signalRefs = resolveSignalRefsForExternalFill({
         intent,
@@ -3929,7 +4299,7 @@ async function syncMarketTrades({
         entryEventId: (positionCtx && positionCtx.entryEventId) || null,
         signalDocId,
         orderMeta,
-        positionCtx,
+        positionCtx: canonicalPositionCtx,
         recentTp0,
         recentTp1,
         recentTrail,
@@ -3986,7 +4356,6 @@ async function syncMarketTrades({
         });
       }
 
-      const fillId = `EXT__BINANCEFUT__${sym}__${Number.isFinite(tradeId) ? tradeId : String(t.id || t.time || now)}`;
       const execTimeIso = Number.isFinite(tradeMs) ? new Date(tradeMs).toISOString() : nowIso();
       const looksLikeExit = Number.isFinite(realizedPnl) && Math.abs(realizedPnl) > 1e-12;
       if (looksLikeExit) {
@@ -4024,18 +4393,20 @@ async function syncMarketTrades({
         requestId: intent && intent.request_id,
         decisionReason: intent && (intent.reason || intent.status_reason || intent.cancel_reason),
       });
-      event = applyActiveExitStageBackstopOverride({
-        event,
-        intentEvent: intent && intent.event,
-        trade: t,
-        orderMeta,
-        positionCtx,
-        recentTp0,
-        recentTp1,
-        recentTrail,
-        rules: exitRules,
-        qtyPct,
-      });
+      if (!(positionCtx && existingV2CanonicalStage === "TP1" && isTpP1Event(event))) {
+        event = applyActiveExitStageBackstopOverride({
+          event,
+          intentEvent: intent && intent.event,
+          trade: t,
+          orderMeta,
+          positionCtx,
+          recentTp0,
+          recentTp1,
+          recentTrail,
+          rules: exitRules,
+          qtyPct,
+        });
+      }
       const linkedTradeId = Number.isFinite(tradeMs)
         ? buildTradeId({
           exchange: "BINANCEFUT",
@@ -4048,6 +4419,9 @@ async function syncMarketTrades({
       let inferredEntryCtx = { entryEventId: null, entrySignalType: null };
       if (looksLikeExit && !intentEntryCtx.entryEventId) {
         inferredEntryCtx = await loadPositionEntryContext("BINANCEFUT", sym, positionEntryCache);
+        if (isTradeBeforePositionEntry(inferredEntryCtx, tradeMs)) {
+          inferredEntryCtx = { entryEventId: null, entrySignalType: null };
+        }
       }
       const entryEventId = intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || null;
       const entrySignalType = intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || null;
@@ -4071,7 +4445,7 @@ async function syncMarketTrades({
         entryEventId,
         signalDocId,
         orderMeta,
-        positionCtx,
+        positionCtx: canonicalPositionCtx,
         recentTp0,
         recentTp1,
         recentTrail,
@@ -4092,7 +4466,7 @@ async function syncMarketTrades({
           entryEventId,
           signalDocId,
           orderMeta,
-          positionCtx,
+          positionCtx: canonicalPositionCtx,
           qtyPct,
           rules: exitRules,
         })
@@ -4157,6 +4531,28 @@ async function syncMarketTrades({
           simplifiedExitV2Enabled: isSimplifiedExitV2Enabled(positionCtx),
         })
         : null;
+
+      if (process.env.BINANCEFUT_FILLS_SYNC_DEBUG_SYMBOL
+        && String(process.env.BINANCEFUT_FILLS_SYNC_DEBUG_SYMBOL).trim().toUpperCase() === sym) {
+        console.warn("[BINANCEFUT_FILLS_SYNC_DEBUG_DECISION]", JSON.stringify({
+          symbol: sym,
+          trade_id: Number.isFinite(Number(tradeId)) ? Number(tradeId) : null,
+          order_id: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
+          event,
+          qty_pct: Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : null,
+          canonical_event: canonicalStageDecision.event || null,
+          canonical_stage: canonicalStageDecision.stage || null,
+          canonical_reason: canonicalStageDecision.reason || null,
+          canonical_transition_events: canonicalTransitionDecision.transitionEvents,
+          authoritative_stage: authorityDecision.stage || null,
+          authoritative_qty_pct_raw: Number.isFinite(Number(authorityDecision.rawQtyPct)) ? Number(authorityDecision.rawQtyPct) : null,
+          authoritative_qty_pct_accepted: Number.isFinite(Number(authorityDecision.acceptedQtyPct)) ? Number(authorityDecision.acceptedQtyPct) : null,
+          authoritative_reason: authorityDecision.reason || null,
+          position_entry_event_id: positionCtx && positionCtx.entryEventId || null,
+          position_tp1_done: positionCtx && positionCtx.tpP1Done === true,
+          position_trail_active: positionCtx && positionCtx.trailActive === true,
+        }));
+      }
 
       const upserted = await upsertExternalFill({
         fillId,
@@ -4274,6 +4670,7 @@ async function syncMarketTrades({
         recentTp0BySymbol.set(sym, {
           tradeMs,
           event,
+          entryEventId,
           orderId: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
           clientOrderId,
           execPrice: Number.isFinite(execPrice) ? execPrice : null,
@@ -4283,6 +4680,7 @@ async function syncMarketTrades({
         recentTp1BySymbol.set(sym, {
           tradeMs,
           event,
+          entryEventId,
           orderId: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
           clientOrderId,
           execPrice: Number.isFinite(execPrice) ? execPrice : null,
@@ -4292,13 +4690,20 @@ async function syncMarketTrades({
         recentTrailBySymbol.set(sym, {
           tradeMs,
           event,
+          entryEventId,
           orderId: Number.isFinite(Number(orderMeta && orderMeta.orderId)) ? Number(orderMeta.orderId) : null,
           clientOrderId,
           execPrice: Number.isFinite(execPrice) ? execPrice : null,
         });
       }
 
-      if (shouldRunExternalExitSideEffects({ upserted, looksLikeExit, event })) {
+      if (shouldRunExternalExitSideEffects({
+        upserted,
+        looksLikeExit,
+        event,
+        force: reprocessExisting === true && !!entryEventId,
+        canonicalEntryLineageMissing: canonicalStageDecision.entryLineageMissing === true,
+      })) {
         let shadowTp1Write = null;
         let shadowStopWrite = null;
         let shadowExternalCloseWrite = null;
@@ -4708,7 +5113,7 @@ async function syncMarketTrades({
       }
 
       if (positionEntryCache && typeof positionEntryCache.delete === "function") {
-        positionEntryCache.delete(`BINANCEFUT:${sym}`);
+        positionEntryCache.delete(`BINANCEFUT__${sym}`);
       }
 
       if (!Number.isFinite(lastTradeMs) || tradeMs > lastTradeMs) {
@@ -4924,6 +5329,7 @@ module.exports = {
     isSameOrderAsRecentTp1,
     isSameOrderAsRecentTp0,
     isSyntheticExternalFillExitEvent,
+    isSyntheticExternalFillSyncIntent,
     isAuthoritativeForcedExitIntentEvent,
     isTrailExitEligible,
     classifyExitAuthorityStage,
@@ -4948,12 +5354,15 @@ module.exports = {
     resolveLegacyCanonicalWriteDecision,
     inferStageConstrainedTakeProfitKind,
     applyActiveExitStageBackstopOverride,
+    isTradeBeforePositionEntry,
     buildFillSyncNativeProtectionRefreshArgs,
     buildStageHintedMeta,
     mergeRecentExitHintsIntoMeta,
     buildImmediateProjectionIssues,
     auditImmediateProjectionEvents,
     auditProjectionEventImmediately,
+    buildV2PositionEntryContext,
+    loadV2PositionEntryContext,
     reconcileExternalFillPositionSync,
     shouldSendImmediateProjectionMismatchAlert,
     buildFillsSyncLeaseDocPath,
@@ -4978,6 +5387,7 @@ module.exports = {
     resolvePersistedExternalExitEvent,
     shouldRunExternalExitSideEffects,
     resolvePostCanonicalPersistedExitEvent,
+    filterRecentExitHintForEntry,
     maybeWriteV2ShadowTp1Transition,
     resolveLegacyCanonicalTp1WriteGate,
     maybeWriteV2ShadowStopExit,

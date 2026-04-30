@@ -68,7 +68,7 @@ function evaluateSchedulerHealthDrift({ jobs = [], env = process.env } = {}) {
   const warnings = [];
   const index = buildIndex(jobs);
   const requiredEnabled = splitList(env.DONBEOLJA_V2_SCHEDULER_REQUIRED_ENABLED_JOBS
-    || "v2-production-entry-route-canary,v2-exit-runtime-canary,v2-active-protection-reconciliation");
+    || "v2-production-entry-route-canary,v2-exit-runtime-canary,v2-active-protection-reconciliation,v2-fill-sync");
   const requiredPaused = splitList(env.DONBEOLJA_V2_SCHEDULER_REQUIRED_PAUSED_JOBS
     || "donbeolja-tick-5m");
   const statusCheckEnabled = String(env.DONBEOLJA_V2_SCHEDULER_STATUS_CHECK_ENABLED || "1") !== "0";

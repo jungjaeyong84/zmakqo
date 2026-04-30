@@ -56,12 +56,18 @@ function run() {
 
   const simplifiedNextMeta = __test.buildRepairedMeta({
     simplified_exit_v2_enabled: true,
+    entry_event_id: "ENTRYV2__ETHUSDT__SHORT__8389766168172990000",
     tp_p0_done: false,
     tp_p1_done: false,
     trail_active: false,
   }, simplifiedStage);
   assert.strictEqual(simplifiedNextMeta.tp_p0_done, false);
   assert.strictEqual(simplifiedNextMeta.tp_p1_done, true);
+  assert.strictEqual(
+    simplifiedNextMeta.tp_p1_entry_event_id,
+    "ENTRYV2__ETHUSDT__SHORT__8389766168172990000",
+    "V2 live stage repair must stamp TP1 lineage from entry_event_id"
+  );
   assert.strictEqual(simplifiedNextMeta.trail_active, true);
   assert.strictEqual(simplifiedNextMeta.canonical_exit_stage, "TRAIL");
 

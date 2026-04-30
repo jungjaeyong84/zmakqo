@@ -70,6 +70,7 @@ const {
     "v2_production_entry_route_canary",
     "v2_exit_runtime_canary",
     "v2_active_protection_reconciliation",
+    "v2_fill_sync",
     "openclaw_server_primary_tick",
     "v2_signal_shadow_counterfactual_walker",
     "v2_signal_shadow_counterfactual_analyzer",
@@ -97,6 +98,12 @@ const {
   assert.strictEqual(v2ActiveProtectionReconciliation.canary_mode, "LIVE_ACTIVE_PROTECTION_RECONCILIATION");
   assert.strictEqual(v2ActiveProtectionReconciliation.scheduler_schedule, "0 * * * *");
   assert.strictEqual(v2ActiveProtectionReconciliation.produces_artifact, "v2_active_protection_reconciliation_latest.json");
+  const v2FillSync = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "v2_fill_sync");
+  assert.ok(v2FillSync, "v2 fill sync missing");
+  assert.strictEqual(v2FillSync.http_path, "/api/openclaw/cron/v2-fill-sync");
+  assert.strictEqual(v2FillSync.criticality, "HIGH");
+  assert.strictEqual(v2FillSync.runtime_mode, "LIVE_USER_TRADE_FILL_SYNC");
+  assert.strictEqual(v2FillSync.scheduler_schedule, "*/5 * * * *");
   const serverPrimaryTick = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "openclaw_server_primary_tick");
   assert.ok(serverPrimaryTick, "server primary tick missing");
   assert.strictEqual(serverPrimaryTick.http_path, "/api/openclaw/cron/openclaw-server-primary-tick");

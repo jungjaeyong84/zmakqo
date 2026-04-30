@@ -103,7 +103,11 @@ function buildRepairedMeta(meta = {}, stageInfo = {}) {
   const simplifiedExitV2Enabled = isSimplifiedExitV2Position({ meta: nextMeta });
   void simplifiedExitV2Enabled;
   if (stage === "TRAIL") {
+    const entryEventId = String(nextMeta.entry_event_id || "").trim();
     nextMeta.tp_p1_done = true;
+    if (!String(nextMeta.tp_p1_entry_event_id || "").trim() && entryEventId) {
+      nextMeta.tp_p1_entry_event_id = entryEventId;
+    }
     nextMeta.trail_active = true;
     nextMeta.tp_p1_pending = false;
     nextMeta.tp_p1_pending_at_ms = null;

@@ -72,6 +72,18 @@ function pushViolation(violations, field, reason, value) {
   violations.push({ field, reason, value: value === undefined ? null : value });
 }
 
+function isTp0RetiredMeta(meta) {
+  if (meta == null || typeof meta !== "object") return false;
+  if (meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true) return true;
+  if (meta.tp0_supported === false) return true;
+  const cycleId = nonEmptyId(meta.position_cycle_id);
+  const entryId = nonEmptyId(meta.entry_event_id);
+  if (cycleId.startsWith("PCY__")) return true;
+  if (entryId.startsWith("ENTRYV2__")) return true;
+  const mode = nonEmptyId(meta.exit_profile_mode || meta.exitProfileMode || meta.execution_mode || meta.executionMode).toUpperCase();
+  return mode === "SIMPLIFIED_V2";
+}
+
 function checkLineageInvariantsOnMeta(meta, violations) {
   if (meta == null || typeof meta !== "object") return;
 
@@ -91,7 +103,7 @@ function checkLineageInvariantsOnMeta(meta, violations) {
         VIOLATION_REASONS.TP_P1_LINEAGE_MISMATCH,
         { tp_p1_entry_event_id: tp1Id, entry_event_id: entryId });
     }
-    if (meta.tp_p0_done !== true) {
+    if (meta.tp_p0_done !== true && !isTp0RetiredMeta(meta)) {
       pushViolation(violations, "tp_p0_done",
         VIOLATION_REASONS.TP_P1_REQUIRES_TP_P0, meta.tp_p0_done);
     }
@@ -227,6 +239,7 @@ module.exports = {
   __test: {
     isActiveState,
     nonEmptyId,
+    isTp0RetiredMeta,
     checkLineageInvariantsOnMeta,
   },
 };
