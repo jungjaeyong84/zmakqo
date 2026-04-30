@@ -8051,19 +8051,73 @@ async function resolveSignalSpikeLock({ exchange, symbol, barCloseMs, pos, sysCf
 }
 
 async function resolveFuturesRiskConfig(exchange) {
-  const maxLev = Number(process.env.FUTURES_LEVERAGE_MAX || 3);
+  const leverageResolution = resolveV2RuntimeFuturesLeverage({
+    cfg: {},
+    env: process.env,
+    fallback: FUTURES_BASE_LEVERAGE,
+  });
+  const maxLev = leverageResolution.maxLeverage;
   const ex = String(exchange || "").toUpperCase();
-  let levRaw = FUTURES_BASE_LEVERAGE;
+  let levRaw = leverageResolution.leverage;
   if (ex.includes("BINANCE")) {
-    levRaw = Number(process.env.FUTURES_LEVERAGE || FUTURES_BASE_LEVERAGE);
     const sys = await getSystemSettingsForProvider(exchange || "BINANCEFUT", 5000);
     const cfg = (sys && sys.data) ? sys.data : {};
-    if (cfg.futures_leverage != null) levRaw = Number(cfg.futures_leverage);
+    levRaw = resolveV2RuntimeFuturesLeverage({
+      cfg,
+      env: process.env,
+      fallback: FUTURES_BASE_LEVERAGE,
+    }).leverage;
   }
   const leverage = normalizeFuturesLeverage(levRaw, maxLev);
   const bufferRaw = Number(process.env.FUTURES_LIQUIDATION_BUFFER_PCT || 0.02);
   const bufferPct = clamp(bufferRaw, 0.001, 0.2) || 0.02;
   return { leverage, bufferPct };
+}
+
+function resolveV2RuntimeFuturesLeverage({ cfg = {}, env = process.env, fallback = FUTURES_BASE_LEVERAGE } = {}) {
+  const source = cfg && typeof cfg === "object" ? cfg : {};
+  const envObj = env && typeof env === "object" ? env : {};
+  const toPositiveNumber = (value) => {
+    if (value === undefined || value === null || value === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const maxLeverage = toPositiveNumber(envObj.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE)
+    || toPositiveNumber(envObj.FUTURES_LEVERAGE_MAX)
+    || 3;
+
+  // V2 live-write contract: Cloud Run env is authoritative. Firestore
+  // system_settings.futures_leverage is a legacy/V1 setting and can lag behind
+  // the deployed discovery contract, so it must not override V2 env defaults.
+  const candidates = [
+    envObj.V2_FUTURES_DEFAULT_LEVERAGE,
+    envObj.DONBEOLJA_V2_FUTURES_DEFAULT_LEVERAGE,
+    source.futures_leverage,
+    envObj.FUTURES_LEVERAGE,
+    fallback,
+  ];
+  for (const candidate of candidates) {
+    const n = toPositiveNumber(candidate);
+    if (n === null) continue;
+    return Object.freeze({
+      leverage: normalizeFuturesLeverage(n, maxLeverage),
+      maxLeverage,
+      source: candidate === envObj.V2_FUTURES_DEFAULT_LEVERAGE
+        ? "V2_FUTURES_DEFAULT_LEVERAGE"
+        : candidate === envObj.DONBEOLJA_V2_FUTURES_DEFAULT_LEVERAGE
+          ? "DONBEOLJA_V2_FUTURES_DEFAULT_LEVERAGE"
+          : candidate === source.futures_leverage
+            ? "SYSTEM_SETTINGS_FUTURES_LEVERAGE"
+            : candidate === envObj.FUTURES_LEVERAGE
+              ? "FUTURES_LEVERAGE"
+              : "FALLBACK",
+    });
+  }
+  return Object.freeze({
+    leverage: normalizeFuturesLeverage(1, maxLeverage),
+    maxLeverage,
+    source: "DEFAULT_ONE",
+  });
 }
 
 function normalizeExecutionMode(raw) {
@@ -8163,8 +8217,12 @@ async function resolveLiveFuturesConfig({ exchange, symbol, env = process.env } 
     if (!reason) reason = "BINANCEFUT_KEYS_MISSING";
   }
 
-  const levRaw = Number(cfg.futures_leverage ?? process.env.FUTURES_LEVERAGE ?? FUTURES_BASE_LEVERAGE);
-  const leverage = normalizeFuturesLeverage(levRaw, 3);
+  const leverageDecision = resolveV2RuntimeFuturesLeverage({
+    cfg,
+    env,
+    fallback: FUTURES_BASE_LEVERAGE,
+  });
+  const leverage = leverageDecision.leverage;
   const marginType = normalizeFuturesMarginType(cfg.futures_margin_type ?? process.env.FUTURES_MARGIN_TYPE ?? "CROSSED");
   const exitProfileMode = resolveConfiguredFuturesExitProfileMode(
     cfg.futures_exit_profile_mode ?? process.env.FUTURES_EXIT_PROFILE_MODE ?? "",
@@ -20320,6 +20378,7 @@ module.exports = {
     loadPositionRuntimeObservationSafe,
     applyTrailObservationSnapshotToMeta,
     resolveRiskBudget,
+    resolveV2RuntimeFuturesLeverage,
     pickLatestTpP0Fill,
     reconcileTpP0MetaFromFill,
     reconcileTpP0MetaFromFill,
