@@ -17,6 +17,9 @@ function run() {
   assert.strictEqual(classifyAutomationTelegramTitle("[4차 EV/시간가치층 자동 조정] BINANCEFUT"), "TUNING");
   assert.strictEqual(classifyAutomationTelegramTitle("[V2 OpenClaw 학습 점검] BINANCEFUT"), "TUNING");
   assert.strictEqual(classifyAutomationTelegramTitle("[자산] BINANCEFUT"), "ESSENTIAL");
+  assert.strictEqual(classifyAutomationTelegramTitle("[ETHUSDT] TP1"), "ESSENTIAL");
+  assert.strictEqual(classifyAutomationTelegramTitle("[BTCUSDT] TRAIL_EXIT"), "ESSENTIAL");
+  assert.strictEqual(classifyAutomationTelegramTitle("[지연복구] [ETHUSDT] TP1"), "ESSENTIAL");
 
   let decision = resolveAutomationTelegramPolicyDecision({
     title: "[4차 EV/시간가치층 자동 조정] BINANCEFUT",
@@ -27,6 +30,12 @@ function run() {
 
   decision = resolveAutomationTelegramPolicyDecision({
     title: "[목표] PATCH_CANDIDATE",
+    severity: "INFO",
+  });
+  assert.strictEqual(decision.send, true);
+
+  decision = resolveAutomationTelegramPolicyDecision({
+    title: "[ETHUSDT] TP1",
     severity: "INFO",
   });
   assert.strictEqual(decision.send, true);

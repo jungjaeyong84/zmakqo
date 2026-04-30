@@ -465,6 +465,12 @@ function parseMessagePolicyList(raw) {
 function classifyAutomationTelegramTitle(title) {
   const normalized = String(title || "").trim();
   if (!normalized) return "UNCLASSIFIED";
+  if (/^\[[A-Z0-9]+USDT\]\s+(TP1|TRAIL_START|SL|TRAIL_EXIT|EXTERNAL_EXIT|MANUAL_EXIT)\b/.test(normalized)) {
+    return "ESSENTIAL";
+  }
+  if (/^\[(지연복구|복구)\]\s+\[[A-Z0-9]+USDT\]\s+(TP1|TRAIL_START|SL|TRAIL_EXIT|EXTERNAL_EXIT|MANUAL_EXIT)\b/.test(normalized)) {
+    return "ESSENTIAL";
+  }
   const matched = AUTOMATION_TELEGRAM_TITLE_RULES.find((row) => normalized.startsWith(row.prefix));
   return matched ? matched.category : "UNCLASSIFIED";
 }
