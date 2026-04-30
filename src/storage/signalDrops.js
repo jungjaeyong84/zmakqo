@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const { getFirestore } = require("./firestore");
 const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
-const { tryLockSignal } = require("./signalsConsume");
+const { markSignalConsumed, tryLockSignal } = require("./signalsConsume");
 const { enrichFeaturesWithRegime } = require("../utils/regime");
 const { confirmSelfEvolutionRuntimeSignal } = require("../utils/selfEvolutionRuntimeState");
 const { buildEventEnvelope } = require("../utils/eventEnvelope");
@@ -449,6 +449,35 @@ function resolveSignalIdFromDrop(drop = null) {
   ).trim() || null;
 }
 
+function buildDropBatchDedupeKey({ drop = null, exchange, symbol, tf, decisionReason = null } = {}) {
+  const d = drop && typeof drop === "object" ? drop : {};
+  const signalId = resolveSignalIdFromDrop(d);
+  const reason = upper(d.decision_reason || decisionReason || d.reason || d.drop_reason_code || null);
+  return [
+    String(exchange || d.exchange || "").trim().toUpperCase(),
+    String(symbol || d.symbol_or_pair_id || d.symbol || "").trim().toUpperCase(),
+    String(tf || d.tf || "").trim(),
+    String(d.bar_close_time_utc_ms || ""),
+    String(d.event || "").trim().toUpperCase(),
+    String(d.side || "").trim().toUpperCase(),
+    signalId || "",
+    reason || "",
+  ].join("__");
+}
+
+function dedupeDropsForBatch({ drops = [], exchange, symbol, tf, decisionReason = null } = {}) {
+  if (!Array.isArray(drops) || drops.length <= 1) return Array.isArray(drops) ? drops : [];
+  const seen = new Set();
+  const out = [];
+  for (const drop of drops) {
+    const key = buildDropBatchDedupeKey({ drop, exchange, symbol, tf, decisionReason });
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(drop);
+  }
+  return out;
+}
+
 function isSignalDropAlreadyHandled(lock = null) {
   const reason = String(lock && lock.reason || "").trim().toUpperCase();
   return reason === "ALREADY_CONSUMED" || reason === "LOCKED";
@@ -587,10 +616,18 @@ async function recordSignalDrops({
   decisionReason = null,
   db: injectedDb = null,
   tryLockSignalFn = tryLockSignal,
+  markSignalConsumedFn = markSignalConsumed,
+  sendSignalDroppedAlertFn = sendSignalDroppedAlert,
 } = {}) {
   if (!Array.isArray(drops) || drops.length === 0) return { ok: true, written: 0 };
   const filtered = await filterDropsForConsumedSignals({ drops, runId, tryLockSignalFn });
-  const effectiveDrops = filtered.kept;
+  const effectiveDrops = dedupeDropsForBatch({
+    drops: filtered.kept,
+    exchange,
+    symbol,
+    tf,
+    decisionReason,
+  });
   const db = injectedDb || getFirestore();
   const now = nowIso();
   const suppressedCommit = await persistSuppressedSignalDrops({
@@ -770,7 +807,32 @@ async function recordSignalDrops({
   if (confirmations.length) {
     await Promise.allSettled(confirmations);
   }
-  const alerts = normalizedDrops.map((d) => sendSignalDroppedAlert(buildDropAlertPayload(d)));
+  const consumeResults = normalizedDrops
+    .filter((payload) => payload.signal_id)
+    .map((payload) =>
+      markSignalConsumedFn({
+        signalId: payload.signal_id,
+        runId: payload.run_id || runId,
+        consumedAtIso: now,
+        execBarCloseMs: payload.bar_close_time_utc_ms,
+        execBarCloseUtc: Number.isFinite(Number(payload.bar_close_time_utc_ms))
+          ? new Date(Number(payload.bar_close_time_utc_ms)).toISOString()
+          : null,
+        reason: payload.drop_reason_code || payload.reason || "DROP",
+        meta: {
+          drop_id: payload.drop_id || null,
+          canonical_event_id: payload.canonical_event_id || null,
+          source: "signals_dropped",
+        },
+      }).catch((error) => ({
+        ok: false,
+        reason: "MARK_SIGNAL_CONSUMED_FAILED",
+        error_message: error && error.message ? String(error.message) : String(error),
+        signal_id: payload.signal_id,
+      }))
+    );
+  const consumedSettled = consumeResults.length ? await Promise.allSettled(consumeResults) : [];
+  const alerts = normalizedDrops.map((d) => sendSignalDroppedAlertFn(buildDropAlertPayload(d)));
   await Promise.allSettled(alerts);
   return {
     ok: true,
@@ -781,6 +843,7 @@ async function recordSignalDrops({
     canary_evolution_shadow_n: canaryEvolutionShadowCommit.written || 0,
     canary_evolution_shadow_commit: canaryEvolutionShadowCommit,
     self_evolution_runtime_confirmed_n: confirmations.length,
+    consumed_before_alert_n: consumedSettled.filter((row) => row.status === "fulfilled").length,
   };
 }
 
@@ -807,5 +870,7 @@ module.exports = {
     filterDropsForConsumedSignals,
     buildSuppressedSignalDropDoc,
     persistSuppressedSignalDrops,
+    buildDropBatchDedupeKey,
+    dedupeDropsForBatch,
   },
 };

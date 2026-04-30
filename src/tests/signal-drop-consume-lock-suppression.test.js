@@ -112,11 +112,58 @@ async function missingSignalIdKeepsLegacyBehavior() {
   assert.strictEqual(filtered.suppressed.length, 0);
 }
 
+async function duplicateDropsSendOnlyOneAlertAndConsumeBeforeAlert() {
+  const calls = [];
+  const alertPayloads = [];
+  const consumed = [];
+  const drop = {
+    signal_id: "SIG__BINANCEFUT__LINKUSDT__15m__1777165200000__SHORT",
+    signal_doc_id: "SIG__BINANCEFUT__LINKUSDT__15m__1777165200000__SHORT",
+    bar_close_time_utc_ms: 1777165200000,
+    event: "SHORT",
+    side: "SELL",
+    reason: "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED",
+    drop_reason_code: "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED",
+    execution_mode: "LIVE",
+    features_json: {
+      strategy_id: "donbeolja_v2_openclaw",
+      v2_discovery_signal_fan_in_handoff: true,
+      v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
+    },
+  };
+  const result = await recordSignalDrops({
+    db: buildFakeDb(calls),
+    exchange: "BINANCEFUT",
+    symbol: "LINKUSDT",
+    tf: "15m",
+    runId: "RUN__DUPLICATE",
+    drops: [drop, { ...drop }],
+    tryLockSignalFn: async () => ({ ok: true }),
+    markSignalConsumedFn: async (payload) => {
+      consumed.push(payload);
+    },
+    sendSignalDroppedAlertFn: async (payload) => {
+      alertPayloads.push(payload);
+      return { ok: true };
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.written, 1, "동일 signal/reason/bar drop은 문서 1개만 기록해야 한다.");
+  assert.strictEqual(alertPayloads.length, 1, "동일 drop 알림은 한 번만 보내야 한다.");
+  assert.strictEqual(consumed.length, 1, "두 번째 처리 suppress를 위해 alert 전 consumed 확정이 필요하다.");
+  assert.strictEqual(consumed[0].signalId, drop.signal_id);
+  assert.strictEqual(consumed[0].reason, "V2_PRODUCTION_ENTRY_KERNEL_BLOCKED");
+  const signalDropWrites = calls.filter((row) => row.type === "set" && row.name === "signals_dropped");
+  assert.strictEqual(signalDropWrites.length, 1);
+  assert.strictEqual(signalDropWrites[0].payload.signal_id, drop.signal_id);
+}
+
 async function main() {
   await consumedSignalsAreSuppressedBeforeAlertWrites();
   await lockedSignalsPersistSuppressedForensicRows();
   await freeSignalsRemainRecordable();
   await missingSignalIdKeepsLegacyBehavior();
+  await duplicateDropsSendOnlyOneAlertAndConsumeBeforeAlert();
 }
 
 main()
