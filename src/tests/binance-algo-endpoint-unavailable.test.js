@@ -58,6 +58,14 @@ const exitAudit = require("../services/exitIntegrityAudit");
   assert.strictEqual(auditTest.normalizeOrderTriggerPrice({ triggerPrice: "123.45" }), 123.45);
   assert.strictEqual(auditTest.normalizeOrderId({ algoId: 123456 }), "123456");
   assert.strictEqual(auditTest.normalizeOrderQuantity({ origQty: "0.125" }), 0.125);
+  assert.strictEqual(typeof auditTest.normalizeExpectedTp1QuantityForExchangeInfo, "function",
+    "normalizeExpectedTp1QuantityForExchangeInfo export missing");
+  assert.strictEqual(auditTest.normalizeExpectedTp1QuantityForExchangeInfo(0.095, { stepSize: 0.01 }), 0.09,
+    "TP1 expected qty must be normalized to Binance LOT_SIZE step before reconciliation");
+  assert.strictEqual(auditTest.normalizeExpectedTp1QuantityForExchangeInfo(43.85, { stepSize: 0.1 }), 43.8,
+    "TP1 expected qty must floor to exchange step just like the writer");
+  assert.strictEqual(auditTest.normalizeExpectedTp1QuantityForExchangeInfo(0.001, { stepSize: 0.001 }), 0.001,
+    "already step-aligned quantities must remain unchanged");
   assert.strictEqual(auditTest.isStrictTp1OrderCandidate({
     orderType: "TAKE_PROFIT_MARKET",
     side: "SELL",

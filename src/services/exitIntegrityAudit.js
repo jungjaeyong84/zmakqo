@@ -138,6 +138,39 @@ function normalizeOrderQuantity(order) {
   ));
 }
 
+function decimalPlacesFromStep(step) {
+  const n = Number(step);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const raw = String(step == null ? "" : step).trim();
+  if (raw && !/[eE]/.test(raw)) {
+    const idx = raw.indexOf(".");
+    if (idx === -1) return 0;
+    return raw.slice(idx + 1).replace(/0+$/, "").length;
+  }
+  for (let p = 0; p <= 12; p += 1) {
+    const scaled = n * Math.pow(10, p);
+    if (Math.abs(scaled - Math.round(scaled)) < 1e-8) return p;
+  }
+  return 10;
+}
+
+function floorToStep(value, step) {
+  const v = Number(value);
+  const s = Number(step);
+  if (!Number.isFinite(v) || v <= 0 || !Number.isFinite(s) || s <= 0) return null;
+  const precision = decimalPlacesFromStep(s);
+  const units = Math.floor((v + (s * 1e-12)) / s);
+  const floored = units * s;
+  return Number(floored.toFixed(Math.max(0, Math.min(12, precision))));
+}
+
+function normalizeExpectedTp1QuantityForExchangeInfo(expectedQty, info = null) {
+  const qty = Number(expectedQty);
+  if (!Number.isFinite(qty) || qty <= 0) return null;
+  const normalized = floorToStep(qty, info && info.stepSize);
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : qty;
+}
+
 function isStrictTp1OrderCandidate(order, closeSide) {
   const type = normalizeOrderType(order);
   const side = String(order && order.side || "").toUpperCase();
@@ -515,13 +548,23 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = nu
               ?? toNum(meta.simplified_exit_v2_shadow && meta.simplified_exit_v2_shadow.tp1_target_qty_abs);
             const actualQty = normalizeOrderQuantity(tpOrder);
             if (Number.isFinite(expectedQty) && expectedQty > 0 && Number.isFinite(actualQty) && actualQty > 0) {
-              const tolerance = Math.max(1e-9, Math.abs(expectedQty) * 0.005);
-              if (Math.abs(actualQty - expectedQty) > tolerance) {
+              const info = await fetchFuturesExchangeInfo(sym).catch(() => null);
+              const normalizedExpectedQty = normalizeExpectedTp1QuantityForExchangeInfo(expectedQty, info);
+              const compareQty = Number.isFinite(normalizedExpectedQty) && normalizedExpectedQty > 0
+                ? normalizedExpectedQty
+                : expectedQty;
+              const tolerance = Math.max(1e-9, Math.abs(compareQty) * 0.005);
+              if (Math.abs(actualQty - compareQty) > tolerance) {
                 marketIssues.push(makeIssue({
                   symbol: sym,
                   code: "NATIVE_TP1_QTY_MISMATCH",
                   severity: "CRIT",
-                  detail: `기대=${expectedQty}, 실제=${actualQty}`,
+                  detail: `기대=${compareQty}, 실제=${actualQty}`,
+                  meta: {
+                    raw_expected_qty: expectedQty,
+                    normalized_expected_qty: compareQty,
+                    step_size: Number(info && info.stepSize) || null,
+                  },
                 }));
               }
             }
@@ -598,6 +641,7 @@ module.exports = {
     normalizeOrderTriggerPrice,
     normalizeOrderId,
     normalizeOrderQuantity,
+    normalizeExpectedTp1QuantityForExchangeInfo,
     isStrictTp1OrderCandidate,
     isV2LiveWriteRuntime,
     resolveExpectedNativeTrigger,
