@@ -124,6 +124,46 @@ async function normalizeFuturesTriggerPrice(symbol, price, options = {}) {
   }
 }
 
+function normalizeFuturesQuantityFromExchangeInfo(quantity, info) {
+  const raw = Number(quantity);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+
+  const stepSize = Number(info && info.stepSize);
+  const minQty = Number(info && info.minQty);
+  const quantityPrecision = Number(info && info.quantityPrecision);
+
+  let normalized = raw;
+  let maxDp = 10;
+  if (Number.isFinite(stepSize) && stepSize > 0) {
+    normalized = floorToStep(raw, stepSize);
+    maxDp = decimalPlacesFromStep(stepSize);
+  } else if (Number.isFinite(quantityPrecision) && quantityPrecision >= 0) {
+    const p = Math.max(0, Math.min(12, Math.floor(quantityPrecision)));
+    const scale = 10 ** p;
+    normalized = Math.floor((raw + Number.EPSILON) * scale) / scale;
+    maxDp = p;
+  }
+
+  if (!Number.isFinite(normalized) || normalized <= 0) return null;
+  if (Number.isFinite(minQty) && minQty > 0 && normalized < minQty) return null;
+  return toBinanceNumberString(normalized, Math.max(0, Math.min(12, maxDp)));
+}
+
+async function normalizeFuturesQuantity(symbol, quantity) {
+  const sym = String(symbol || "").trim().toUpperCase();
+  const raw = Number(quantity);
+  if (!sym || !Number.isFinite(raw) || raw <= 0) return null;
+
+  try {
+    const info = await fetchFuturesExchangeInfo(sym);
+    const normalized = normalizeFuturesQuantityFromExchangeInfo(raw, info);
+    return normalized || null;
+  } catch (_) {
+    // If exchangeInfo fetch fails, keep raw quantity and let Binance validate.
+    return toBinanceNumberString(raw, 10);
+  }
+}
+
 function parseJsonSafe(text) {
   if (!text) return null;
   try {
@@ -739,6 +779,7 @@ async function fetchFuturesExchangeInfo(symbol) {
   const minNotionalVal = minNotional ? Number(minNotional.notional) : null;
   const tickSize = priceFilter ? Number(priceFilter.tickSize) : null;
   const pricePrecision = Number(info && info.pricePrecision);
+  const quantityPrecision = Number(info && info.quantityPrecision);
 
   const data = {
     stepSize,
@@ -747,6 +788,7 @@ async function fetchFuturesExchangeInfo(symbol) {
     minNotional: minNotionalVal,
     tickSize: Number.isFinite(tickSize) ? tickSize : null,
     pricePrecision: Number.isFinite(pricePrecision) ? pricePrecision : null,
+    quantityPrecision: Number.isFinite(quantityPrecision) ? quantityPrecision : null,
   };
   exchangeInfoCache.set(sym, { at: Date.now(), data });
   return data;
@@ -1264,7 +1306,7 @@ async function placeFuturesTakeProfitMarketOrder({
   const sym = String(symbol || "").trim().toUpperCase();
   const s = String(side || "").toUpperCase();
   const stopPx = await normalizeFuturesTriggerPrice(sym, stopPrice);
-  const qty = toBinanceNumberString(quantity);
+  const qty = closePosition ? null : await normalizeFuturesQuantity(sym, quantity);
   const resolvedClientOrderId = resolveClientOrderId({ clientOrderId, idempotencyKey });
   if (!sym || !stopPx || (s !== "BUY" && s !== "SELL")) {
     throw new Error("BINANCEFUT_TP_ORDER_PARAMS_INVALID");
@@ -1679,5 +1721,6 @@ module.exports = {
     floorToStep,
     ceilToStep,
     normalizeFuturesTriggerPriceFromExchangeInfo,
+    normalizeFuturesQuantityFromExchangeInfo,
   },
 };
