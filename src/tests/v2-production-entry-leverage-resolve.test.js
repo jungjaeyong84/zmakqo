@@ -1,10 +1,13 @@
 "use strict";
 
 // 2026-04-27 Stage C — productionEntryRoute 가 leverage 후보를 어디서
-// 추출하는지 single source of truth 로 굳힌다. caller chain (entryIntent →
-// openclawDecision.canonical_evidence_summary → signalIntent → env) 우선순위가
-// 깨지면 Stage D 의 prod env flip 시점에 SL/TP1 가격이 raw vs normalized
-// 사이를 silently 오갈 수 있어 회귀 위험.
+// 추출하는지 single source of truth 로 굳힌다.
+//
+// 2026-04-30 hotfix — production runtime env must be authoritative. Older
+// server/native signal payloads can still carry stale leverage=2. If those
+// caller-chain hints outrank V2_FUTURES_DEFAULT_LEVERAGE=3, the entry transport
+// correctly calls Binance with the wrong leverage. The production contract is
+// now: env default first, account max as cap, then bundle/intent fallbacks.
 //
 // 안전 계약:
 //   - 모든 후보 비면 null (protectionModel 은 silent → raw mode).
@@ -26,17 +29,18 @@ const { resolveProductionEntryLeverage } = require("../v2/productionEntryRoute")
   );
 }
 
-// (B) entryIntent.leverage 우선 (가장 높은 우선순위).
+// (B) env V2_FUTURES_DEFAULT_LEVERAGE 우선. Stale entryIntent/openclaw 2/3/5
+//     must not override the deployed runtime contract.
 {
   const lev = resolveProductionEntryLeverage({
     entryIntent: { leverage: 3 },
     bundle: { openclawDecision: { leverage: 5 }, signalIntent: { leverage: 7 } },
     env: { V2_FUTURES_DEFAULT_LEVERAGE: "9" },
   });
-  assert.strictEqual(lev, 3, "(B) entryIntent.leverage 가 최우선");
+  assert.strictEqual(lev, 9, "(B) env default is authoritative");
 }
 
-// (C) entryIntent.futures_leverage 도 동일 슬롯에서 인식.
+// (C) entryIntent.futures_leverage 도 env default 가 없으면 fallback 으로 인식.
 {
   const lev = resolveProductionEntryLeverage({
     entryIntent: { futures_leverage: 2 },
@@ -88,6 +92,18 @@ const { resolveProductionEntryLeverage } = require("../v2/productionEntryRoute")
     env: { DONBEOLJA_V2_FUTURES_DEFAULT_LEVERAGE: "3" },
   });
   assert.strictEqual(lev, 3, "(H) DONBEOLJA_ alias");
+}
+
+// (H2) account max caps env default.
+{
+  const lev = resolveProductionEntryLeverage({
+    entryIntent: { leverage: 5 },
+    env: {
+      V2_FUTURES_DEFAULT_LEVERAGE: "5",
+      DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE: "3",
+    },
+  });
+  assert.strictEqual(lev, 3, "(H2) max account leverage caps env default");
 }
 
 // (I) 0 / 음수 / NaN / 빈 문자열 → skip 후 다음 후보로.
