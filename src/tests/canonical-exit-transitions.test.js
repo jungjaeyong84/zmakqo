@@ -39,6 +39,7 @@ function run() {
   assert.strictEqual(doc.exchange, "BINANCEFUT");
   assert.strictEqual(doc.symbol, "ETHUSDT");
   assert.strictEqual(doc.fill_id, "fill_123");
+  assert.strictEqual(doc.source_fill_id, "fill_123");
   assert.strictEqual(doc.trade_id, 456);
   assert.strictEqual(doc.canonical_event, "EXIT_TP_P1_1.65P");
   assert.strictEqual(doc.canonical_transition_event, "TRAIL_PARTIAL");

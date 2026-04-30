@@ -2108,7 +2108,7 @@ function resolveExternalSyncHintStage({
 } = {}) {
   if (String(event || "").trim().toUpperCase() !== "EXIT_EXTERNAL_SYNC") return null;
   const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim();
-  const trackedClientOrder = !!(clientOrderId && /^(fut_|dbj_)/.test(clientOrderId));
+  const trackedClientOrder = isTrackedInternalClientOrder(clientOrderId);
   if (orderMeta && orderMeta.closePosition === true && !trackedClientOrder) {
     return "UNTRACKED_CLOSE_POSITION";
   }
@@ -2474,6 +2474,49 @@ async function loadExistingV2CanonicalStageForFill({ db = null, env = process.en
   }
 }
 
+async function loadExistingFillSnapshotForReplay({ db = null, fillId = null } = {}) {
+  const id = String(fillId || "").trim();
+  if (!id) return null;
+  const firestore = db || getFirestore();
+  try {
+    const snap = await firestore.collection("fills_paper").doc(id).get();
+    const current = snap.exists ? (snap.data() || null) : null;
+    if (current && String(current.entry_event_id || "").trim()) return current;
+
+    // Replay can run after a buggy merge has nulled lineage on the fill row.
+    // The fill_events audit trail keeps before/after snapshots, so recover the
+    // last known entry lineage from there instead of producing another
+    // MISSING_CANONICAL_EXIT_TRANSITION row.
+    const eventsSnap = await firestore.collection("fill_events")
+      .where("fill_id", "==", id)
+      .limit(30)
+      .get();
+    let recovered = null;
+    eventsSnap.forEach((doc) => {
+      if (recovered) return;
+      const data = doc.data() || {};
+      for (const key of ["after", "before"]) {
+        const row = data[key] && typeof data[key] === "object" ? data[key] : null;
+        const entryEventId = String(row && row.entry_event_id || "").trim();
+        if (!entryEventId) continue;
+        recovered = {
+          entry_event_id: entryEventId,
+          entry_signal_type: String(row.entry_signal_type || "").trim() || null,
+          signal_id: String(row.signal_id || "").trim() || null,
+          signal_doc_id: String(row.signal_doc_id || "").trim() || null,
+          intent_id: String(row.intent_id || "").trim() || null,
+        };
+        break;
+      }
+    });
+    return current || recovered
+      ? { ...(current || {}), ...(recovered || {}) }
+      : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function buildCanonicalReplayPositionContext(positionCtx = null, existingCanonicalStage = null) {
   const stage = String(existingCanonicalStage || "").trim().toUpperCase();
   const ctx = positionCtx && typeof positionCtx === "object" ? positionCtx : null;
@@ -2749,6 +2792,20 @@ function buildExitEventByKind(kind, rules, positionCtx = null) {
     return trailLabel ? `EXIT_TRAIL_${trailLabel}P` : "EXIT_TRAIL";
   }
   return "EXIT_EXTERNAL_SYNC";
+}
+
+function resolveV2ProtectionClientOrderKind(clientOrderId) {
+  const id = String(clientOrderId || "").trim().toUpperCase();
+  if (!id) return null;
+  if (/^(SL|RSL)__PRATTV2__/.test(id)) return "SL";
+  if (/^(TP1|RTP1)__PRATTV2__/.test(id)) return "TP1";
+  return null;
+}
+
+function isTrackedInternalClientOrder(clientOrderId) {
+  const id = String(clientOrderId || "").trim();
+  if (!id) return false;
+  return /^(fut_|dbj_)/.test(id) || !!resolveV2ProtectionClientOrderKind(id);
 }
 
 function normalizeExitEventForRules(event, rules, positionCtx = null) {
@@ -3950,7 +4007,8 @@ async function resolveExternalExitEvent({
   const closePosition = !!(orderMeta && orderMeta.closePosition === true);
   const orderId = Number(orderMeta && orderMeta.orderId);
   const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim() || null;
-  const trackedClientOrder = !!(clientOrderId && /^(fut_|dbj_)/.test(clientOrderId));
+  const trackedClientOrder = isTrackedInternalClientOrder(clientOrderId);
+  const v2ProtectionClientOrderKind = resolveV2ProtectionClientOrderKind(clientOrderId);
   const sameOrderAsRecentTp1 = isSameOrderAsRecentTp1(orderMeta, recentTp1);
   const sameOrderAsRecentTp0 = isSameOrderAsRecentTp0(orderMeta, recentTp0);
   const sameOrderAsNativeTp0 = isSameOrderAsNativeTp0(orderMeta, positionCtx);
@@ -4000,6 +4058,22 @@ async function resolveExternalExitEvent({
   }
 
   if (closePosition) {
+    if (v2ProtectionClientOrderKind === "SL") {
+      const sym = normalizeSymbol(trade && trade.symbol);
+      console.warn(
+        `[FILL_SYNC_EVENT_RECLASSIFIED_V2_PROTECTION_SL] ${sym || "UNKNOWN"} order_id=${Number.isFinite(orderId) ? orderId : "NA"} ` +
+        `client_order_id=${clientOrderId || "NA"} closePosition=true type=${orderType || "NA"} -> SL`
+      );
+      return buildExitEventByKind("SL", rules);
+    }
+    if (v2ProtectionClientOrderKind === "TP1") {
+      const sym = normalizeSymbol(trade && trade.symbol);
+      console.warn(
+        `[FILL_SYNC_EVENT_RECLASSIFIED_V2_PROTECTION_TP1] ${sym || "UNKNOWN"} order_id=${Number.isFinite(orderId) ? orderId : "NA"} ` +
+        `client_order_id=${clientOrderId || "NA"} closePosition=true type=${orderType || "NA"} -> TP1`
+      );
+      return buildExitEventByKind("TP1", rules, positionCtx);
+    }
     if (orderType === "STOP_MARKET" || orderType === "STOP") {
       return buildExitEventByKind("SL", rules);
     }
@@ -4100,6 +4174,12 @@ async function resolveExternalExitEvent({
 
   if (orderType === "STOP_MARKET" || orderType === "STOP") {
     return buildExitEventByKind("SL", rules);
+  }
+  if (v2ProtectionClientOrderKind === "SL") {
+    return buildExitEventByKind("SL", rules);
+  }
+  if (v2ProtectionClientOrderKind === "TP1") {
+    return buildExitEventByKind("TP1", rules, positionCtx);
   }
   if (orderType === "TAKE_PROFIT_MARKET" || orderType === "TAKE_PROFIT") {
     if (sameOrderAsNativeTp0) return buildExitEventByKind("TP1", rules, positionCtx);
@@ -4240,6 +4320,13 @@ async function syncMarketTrades({
       const existingV2CanonicalStage = reprocessExisting === true
         ? await loadExistingV2CanonicalStageForFill({ db, fillId })
         : null;
+      const existingFillSnapshot = reprocessExisting === true
+        ? await loadExistingFillSnapshotForReplay({ db, fillId })
+        : null;
+      const existingEntryEventId = String(existingFillSnapshot && existingFillSnapshot.entry_event_id || "").trim() || null;
+      const existingEntrySignalType = String(existingFillSnapshot && existingFillSnapshot.entry_signal_type || "").trim() || null;
+      const existingSignalId = String(existingFillSnapshot && existingFillSnapshot.signal_id || "").trim() || null;
+      const existingSignalDocId = String(existingFillSnapshot && existingFillSnapshot.signal_doc_id || "").trim() || null;
       const exitRules = resolveAlertExitRules(positionCtx, defaultExitRules);
       const contextEntryEventId = String(positionCtx && positionCtx.entryEventId || "").trim() || null;
       const recentTp1 = filterRecentExitHintForEntry(recentTp1BySymbol.get(sym) || null, contextEntryEventId);
@@ -4289,8 +4376,8 @@ async function syncMarketTrades({
         symbol: sym,
         execTf,
       });
-      const signalId = signalRefs.signalId;
-      const signalDocId = signalRefs.signalDocId;
+      const signalId = signalRefs.signalId || existingSignalId || existingSignalDocId;
+      const signalDocId = signalRefs.signalDocId || existingSignalDocId || existingSignalId;
       let canonicalStageDecision = resolveCanonicalExternalExitEvent({
         authorityMap: exitQtyAuthorityMap,
         exchange: "BINANCEFUT",
@@ -4341,7 +4428,7 @@ async function syncMarketTrades({
       const feeValue = (t.commission == null ? null : Number(t.commission));
       const realizedPnl = (t.realizedPnl == null ? null : Number(t.realizedPnl));
       const clientOrderId = String(orderMeta && orderMeta.clientOrderId || "").trim() || null;
-      const trackedClientOrder = !!(clientOrderId && /^(fut_|dbj_)/.test(clientOrderId));
+      const trackedClientOrder = isTrackedInternalClientOrder(clientOrderId);
       const untrackedClosePosition = orderMeta && orderMeta.closePosition === true && !trackedClientOrder;
       const recentTp1LagSec = recentTp1 && Number.isFinite(recentTp1.tradeMs) && Number.isFinite(tradeMs)
         ? Math.max(0, (tradeMs - recentTp1.tradeMs) / 1000)
@@ -4423,8 +4510,8 @@ async function syncMarketTrades({
           inferredEntryCtx = { entryEventId: null, entrySignalType: null };
         }
       }
-      const entryEventId = intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || null;
-      const entrySignalType = intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || null;
+      const entryEventId = intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || existingEntryEventId || null;
+      const entrySignalType = intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || existingEntrySignalType || null;
       const decisionReason = intent ? (intent.reason || intent.event || "EXTERNAL_FILL_RECONCILED") : "EXTERNAL_FILL_RECONCILED";
       event = looksLikeExit
         ? resolvePersistedExternalExitEvent({
@@ -4830,6 +4917,12 @@ async function syncMarketTrades({
           && legacyCanonicalTp1Gate.ok === true
           && legacyCanonicalStopGate.ok === true
           && legacyCanonicalExternalCloseGate.ok === true;
+        const canonicalTransitionAuditAllowed = canonicalExitWriteAllowed
+          || (
+            canonicalExitMutationAllowed
+            && canonicalTransitionDecision.transitionEvents.length > 0
+            && isTrackedInternalClientOrder(clientOrderId)
+          );
         if (canonicalExitMutationAllowed && legacyCanonicalWriteDecision.write !== true) {
           console.warn("[BINANCEFUT_LEGACY_CANONICAL_EXIT_WRITE_SKIPPED]", JSON.stringify({
             symbol: sym,
@@ -4840,7 +4933,7 @@ async function syncMarketTrades({
           }));
         }
         try {
-          if (canonicalExitWriteAllowed) {
+          if (canonicalTransitionAuditAllowed) {
             await recordCanonicalExitTransitionsForFill({
               exchange: "BINANCEFUT",
               symbol: sym,

@@ -695,6 +695,8 @@ function resolveCanonicalExitTransitionEvents({
     const likelyFinal = fullExit === true
       || (Number.isFinite(observed) && Number.isFinite(remaining) && observed >= Math.max(0, remaining - 0.03));
     events.push(simplifiedV2 ? "TRAIL_FINAL_EXIT" : (likelyFinal ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"));
+  } else if (effectiveStage === "SL") {
+    events.push("SL_HIT");
   }
   return {
     transitionEvents: events,

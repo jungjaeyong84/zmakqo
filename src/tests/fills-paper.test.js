@@ -5,6 +5,7 @@ const { __test: fillsSyncTest } = require("../services/binanceFuturesFillsSync")
 function run() {
   const buildExternalFillUnverifiedPatch = __test && __test.buildExternalFillUnverifiedPatch;
   const buildExternalFillEventReclassificationPatch = __test && __test.buildExternalFillEventReclassificationPatch;
+  const resolveExternalFillPreservedRefs = __test && __test.resolveExternalFillPreservedRefs;
   const normalizeFeaturesJson = __test && __test.normalizeFeaturesJson;
   const canFinalizeIntentFromExternalFill = fillsSyncTest && fillsSyncTest.canFinalizeIntentFromExternalFill;
   const applyAuthoritativeExitContractOverride = fillsSyncTest && fillsSyncTest.applyAuthoritativeExitContractOverride;
@@ -22,6 +23,11 @@ function run() {
     typeof buildExternalFillEventReclassificationPatch,
     "function",
     "buildExternalFillEventReclassificationPatch export missing"
+  );
+  assert.strictEqual(
+    typeof resolveExternalFillPreservedRefs,
+    "function",
+    "resolveExternalFillPreservedRefs export missing"
   );
   assert.strictEqual(
     typeof normalizeFeaturesJson,
@@ -70,6 +76,38 @@ function run() {
   });
   assert.strictEqual(normalizedFeatures.pro_regime_state, "trend");
   assert.strictEqual(normalizedFeatures.market_regime, "trend");
+
+  const preservedRefs = resolveExternalFillPreservedRefs({
+    existing: {
+      intent_id: "SYNTH_INTENT__OLD",
+      signal_id: "SIG__OLD",
+      signal_doc_id: "SIGDOC__OLD",
+      entry_event_id: "ENTRYV2__AXSUSDT__SHORT__14854215841",
+      entry_signal_type: "V2_PROTECTED_ENTRY",
+    },
+    refs: { signalId: null, signalDocId: null },
+    intentId: null,
+    entryEventId: null,
+    entrySignalType: null,
+  });
+  assert.strictEqual(preservedRefs.intentId, "SYNTH_INTENT__OLD");
+  assert.strictEqual(preservedRefs.signalId, "SIG__OLD");
+  assert.strictEqual(preservedRefs.signalDocId, "SIGDOC__OLD");
+  assert.strictEqual(preservedRefs.entryEventId, "ENTRYV2__AXSUSDT__SHORT__14854215841");
+  assert.strictEqual(preservedRefs.entrySignalType, "V2_PROTECTED_ENTRY");
+
+  const explicitRefsBeatPreserved = resolveExternalFillPreservedRefs({
+    existing: {
+      signal_id: "SIG__OLD",
+      signal_doc_id: "SIGDOC__OLD",
+      entry_event_id: "ENTRY__OLD",
+    },
+    refs: { signalId: "SIG__NEW", signalDocId: "SIGDOC__NEW" },
+    entryEventId: "ENTRY__NEW",
+  });
+  assert.strictEqual(explicitRefsBeatPreserved.signalId, "SIG__NEW");
+  assert.strictEqual(explicitRefsBeatPreserved.signalDocId, "SIGDOC__NEW");
+  assert.strictEqual(explicitRefsBeatPreserved.entryEventId, "ENTRY__NEW");
 
   const patch = buildExternalFillUnverifiedPatch({
     current: {

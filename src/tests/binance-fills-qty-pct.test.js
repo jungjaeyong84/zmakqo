@@ -37,6 +37,8 @@ async function run() {
   assert.strictEqual(typeof shouldRunExternalExitSideEffects, "function", "shouldRunExternalExitSideEffects export missing");
   const resolvePostCanonicalPersistedExitEvent = __test && __test.resolvePostCanonicalPersistedExitEvent;
   assert.strictEqual(typeof resolvePostCanonicalPersistedExitEvent, "function", "resolvePostCanonicalPersistedExitEvent export missing");
+  const resolveExternalSyncHintStage = __test && __test.resolveExternalSyncHintStage;
+  assert.strictEqual(typeof resolveExternalSyncHintStage, "function", "resolveExternalSyncHintStage export missing");
 
   const tp1Authority = applyExternalExitQtyAuthorityFn({
     authorityMap: new Map(),
@@ -603,6 +605,72 @@ async function run() {
     rules,
   });
   assert.strictEqual(nativeTrackedMarketStop, "EXIT_SL_1.5P");
+
+  const v2InitialProtectionSlMarket = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "AXSUSDT", realizedPnl: -0.688 },
+    orderMeta: {
+      orderId: 14854300798,
+      orderType: "MARKET",
+      closePosition: true,
+      reduceOnly: true,
+      clientOrderId: "SL__PRATTV2__ec458ab3cc",
+    },
+    positionCtx: { trailActive: false },
+    rules,
+  });
+  assert.strictEqual(
+    v2InitialProtectionSlMarket,
+    "EXIT_SL_1.5P",
+    "filled V2 SL protection orders can come back from Binance as MARKET and must still be canonical SL"
+  );
+  assert.notStrictEqual(
+    resolveExternalSyncHintStage({
+      event: "EXIT_EXTERNAL_SYNC",
+      orderMeta: {
+        orderType: "MARKET",
+        closePosition: true,
+        reduceOnly: true,
+        clientOrderId: "SL__PRATTV2__ec458ab3cc",
+      },
+    }),
+    "UNTRACKED_CLOSE_POSITION",
+    "V2 protection orders must not be described as untracked external close alerts"
+  );
+
+  const v2RepairProtectionSlMarket = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "AXSUSDT", realizedPnl: -0.688 },
+    orderMeta: {
+      orderId: 14854300799,
+      orderType: "MARKET",
+      closePosition: true,
+      reduceOnly: true,
+      clientOrderId: "RSL__PRATTV2__ec458ab3cc",
+    },
+    positionCtx: { trailActive: false },
+    rules,
+  });
+  assert.strictEqual(v2RepairProtectionSlMarket, "EXIT_SL_1.5P");
+
+  const v2ProtectionTp1Market = await resolveExternalExitEvent({
+    intent: null,
+    trade: { symbol: "AXSUSDT", realizedPnl: 1.25 },
+    orderMeta: {
+      orderId: 14854300800,
+      orderType: "MARKET",
+      closePosition: false,
+      reduceOnly: true,
+      clientOrderId: "TP1__PRATTV2__ec458ab3cc",
+    },
+    positionCtx: { trailActive: false, tpP1Done: false },
+    rules,
+  });
+  assert.strictEqual(
+    v2ProtectionTp1Market,
+    "EXIT_TP_P1_3P",
+    "filled V2 TP1 protection orders must not degrade to EXIT_EXTERNAL_SYNC when order type is MARKET"
+  );
 
   const addRefreshSl = await resolveExternalExitEvent({
     intent: null,

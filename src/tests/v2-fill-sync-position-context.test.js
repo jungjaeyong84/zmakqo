@@ -134,6 +134,29 @@ async function run() {
   assert.strictEqual(canonical.entryLineageMissing, false);
   assert.strictEqual(canonical.ledger.entry_qty_abs, 0.053);
   assert.strictEqual(canonical.ledger.tp1_allowed_abs, 0.0265);
+
+  const canonicalSl = __test.resolveCanonicalExternalExitEvent({
+    authorityMap: new Map(),
+    exchange: "BINANCEFUT",
+    symbol: "AXSUSDT",
+    event: "EXIT_SL_1.65P",
+    entryEventId: "ENTRYV2__AXSUSDT__SHORT__14854215841",
+    signalDocId: "SIG__BINANCEFUT__AXSUSDT__15m__0__V2_PROTECTED_ENTRY",
+    orderMeta: {
+      orderId: 14854300798,
+      orderType: "MARKET",
+      closePosition: true,
+      reduceOnly: true,
+      clientOrderId: "SL__PRATTV2__ec458ab3cc",
+    },
+    positionCtx: null,
+    rules: { SL: -0.0165, TP_P1: 0.025, TP_P1_QTY: 0.5 },
+  });
+  assert.strictEqual(canonicalSl.stage, "SL");
+  assert.deepStrictEqual(canonicalSl.transitionEvents, ["SL_HIT"]);
+  assert.strictEqual(canonicalSl.primaryTransitionEvent, "SL_HIT");
+  assert.strictEqual(canonicalSl.entryLineageMissing, false);
+
   assert.strictEqual(__test.shouldRunExternalExitSideEffects({
     upserted: {
       ok: true,

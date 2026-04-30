@@ -65,6 +65,7 @@ function buildCanonicalExitTransitionDoc({
     exchange: upper(exchange),
     symbol: upper(symbol),
     fill_id: String(fillId || "").trim() || null,
+    source_fill_id: String(fillId || "").trim() || null,
     trade_id: Number.isFinite(Number(tradeId)) ? Number(tradeId) : null,
     canonical_event: upper(canonicalEvent),
     canonical_transition_event: transition,
@@ -120,7 +121,7 @@ async function recordCanonicalExitTransitions({
       ledger,
       source,
     });
-    await db.collection("canonical_exit_transitions").doc(doc.canonical_exit_transition_id).set(doc, { merge: false });
+    await db.collection("canonical_exit_transitions").doc(doc.canonical_exit_transition_id).set(doc, { merge: true });
     await recordUnifiedEvent({
       eventKind: "CANONICAL_EXIT_TRANSITION",
       eventSource: source,

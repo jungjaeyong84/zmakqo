@@ -190,6 +190,24 @@ function buildExternalFillEventReclassificationPatch({
   };
 }
 
+function resolveExternalFillPreservedRefs({
+  existing = null,
+  refs = null,
+  intentId = null,
+  entryEventId = null,
+  entrySignalType = null,
+} = {}) {
+  const current = existing && typeof existing === "object" ? existing : {};
+  const resolvedRefs = refs && typeof refs === "object" ? refs : {};
+  return {
+    intentId: intentId || current.intent_id || null,
+    signalId: resolvedRefs.signalId || current.signal_id || null,
+    signalDocId: resolvedRefs.signalDocId || current.signal_doc_id || null,
+    entryEventId: entryEventId || current.entry_event_id || null,
+    entrySignalType: entrySignalType || current.entry_signal_type || null,
+  };
+}
+
 async function recordFillUnifiedEventSafe(doc = null, eventSource = "FILLS_PAPER") {
   if (!doc || typeof doc !== "object") return;
   try {
@@ -520,6 +538,18 @@ async function upsertExternalFill({
     const existing = snap.exists ? (snap.data() || null) : null;
     const created_at = existing && existing.created_at ? existing.created_at : (createdAt || now);
     const previousEvent = String(existing && existing.event || "").trim().toUpperCase() || null;
+    const preservedRefs = resolveExternalFillPreservedRefs({
+      existing,
+      refs,
+      intentId,
+      entryEventId,
+      entrySignalType,
+    });
+    const preservedIntentId = preservedRefs.intentId;
+    const preservedSignalId = preservedRefs.signalId;
+    const preservedSignalDocId = preservedRefs.signalDocId;
+    const preservedEntryEventId = preservedRefs.entryEventId;
+    const preservedEntrySignalType = preservedRefs.entrySignalType;
 
     const qtyPctVal = (qtyPct === null || qtyPct === undefined || qtyPct === "") ? null : Number(qtyPct);
     const qtyFractionVal = (qtyFraction === null || qtyFraction === undefined || qtyFraction === "") ? null : Number(qtyFraction);
@@ -531,8 +561,8 @@ async function upsertExternalFill({
       ...buildEventEnvelope({
         requestId,
         runId,
-        signalId: refs.signalId,
-        intentId,
+        signalId: preservedSignalId,
+        intentId: preservedIntentId,
         event,
         exchange,
         symbol,
@@ -545,7 +575,7 @@ async function upsertExternalFill({
         barCloseMs: execBarCloseTimeUtcMs,
         createdAt,
       }),
-      intent_id: intentId || null,
+      intent_id: preservedIntentId,
       trade_id: tradeId || null,
       run_id: runId || null,
       exchange,
@@ -570,23 +600,23 @@ async function upsertExternalFill({
       live_order_id: liveOrderId || null,
       exec_qty_base: (execQtyBase == null ? null : Number(execQtyBase)),
       signal_bar_close_time_utc_ms: (typeof signalBarCloseTimeUtcMs === "number") ? signalBarCloseTimeUtcMs : (signalBarCloseTimeUtcMs == null ? null : Number(signalBarCloseTimeUtcMs)),
-      signal_id: refs.signalId || null,
-      signal_doc_id: refs.signalDocId || null,
+      signal_id: preservedSignalId,
+      signal_doc_id: preservedSignalDocId,
       canonical_event_id: canonicalEventId({ exchange, symbol, tf, signalBarCloseMs: signalBarCloseTimeUtcMs || execBarCloseTimeUtcMs, event, side }),
       signal_price: (signalPrice == null ? null : Number(signalPrice)),
       signal_price_diff: (signalPriceDiff == null ? null : Number(signalPriceDiff)),
       signal_price_diff_pct: (signalPriceDiffPct == null ? null : Number(signalPriceDiffPct)),
       signal_price_source: signalPriceSource || null,
       decision_reason: decisionReason || null,
-      entry_event_id: entryEventId || null,
-      entry_signal_type: entrySignalType || null,
+      entry_event_id: preservedEntryEventId,
+      entry_signal_type: preservedEntrySignalType,
       leverage_applied: (leverageApplied == null ? null : Number(leverageApplied)),
       applied_leverage: (leverageApplied == null ? null : Number(leverageApplied)),
       leverage_reason: leverageReason || null,
       ...liveExecPolicyTopLevel,
       trace_meta: buildTraceMeta({
-        signalId: refs.signalId || null,
-        intentId: intentId || null,
+        signalId: preservedSignalId,
+        intentId: preservedIntentId,
         fillId,
         runId,
         requestId,
@@ -807,5 +837,6 @@ module.exports = {
     normalizeFeaturesJson,
     buildExternalFillUnverifiedPatch,
     buildExternalFillEventReclassificationPatch,
+    resolveExternalFillPreservedRefs,
   },
 };
