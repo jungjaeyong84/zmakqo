@@ -13,6 +13,7 @@ function liveCfg(extra = {}) {
     apiSecret: "secret",
     liveEnabled: true,
     liveDryRun: false,
+    leverage: 3,
     ...extra,
   };
 }
@@ -46,10 +47,15 @@ function sideMappingIsExplicit() {
 
 async function liveLongEntryUsesMarketBuyReduceOnlyFalse() {
   const calls = [];
+  const leverageCalls = [];
   const transport = buildBinanceEntryOrderTransport({
     liveCfg: liveCfg(),
     quantityResolver: () => 0.8,
     now: () => "2026-04-21T06:00:01.000Z",
+    setLeverage: async (payload) => {
+      leverageCalls.push(payload);
+      return { leverage: payload.leverage };
+    },
     placeMarketOrder: async (payload) => {
       calls.push(payload);
       return {
@@ -66,6 +72,9 @@ async function liveLongEntryUsesMarketBuyReduceOnlyFalse() {
     entryIntent: entryIntent(),
     submittedAt: "2026-04-21T06:00:00.000Z",
   });
+  assert.strictEqual(leverageCalls.length, 1);
+  assert.strictEqual(leverageCalls[0].symbol, "ETHUSDT");
+  assert.strictEqual(leverageCalls[0].leverage, 3);
   assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].symbol, "ETHUSDT");
   assert.strictEqual(calls[0].side, "BUY");
@@ -82,9 +91,14 @@ async function liveLongEntryUsesMarketBuyReduceOnlyFalse() {
 
 async function liveShortEntryUsesMarketSell() {
   const calls = [];
+  const leverageCalls = [];
   const transport = buildBinanceEntryOrderTransport({
     liveCfg: liveCfg(),
     quantityResolver: () => 1.25,
+    setLeverage: async (payload) => {
+      leverageCalls.push(payload);
+      return { leverage: payload.leverage };
+    },
     placeMarketOrder: async (payload) => {
       calls.push(payload);
       return {
@@ -99,6 +113,9 @@ async function liveShortEntryUsesMarketSell() {
   const receipt = await transport.submitEntryOrder({
     entryIntent: entryIntent({ side: "SHORT", symbol: "xrpusdt" }),
   });
+  assert.strictEqual(leverageCalls.length, 1);
+  assert.strictEqual(leverageCalls[0].symbol, "XRPUSDT");
+  assert.strictEqual(leverageCalls[0].leverage, 3);
   assert.strictEqual(calls[0].symbol, "XRPUSDT");
   assert.strictEqual(calls[0].side, "SELL");
   assert.strictEqual(receipt.side, "SHORT");
@@ -106,15 +123,21 @@ async function liveShortEntryUsesMarketSell() {
 
 async function dryRunDoesNotCallExchangeAndSubmitterWillNotTreatItAsFilled() {
   let called = false;
+  let leverageCalled = false;
   const transport = buildBinanceEntryOrderTransport({
     liveCfg: liveCfg({ liveEnabled: false, liveDryRun: true }),
     quantityResolver: () => 0.8,
+    setLeverage: async () => {
+      leverageCalled = true;
+      return {};
+    },
     placeMarketOrder: async () => {
       called = true;
       return {};
     },
   });
   const receipt = await transport.submitEntryOrder({ entryIntent: entryIntent() });
+  assert.strictEqual(leverageCalled, false);
   assert.strictEqual(called, false);
   assert.strictEqual(receipt.status, "DRY_RUN");
   assert.strictEqual(receipt.error_code, "BINANCE_ENTRY_DRY_RUN");
@@ -122,9 +145,14 @@ async function dryRunDoesNotCallExchangeAndSubmitterWillNotTreatItAsFilled() {
 
 async function missingQuantityBlocksBeforeExchangeCall() {
   let called = false;
+  let leverageCalled = false;
   const transport = buildBinanceEntryOrderTransport({
     liveCfg: liveCfg(),
     quantityResolver: () => null,
+    setLeverage: async () => {
+      leverageCalled = true;
+      return {};
+    },
     placeMarketOrder: async () => {
       called = true;
       return {};
@@ -138,7 +166,54 @@ async function missingQuantityBlocksBeforeExchangeCall() {
   }
   assert.ok(err);
   assert.strictEqual(err.message, "BINANCE_ENTRY_QTY_ABS_REQUIRED");
+  assert.strictEqual(leverageCalled, false);
   assert.strictEqual(called, false);
+}
+
+async function leverageSetFailureBlocksBeforeMarketOrder() {
+  let marketCalled = false;
+  const transport = buildBinanceEntryOrderTransport({
+    liveCfg: liveCfg({ leverage: 3 }),
+    quantityResolver: () => 0.8,
+    setLeverage: async () => {
+      throw new Error("BINANCE_TIMEOUT");
+    },
+    placeMarketOrder: async () => {
+      marketCalled = true;
+      return {};
+    },
+  });
+  let err = null;
+  try {
+    await transport.submitEntryOrder({ entryIntent: entryIntent({ symbol: "taousdt" }) });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.ok(String(err.message).includes("BINANCE_ENTRY_LEVERAGE_SET_FAILED"));
+  assert.strictEqual(marketCalled, false);
+}
+
+async function missingLeverageBlocksBeforeMarketOrder() {
+  let marketCalled = false;
+  const transport = buildBinanceEntryOrderTransport({
+    liveCfg: liveCfg({ leverage: null }),
+    quantityResolver: () => 0.8,
+    setLeverage: async () => ({}),
+    placeMarketOrder: async () => {
+      marketCalled = true;
+      return {};
+    },
+  });
+  let err = null;
+  try {
+    await transport.submitEntryOrder({ entryIntent: entryIntent({ symbol: "taousdt" }) });
+  } catch (error) {
+    err = error;
+  }
+  assert.ok(err);
+  assert.strictEqual(err.message, "BINANCE_ENTRY_LEVERAGE_REQUIRED");
+  assert.strictEqual(marketCalled, false);
 }
 
 function normalizeFilledOrderRequiresOrderIdAvgPriceAndQty() {
@@ -209,6 +284,8 @@ async function main() {
   await liveShortEntryUsesMarketSell();
   await dryRunDoesNotCallExchangeAndSubmitterWillNotTreatItAsFilled();
   await missingQuantityBlocksBeforeExchangeCall();
+  await leverageSetFailureBlocksBeforeMarketOrder();
+  await missingLeverageBlocksBeforeMarketOrder();
   normalizeFilledOrderRequiresOrderIdAvgPriceAndQty();
   nonFilledOrderReturnsReceiptThatSubmitterRejects();
   factoryFailsClosedWithoutKeysOrLiveMode();

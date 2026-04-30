@@ -10,6 +10,7 @@ const {
   commitEntryProtectionPendingBootstrap,
   commitProtectedEntryActivation,
   commitEntryProtectionRepairQueue,
+  buildProtectedEntryReadModelLatestDoc,
 } = require("../v2/entryProtectionStorage");
 
 function buildFakeDb(calls) {
@@ -151,14 +152,70 @@ async function protectedActivationWritesCycleAndRuntimeInOneBatch() {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.position_cycle_status, "ACTIVE_PROTECTED");
   assert.strictEqual(result.chainAudit.ok, true);
-  assert.strictEqual(calls.filter((row) => row.type === "batch-set").length, 2);
+  assert.strictEqual(calls.filter((row) => row.type === "batch-set").length, 3);
   assert.strictEqual(calls.filter((row) => row.type === "batch-commit").length, 1);
   const cycleWrite = calls.find((row) => row.type === "batch-set" && row.payload.position_cycle_id && row.payload.status);
   const runtimeWrite = calls.find((row) => row.type === "batch-set" && row.payload.health_status === "HEALTHY");
+  const readModelWrite = calls.find((row) => row.type === "batch-set" && row.payload.read_model_id);
   assert.strictEqual(cycleWrite.payload.status, "ACTIVE_PROTECTED");
   assert.strictEqual(runtimeWrite.payload.health_status, "HEALTHY");
+  assert.ok(readModelWrite, "protected activation must update position_read_model_latest");
+  assert.strictEqual(readModelWrite.payload.source, "V2_PRODUCTION_ENTRY");
+  assert.strictEqual(readModelWrite.payload.mutation_kind, "V2_PROTECTED_ENTRY_ACTIVATED");
+  assert.strictEqual(readModelWrite.payload.after_snapshot.state, "ACTIVE");
+  assert.strictEqual(readModelWrite.payload.after_snapshot.position_state, "ACTIVE");
+  assert.strictEqual(readModelWrite.payload.after_snapshot.position_side, "LONG");
+  assert.strictEqual(readModelWrite.payload.after_snapshot.qty_base, 0.8);
+  assert.strictEqual(readModelWrite.payload.after_snapshot.meta.native_protection_stop_order_id, "STOP__ETH__ENTRY_STORAGE");
+  assert.strictEqual(readModelWrite.payload.after_snapshot.meta.native_protection_tp_order_id, "TP1__ETH__ENTRY_STORAGE");
+  assert.strictEqual(readModelWrite.payload.after_snapshot.meta.native_protection_refresh_status, "OK");
+  assert.strictEqual(readModelWrite.payload.after_snapshot.meta.native_protection_tp_status, "OK");
   assert.strictEqual(cycleWrite.options.merge, true);
   assert.strictEqual(runtimeWrite.options.merge, true);
+  assert.strictEqual(readModelWrite.options.merge, false);
+  assert.ok(result.writes.some((row) => row.collectionName === "position_read_model_latest"));
+}
+
+async function protectedEntryReadModelLatestDocIsActiveAndProtected() {
+  const executed = buildExecutedEntry();
+  const placementRequest = buildEntryProtectionPlacementRequest(executed);
+  const protectionWriteResult = buildProtectionRuntimeWriteResult({
+    placementRequest,
+    slAck: {
+      status: "PLACED",
+      order_id: "STOP__ETH__READ_MODEL",
+      trigger_price: placementRequest.sl_trigger_price,
+      ack_at: "2026-04-21T03:00:01.000Z",
+    },
+    tp1Ack: {
+      status: "PLACED",
+      order_id: "TP1__ETH__READ_MODEL",
+      trigger_price: placementRequest.tp1_trigger_price,
+      ack_at: "2026-04-21T03:00:01.100Z",
+    },
+    observedAt: "2026-04-21T03:00:01.200Z",
+  });
+  const doc = buildProtectedEntryReadModelLatestDoc({
+    activatedPositionCycle: {
+      ...executed.positionCycle,
+      status: "ACTIVE_PROTECTED",
+      protection_activated_at: "2026-04-21T03:00:01.200Z",
+    },
+    executedEntry: executed,
+    placementRequest,
+    protectionWriteResult,
+    activatedAt: "2026-04-21T03:00:01.200Z",
+  });
+  assert.strictEqual(doc.exchange, "BINANCEFUT");
+  assert.strictEqual(doc.symbol, "ETHUSDT");
+  assert.strictEqual(doc.after_summary.state, "ACTIVE");
+  assert.strictEqual(doc.after_summary.position_state, "ACTIVE");
+  assert.strictEqual(doc.after_summary.symbol_or_pair_id, "ETHUSDT");
+  assert.strictEqual(doc.after_summary.meta.protection_runtime_id, protectionWriteResult.runtimeDoc.protection_runtime_id);
+  assert.strictEqual(doc.after_summary.meta.tp_p1_done, false);
+  assert.strictEqual(doc.after_summary.meta.trail_active, false);
+  assert.strictEqual(doc.after_summary.meta.native_protection_stop_status, "OK");
+  assert.strictEqual(doc.after_summary.meta.native_protection_tp_status, "OK");
 }
 
 async function activationRejectsDegradedProtectionBeforeAnyWrite() {
@@ -330,6 +387,7 @@ async function repairQueueCommitSkipsDryRunFailures() {
 
 async function main() {
   await pendingBootstrapWritesCycleAndProjectionInOneBatch();
+  await protectedEntryReadModelLatestDocIsActiveAndProtected();
   await protectedActivationWritesCycleAndRuntimeInOneBatch();
   await activationRejectsDegradedProtectionBeforeAnyWrite();
   await activationRejectsLegacyActiveCycleBeforeAnyWrite();

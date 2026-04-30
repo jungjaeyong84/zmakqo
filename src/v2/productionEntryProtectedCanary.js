@@ -409,6 +409,9 @@ function buildProtectedCanaryChecks({ request, routeResult, firestore, exchangeW
   const runtimeDoc = asObject(protectionWriteResult && protectionWriteResult.runtimeDoc);
   const entrySizingDecision = asObject(request && request.entrySizingDecision);
   const liveEndpointSummary = asObject(liveEndpointProbe && liveEndpointProbe.summary);
+  const activationWrites = Array.isArray(activationCommit && activationCommit.writes)
+    ? activationCommit.writes
+    : [];
   return Object.freeze([
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_REQUEST_SIZING_APPROVED", ok: entrySizingDecision && entrySizingDecision.ok === true && entrySizingDecision.status === "APPROVED" }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_ROUTE_OK", ok: routeResult && routeResult.ok === true }),
@@ -418,6 +421,7 @@ function buildProtectedCanaryChecks({ request, routeResult, firestore, exchangeW
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_ACTIVE_PROTECTED", ok: activationCommit && activationCommit.position_cycle_status === "ACTIVE_PROTECTED" }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_SL_ORDER_PRESENT", ok: !!trimOrNull(runtimeDoc && runtimeDoc.sl_order_id) }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_TP1_ORDER_PRESENT", ok: !!trimOrNull(runtimeDoc && runtimeDoc.tp1_order_id) }),
+    Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_READ_MODEL_LATEST_WRITTEN", ok: activationWrites.some((row) => row && row.collectionName === "position_read_model_latest") }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_BATCH_WRITES_PRESENT", ok: Array.isArray(firestore && firestore.__v2_canary_commits) && firestore.__v2_canary_commits.length >= 2 }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_NO_EXCHANGE_WRITE", ok: exchangeWriteLedger.exchange_write_performed === false }),
     Object.freeze({ id: "V2_PROTECTED_ENTRY_CANARY_LIVE_ENDPOINT_PROBE_OK", ok: liveEndpointSummary && liveEndpointSummary.ok === true && liveEndpointSummary.reason === "V2_PRODUCTION_ENTRY_LIVE_EXECUTED_AND_PROTECTED" }),

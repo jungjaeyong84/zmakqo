@@ -1,6 +1,9 @@
 "use strict";
 
-const { placeFuturesMarketOrder } = require("../exchanges/binanceFuturesPrivate");
+const {
+  placeFuturesMarketOrder,
+  setFuturesLeverage,
+} = require("../exchanges/binanceFuturesPrivate");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -56,6 +59,39 @@ function resolveEntryQuantityAbs({ entryIntent, quantityResolver }) {
   const qty = toNumberOrNull(quantityResolver({ entryIntent }));
   if (!(qty > 0)) throw new Error("BINANCE_ENTRY_QTY_ABS_REQUIRED");
   return qty;
+}
+
+async function ensureEntryLeverage({ cfg, symbol, setLeverage }) {
+  const leverage = toNumberOrNull(cfg && cfg.leverage);
+  if (!(leverage > 0)) throw new Error("BINANCE_ENTRY_LEVERAGE_REQUIRED");
+  if (typeof setLeverage !== "function") throw new Error("BINANCE_ENTRY_SET_LEVERAGE_FN_REQUIRED");
+  try {
+    const result = await setLeverage({
+      apiKey: cfg.apiKey,
+      apiSecret: cfg.apiSecret,
+      symbol,
+      leverage: Math.round(leverage),
+    });
+    try {
+      console.log(JSON.stringify({
+        event: "v2_binance_entry_leverage_set",
+        ts: new Date().toISOString(),
+        symbol,
+        leverage: Math.round(leverage),
+        result_leverage: toNumberOrNull(result && result.leverage),
+      }));
+    } catch (_) {}
+    return Object.freeze({
+      ok: true,
+      reason: "BINANCE_ENTRY_LEVERAGE_SET_OK",
+      leverage: Math.round(leverage),
+      result,
+    });
+  } catch (error) {
+    const wrapped = new Error(`BINANCE_ENTRY_LEVERAGE_SET_FAILED: ${error && error.message ? error.message : String(error)}`);
+    wrapped.cause = error;
+    throw wrapped;
+  }
 }
 
 function buildEntryClientOrderId({ entryIntent, submittedAt = null } = {}) {
@@ -136,10 +172,12 @@ function buildBinanceEntryOrderTransport({
   liveCfg,
   quantityResolver,
   placeMarketOrder = placeFuturesMarketOrder,
+  setLeverage = setFuturesLeverage,
   now = () => new Date().toISOString(),
 } = {}) {
   const cfg = validateLiveCfg(liveCfg);
   if (typeof placeMarketOrder !== "function") throw new Error("BINANCE_ENTRY_MARKET_ORDER_FN_REQUIRED");
+  if (typeof setLeverage !== "function") throw new Error("BINANCE_ENTRY_SET_LEVERAGE_FN_REQUIRED");
   if (typeof quantityResolver !== "function") throw new Error("BINANCE_ENTRY_QUANTITY_RESOLVER_REQUIRED");
 
   return Object.freeze({
@@ -153,6 +191,7 @@ function buildBinanceEntryOrderTransport({
       if (cfg.liveDryRun === true || cfg.liveEnabled !== true) {
         return buildDryRunReceipt({ entryIntent: intent, quantityAbs, submittedAt });
       }
+      await ensureEntryLeverage({ cfg, symbol, setLeverage });
       const clientOrderId = buildEntryClientOrderId({ entryIntent: intent, submittedAt });
       const order = await placeMarketOrder({
         apiKey: cfg.apiKey,
@@ -184,11 +223,13 @@ module.exports = {
   sideToEntryOrderSide,
   resolveEntryQuantityAbs,
   buildEntryClientOrderId,
+  ensureEntryLeverage,
   __test: {
     trimOrNull,
     upper,
     toNumberOrNull,
     stableCode,
     buildDryRunReceipt,
+    ensureEntryLeverage,
   },
 };
