@@ -97,6 +97,12 @@ const SKIP = new Map([
   ["objective-supervisor.test.js", "Node 20.15.1 specific: bare } stack closure (unhandled rejection)"],
   ["run-binance-active-exit-watchdog.test.js", "Node 20.15.1 specific: CJS module-loader internal error"],
   ["self-evolution-report-cycle.test.js", "Node 20.15.1 specific: bare } stack closure (unhandled rejection)"],
+
+  // 2026-04-30 Cloud Build Alpine rotated to Node 24.14.1. This orphan
+  // remains green on local Node 22.22.0 but exits with a bare parser/loader
+  // tail (`}` / `Node.js v24.14.1`) in Cloud Build. Quarantine until the
+  // alert-runbook checker is made Node-24-stable or Cloud Build pins Node 22.
+  ["check-v2-alert-runbook.test.js", "Node 24.14.1 specific: bare parser/loader tail in Cloud Build"],
 ]);
 
 function loadWiredSet() {
