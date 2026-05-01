@@ -76,12 +76,20 @@ function isExitFill(row) {
   return upper(row && row.event).startsWith("EXIT_");
 }
 
+function isSyncFill(row) {
+  return upper(row && row.event) === "SYNC_FILL";
+}
+
 function isExternalReconciledFill(row) {
   return upper(row && (row.decision_reason || row.reason)) === "EXTERNAL_FILL_RECONCILED";
 }
 
+function isAuthoritativeEntryFill(row) {
+  return !isExitFill(row) && !isSyncFill(row) && !isExternalReconciledFill(row);
+}
+
 function buildFillLineageBuckets(fills = []) {
-  const entryFills = fills.filter((row) => !isExitFill(row));
+  const entryFills = fills.filter((row) => isAuthoritativeEntryFill(row));
   const exitFills = fills.filter((row) => isExitFill(row));
   const externalReconciledFills = fills.filter((row) => isExternalReconciledFill(row));
 
@@ -320,7 +328,9 @@ module.exports = {
   renderMarkdown,
   __test: {
     isExitFill,
+    isSyncFill,
     isExternalReconciledFill,
+    isAuthoritativeEntryFill,
     buildFillLineageBuckets,
   },
 };

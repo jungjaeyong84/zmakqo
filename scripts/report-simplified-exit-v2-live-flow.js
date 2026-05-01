@@ -274,10 +274,12 @@ function collectSymbolFlow({
     || auditRows.find((row) => row.transitions.includes("TRAIL_PARTIAL"));
 
   const issues = [];
+  const observations = [];
   const nativeTpArmed = hasNativeTpArmed(position || {});
   const hasTp1Seen = !!(tp1Fill || tp1Transition || (position && position.tp_p1_done === true));
   const hasTrailSeen = !!(trailFill || trailTransition || (position && position.trail_active === true));
-  const activePreTp1 = !!(position && position.state !== "FLAT" && position.tp_p1_done !== true && position.trail_active !== true);
+  const currentActive = !!(position && upper(position.state) !== "FLAT");
+  const activePreTp1 = !!(currentActive && position.tp_p1_done !== true && position.trail_active !== true);
 
   if (activePreTp1 && nativeTpArmed !== true) {
     issues.push({
@@ -292,9 +294,12 @@ function collectSymbolFlow({
     }
   }
   if (hasTp1Seen && nativeTpArmed !== true) {
-    issues.push({
-      code: "V2_TP1_TRANSITION_WITHOUT_NATIVE_TP",
-      detail: "TP1 transition/fill exists without native TP1 armed evidence",
+    observations.push({
+      code: "V2_TP1_TRANSITION_CURRENT_NATIVE_TP_ABSENT",
+      detail: currentActive
+        ? "TP1 transition/fill exists and current native TP1 is absent; this is expected after TP1 fill but should be covered by TP1 meta/trail checks"
+        : "closed position has TP1 transition/fill history and no current native TP1 order; this is expected after close",
+      actionable: false,
     });
   }
   if (hasTrailSeen && hasTp1Seen !== true) {
@@ -329,6 +334,7 @@ function collectSymbolFlow({
     latest_alert_title: auditRows.length ? auditRows[auditRows.length - 1].title : null,
     fill_n: fillRows.length,
     alert_audit_n: auditRows.length,
+    observations,
     issues,
   };
 }
@@ -397,6 +403,12 @@ function buildMarkdown(report = {}) {
       }
     } else {
       lines.push("- issues: none");
+    }
+    if (Array.isArray(flow.observations) && flow.observations.length) {
+      lines.push("- observations:");
+      for (const observation of flow.observations) {
+        lines.push(`  - ${observation.code}: ${observation.detail}`);
+      }
     }
     lines.push("");
   }

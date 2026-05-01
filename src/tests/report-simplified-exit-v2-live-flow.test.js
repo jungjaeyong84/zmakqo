@@ -132,6 +132,41 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
   });
   assert.ok(forbiddenTrailPartial.issues.some((issue) => issue.code === "V2_FORBIDDEN_TRAIL_PARTIAL_TRANSITION"));
 
+  const closedHistoricalTp1WithoutCurrentNativeTp = __test.collectSymbolFlow({
+    symbol: "DOGEUSDT",
+    position: {
+      symbol: "DOGEUSDT",
+      state: "FLAT",
+      tp_p1_done: false,
+      trail_active: false,
+      native_tp_order_id: null,
+      native_tp_status: null,
+      native_tp_price: null,
+      native_tp_qty_ratio: null,
+      tp0_meta_leak: false,
+    },
+    fills: [
+      {
+        symbol: "DOGEUSDT",
+        event: "EXIT_TP_P1_2.5P",
+        created_at: "2026-04-17T00:00:10.000Z",
+        canonical_transition_events: ["TP1_REACHED"],
+      },
+      {
+        symbol: "DOGEUSDT",
+        event: "EXIT_TRAIL",
+        created_at: "2026-04-17T00:00:20.000Z",
+        canonical_transition_events: ["TRAIL_ACTIVATED"],
+      },
+    ],
+    alertAuditRows: [],
+  });
+  assert.deepStrictEqual(closedHistoricalTp1WithoutCurrentNativeTp.issues, []);
+  assert.ok(closedHistoricalTp1WithoutCurrentNativeTp.observations.some((row) => (
+    row.code === "V2_TP1_TRANSITION_CURRENT_NATIVE_TP_ABSENT"
+    && row.actionable === false
+  )));
+
   const healthyReport = __test.buildReport({
     positions: [
       {
