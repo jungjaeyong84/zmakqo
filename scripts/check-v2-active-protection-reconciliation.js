@@ -5,6 +5,9 @@ const fs = require("fs");
 const path = require("path");
 const { auditBinanceExitIntegrity } = require("../src/services/exitIntegrityAudit");
 const { sendAlert } = require("../src/utils/alerts");
+const {
+  persistActiveProtectionReconciliationHistory,
+} = require("../src/v2/activeProtectionReconciliationHistory");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -333,6 +336,14 @@ async function run({ auditFn = auditBinanceExitIntegrity, env = process.env, sen
   writeJson(datedPath, summary);
   const previousHistoryRows = readJsonlSafe(historyFile);
   appendJsonl(historyFile, summary);
+  const firestoreHistory = await persistActiveProtectionReconciliationHistory({
+    artifact: summary,
+    env,
+  }).catch((error) => ({
+    ok: false,
+    reason: "ACTIVE_PROTECTION_RECONCILIATION_FIRESTORE_WRITE_FAILED",
+    error: error && error.message ? error.message : String(error),
+  }));
   const dailySummary = buildDailySummary({
     rows: previousHistoryRows,
     latest: summary,
@@ -354,6 +365,7 @@ async function run({ auditFn = auditBinanceExitIntegrity, env = process.env, sen
   writeJson(stateFile, nextAlertState);
   return {
     ...summary,
+    firestore_history: firestoreHistory,
     output_json: latestPath,
     output_dated_json: datedPath,
     output_history_jsonl: historyFile,

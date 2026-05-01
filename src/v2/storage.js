@@ -27,6 +27,7 @@ const DOC_ID_FIELDS = Object.freeze({
   LIQUIDATION_SNAPSHOTS: "liquidation_snapshot_id",
   PRODUCTION_ENTRY_ROUTE_CANARIES: "production_entry_route_canary_id",
   EXIT_RUNTIME_CANARIES: "exit_runtime_canary_id",
+  ACTIVE_PROTECTION_RECONCILIATIONS: "active_protection_reconciliation_id",
 });
 
 function trimOrNull(value) {

@@ -28,6 +28,7 @@ const V2_COLLECTIONS = Object.freeze({
   LIQUIDATION_SNAPSHOTS: "liquidation_snapshots_v2",
   PRODUCTION_ENTRY_ROUTE_CANARIES: "production_entry_route_canaries_v2",
   EXIT_RUNTIME_CANARIES: "exit_runtime_canaries_v2",
+  ACTIVE_PROTECTION_RECONCILIATIONS: "active_protection_reconciliations_v2",
 });
 
 const V2_SERVICES = Object.freeze({

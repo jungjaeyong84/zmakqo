@@ -3,6 +3,10 @@
 
 const fs = require("fs");
 const path = require("path");
+const {
+  isActiveProtectionReconciliationFirestoreReadEnabled,
+  loadActiveProtectionReconciliationHistoryRows,
+} = require("../src/v2/activeProtectionReconciliationHistory");
 
 const ROOT = path.resolve(__dirname, "..");
 const DEFAULT_HISTORY_FILE = path.join(ROOT, "ops", "daily", "v2_active_protection_reconciliation_history.jsonl");
@@ -24,6 +28,13 @@ function parseBool(value, fallback = false) {
 function numberWithDefault(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function resolveHistorySource(env = process.env) {
+  const source = trimOrNull(env.V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_SOURCE)
+    || trimOrNull(env.DONBEOLJA_V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_SOURCE)
+    || "JSONL";
+  return String(source).trim().toUpperCase() === "FIRESTORE" ? "FIRESTORE" : "JSONL";
 }
 
 function readJsonlSafe(file) {
@@ -151,8 +162,46 @@ function runCheck(env = process.env) {
   });
 }
 
-function main(env = process.env) {
-  const result = runCheck(env);
+async function runCheckAsync(env = process.env) {
+  if (resolveHistorySource(env) !== "FIRESTORE") return runCheck(env);
+  const windowHours = Math.max(1, numberWithDefault(env.V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_WINDOW_HOURS, 24));
+  const sinceMs = Date.now() - windowHours * 60 * 60 * 1000;
+  if (!isActiveProtectionReconciliationFirestoreReadEnabled(env)) {
+    return Object.freeze({
+      ok: false,
+      reason: "V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_BLOCKED",
+      blockers: Object.freeze(["ACTIVE_PROTECTION_RECONCILIATION_STREAK:FIRESTORE_READ_DISABLED"]),
+      warnings: Object.freeze([]),
+      artifact_file: null,
+      history_source: "FIRESTORE",
+      metrics: Object.freeze({
+        window_hours: windowHours,
+        run_n: 0,
+        required_run_n: Math.max(1, numberWithDefault(env.V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_MIN_RUN_N, 1)),
+        max_gap_ms: Math.max(1, numberWithDefault(env.V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_MAX_GAP_MS, 2 * 60 * 60 * 1000)),
+      }),
+    });
+  }
+  const loaded = await loadActiveProtectionReconciliationHistoryRows({
+    env,
+    sinceMs,
+    limit: Math.max(1, numberWithDefault(env.V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_LIMIT, 200)),
+  });
+  const result = evaluateActiveProtectionReconciliationStreak({
+    rows: (loaded.rows || []).map((row) => row.payload || row),
+    artifactMissing: false,
+    artifactFile: loaded.collectionName,
+    env,
+  });
+  return Object.freeze({
+    ...result,
+    history_source: "FIRESTORE",
+    collection_name: loaded.collectionName,
+  });
+}
+
+async function main(env = process.env) {
+  const result = await runCheckAsync(env);
   const out = JSON.stringify(result);
   if (result.ok) console.log(out);
   else {
@@ -163,14 +212,22 @@ function main(env = process.env) {
 }
 
 if (require.main === module) {
-  main(process.env);
+  main(process.env).catch((error) => {
+    console.error(JSON.stringify({
+      ok: false,
+      reason: "V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_THROWN",
+      error: error && error.message ? error.message : String(error),
+    }));
+    process.exit(1);
+  });
 } else {
   module.exports = {
     main,
     runCheck,
+    runCheckAsync,
     evaluateActiveProtectionReconciliationStreak,
     readJsonlSafe,
     DEFAULT_HISTORY_FILE,
-    __test: { trimOrNull, parseBool, numberWithDefault },
+    __test: { trimOrNull, parseBool, numberWithDefault, resolveHistorySource },
   };
 }
