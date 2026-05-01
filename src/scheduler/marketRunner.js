@@ -59,6 +59,25 @@ function buildRunId({ exchange, market, tf, execTf, barCloseMs: barCloseMs_f }) 
   return `RUN__${exchange}__${market}__${label}__${barCloseMs_f}`;
 }
 
+function resolveSnapshotRefreshCount({
+  countOverride = null,
+  snapshotRefreshCount = env.bars.snapshotRefreshCount,
+  maxOverrideCount = process.env.SERVER_ENTRY_TF_BARS_WARMUP_MAX_COUNT,
+} = {}) {
+  const baseCount = Math.max(2, Math.min(10, Number(snapshotRefreshCount || 3)));
+  const requestedOverride = Number(countOverride);
+  if (!Number.isFinite(requestedOverride) || requestedOverride <= 0) return baseCount;
+
+  // Cold-start warmups intentionally bypass the normal 2-10 bar cadence.
+  // Keep a separate bounded ceiling so a 230-bar warmup can actually satisfy
+  // the 220-bar F2 entry generator cache contract without opening runaway fetches.
+  const rawOverrideMax = Number(maxOverrideCount);
+  const overrideMax = Number.isFinite(rawOverrideMax) && rawOverrideMax > 0
+    ? Math.floor(rawOverrideMax)
+    : 500;
+  return Math.max(2, Math.min(overrideMax, Math.floor(requestedOverride)));
+}
+
 function buildMarketRunnerBarClaimDocPath({ exchange, market, tf, barCloseMs } = {}) {
   return [
     "runtime_locks",
@@ -311,16 +330,12 @@ async function refreshLatestBarSnapshot({ exchange, market, tf, runId, countOver
   if (!enabled) return { ok: false, skipped: true, reason: "DISABLED" };
 
   try {
-    // Default cadence is 2-10 bars (env.bars.snapshotRefreshCount, default 3) —
-    // enough for the entry-tf hot path. For HTF (240m) bars used by the V2
-    // server-native ENTRY signal generator we need ~70 bars warmup
-    // (EMA55 + safety margin), so callers may pass `countOverride` to
-    // bypass the env cap. The hard ceiling is 200 bars to avoid runaway
-    // fetches.
-    const baseCount = Math.max(2, Math.min(10, Number(env.bars.snapshotRefreshCount || 3)));
-    const count = Number.isFinite(Number(countOverride)) && Number(countOverride) > 0
-      ? Math.max(2, Math.min(200, Math.floor(Number(countOverride))))
-      : baseCount;
+    // Default cadence is 2-10 bars (env.bars.snapshotRefreshCount, default 3).
+    // Cold-start warmups pass countOverride and use a separate bounded ceiling
+    // via resolveSnapshotRefreshCount(). This must remain >= the default
+    // SERVER_ENTRY_TF_BARS_WARMUP_COUNT (230), otherwise new symbols can get
+    // stuck below the 220-bar entry generator threshold.
+    const count = resolveSnapshotRefreshCount({ countOverride });
     const bars = await fetchCandles(exchange, market, tf, count);
     if (!Array.isArray(bars) || bars.length === 0) {
       return { ok: false, error: "NO_BARS" };
@@ -359,7 +374,16 @@ async function refreshLatestBarSnapshot({ exchange, market, tf, runId, countOver
       }
     }
 
-    return { ok: true, written, bar_close_time_utc_ms: latestMs, bar_close_time_utc: latestIso };
+    return {
+      ok: true,
+      written,
+      requested_count: Number.isFinite(Number(countOverride)) && Number(countOverride) > 0
+        ? Math.floor(Number(countOverride))
+        : count,
+      effective_count: count,
+      bar_close_time_utc_ms: latestMs,
+      bar_close_time_utc: latestIso,
+    };
   } catch (e) {
     return { ok: false, error: (e && e.message) ? e.message : String(e) };
   }
@@ -912,6 +936,7 @@ module.exports = {
   computeGateForMarket,
   runOneMarket,
   __test: {
+    resolveSnapshotRefreshCount,
     summarizeServerSignalTrace,
     buildMarketRunnerBarClaimDocPath,
     runWithMarketRunnerBarClaim,

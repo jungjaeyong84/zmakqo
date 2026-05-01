@@ -17,6 +17,7 @@ const SRC = fs.readFileSync(
   path.resolve(__dirname, "..", "scheduler", "marketRunner.js"),
   "utf8"
 );
+const marketRunner = require("../scheduler/marketRunner");
 
 // (A) warmup branch present
 (function testWarmupBranchPresent() {
@@ -87,6 +88,32 @@ const SRC = fs.readFileSync(
   assert.ok(
     /\}\s*else\s*\{[\s\S]{0,500}refreshLatestBarSnapshot\(\{[\s\S]{0,300}runId:\s*runIdHint,?[\s\S]{0,50}\}\);/.test(SRC),
     "(D2) warm branch (else) must call refreshLatestBarSnapshot WITHOUT countOverride"
+  );
+})();
+
+// (D2) countOverride must actually bypass the legacy 200-bar cap.
+//
+// Regression caught 2026-05-01: production logs showed all 16 symbols
+// repeatedly stuck at existing_bars_n=219 threshold=220. The warmup
+// branch requested 230 bars, but refreshLatestBarSnapshot hard-capped
+// countOverride to 200, so the logged contract did not match the fetch.
+(function testWarmupCountOverrideBypassesLegacy200Cap() {
+  const fn = marketRunner && marketRunner.__test && marketRunner.__test.resolveSnapshotRefreshCount;
+  assert.strictEqual(typeof fn, "function", "(D3) resolveSnapshotRefreshCount must be exported for contract tests");
+  assert.strictEqual(
+    fn({ countOverride: 230, snapshotRefreshCount: 3 }),
+    230,
+    "(D4) warmup countOverride=230 must remain 230, not be capped to 200"
+  );
+  assert.strictEqual(
+    fn({ countOverride: 700, snapshotRefreshCount: 3, maxOverrideCount: 500 }),
+    500,
+    "(D5) countOverride must still have a bounded safety ceiling"
+  );
+  assert.strictEqual(
+    fn({ countOverride: null, snapshotRefreshCount: 99 }),
+    10,
+    "(D6) normal refresh cadence must still cap at 10 bars"
   );
 })();
 
