@@ -18,6 +18,7 @@ const { normalizeTraceContext } = require("../utils/traceContext");
 const { loadNativeTrailProtectionRuntime } = require("./nativeTrailProtectionRuntime");
 const { runBinanceExitIntegrityCycle } = require("../../scripts/run-binance-exit-integrity-cycle");
 const { main: runTradeAlertOutboxLineageEvidenceCheck } = require("../../scripts/check-trade-alert-outbox-lineage-evidence");
+const { main: runSignalLifecycleAlertDedupeEvidenceCheck } = require("../../scripts/check-signal-lifecycle-alert-dedupe-evidence");
 const {
   loadPreferredExecutionQualityInput,
   loadPreferredLineageHealthInput,
@@ -91,6 +92,7 @@ async function runSystemRuntimeGuardsJob({
   loadNativeTrailProtection = loadNativeTrailProtectionRuntime,
   runExitIntegrityCycle = runBinanceExitIntegrityCycle,
   runTradeAlertOutboxLineageCheck = runTradeAlertOutboxLineageEvidenceCheck,
+  runSignalLifecycleAlertDedupeCheck = runSignalLifecycleAlertDedupeEvidenceCheck,
   refreshExecutionQualityInput = () => runRefreshScript(EXECUTION_QUALITY_REFRESH_SCRIPT),
   refreshLineageHealthInput = () => runRefreshScript(LINEAGE_HEALTH_REFRESH_SCRIPT),
 } = {}) {
@@ -138,6 +140,22 @@ async function runSystemRuntimeGuardsJob({
     issues: [],
     output_json: path.join(artifactBaseDir, "trade_alert_outbox_lineage_evidence_latest.json"),
   }));
+  const signalLifecycleAlertDedupe = await Promise.resolve().then(() => runSignalLifecycleAlertDedupeCheck({
+    ...process.env,
+    SIGNAL_LIFECYCLE_ALERT_DEDUPE_SOFT: "1",
+    SIGNAL_LIFECYCLE_ALERT_DEDUPE_QUIET: "1",
+    SIGNAL_LIFECYCLE_ALERT_DEDUPE_OUTPUT_DIR: artifactBaseDir,
+  })).catch((err) => ({
+    ok: false,
+    reason: "SIGNAL_LIFECYCLE_ALERT_DEDUPE_EVIDENCE_THROWN",
+    blockers: ["SIGNAL_LIFECYCLE_ALERT_DEDUPE:CHECK_FAILED"],
+    error: err && err.message ? err.message : String(err),
+    checked_row_n: null,
+    checked_sent_row_n: null,
+    issue_row_n: null,
+    issues: [],
+    output_json: path.join(artifactBaseDir, "signal_lifecycle_alert_dedupe_evidence_latest.json"),
+  }));
   const staleMaxAgeMs = Math.max(60 * 1000, Number(process.env.SYSTEM_SLO_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
   const [executionQuality, lineageHealth, nativeTrailProtection] = await Promise.all([
     Promise.resolve().then(() => loadExecutionQuality({
@@ -170,6 +188,7 @@ async function runSystemRuntimeGuardsJob({
     nativeTrailProtection,
     exitIntegrityCycle,
     tradeAlertOutboxLineage,
+    signalLifecycleAlertDedupe,
     nowMs,
   });
   const anomalyState = buildAnomaly({
@@ -322,6 +341,8 @@ async function runSystemRuntimeGuardsJob({
       exit_integrity_live_issue_count: Number(exitIntegrityCycle && exitIntegrityCycle.summary && exitIntegrityCycle.summary.live_issue_count || 0),
       trade_alert_outbox_lineage_status: String(tradeAlertOutboxLineage && tradeAlertOutboxLineage.reason || "UNKNOWN"),
       trade_alert_outbox_lineage_issue_row_n: Number(tradeAlertOutboxLineage && tradeAlertOutboxLineage.issue_row_n || 0),
+      signal_lifecycle_alert_dedupe_status: String(signalLifecycleAlertDedupe && signalLifecycleAlertDedupe.reason || "UNKNOWN"),
+      signal_lifecycle_alert_dedupe_issue_row_n: Number(signalLifecycleAlertDedupe && signalLifecycleAlertDedupe.issue_row_n || 0),
       execution_quality_latency_driver: executionQualityRootCause.latency && executionQualityRootCause.latency.driver || null,
       execution_quality_partial_driver_market: executionQualityRootCause.partial_fill && executionQualityRootCause.partial_fill.driver_market || null,
       execution_quality_slippage_driver_market: executionQualityRootCause.slippage && executionQualityRootCause.slippage.driver_market || null,
@@ -349,12 +370,14 @@ async function runSystemRuntimeGuardsJob({
     native_trail_protection: nativeTrailProtection,
     exit_integrity_cycle: exitIntegrityCycle,
     trade_alert_outbox_lineage: tradeAlertOutboxLineage,
+    signal_lifecycle_alert_dedupe: signalLifecycleAlertDedupe,
     artifacts: {
       system_slo_latest_json: sloPath,
       system_anomaly_latest_json: anomalyPath,
       native_trail_protection_latest_json: nativeTrailProtectionPath,
       binance_exit_integrity_cycle_latest_json: exitIntegrityCycle && exitIntegrityCycle.output_json ? exitIntegrityCycle.output_json : null,
       trade_alert_outbox_lineage_latest_json: tradeAlertOutboxLineage && tradeAlertOutboxLineage.output_json ? tradeAlertOutboxLineage.output_json : path.join(artifactBaseDir, "trade_alert_outbox_lineage_evidence_latest.json"),
+      signal_lifecycle_alert_dedupe_latest_json: signalLifecycleAlertDedupe && signalLifecycleAlertDedupe.output_json ? signalLifecycleAlertDedupe.output_json : path.join(artifactBaseDir, "signal_lifecycle_alert_dedupe_evidence_latest.json"),
       system_anomaly_remediation_latest_json: remediation && remediation.artifacts ? remediation.artifacts.latest_json : null,
     },
   };

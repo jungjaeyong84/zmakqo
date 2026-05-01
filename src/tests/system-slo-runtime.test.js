@@ -392,6 +392,93 @@ function run() {
   assert.strictEqual(outboxLineageHardBlock.block_new_entries, true);
   assert.ok(outboxLineageHardBlock.issues.includes("TRADE_ALERT_OUTBOX_LINEAGE_MISMATCH"));
 
+  const lifecycleAlertDedupeSoftWarn = buildSystemSloState({
+    exchange: "BINANCEFUT",
+    operationalGuard: {
+      status: "PASS",
+      reason: "OPS_GUARD_OK",
+      block_new_entries: false,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        generated_at: "2026-04-11T08:30:00.000Z",
+        status: "EXECUTION_QUALITY_OK",
+        created_to_fill_p95_ms: 1200,
+        partial_fill_rate_pct: 12,
+        adverse_slippage_p95_bps: 8,
+      },
+    },
+    lineageHealth: {
+      summary: {
+        generated_at: "2026-04-11T08:31:00.000Z",
+        intents_signal_doc_id_null_rate: 0.001,
+        fills_signal_doc_id_null_rate: 0.001,
+        entry_fills_intent_id_null_rate: 0.001,
+      },
+    },
+    signalLifecycleAlertDedupe: {
+      ok: false,
+      reason: "SIGNAL_LIFECYCLE_ALERT_DEDUPE_EVIDENCE_BLOCKED",
+      issue_row_n: 1,
+      checked_row_n: 2,
+    },
+    nowMs,
+  });
+  assert.strictEqual(lifecycleAlertDedupeSoftWarn.status, "WARN");
+  assert.strictEqual(lifecycleAlertDedupeSoftWarn.block_new_entries, false);
+  assert.ok(lifecycleAlertDedupeSoftWarn.issues.includes("SIGNAL_LIFECYCLE_ALERT_DEDUPE_WARN"));
+  assert.strictEqual(lifecycleAlertDedupeSoftWarn.components.signal_lifecycle_alert_dedupe_issue_row_n, 1);
+
+  const originalLifecycleHardBlock = process.env.SYSTEM_SLO_SIGNAL_LIFECYCLE_ALERT_DEDUPE_HARD_BLOCK;
+  process.env.SYSTEM_SLO_SIGNAL_LIFECYCLE_ALERT_DEDUPE_HARD_BLOCK = "1";
+  const lifecycleAlertDedupeHardBlock = buildSystemSloState({
+    exchange: "BINANCEFUT",
+    operationalGuard: {
+      status: "PASS",
+      reason: "OPS_GUARD_OK",
+      block_new_entries: false,
+    },
+    mlServing: {
+      status: "PASS",
+      reason: "ML_SERVING_OK",
+      block_new_entries: false,
+    },
+    executionQuality: {
+      summary: {
+        generated_at: "2026-04-11T08:30:00.000Z",
+        status: "EXECUTION_QUALITY_OK",
+        created_to_fill_p95_ms: 1200,
+        partial_fill_rate_pct: 12,
+        adverse_slippage_p95_bps: 8,
+      },
+    },
+    lineageHealth: {
+      summary: {
+        generated_at: "2026-04-11T08:31:00.000Z",
+        intents_signal_doc_id_null_rate: 0.001,
+        fills_signal_doc_id_null_rate: 0.001,
+        entry_fills_intent_id_null_rate: 0.001,
+      },
+    },
+    signalLifecycleAlertDedupe: {
+      ok: false,
+      reason: "SIGNAL_LIFECYCLE_ALERT_DEDUPE_EVIDENCE_BLOCKED",
+      issue_row_n: 1,
+      checked_row_n: 2,
+    },
+    nowMs,
+  });
+  if (originalLifecycleHardBlock === undefined) delete process.env.SYSTEM_SLO_SIGNAL_LIFECYCLE_ALERT_DEDUPE_HARD_BLOCK;
+  else process.env.SYSTEM_SLO_SIGNAL_LIFECYCLE_ALERT_DEDUPE_HARD_BLOCK = originalLifecycleHardBlock;
+  assert.strictEqual(lifecycleAlertDedupeHardBlock.status, "BLOCK");
+  assert.strictEqual(lifecycleAlertDedupeHardBlock.block_new_entries, true);
+  assert.ok(lifecycleAlertDedupeHardBlock.issues.includes("SIGNAL_LIFECYCLE_ALERT_DEDUPE_BLOCK"));
+
   const staleLoaded = __test.normalizeLoadedSystemSloState({
     status: "PASS",
     reason: "SYSTEM_SLO_HEALTHY",

@@ -20,6 +20,15 @@ async function run() {
     anomalyState: { circuit_breaker_open: true },
   }), "중단");
 
+  const passSignalLifecycleAlertDedupeCheck = async () => ({
+    ok: true,
+    reason: "SIGNAL_LIFECYCLE_ALERT_DEDUPE_EVIDENCE_PASS",
+    checked_row_n: 0,
+    checked_sent_row_n: 0,
+    issue_row_n: 0,
+    output_json: path.join(artifactsDir, "signal_lifecycle_alert_dedupe_evidence_latest.json"),
+  });
+
   const recorded = {
     slo: [],
     anomaly: [],
@@ -49,6 +58,7 @@ async function run() {
       issue_row_n: 0,
       output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
     }),
+    runSignalLifecycleAlertDedupeCheck: passSignalLifecycleAlertDedupeCheck,
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadNativeTrailProtection: async () => ({ available: true, gap_count: 1, top_symbols: [{ symbol: "ETHUSDT", count: 1 }] }),
@@ -120,6 +130,7 @@ async function run() {
       issue_row_n: 0,
       output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
     }),
+    runSignalLifecycleAlertDedupeCheck: passSignalLifecycleAlertDedupeCheck,
     loadOpsRuntime: async () => ({ status: "보류", reason: "OPS_GUARD_HOLD", block_new_entries: true }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadExecutionQuality: () => ({ generated_at: "2026-04-11T01:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } }),
@@ -169,6 +180,7 @@ async function run() {
       issue_row_n: 0,
       output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
     }),
+    runSignalLifecycleAlertDedupeCheck: passSignalLifecycleAlertDedupeCheck,
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadExecutionQuality: async (options) => {
@@ -226,6 +238,7 @@ async function run() {
       issue_row_n: 0,
       output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
     }),
+    runSignalLifecycleAlertDedupeCheck: passSignalLifecycleAlertDedupeCheck,
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadExecutionQuality: async () => ({ generated_at: "2026-04-13T04:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } }),
@@ -279,6 +292,7 @@ async function run() {
         output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
       };
     },
+    runSignalLifecycleAlertDedupeCheck: passSignalLifecycleAlertDedupeCheck,
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadExecutionQuality: async () => ({ generated_at: "2026-04-13T05:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } }),

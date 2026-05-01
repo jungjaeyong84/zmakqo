@@ -100,6 +100,7 @@ function buildSystemSloState({
   nativeTrailProtection = null,
   exitIntegrityCycle = null,
   tradeAlertOutboxLineage = null,
+  signalLifecycleAlertDedupe = null,
   nowMs = Date.now(),
   maxAgeMs = null,
 } = {}) {
@@ -113,6 +114,7 @@ function buildSystemSloState({
     ? exitIntegrityDoc.summary
     : exitIntegrityDoc;
   const outboxLineage = tradeAlertOutboxLineage && typeof tradeAlertOutboxLineage === "object" ? tradeAlertOutboxLineage : {};
+  const lifecycleAlertDedupe = signalLifecycleAlertDedupe && typeof signalLifecycleAlertDedupe === "object" ? signalLifecycleAlertDedupe : {};
   const quality = readSummary(qualityDoc);
   const lineage = readSummary(lineageDoc);
   const resolvedMaxAgeMs = Math.max(60 * 1000, Number(maxAgeMs || process.env.SYSTEM_SLO_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
@@ -177,6 +179,23 @@ function buildSystemSloState({
     issues.push(outboxLineageHardBlock
       ? "TRADE_ALERT_OUTBOX_LINEAGE_MISMATCH"
       : "TRADE_ALERT_OUTBOX_SCHEMA_WARN");
+  }
+
+  const lifecycleAlertDedupeIssueRows = toNum(lifecycleAlertDedupe.issue_row_n);
+  const lifecycleAlertDedupeOk = lifecycleAlertDedupe.ok === true;
+  const lifecycleAlertDedupeProvided = Object.keys(lifecycleAlertDedupe).length > 0;
+  const lifecycleAlertDedupeHardBlock = parseBool(
+    process.env.SYSTEM_SLO_SIGNAL_LIFECYCLE_ALERT_DEDUPE_HARD_BLOCK
+    || process.env.SIGNAL_LIFECYCLE_ALERT_DEDUPE_HARD_BLOCK,
+    false
+  );
+  if (
+    lifecycleAlertDedupeProvided
+    && (lifecycleAlertDedupeOk === false || (Number.isFinite(lifecycleAlertDedupeIssueRows) && lifecycleAlertDedupeIssueRows > 0))
+  ) {
+    issues.push(lifecycleAlertDedupeHardBlock
+      ? "SIGNAL_LIFECYCLE_ALERT_DEDUPE_BLOCK"
+      : "SIGNAL_LIFECYCLE_ALERT_DEDUPE_WARN");
   }
 
   let status = "PASS";
@@ -247,6 +266,10 @@ function buildSystemSloState({
       trade_alert_outbox_lineage_checked_row_n: toNum(outboxLineage.checked_row_n),
       trade_alert_outbox_lineage_issue_row_n: outboxLineageIssueRows,
       trade_alert_outbox_lineage_hard_block: outboxLineageHardBlock,
+      signal_lifecycle_alert_dedupe_status: upper(lifecycleAlertDedupe.reason),
+      signal_lifecycle_alert_dedupe_checked_row_n: toNum(lifecycleAlertDedupe.checked_row_n),
+      signal_lifecycle_alert_dedupe_issue_row_n: lifecycleAlertDedupeIssueRows,
+      signal_lifecycle_alert_dedupe_hard_block: lifecycleAlertDedupeHardBlock,
     },
   };
 }
