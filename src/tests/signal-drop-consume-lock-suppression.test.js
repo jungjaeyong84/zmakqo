@@ -112,6 +112,41 @@ async function missingSignalIdKeepsLegacyBehavior() {
   assert.strictEqual(filtered.suppressed.length, 0);
 }
 
+async function disabledConsumeLockFailsClosedForIdentifiableDrops() {
+  const calls = [];
+  const drop = {
+    signal_id: "SIG__BINANCEFUT__SOLUSDT__15m__1777094100000__SHORT",
+    bar_close_time_utc_ms: 1777094100000,
+    event: "SHORT",
+    side: "SELL",
+    reason: "V2_PRODUCTION_ENTRY_ROUTE_BLOCKED",
+    execution_mode: "LIVE",
+  };
+  const result = await recordSignalDrops({
+    db: buildFakeDb(calls),
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    tf: "15m",
+    runId: "RUN__DISABLED_FAIL_CLOSED",
+    drops: [drop],
+    tryLockSignalFn: async () => {
+      throw new Error("lock should not be called when consume-lock is disabled");
+    },
+    sendSignalDroppedAlertFn: async () => {
+      throw new Error("disabled consume-lock must not emit normal drop alerts");
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.written, 0);
+  assert.strictEqual(result.suppressed, 1);
+  const write = calls.find((row) => row.type === "set");
+  assert.ok(write);
+  assert.strictEqual(write.name, "v2__signals_dropped_suppressed");
+  assert.strictEqual(write.payload.signal_id, drop.signal_id);
+  assert.strictEqual(write.payload.suppress_reason, "CONSUME_LOCK_DISABLED_FAIL_CLOSED");
+  assert.strictEqual(write.payload.alert_suppressed, true);
+}
+
 async function duplicateDropsSendOnlyOneAlertAndConsumeBeforeAlert() {
   const calls = [];
   const alertPayloads = [];
@@ -163,6 +198,14 @@ async function main() {
   await lockedSignalsPersistSuppressedForensicRows();
   await freeSignalsRemainRecordable();
   await missingSignalIdKeepsLegacyBehavior();
+  const original = process.env.DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED;
+  process.env.DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED = "0";
+  try {
+    await disabledConsumeLockFailsClosedForIdentifiableDrops();
+  } finally {
+    if (original === undefined) delete process.env.DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED;
+    else process.env.DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED = original;
+  }
   await duplicateDropsSendOnlyOneAlertAndConsumeBeforeAlert();
 }
 

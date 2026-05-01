@@ -40,6 +40,7 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED", value: endpointEnabled }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_INITIAL_PROTECTION_DEADLINE_ENABLED", value: "1" }),
+                Object.freeze({ name: "DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_SHADOW_EXIT_WRITE_ENABLED", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_SHADOW_ALERT_DELIVERY_ENABLED", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_ENABLED", value: "1" }),
@@ -189,6 +190,20 @@ function traceOnlyServiceJson({
   });
   assert.strictEqual(result.ok, false);
   assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:FORBIDDEN_ENV_PRESENT:OPENAI_API_KEY"));
+}
+
+{
+  const unsafeService = JSON.parse(JSON.stringify(serviceJson()));
+  const envRow = unsafeService.spec.template.spec.containers[0].env
+    .find((row) => row.name === "DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED");
+  envRow.value = "0";
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(unsafeService),
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, false);
+  assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED_MISMATCH"));
 }
 
 {

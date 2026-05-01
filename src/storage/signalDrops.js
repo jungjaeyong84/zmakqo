@@ -483,16 +483,31 @@ function isSignalDropAlreadyHandled(lock = null) {
   return reason === "ALREADY_CONSUMED" || reason === "LOCKED";
 }
 
-async function filterDropsForConsumedSignals({ drops = [], runId = null, tryLockSignalFn = tryLockSignal } = {}) {
+function isSignalDropConsumeLockEnabled(env = process.env) {
+  return boolLike((env && env.DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED) ?? "1") === true;
+}
+
+async function filterDropsForConsumedSignals({
+  drops = [],
+  runId = null,
+  tryLockSignalFn = tryLockSignal,
+  env = process.env,
+} = {}) {
   if (!Array.isArray(drops) || drops.length === 0) {
     return Object.freeze({ kept: [], suppressed: [] });
   }
   const kept = [];
   const suppressed = [];
+  const consumeLockEnabled = isSignalDropConsumeLockEnabled(env);
   for (const drop of drops) {
     const signalId = resolveSignalIdFromDrop(drop);
     if (!signalId) {
       kept.push(drop);
+      continue;
+    }
+    if (!consumeLockEnabled) {
+      console.warn(`[SIGNAL_DROP_SUPPRESSED_CONSUME_LOCK_DISABLED] signal_id=${signalId}`);
+      suppressed.push({ signal_id: signalId, reason: "CONSUME_LOCK_DISABLED_FAIL_CLOSED", drop });
       continue;
     }
     try {
@@ -867,6 +882,7 @@ module.exports = {
     buildDropAlertPayload,
     resolveSignalIdFromDrop,
     isSignalDropAlreadyHandled,
+    isSignalDropConsumeLockEnabled,
     filterDropsForConsumedSignals,
     buildSuppressedSignalDropDoc,
     persistSuppressedSignalDrops,
