@@ -1,7 +1,9 @@
 "use strict";
 
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { getFirestore } = require("../storage/firestore");
 const { getSystemSettingsForProvider } = require("../storage/settings");
 const { sendAlert } = require("../utils/alerts");
 const { classifySignalReasonStage, explainSignalReason } = require("../utils/signalReasonView");
@@ -12,6 +14,7 @@ const channelCache = new Map();
 const ROOT = path.resolve(__dirname, "../..");
 const OPS_RUNTIME = path.join(ROOT, "ops", "runtime");
 const SIGNAL_COMPARE_STATE_PATH = path.join(OPS_RUNTIME, "signal_compare_alert_state.json");
+const SIGNAL_LIFECYCLE_ALERT_OUTBOX_COLLECTION = "signal_lifecycle_alert_outbox";
 
 function toBool(v, def = false) {
   if (v == null) return def;
@@ -25,6 +28,38 @@ function parseList(raw) {
     .split(/[\n,]/)
     .map((x) => x.trim())
     .filter(Boolean);
+}
+
+function upper(value) {
+  return String(value || "").trim().toUpperCase() || null;
+}
+
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function cloneJson(value) {
+  if (value == null) return null;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return null;
+  }
+}
+
+function compactIdToken(value, fallback = "NA") {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  return raw
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .replace(/^_+/, "")
+    .replace(/_+$/, "")
+    .slice(0, 180) || fallback;
+}
+
+function nowIso() {
+  return new Date().toISOString();
 }
 
 function normalizeExchange(exchange) {
@@ -391,6 +426,176 @@ function buildCompareMessage(payload = {}) {
   };
 }
 
+function resolveSignalLifecycleAlertIdentity(payload = {}) {
+  return trimOrNull(
+    payload.signalId
+    || payload.signal_id
+    || payload.signalDocId
+    || payload.signal_doc_id
+    || payload.intentId
+    || payload.intent_id
+    || payload.canonicalEventId
+    || payload.canonical_event_id
+    || payload.idempotencyKey
+    || payload.idempotency_key
+    || payload.entryEventId
+    || payload.entry_event_id
+  );
+}
+
+function resolveSignalLifecycleAlertBarToken(payload = {}) {
+  const raw = payload.barCloseMs
+    || payload.bar_close_time_utc_ms
+    || payload.execBarCloseMs
+    || payload.exec_bar_close_time_utc_ms;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return String(Math.trunc(n));
+  return trimOrNull(payload.barCloseUtc || payload.bar_close_time_utc || payload.scheduledExecBarCloseUtc);
+}
+
+function resolveSignalLifecycleAlertReasonToken(type, payload = {}) {
+  const normalizedType = upper(type);
+  if (normalizedType === "DROPPED") {
+    return upper(payload.dropReasonCode || payload.drop_reason_code || payload.reason) || "DROP";
+  }
+  if (normalizedType === "PROGRESSED") {
+    return upper(payload.progressReason || payload.progress_reason || payload.pendingReason || payload.pending_reason) || "PROGRESS";
+  }
+  return normalizedType || "LIFECYCLE";
+}
+
+function resolveSignalLifecycleAlertDedupeKey({ type, exchange, payload = {} } = {}) {
+  const normalizedType = upper(type);
+  if (!normalizedType) return null;
+  const symbol = upper(payload.symbol);
+  const event = upper(payload.event);
+  if (!symbol || !event) return null;
+  const identity = resolveSignalLifecycleAlertIdentity(payload)
+    || resolveSignalLifecycleAlertBarToken(payload);
+  if (!identity) return null;
+  const parts = [
+    normalizeExchange(exchange || payload.exchange),
+    symbol,
+    String(payload.tf || "NA").trim() || "NA",
+    event,
+    normalizedType,
+    resolveSignalLifecycleAlertReasonToken(normalizedType, payload),
+    identity,
+  ];
+  return parts.map((part) => String(part || "NA")).join("__");
+}
+
+function buildSignalLifecycleAlertOutboxId({ type, exchange, symbol, event, dedupeKey, payload = {} } = {}) {
+  const stableSeed = trimOrNull(dedupeKey)
+    || crypto.createHash("sha1").update(JSON.stringify({
+      type: upper(type),
+      exchange: normalizeExchange(exchange || payload.exchange),
+      symbol: upper(symbol || payload.symbol),
+      event: upper(event || payload.event),
+      signal_id: trimOrNull(payload.signalId || payload.signal_id),
+      reason: resolveSignalLifecycleAlertReasonToken(type, payload),
+    })).digest("hex").slice(0, 20);
+  return [
+    "SIGNAL_LIFECYCLE_ALERT",
+    compactIdToken(upper(type), "LIFECYCLE"),
+    compactIdToken(normalizeExchange(exchange || payload.exchange), "BINANCEFUT"),
+    compactIdToken(upper(symbol || payload.symbol), "UNKNOWN"),
+    compactIdToken(upper(event || payload.event), "UNKNOWN"),
+    compactIdToken(stableSeed, "NA"),
+  ].join("__");
+}
+
+async function prepareSignalLifecycleAlertOutbox({
+  type,
+  exchange,
+  symbol,
+  event,
+  title = null,
+  body = null,
+  channel = null,
+  payload = {},
+  dedupeKey = null,
+  allowResend = false,
+  db: injectedDb = null,
+} = {}) {
+  const resolvedDedupeKey = trimOrNull(dedupeKey);
+  if (!resolvedDedupeKey) return { skipOutbox: true, reason: "NO_STABLE_DEDUPE_KEY" };
+  const outboxId = buildSignalLifecycleAlertOutboxId({
+    type,
+    exchange,
+    symbol,
+    event,
+    dedupeKey: resolvedDedupeKey,
+    payload,
+  });
+  const db = injectedDb || getFirestore();
+  const ref = db.collection(SIGNAL_LIFECYCLE_ALERT_OUTBOX_COLLECTION).doc(outboxId);
+  const snap = await ref.get();
+  const prev = snap.exists ? (snap.data() || {}) : null;
+  if (prev && upper(prev.status) === "SENT" && allowResend !== true) {
+    return { outboxId, ref, doc: prev, skipSend: true };
+  }
+  const now = nowIso();
+  const attemptCount = Math.max(0, Number(prev && prev.attempt_count) || 0) + 1;
+  const doc = {
+    signal_lifecycle_alert_outbox_id: outboxId,
+    type: upper(type),
+    exchange: normalizeExchange(exchange || payload.exchange),
+    symbol: upper(symbol || payload.symbol),
+    event: upper(event || payload.event),
+    tf: trimOrNull(payload.tf),
+    status: "PENDING",
+    dedupe_key: resolvedDedupeKey,
+    signal_id: trimOrNull(payload.signalId || payload.signal_id),
+    reason: resolveSignalLifecycleAlertReasonToken(type, payload),
+    created_at: trimOrNull(prev && prev.created_at) || now,
+    updated_at: now,
+    last_attempt_at: now,
+    attempt_count: attemptCount,
+    last_channel: trimOrNull(channel) || trimOrNull(prev && prev.last_channel),
+    last_title: trimOrNull(title) || trimOrNull(prev && prev.last_title),
+    last_body: trimOrNull(body) || trimOrNull(prev && prev.last_body),
+    last_error: null,
+    last_result: null,
+    payload: cloneJson(payload) || cloneJson(prev && prev.payload),
+  };
+  await ref.set(doc, { merge: true });
+  return { outboxId, ref, doc, skipSend: false };
+}
+
+async function markSignalLifecycleAlertOutboxResult({
+  outboxId,
+  ok = false,
+  skipped = false,
+  reason = null,
+  error = null,
+  result = null,
+  channel = null,
+  title = null,
+  body = null,
+} = {}) {
+  const id = trimOrNull(outboxId);
+  if (!id) return null;
+  const db = getFirestore();
+  const now = nowIso();
+  const status = skipped === true ? "SKIPPED" : (ok === true ? "SENT" : "FAILED");
+  const patch = {
+    status,
+    updated_at: now,
+    last_reason: trimOrNull(reason),
+    last_error: status === "SENT" ? null : (trimOrNull(error) || trimOrNull(reason)),
+    last_result: cloneJson(result),
+    last_channel: trimOrNull(channel),
+    last_title: trimOrNull(title),
+    last_body: trimOrNull(body),
+  };
+  if (status === "SENT") patch.sent_at = now;
+  else if (status === "SKIPPED") patch.skipped_at = now;
+  else patch.failed_at = now;
+  await db.collection(SIGNAL_LIFECYCLE_ALERT_OUTBOX_COLLECTION).doc(id).set(patch, { merge: true });
+  return { outboxId: id, status };
+}
+
 function shouldNotifyType(type) {
   if (type === "RECEIVED") {
     return toBool(process.env.SIGNAL_LIFECYCLE_ALERT_RECEIVED_ENABLED, true);
@@ -438,12 +643,79 @@ async function sendSignalLifecycleAlert({ type, ...payload } = {}) {
     return { ok: false, skipped: true, reason: "NO_TELEGRAM_CHANNEL" };
   }
 
+  const outboxEnabled = toBool(process.env.SIGNAL_LIFECYCLE_ALERT_OUTBOX_ENABLED, true);
+  const dedupeKey = outboxEnabled
+    ? resolveSignalLifecycleAlertDedupeKey({ type, exchange, payload })
+    : null;
+  let outbox = null;
+  if (outboxEnabled && dedupeKey) {
+    try {
+      outbox = await prepareSignalLifecycleAlertOutbox({
+        type,
+        exchange,
+        symbol: payload.symbol,
+        event: payload.event,
+        title: msg.title,
+        body: msg.body,
+        channel,
+        payload,
+        dedupeKey,
+        allowResend: payload.forceAlertReplay === true || payload.force_alert_replay === true,
+      });
+      if (outbox && outbox.skipSend === true) {
+        return {
+          ok: true,
+          skipped: true,
+          reason: "OUTBOX_ALREADY_SENT",
+          outboxId: outbox.outboxId,
+          dedupeKey,
+        };
+      }
+    } catch (err) {
+      // Alert delivery must not break signal processing. If Firestore outbox is
+      // unavailable, preserve the old send path and surface the dedupe failure.
+      try {
+        console.warn("[SIGNAL_LIFECYCLE_ALERT_OUTBOX_PREP_FAIL]", JSON.stringify({
+          type,
+          exchange,
+          symbol: String(payload && payload.symbol || "").toUpperCase(),
+          event: String(payload && payload.event || "").toUpperCase(),
+          signal_id: payload.signalId || payload.signal_id || null,
+          dedupe_key: dedupeKey,
+          error_message: err && err.message ? String(err.message) : String(err),
+        }));
+      } catch (_) {}
+    }
+  }
+
   const result = await sendAlert({
     channel,
     title: msg.title,
     body: msg.body,
     severity: msg.severity,
   });
+  if (outbox && outbox.outboxId) {
+    try {
+      await markSignalLifecycleAlertOutboxResult({
+        outboxId: outbox.outboxId,
+        ok: result && result.ok === true,
+        reason: result && result.reason,
+        error: result && result.error_message,
+        result,
+        channel,
+        title: msg.title,
+        body: msg.body,
+      });
+    } catch (err) {
+      try {
+        console.warn("[SIGNAL_LIFECYCLE_ALERT_OUTBOX_MARK_FAIL]", JSON.stringify({
+          type,
+          outbox_id: outbox.outboxId,
+          error_message: err && err.message ? String(err.message) : String(err),
+        }));
+      } catch (_) {}
+    }
+  }
   if (!result || result.ok !== true) {
     try {
       console.warn("[SIGNAL_LIFECYCLE_ALERT_SEND_FAIL]", JSON.stringify({
@@ -534,5 +806,9 @@ module.exports = {
     buildCompareMessage,
     appendRiskGovernorLine,
     shouldSendCompareAlert,
+    resolveSignalLifecycleAlertDedupeKey,
+    buildSignalLifecycleAlertOutboxId,
+    prepareSignalLifecycleAlertOutbox,
+    markSignalLifecycleAlertOutboxResult,
   },
 };
