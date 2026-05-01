@@ -10,7 +10,9 @@ const {
   buildSnapshot,
   computeActiveProtectionStreakDays,
   collect,
+  collectAsync,
   writeSnapshot,
+  __test,
 } = require("../../scripts/collect-v2-evidence-snapshot-daily");
 
 function mkTmp() {
@@ -162,9 +164,91 @@ function collectAndWriteSnapshotFromFiles() {
   assert.ok(fs.readFileSync(files.history, "utf8").includes("V2_EVIDENCE_SNAPSHOT_COLLECTED"));
 }
 
+async function collectAsyncUsesFirestoreActiveProtectionEvidence() {
+  const tmp = mkTmp();
+  const files = {
+    performanceGate: path.join(tmp, "performance-gate.json"),
+    performanceReport: path.join(tmp, "performance-report.json"),
+    v1WriterLatest: path.join(tmp, "v1-writer.json"),
+    v1WriterHistory: path.join(tmp, "v1-writer.jsonl"),
+    algoEndpointLatest: path.join(tmp, "algo.json"),
+    algoEndpointHistory: path.join(tmp, "algo.jsonl"),
+  };
+  writeJson(files.performanceGate, { ok: false, reason: "V2_PERFORMANCE_GATE_BLOCKED", blockers: ["PERFORMANCE_GATE:SAMPLE_INSUFFICIENT"], metrics: { sample_n: 0 } });
+  writeJson(files.performanceReport, { summary: { outcome_n: 0, trade_n: 0 } });
+  writeJson(files.v1WriterLatest, { v1_place_futures_call_n_24h: 0 });
+  appendJsonl(files.v1WriterHistory, []);
+  writeJson(files.algoEndpointLatest, { degraded_crit_n: 0, degraded_warn_n: 0 });
+  appendJsonl(files.algoEndpointHistory, []);
+  const nowMs = Date.parse("2026-05-01T03:00:00.000Z");
+  const env = {
+    V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_SOURCE: "FIRESTORE",
+    DONBEOLJA_V2_ACTIVE_PROTECTION_RECONCILIATION_FIRESTORE_READ_ENABLED: "1",
+    V2_EVIDENCE_SNAPSHOT_PERFORMANCE_GATE_FILE: files.performanceGate,
+    V2_EVIDENCE_SNAPSHOT_PERFORMANCE_REPORT_FILE: files.performanceReport,
+    V2_EVIDENCE_SNAPSHOT_V1_WRITER_FILE: files.v1WriterLatest,
+    V2_EVIDENCE_SNAPSHOT_V1_WRITER_HISTORY_FILE: files.v1WriterHistory,
+    V2_EVIDENCE_SNAPSHOT_ALGO_ENDPOINT_FILE: files.algoEndpointLatest,
+    V2_EVIDENCE_SNAPSHOT_ALGO_ENDPOINT_HISTORY_FILE: files.algoEndpointHistory,
+  };
+  const snapshot = await collectAsync({
+    env,
+    nowMs,
+    activeProtectionLoader: async () => ({
+      collectionName: "v2__active_protection_reconciliations_v2",
+      rows: [
+        { payload: { generated_at: "2026-04-30T03:00:00.000Z", ok: true, active_position_n: 2, protected_position_n: 2, unprotected_position_n: 0, critical_issue_n: 0 } },
+        { payload: { generated_at: "2026-05-01T03:00:00.000Z", ok: true, active_position_n: 3, protected_position_n: 3, unprotected_position_n: 0, critical_issue_n: 0 } },
+      ],
+    }),
+  });
+  assert.strictEqual(snapshot.ok, true);
+  assert.strictEqual(snapshot.active_protection_streak_days, 2);
+  assert.strictEqual(snapshot.active_position_n, 3);
+  assert.strictEqual(snapshot.protected_position_n, 3);
+  assert.strictEqual(snapshot.unprotected_position_n, 0);
+  assert.strictEqual(snapshot.source_files.activeProtectionHistory, "v2__active_protection_reconciliations_v2");
+}
+
+async function collectAsyncBlocksWhenFirestoreActiveProtectionReadDisabled() {
+  const tmp = mkTmp();
+  const files = {
+    performanceGate: path.join(tmp, "performance-gate.json"),
+    performanceReport: path.join(tmp, "performance-report.json"),
+    v1WriterLatest: path.join(tmp, "v1-writer.json"),
+    algoEndpointLatest: path.join(tmp, "algo.json"),
+  };
+  writeJson(files.performanceGate, { ok: false, reason: "V2_PERFORMANCE_GATE_BLOCKED", blockers: ["PERFORMANCE_GATE:SAMPLE_INSUFFICIENT"], metrics: { sample_n: 0 } });
+  writeJson(files.performanceReport, { summary: { outcome_n: 0, trade_n: 0 } });
+  writeJson(files.v1WriterLatest, { v1_place_futures_call_n_24h: 0 });
+  writeJson(files.algoEndpointLatest, { degraded_crit_n: 0, degraded_warn_n: 0 });
+  const snapshot = await collectAsync({
+    env: {
+      V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_SOURCE: "FIRESTORE",
+      V2_EVIDENCE_SNAPSHOT_PERFORMANCE_GATE_FILE: files.performanceGate,
+      V2_EVIDENCE_SNAPSHOT_PERFORMANCE_REPORT_FILE: files.performanceReport,
+      V2_EVIDENCE_SNAPSHOT_V1_WRITER_FILE: files.v1WriterLatest,
+      V2_EVIDENCE_SNAPSHOT_ALGO_ENDPOINT_FILE: files.algoEndpointLatest,
+    },
+    nowMs: Date.parse("2026-05-01T03:00:00.000Z"),
+  });
+  assert.strictEqual(snapshot.ok, false);
+  assert.ok(snapshot.blockers.includes("EVIDENCE_SNAPSHOT:REQUIRED_EVIDENCE_MISSING"));
+  assert.strictEqual(snapshot.missing_required_evidence.includes("activeProtectionLatest"), true);
+}
+
 performanceSummaryTreatsSampleInsufficientAsAccumulating();
 activeProtectionStreakCountsConsecutivePassingDays();
 safetySummaryBlocksUnprotectedAndV1Writes();
 snapshotBlocksSafetyButNotPerformanceAccumulation();
 collectAndWriteSnapshotFromFiles();
-console.log("COLLECT_V2_EVIDENCE_SNAPSHOT_DAILY_TEST_OK");
+(async function runAsyncCases() {
+  assert.strictEqual(__test.resolveActiveProtectionSource({}), "JSONL");
+  assert.strictEqual(__test.resolveActiveProtectionSource({ V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_SOURCE: "FIRESTORE" }), "FIRESTORE");
+  await collectAsyncUsesFirestoreActiveProtectionEvidence();
+  await collectAsyncBlocksWhenFirestoreActiveProtectionReadDisabled();
+  console.log("COLLECT_V2_EVIDENCE_SNAPSHOT_DAILY_TEST_OK");
+})().catch((error) => {
+  console.error(error && error.stack ? error.stack : error);
+  process.exit(1);
+});

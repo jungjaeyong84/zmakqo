@@ -3,6 +3,10 @@
 
 const fs = require("fs");
 const path = require("path");
+const {
+  isActiveProtectionReconciliationFirestoreReadEnabled,
+  loadActiveProtectionReconciliationHistoryRows,
+} = require("../src/v2/activeProtectionReconciliationHistory");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
@@ -51,6 +55,11 @@ function boolOrNull(value) {
   if (["1", "true", "yes", "y", "on"].includes(text)) return true;
   if (["0", "false", "no", "n", "off"].includes(text)) return false;
   return null;
+}
+
+function parseBool(value, fallback = false) {
+  const parsed = boolOrNull(value);
+  return parsed == null ? fallback : parsed;
 }
 
 function normalizeRate(value) {
@@ -119,6 +128,13 @@ function resolveFiles(env = process.env) {
     alertEventConsistencyLatest: trimOrNull(env.V2_EVIDENCE_SNAPSHOT_ALERT_EVENT_CONSISTENCY_FILE) || DEFAULT_FILES.alertEventConsistencyLatest,
     tradeExecutionAlertCrossAuditLatest: trimOrNull(env.V2_EVIDENCE_SNAPSHOT_TRADE_EXECUTION_ALERT_CROSS_AUDIT_FILE) || DEFAULT_FILES.tradeExecutionAlertCrossAuditLatest,
   });
+}
+
+function resolveActiveProtectionSource(env = process.env) {
+  const source = trimOrNull(env.V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_SOURCE)
+    || trimOrNull(env.DONBEOLJA_V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_SOURCE)
+    || "JSONL";
+  return String(source).trim().toUpperCase() === "FIRESTORE" ? "FIRESTORE" : "JSONL";
 }
 
 function rowTimestampMs(row) {
@@ -424,9 +440,126 @@ function loadInputs(files = resolveFiles(), env = process.env) {
   });
 }
 
+function buildActiveProtectionDailyFromRows(rows = [], nowMs = Date.now()) {
+  const today = dateKeyFromMs(nowMs);
+  const todayRows = (Array.isArray(rows) ? rows : [])
+    .filter((row) => dateKeyFromMs(rowTimestampMs(row)) === today);
+  if (!todayRows.length) return null;
+  const latest = todayRows[todayRows.length - 1];
+  return Object.freeze({
+    generated_at: latest.generated_at,
+    date_key: today,
+    ok: todayRows.every((row) => row && row.ok === true && Number(row.unprotected_position_n || 0) === 0 && Number(row.critical_issue_n || 0) === 0),
+    active_position_n: firstNumber(latest.active_position_n, latest.latest && latest.latest.active_position_n),
+    protected_position_n: firstNumber(latest.protected_position_n, latest.latest && latest.latest.protected_position_n),
+    unprotected_position_n: firstNumber(latest.unprotected_position_n, latest.latest && latest.latest.unprotected_position_n),
+    critical_issue_n: todayRows.reduce((acc, row) => acc + (Number(row && row.critical_issue_n) || 0), 0),
+    latest,
+  });
+}
+
+function overlayActiveProtectionFirestoreEvidence({
+  loaded,
+  firestoreRows = [],
+  collectionName = null,
+  error = null,
+  nowMs = Date.now(),
+} = {}) {
+  const next = { ...loaded };
+  if (error) {
+    next.activeProtectionLatest = {
+      file: collectionName || "FIRESTORE",
+      exists: false,
+      required: true,
+      data: null,
+      error,
+    };
+    next.activeProtectionDaily = {
+      file: collectionName || "FIRESTORE",
+      exists: false,
+      required: false,
+      data: null,
+      error,
+    };
+    next.activeProtectionHistory = {
+      file: collectionName || "FIRESTORE",
+      exists: false,
+      required: false,
+      rows: [],
+      error,
+    };
+    return Object.freeze(next);
+  }
+  const rows = (Array.isArray(firestoreRows) ? firestoreRows : [])
+    .map((row) => row && (row.payload || row.artifact_snapshot || row))
+    .filter((row) => row && typeof row === "object")
+    .sort((left, right) => (rowTimestampMs(left) || 0) - (rowTimestampMs(right) || 0));
+  const latest = rows.length ? rows[rows.length - 1] : null;
+  next.activeProtectionLatest = {
+    file: collectionName || "FIRESTORE",
+    exists: Boolean(latest),
+    required: true,
+    data: latest,
+  };
+  next.activeProtectionDaily = {
+    file: collectionName || "FIRESTORE",
+    exists: Boolean(latest),
+    required: false,
+    data: buildActiveProtectionDailyFromRows(rows, nowMs) || latest,
+  };
+  next.activeProtectionHistory = {
+    file: collectionName || "FIRESTORE",
+    exists: rows.length > 0,
+    required: false,
+    rows,
+  };
+  return Object.freeze(next);
+}
+
+async function loadInputsAsync(files = resolveFiles(), env = process.env, { nowMs = Date.now(), activeProtectionLoader = loadActiveProtectionReconciliationHistoryRows } = {}) {
+  const loaded = loadInputs(files, env);
+  if (resolveActiveProtectionSource(env) !== "FIRESTORE") return loaded;
+  if (!isActiveProtectionReconciliationFirestoreReadEnabled(env)) {
+    return overlayActiveProtectionFirestoreEvidence({
+      loaded,
+      collectionName: "ACTIVE_PROTECTION_RECONCILIATIONS",
+      error: new Error("EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_FIRESTORE_READ_DISABLED"),
+      nowMs,
+    });
+  }
+  const days = Math.max(1, Number(env.V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_DAYS) || 30);
+  const sinceMs = nowMs - days * 24 * 60 * 60 * 1000;
+  try {
+    const result = await activeProtectionLoader({
+      env,
+      sinceMs,
+      limit: Math.max(1, Number(env.V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_FIRESTORE_LIMIT) || 1000),
+    });
+    return overlayActiveProtectionFirestoreEvidence({
+      loaded,
+      firestoreRows: result.rows || [],
+      collectionName: result.collectionName,
+      nowMs,
+    });
+  } catch (error) {
+    return overlayActiveProtectionFirestoreEvidence({
+      loaded,
+      collectionName: "ACTIVE_PROTECTION_RECONCILIATIONS",
+      error,
+      nowMs,
+    });
+  }
+}
+
 function collect({ env = process.env, nowMs = Date.now() } = {}) {
   const files = resolveFiles(env);
   const loaded = loadInputs(files, env);
+  return buildSnapshot({ loaded, env, nowMs });
+}
+
+async function collectAsync({ env = process.env, nowMs = Date.now(), activeProtectionLoader } = {}) {
+  const files = resolveFiles(env);
+  const loaded = await loadInputsAsync(files, env, { nowMs, activeProtectionLoader });
   return buildSnapshot({ loaded, env, nowMs });
 }
 
@@ -438,8 +571,8 @@ function writeSnapshot({ snapshot, env = process.env } = {}) {
   return Object.freeze({ outputFile, historyFile });
 }
 
-function main(env = process.env) {
-  const snapshot = collect({ env });
+async function main(env = process.env) {
+  const snapshot = await collectAsync({ env });
   const files = writeSnapshot({ snapshot, env });
   const payload = Object.freeze({
     ok: snapshot.ok,
@@ -464,9 +597,7 @@ function main(env = process.env) {
 }
 
 if (require.main === module) {
-  try {
-    main(process.env);
-  } catch (error) {
+  main(process.env).catch((error) => {
     console.error(JSON.stringify({
       ok: false,
       reason: "V2_EVIDENCE_SNAPSHOT_COLLECT_FAILED",
@@ -474,16 +605,19 @@ if (require.main === module) {
       error: error && error.message ? error.message : String(error),
     }));
     process.exit(1);
-  }
+  });
 } else {
   module.exports = {
     collect,
+    collectAsync,
     main,
     buildSnapshot,
     buildPerformanceSummary,
     buildSafetySummary,
     computeActiveProtectionStreakDays,
     loadInputs,
+    loadInputsAsync,
+    overlayActiveProtectionFirestoreEvidence,
     resolveFiles,
     writeSnapshot,
     __test: {
@@ -491,7 +625,10 @@ if (require.main === module) {
       toNumberOrNull,
       firstNumber,
       boolOrNull,
+      parseBool,
       normalizeRate,
+      resolveActiveProtectionSource,
+      buildActiveProtectionDailyFromRows,
       readJsonSafe,
       readJsonlSafe,
       rowsWithinDays,
