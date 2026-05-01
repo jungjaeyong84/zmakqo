@@ -7,6 +7,7 @@ const {
   isExitRuntimeCanaryFirestoreReadEnabled,
   loadExitRuntimeCanaryHistoryRows,
 } = require("../src/v2/exitRuntimeCanaryHistory");
+const { getV2Doc } = require("../src/v2/storage");
 
 const OUTPUT_FILENAME = "v2_exit_runtime_canary_streak_latest.json";
 const HISTORY_FILENAME = "v2_exit_runtime_canary_history.jsonl";
@@ -20,6 +21,14 @@ function parsePositiveNumber(value, fallback) {
   const num = Number(value);
   if (Number.isFinite(num) && num > 0) return num;
   return Number(fallback);
+}
+
+function parseBool(value, fallback = false) {
+  const text = String(value == null ? "" : value).trim().toLowerCase();
+  if (!text) return Boolean(fallback);
+  if (["1", "true", "yes", "on"].includes(text)) return true;
+  if (["0", "false", "no", "off"].includes(text)) return false;
+  return Boolean(fallback);
 }
 
 function ensureDir(dirPath) {
@@ -56,6 +65,7 @@ function resolveStreakConfig(env = process.env) {
     firestoreReadLimit: Math.floor(parsePositiveNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_READ_LIMIT, 200)),
     requireFirestoreSource: String(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_FIRESTORE || "").trim() === "1",
     requireActivePositionEvidence: String(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_REQUIRE_ACTIVE_POSITION_EVIDENCE || "1").trim() !== "0",
+    reconcileRecoveredAlertRetry: parseBool(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_RECONCILE_ALERT_RETRY_ENABLED, true),
   });
 }
 
@@ -140,6 +150,104 @@ function isHealthyExitRuntimeCanaryRow(row) {
     !raw.includes("BINANCE_SECRET") &&
     !raw.includes("BINANCE_API")
   );
+}
+
+function isAlertRetrySentCheckId(id) {
+  return String(id || "").trim().toUpperCase().endsWith("_TRANSITION_ALERT_SENT");
+}
+
+function extractAlertRetryCheckRows(payload) {
+  return (Array.isArray(payload && payload.checks) ? payload.checks : [])
+    .filter((check) => check && check.ok !== true && isAlertRetrySentCheckId(check.id))
+    .map((check) => Object.freeze({
+      id: trimOrNull(check.id),
+      alert_outbox_id: trimOrNull(check.alert_outbox_id),
+      canonical_transition_id: trimOrNull(check.canonical_transition_id),
+      outbox_status: trimOrNull(check.outbox_status),
+    }))
+    .filter((check) => !!check.alert_outbox_id);
+}
+
+function isOnlyAlertRetryUnresolvedFailure(payload) {
+  const failedIds = Array.isArray(payload && payload.failed_check_ids) ? payload.failed_check_ids : [];
+  return failedIds.length > 0
+    && failedIds.every(isAlertRetrySentCheckId)
+    && Number(payload && payload.alert_retry_unresolved_n) > 0
+    && Number(payload && payload.tp1_missing_n) === 0
+    && Number(payload && payload.native_refresh_unhealthy_n) === 0
+    && Number(payload && payload.unprotected_window_violation_n) === 0
+    && Number(payload && payload.alert_silent_drop_n) === 0
+    && Number(payload && payload.alert_outbox_integrity_gap_n) === 0
+    && Number(payload && payload.trail_activation_evidence_gap_n) === 0;
+}
+
+function buildRecoveredAlertRetryPayload(payload, recoveryRows) {
+  return Object.freeze({
+    ...payload,
+    ok: true,
+    reason: "V2_EXIT_RUNTIME_CANARY_PASS",
+    fail_n: 0,
+    failed_check_ids: Object.freeze([]),
+    alert_retry_unresolved_n: 0,
+    alert_retry_recovered_n: recoveryRows.length,
+    alert_retry_recovered: true,
+    alert_retry_recovery_rows: Object.freeze(recoveryRows),
+    blockers: Object.freeze([]),
+  });
+}
+
+async function reconcileRecoveredAlertRetryRows({ history, db = null, env = process.env } = {}) {
+  const rows = Array.isArray(history && history.rows) ? history.rows : [];
+  if (!rows.length) return history;
+  const reconciledRows = [];
+  let recoveredRowN = 0;
+  for (const row of rows) {
+    const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
+    const alertChecks = extractAlertRetryCheckRows(payload);
+    if (!isOnlyAlertRetryUnresolvedFailure(payload) || alertChecks.length === 0) {
+      reconciledRows.push(row);
+      continue;
+    }
+    const recoveryRows = [];
+    let allRecovered = true;
+    for (const check of alertChecks) {
+      const doc = await getV2Doc({
+        db,
+        env,
+        collectionKey: "TRADE_ALERT_OUTBOX",
+        docId: check.alert_outbox_id,
+      });
+      const outbox = doc && doc.ok === true && doc.doc && typeof doc.doc === "object" ? doc.doc : null;
+      if (String(outbox && outbox.status || "").trim().toUpperCase() !== "SENT") {
+        allRecovered = false;
+        break;
+      }
+      recoveryRows.push(Object.freeze({
+        alert_outbox_id: check.alert_outbox_id,
+        canonical_transition_id: check.canonical_transition_id,
+        status: "SENT",
+        sent_at: trimOrNull(outbox.sent_at),
+        attempt_count: Number(outbox.attempt_count) || null,
+      }));
+    }
+    if (!allRecovered) {
+      reconciledRows.push(row);
+      continue;
+    }
+    recoveredRowN += 1;
+    const recoveredPayload = buildRecoveredAlertRetryPayload(payload, recoveryRows);
+    reconciledRows.push(Object.freeze({
+      ...row,
+      raw: JSON.stringify(recoveredPayload),
+      payload: recoveredPayload,
+      alert_retry_recovered: true,
+    }));
+  }
+  return Object.freeze({
+    ...history,
+    rows: Object.freeze(reconciledRows),
+    alert_retry_recovered_row_n: recoveredRowN,
+  });
 }
 
 function extractHealthyPositionCycleIds(rows) {
@@ -387,12 +495,21 @@ async function loadHistory(env = process.env, { nowMs = Date.now(), db = null, c
       sinceMs,
       limit: config.firestoreReadLimit,
     });
-    return Object.freeze({
+    const history = Object.freeze({
       source,
       historyFile: loaded.collectionName,
       history: Object.freeze({
         rows: loaded.rows,
         invalid_lines: loaded.invalid_lines || Object.freeze([]),
+      }),
+    });
+    if (config.reconcileRecoveredAlertRetry !== true) return history;
+    return Object.freeze({
+      ...history,
+      history: await reconcileRecoveredAlertRetryRows({
+        history: history.history,
+        db,
+        env: storageEnv,
       }),
     });
   }
@@ -470,8 +587,9 @@ if (require.main === module) {
       OUTPUT_FILENAME,
       HISTORY_FILENAME,
       trimOrNull,
-      parsePositiveNumber,
-      resolveArtifactDir,
+    parsePositiveNumber,
+    parseBool,
+    resolveArtifactDir,
       resolveHistoryFile,
       resolveOutputFile,
       resolveStreakConfig,
@@ -479,8 +597,12 @@ if (require.main === module) {
       normalizeFirestoreEnv,
       toMs,
       numberField,
-      isHealthyExitRuntimeCanaryRow,
-      extractHealthyPositionCycleIds,
+    isHealthyExitRuntimeCanaryRow,
+    extractAlertRetryCheckRows,
+    isOnlyAlertRetryUnresolvedFailure,
+    buildRecoveredAlertRetryPayload,
+    reconcileRecoveredAlertRetryRows,
+    extractHealthyPositionCycleIds,
       buildLongRunQualitySummary,
       buildCollectorExecutionSummary,
     },

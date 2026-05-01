@@ -7,6 +7,7 @@ const { evaluateActiveExitWatchdog } = require("./watchdog");
 const DEFAULT_ACTIVE_POSITION_LIMIT = 25;
 const DEFAULT_LINKED_DOC_LIMIT = 20;
 const DEFAULT_MAX_UNPROTECTED_WINDOW_MS = 0;
+const DEFAULT_ALERT_RETRY_GRACE_MS = 60 * 60 * 1000;
 const TERMINAL_STAGES = new Set(["EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
 const TRANSITION_ALERT_REQUIREMENTS = Object.freeze({
   TP1_DONE: Object.freeze(["TP1_REACHED"]),
@@ -26,6 +27,11 @@ function toNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function toMs(value) {
+  const ms = Date.parse(String(value || "").trim());
+  return Number.isFinite(ms) ? ms : null;
 }
 
 function numbersMatch(left, right, epsilon = 1e-8) {
@@ -65,6 +71,7 @@ function resolveExitRuntimeCanaryConfig(env = process.env) {
     transitionLimit: parsePositiveInt(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_TRANSITION_LIMIT, DEFAULT_LINKED_DOC_LIMIT, { max: 100 }),
     outboxLimit: parsePositiveInt(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_OUTBOX_LIMIT, DEFAULT_LINKED_DOC_LIMIT, { max: 100 }),
     maxUnprotectedWindowMs: parseNonNegativeNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_MAX_UNPROTECTED_WINDOW_MS, DEFAULT_MAX_UNPROTECTED_WINDOW_MS),
+    alertRetryGraceMs: parseNonNegativeNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ALERT_RETRY_GRACE_MS, DEFAULT_ALERT_RETRY_GRACE_MS),
   });
 }
 
@@ -186,6 +193,45 @@ function hasSentOutboxForTransition({ transition, outboxes }) {
   return resolved.ok === true && resolved.status === "SENT";
 }
 
+function resolveTransitionAlertDeliveryState({ resolvedOutbox, generatedAtMs, config }) {
+  const row = resolvedOutbox && resolvedOutbox.outbox && typeof resolvedOutbox.outbox === "object"
+    ? resolvedOutbox.outbox
+    : {};
+  const status = upper(resolvedOutbox && resolvedOutbox.status);
+  const sentAtMs = toMs(row.sent_at);
+  if (resolvedOutbox && resolvedOutbox.ok === true && status === "SENT") {
+    return Object.freeze({
+      ok: true,
+      status,
+      reason: "ALERT_OUTBOX_SENT",
+      sent_at: trimOrNull(row.sent_at),
+      last_attempt_at: trimOrNull(row.last_attempt_at),
+      retry_grace_ms: Number(config && config.alertRetryGraceMs) || 0,
+      age_ms: sentAtMs != null && Number.isFinite(Number(generatedAtMs)) ? Math.max(0, Number(generatedAtMs) - sentAtMs) : null,
+    });
+  }
+  const lastAttemptMs = toMs(row.last_attempt_at) || toMs(row.created_at) || toMs(row.updated_at);
+  const graceMs = Number(config && config.alertRetryGraceMs);
+  const ageMs = Number.isFinite(Number(generatedAtMs)) && lastAttemptMs != null
+    ? Math.max(0, Number(generatedAtMs) - Number(lastAttemptMs))
+    : null;
+  const retryRecoverable = resolvedOutbox && resolvedOutbox.ok === true
+    && ["FAILED", "PENDING", "RETRYING", "QUEUED"].includes(status)
+    && Number.isFinite(graceMs)
+    && graceMs > 0
+    && ageMs != null
+    && ageMs <= graceMs;
+  return Object.freeze({
+    ok: retryRecoverable,
+    status,
+    reason: retryRecoverable ? "ALERT_OUTBOX_RETRY_WITHIN_GRACE" : "ALERT_OUTBOX_RETRY_UNRESOLVED",
+    sent_at: trimOrNull(row.sent_at),
+    last_attempt_at: trimOrNull(row.last_attempt_at),
+    retry_grace_ms: Number.isFinite(graceMs) ? graceMs : 0,
+    age_ms: ageMs,
+  });
+}
+
 function buildAlertOutboxIntegrityChecks({ positionCycleId, transitions, outboxes }) {
   const transitionIds = new Set(
     asArray(transitions)
@@ -232,7 +278,7 @@ function findTransition(transitions, transitionEvent) {
   return asArray(transitions).find((row) => upper(row && row.transition_event) === expected) || null;
 }
 
-function buildPositionCanaryChecks({ row, config }) {
+function buildPositionCanaryChecks({ row, config, generatedAt }) {
   const checks = [];
   const positionCycle = row && row.positionCycle && typeof row.positionCycle === "object" ? row.positionCycle : null;
   const projection = row && row.projection && typeof row.projection === "object" ? row.projection : null;
@@ -242,6 +288,7 @@ function buildPositionCanaryChecks({ row, config }) {
   const positionCycleId = trimOrNull(positionCycle && positionCycle.position_cycle_id);
   const stage = upper(projection && projection.stage);
   const loadIssues = asArray(row && row.load_issue_codes).map(upper).filter(Boolean);
+  const generatedAtMs = toMs(generatedAt) || Date.now();
 
   checks.push(Object.freeze({
     id: "EXIT_RUNTIME_CANARY_POSITION_CYCLE_ID_PRESENT",
@@ -366,13 +413,14 @@ function buildPositionCanaryChecks({ row, config }) {
     }));
     checks.push(Object.freeze({
       id: `EXIT_RUNTIME_CANARY_${transitionEvent}_TRANSITION_ALERT_SENT`,
-      ok: resolvedOutbox.ok !== true || resolvedOutbox.status === "SENT",
+      ok: resolvedOutbox.ok !== true || resolveTransitionAlertDeliveryState({ resolvedOutbox, generatedAtMs, config }).ok === true,
       skipped: resolvedOutbox.ok !== true,
       position_cycle_id: positionCycleId,
       transition_event: transitionEvent,
       canonical_transition_id: trimOrNull(transition && transition.canonical_transition_id),
       alert_outbox_id: resolvedOutbox.alert_outbox_id || null,
       outbox_status: resolvedOutbox.status || null,
+      delivery_state: resolveTransitionAlertDeliveryState({ resolvedOutbox, generatedAtMs, config }),
     }));
   }
   return Object.freeze(checks);
@@ -426,7 +474,7 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
 
 function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false, queryBudget = null, config = resolveExitRuntimeCanaryConfig({}), generatedAt = new Date().toISOString() } = {}) {
   const normalizedRows = asArray(rows);
-  const checks = normalizedRows.flatMap((row) => buildPositionCanaryChecks({ row, config }));
+  const checks = normalizedRows.flatMap((row) => buildPositionCanaryChecks({ row, config, generatedAt }));
   if (activeQueryLimitReached) {
     checks.push(Object.freeze({ id: "EXIT_RUNTIME_CANARY_ACTIVE_QUERY_LIMIT_REACHED", ok: false }));
   }
@@ -458,6 +506,7 @@ function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false,
       transition_limit_per_position: config.transitionLimit,
       outbox_limit_per_position: config.outboxLimit,
       max_unprotected_window_ms: config.maxUnprotectedWindowMs,
+      alert_retry_grace_ms: config.alertRetryGraceMs,
     }),
     position_summaries: Object.freeze(normalizedRows.map((row) => {
       const positionCycle = row && row.positionCycle ? row.positionCycle : {};

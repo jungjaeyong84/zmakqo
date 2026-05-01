@@ -63,7 +63,7 @@ function transition(event, id = `CET__${event}`) {
   };
 }
 
-function outbox(transitionId, status = "SENT") {
+function outbox(transitionId, status = "SENT", overrides = {}) {
   return {
     alert_outbox_id: `TAO__${transitionId}`,
     position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__ABC",
@@ -77,6 +77,7 @@ function outbox(transitionId, status = "SENT") {
       dedupeKey: `TAO__${transitionId}`,
       dedupeFingerprint: transitionId,
     },
+    ...overrides,
   };
 }
 
@@ -175,6 +176,46 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
   assert.strictEqual(artifact.alert_retry_unresolved_n, 1);
   assert.strictEqual(artifact.alert_outbox_integrity_gap_n, 0);
   assert.ok(artifact.failed_check_ids.includes("EXIT_RUNTIME_CANARY_TP1_REACHED_TRANSITION_ALERT_SENT"));
+  assert.ok(artifact.blockers.includes("EXIT_RUNTIME_CANARY_ALERT_RETRY_UNRESOLVED"));
+})();
+
+(function tp1DoneAllowsRecentRetryableAlertFailureWithinGrace() {
+  const tp1 = transition("TP1_REACHED", "CET__TP1");
+  const artifact = evaluateExitRuntimeCanaryState({
+    rows: [stateRow({
+      projectionDoc: projection({ stage: "TP1_DONE", tp1_done: true }),
+      transitions: [tp1],
+      outboxes: [outbox("CET__TP1", "FAILED", {
+        last_attempt_at: "2026-04-22T00:00:00.000Z",
+      })],
+    })],
+    config: resolveExitRuntimeCanaryConfig({
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ALERT_RETRY_GRACE_MS: String(60 * 60 * 1000),
+    }),
+    generatedAt: "2026-04-22T00:05:00.000Z",
+  });
+  assert.strictEqual(artifact.ok, true);
+  assert.strictEqual(artifact.alert_silent_drop_n, 0);
+  assert.strictEqual(artifact.alert_retry_unresolved_n, 0);
+})();
+
+(function tp1DoneFailsOldRetryableAlertFailurePastGrace() {
+  const tp1 = transition("TP1_REACHED", "CET__TP1");
+  const artifact = evaluateExitRuntimeCanaryState({
+    rows: [stateRow({
+      projectionDoc: projection({ stage: "TP1_DONE", tp1_done: true }),
+      transitions: [tp1],
+      outboxes: [outbox("CET__TP1", "FAILED", {
+        last_attempt_at: "2026-04-21T22:00:00.000Z",
+      })],
+    })],
+    config: resolveExitRuntimeCanaryConfig({
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ALERT_RETRY_GRACE_MS: String(60 * 60 * 1000),
+    }),
+    generatedAt: "2026-04-22T00:05:00.000Z",
+  });
+  assert.strictEqual(artifact.ok, false);
+  assert.strictEqual(artifact.alert_retry_unresolved_n, 1);
   assert.ok(artifact.blockers.includes("EXIT_RUNTIME_CANARY_ALERT_RETRY_UNRESOLVED"));
 })();
 

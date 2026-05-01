@@ -39,10 +39,22 @@ function buildHistory(rows) {
   };
 }
 
-function buildFakeDb(rows) {
+function buildFakeDb(rows, { outboxes = {} } = {}) {
   return {
     collection(name) {
       return {
+        doc(docId) {
+          return {
+            async get() {
+              const row = outboxes[docId] || null;
+              return {
+                exists: !!row,
+                id: docId,
+                data: () => row,
+              };
+            },
+          };
+        },
         where(field, op, value) {
           return {
             limit(limit) {
@@ -202,6 +214,55 @@ function buildFakeDb(rows) {
   assert.strictEqual(report.long_run_quality_summary.defect_counts.alert_retry_unresolved_n, 1);
 })();
 
+async function streakReconcilesRecoveredAlertRetryOutbox() {
+  const nowMs = Date.parse("2026-04-22T12:00:00.000Z");
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push(buildHealthyPayload(new Date(nowMs - hour * 60 * 60000).toISOString()));
+  }
+  const alertOutboxId = "TAOV2__EXIT_TRANSITION_ALERT__CETV2__RECOVERED";
+  rows[4] = {
+    ...rows[4],
+    ok: false,
+    reason: "V2_EXIT_RUNTIME_CANARY_BLOCKED",
+    alert_retry_unresolved_n: 1,
+    fail_n: 1,
+    failed_check_ids: ["EXIT_RUNTIME_CANARY_TP1_REACHED_TRANSITION_ALERT_SENT"],
+    checks: [
+      {
+        id: "EXIT_RUNTIME_CANARY_TP1_REACHED_TRANSITION_ALERT_SENT",
+        ok: false,
+        alert_outbox_id: alertOutboxId,
+        canonical_transition_id: "CETV2__RECOVERED",
+        outbox_status: "FAILED",
+      },
+    ],
+  };
+  const report = await checker.runCheck({
+    DONBEOLJA_V2_COLLECTION_PREFIX: "dbjv2__",
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_SOURCE: "firestore",
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_LOOKBACK_HOURS: "24",
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_MIN_RUNS: "12",
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_MAX_GAP_MINUTES: "180",
+    DONBEOLJA_V2_EXIT_RUNTIME_CANARY_STREAK_RECONCILE_ALERT_RETRY_ENABLED: "1",
+  }, {
+    nowMs,
+    db: buildFakeDb(rows, {
+      outboxes: {
+        [alertOutboxId]: {
+          alert_outbox_id: alertOutboxId,
+          status: "SENT",
+          sent_at: "2026-04-22T11:00:00.000Z",
+          attempt_count: 3,
+        },
+      },
+    }),
+  });
+  assert.strictEqual(report.ok, true);
+  assert.strictEqual(report.alert_retry_unresolved_n, 0);
+  assert.deepStrictEqual(report.blockers, []);
+}
+
 (function streakFailsOnTrailActivationEvidenceGap() {
   const nowMs = Date.parse("2026-04-22T12:00:00.000Z");
   const rows = [];
@@ -340,7 +401,8 @@ async function streakCanReadFirestoreHistorySource() {
   assert.strictEqual(report.healthy_run_n, 13);
 }
 
-streakCanReadFirestoreHistorySource()
+streakReconcilesRecoveredAlertRetryOutbox()
+  .then(streakCanReadFirestoreHistorySource)
   .then(() => {
     console.log("CHECK_V2_EXIT_RUNTIME_CANARY_STREAK_TEST_OK");
   })
