@@ -46,7 +46,7 @@ async function main({
     return payload;
   }
 
-  const durationMs = toPositiveInt(env.DONBEOLJA_V2_LIQUIDATION_STREAM_WINDOW_MS, 55000, 120000);
+  const durationMs = toPositiveInt(env.DONBEOLJA_V2_LIQUIDATION_STREAM_WINDOW_MS, 10000, 120000);
   let stopped = null;
   try {
     await sleepFn(durationMs);

@@ -129,7 +129,7 @@ const {
   assert.strictEqual(liquidationWindow.http_path, "/api/openclaw/cron/v2-liquidation-stream-collector-window");
   assert.strictEqual(liquidationWindow.criticality, "MEDIUM");
   assert.strictEqual(liquidationWindow.runtime_mode, "LIQUIDATION_STREAM_WINDOW_COLLECTOR");
-  assert.strictEqual(liquidationWindow.scheduler_schedule, "* * * * *");
+  assert.strictEqual(liquidationWindow.scheduler_schedule, "*/5 * * * *");
   // weekly_summary intentionally not on Cloud Scheduler yet — dashboard
   // content is too sparse pre-Day 14 to warrant a weekly digest.
   assert.ok(!cloudJobIds.has("openclaw_agent_weekly_summary"),

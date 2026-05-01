@@ -6,6 +6,7 @@ const { main, __test } = require("../../scripts/run-v2-liquidation-stream-collec
 assert.strictEqual(__test.toPositiveInt("10", 55, 120), 10);
 assert.strictEqual(__test.toPositiveInt("0", 55, 120), 55);
 assert.strictEqual(__test.toPositiveInt("999", 55, 120), 120);
+assert.strictEqual(__test.toPositiveInt(undefined, 10000, 120000), 10000);
 
 (async function disabledReturnsImmediately() {
   let started = false;

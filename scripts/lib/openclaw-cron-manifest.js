@@ -224,7 +224,7 @@ const OPENCLAW_CLOUD_SCHEDULER_JOBS = Object.freeze([
     job_id: "v2_liquidation_stream_collector_window",
     scheduler_name: "v2-liquidation-stream-collector-window",
     scheduler_region: "asia-northeast3",
-    scheduler_schedule: "* * * * *",
+    scheduler_schedule: "*/5 * * * *",
     scheduler_time_zone: "Asia/Seoul",
     http_path: "/api/openclaw/cron/v2-liquidation-stream-collector-window",
     owner: "openclaw",
