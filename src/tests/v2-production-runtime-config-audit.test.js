@@ -48,6 +48,9 @@ const {
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_INITIAL_PROTECTION_DEADLINE_ENABLED, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED, "1");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_REPAIR_WRITER_LEASE_FIRESTORE_ENABLED, "1");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_REPAIR_WRITER_LEASE_TTL_MS, "60000");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_REPAIR_WRITER_LEASE_HEARTBEAT_MS, "10000");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE, "3");
   assert.strictEqual(result.substitutions._V2_FUTURES_DEFAULT_LEVERAGE, "3");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "1300");
@@ -73,6 +76,9 @@ const {
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "$_DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_INITIAL_PROTECTION_DEADLINE_ENABLED, "$_DONBEOLJA_V2_INITIAL_PROTECTION_DEADLINE_ENABLED");
   assert.strictEqual(result.main_service_env.DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED, "$_DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED");
+  assert.strictEqual(result.main_service_env.DONBEOLJA_V2_REPAIR_WRITER_LEASE_FIRESTORE_ENABLED, "$_DONBEOLJA_V2_REPAIR_WRITER_LEASE_FIRESTORE_ENABLED");
+  assert.strictEqual(result.main_service_env.DONBEOLJA_V2_REPAIR_WRITER_LEASE_TTL_MS, "$_DONBEOLJA_V2_REPAIR_WRITER_LEASE_TTL_MS");
+  assert.strictEqual(result.main_service_env.DONBEOLJA_V2_REPAIR_WRITER_LEASE_HEARTBEAT_MS, "$_DONBEOLJA_V2_REPAIR_WRITER_LEASE_HEARTBEAT_MS");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE, "$_DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE");
   assert.strictEqual(result.main_service_env.V2_FUTURES_DEFAULT_LEVERAGE, "$_V2_FUTURES_DEFAULT_LEVERAGE");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "$_DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE");
@@ -118,6 +124,9 @@ const {
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "$_DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_INITIAL_PROTECTION_DEADLINE_ENABLED, "$_DONBEOLJA_V2_INITIAL_PROTECTION_DEADLINE_ENABLED");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED, "$_DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED");
+  assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_REPAIR_WRITER_LEASE_FIRESTORE_ENABLED, "$_DONBEOLJA_V2_REPAIR_WRITER_LEASE_FIRESTORE_ENABLED");
+  assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_REPAIR_WRITER_LEASE_TTL_MS, "$_DONBEOLJA_V2_REPAIR_WRITER_LEASE_TTL_MS");
+  assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_REPAIR_WRITER_LEASE_HEARTBEAT_MS, "$_DONBEOLJA_V2_REPAIR_WRITER_LEASE_HEARTBEAT_MS");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE, "$_DONBEOLJA_V2_RISK_MAX_ACCOUNT_LEVERAGE");
   assert.strictEqual(result.exit_service_env.V2_FUTURES_DEFAULT_LEVERAGE, "$_V2_FUTURES_DEFAULT_LEVERAGE");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE, "$_DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE");
@@ -187,6 +196,9 @@ const {
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED"));
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_V2_INITIAL_PROTECTION_DEADLINE_ENABLED"));
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_SIGNAL_DROP_CONSUME_LOCK_ENABLED"));
+  assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_V2_REPAIR_WRITER_LEASE_FIRESTORE_ENABLED"));
+  assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_V2_REPAIR_WRITER_LEASE_TTL_MS"));
+  assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_V2_REPAIR_WRITER_LEASE_HEARTBEAT_MS"));
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_V2_SCHEDULER_TRAFFIC_STATE_JSON"));
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_V2_PRODUCTION_ENTRY_ROUTE_CANARY_FIRESTORE_WRITE_ENABLED"));
   assert.ok(result.failed_check_ids.includes("CLOUDBUILD_SUBSTITUTION__DONBEOLJA_V2_EXIT_RUNTIME_CANARY_FIRESTORE_WRITE_ENABLED"));
