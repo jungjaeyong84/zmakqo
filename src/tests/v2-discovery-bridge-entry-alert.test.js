@@ -77,6 +77,18 @@ const bridgeSrc = fs.readFileSync(
     "(B3) helper must call sendTradeExecutionAlert with intent=\"ENTRY\""
   );
   assert.ok(
+    /tradeAlertDedupeKey:\s*dedupeKey/.test(helperWin),
+    "(B3a) helper must pass durable tradeAlertDedupeKey to Firestore outbox"
+  );
+  assert.ok(
+    /idempotencyKey:\s*dedupeKey/.test(helperWin),
+    "(B3b) helper must pass idempotencyKey for replay-compatible outbox dedupe"
+  );
+  assert.ok(
+    /intentId,/.test(helperWin),
+    "(B3c) helper must pass intentId so alert lineage is durable"
+  );
+  assert.ok(
     /shouldDispatchEntryAlert\s*\(/.test(helperWin),
     "(B4) helper must dedupe via shouldDispatchEntryAlert"
   );

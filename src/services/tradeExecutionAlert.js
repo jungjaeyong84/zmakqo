@@ -73,6 +73,7 @@ function resolveIntent({ intent, event } = {}) {
   ) return "EXIT";
   const rawIntent = String(intent || "").trim().toUpperCase();
   if (rawIntent === "ENTRY" || rawIntent === "ADD" || rawIntent === "EXIT") return rawIntent;
+  if (ev === "ENTRY_LONG" || ev === "ENTRY_SHORT" || ev.startsWith("ENTRY_")) return "ENTRY";
   if (ev === "LONG" || ev === "SHORT") return "ENTRY";
   if (ev.startsWith("CORE_") || ev.startsWith("EARLY_")) return "ENTRY";
   return null;
@@ -881,6 +882,33 @@ function resolveTradeAlertReplayReason(payload = {}) {
   return String(payload.replayReason || payload.replay_reason || "").trim() || null;
 }
 
+function trimAlertIdentity(value) {
+  return String(value || "").trim() || null;
+}
+
+function resolveStableEntryAlertDedupeKey(payload = {}) {
+  const intent = resolveIntent(payload);
+  if (intent !== "ENTRY" && intent !== "ADD") return null;
+  const symbol = String(payload.symbol || payload.symbol_or_pair_id || "").trim().toUpperCase();
+  if (!symbol) return null;
+  const identity = trimAlertIdentity(payload.signalId)
+    || trimAlertIdentity(payload.signal_id)
+    || trimAlertIdentity(payload.signalIntentId)
+    || trimAlertIdentity(payload.signal_intent_id)
+    || trimAlertIdentity(payload.intentId)
+    || trimAlertIdentity(payload.intent_id)
+    || trimAlertIdentity(payload.entryEventId)
+    || trimAlertIdentity(payload.entry_event_id)
+    || trimAlertIdentity(payload.clientOrderId)
+    || trimAlertIdentity(payload.client_order_id)
+    || trimAlertIdentity(payload.orderId)
+    || trimAlertIdentity(payload.order_id)
+    || trimAlertIdentity(payload.runId)
+    || trimAlertIdentity(payload.run_id);
+  if (!identity) return null;
+  return `${symbol}__ENTRY__${identity}`;
+}
+
 function resolveTradeAlertDedupeKey(payload = {}) {
   // C10 invariant: dedupe key MUST bind each alert to its cycle (entry_event_id
   // or canonical_chain_key) so that a close→reopen on the same symbol in
@@ -894,6 +922,7 @@ function resolveTradeAlertDedupeKey(payload = {}) {
     || payload.idempotency_key
     || ""
   ).trim() || null;
+  const stableEntryKey = resolveStableEntryAlertDedupeKey(payload);
   const cycleToken = String(
     payload.entry_event_id
     || payload.entryEventId
@@ -903,7 +932,7 @@ function resolveTradeAlertDedupeKey(payload = {}) {
     || (payload.meta && (payload.meta.canonical_chain_key || payload.meta.canonicalChainKey))
     || ""
   ).trim();
-  if (!baseKey) return null;
+  if (!baseKey) return stableEntryKey;
   if (!cycleToken) return baseKey;
   return `${baseKey}::CYCLE_${cycleToken}`;
 }
@@ -1888,6 +1917,7 @@ module.exports = {
     appendTradeExecutionAlertAudit,
     resolveTradeAlertSourceFillId,
     resolveAlertSendResultReason,
+    resolveStableEntryAlertDedupeKey,
     resolveTradeAlertDedupeKey,
   },
 };
