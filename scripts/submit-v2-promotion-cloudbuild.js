@@ -15,6 +15,7 @@ const {
 const operatorAlertPreview = require("./lib/v2-promotion-submit-operator-alert");
 const operatorSummary = require("./lib/v2-promotion-operator-summary");
 const submitTrace = require("./lib/v2-promotion-submit-trace");
+const cloudbuildSubmitBudget = require("./lib/cloudbuild-submit-budget");
 
 const OUTPUT_FILENAME = "promotion-cloudbuild-submit-request.json";
 const OPERATOR_ALERT_SEND_SCRIPT = path.resolve(__dirname, "send-v2-promotion-submit-operator-alert.js");
@@ -2625,6 +2626,20 @@ function submitCloudBuild(env = process.env) {
     });
   }
   if (requestWithDelivery.submit_enabled) {
+    const budget = cloudbuildSubmitBudget.evaluateCloudBuildSubmitBudget({ env });
+    if (budget.ok !== true) {
+      const requestWithBudget = Object.freeze({
+        ...requestWithDelivery,
+        cloudbuild_submit_budget: budget,
+      });
+      writeSubmitRequestArtifact(requestWithBudget);
+      return Object.freeze({
+        ok: false,
+        reason: "V2_PROMOTION_CLOUDBUILD_SUBMIT_BUDGET_BLOCKED",
+        output_file: outputFile,
+        request: requestWithBudget,
+      });
+    }
     execFileSync(requestWithDelivery.command[0], requestWithDelivery.command.slice(1), {
       cwd: process.cwd(),
       stdio: "inherit",

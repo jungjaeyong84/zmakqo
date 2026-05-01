@@ -9,6 +9,7 @@ const liveCutoverReadiness = require("./check-v2-repair-live-cutover-readiness")
 const liveEvidenceReadiness = require("./check-v2-live-evidence-readiness");
 const submitContractCheck = require("./check-v2-promotion-submit-contract");
 const submitTrace = require("./lib/v2-promotion-submit-trace");
+const cloudbuildSubmitBudget = require("./lib/cloudbuild-submit-budget");
 const { auditV2ProductionCutoverReadiness } = require("../src/v2/productionCutoverAudit");
 const { auditV2SchedulerTrafficCutoverReadiness } = require("../src/v2/schedulerTrafficCutoverAudit");
 const { runV2SchedulerTrafficCollectorPreflight } = require("../src/v2/schedulerTrafficCollectorPreflight");
@@ -1591,6 +1592,10 @@ function runCloudBuildPromotion(env = process.env) {
       context_file: null,
       script: null,
     });
+  }
+
+  if (isEnabled(plan.effectiveEnv && plan.effectiveEnv.V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED)) {
+    cloudbuildSubmitBudget.assertCloudBuildSubmitBudget({ env: plan.effectiveEnv });
   }
 
   execFileSync("npm", ["run", plan.script], {

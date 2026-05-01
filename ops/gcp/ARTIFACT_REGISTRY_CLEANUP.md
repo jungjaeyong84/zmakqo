@@ -66,3 +66,20 @@ It blocks on:
 - Liquidation stream collector schedule/window regressions.
 
 It warns, but does not block, on Cloud Run min-instance and VPC connector baseline cost because those affect Binance private egress and exit/protection latency.
+
+## CloudBuild Churn Root Cause
+
+The 2026-05-01 billing review found 50 builds since 2026-04-30T00:00Z:
+
+- 32 manual `gcloud builds submit` executions.
+- 18 executions from trigger `db7cd873-8927-419d-a232-855648b727f5`, now disabled.
+
+Code-level guardrails now exist in every repo-owned submit path:
+
+- `scripts/run-v2-discovery-canary-preflight-deploy.js`
+- `scripts/submit-v2-promotion-cloudbuild.js`
+- `scripts/run-v2-promotion-cloudbuild.js`
+
+All use `scripts/lib/cloudbuild-submit-budget.js` and block at `DONBEOLJA_V2_CLOUDBUILD_DAILY_SUBMIT_LIMIT` unless the explicit override phrase is supplied.
+
+Residual risk: a developer with direct CloudBuild IAM can still run raw `gcloud builds submit`. The operational fix is IAM/process control: do not grant broad CloudBuild submit rights for routine operation, and require `npm run check:v2-gcp-cost-posture` before discretionary deploys.

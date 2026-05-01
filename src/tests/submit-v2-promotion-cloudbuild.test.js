@@ -2602,6 +2602,35 @@ function buildSchedulerTrafficCollectorPreflightSummaryFixture(filePath = null) 
   }
 })();
 
+(function submitEnabledFailsClosedWhenCloudBuildBudgetExceeded() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-budget-"));
+  try {
+    const artifactDir = path.join(dir, "PCY__CANARY__BUDGET");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    seedBoundedSubmitArtifacts(artifactDir, "PCY__CANARY__BUDGET");
+    const result = submit.submitCloudBuild({
+      GOOGLE_CLOUD_PROJECT: "donbeolja-dev",
+      V2_PROMOTION_CANARY_FLOW_ENABLED: "1",
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_SELECT_POSITION_CYCLE_ID: "PCY__CANARY__BUDGET",
+      V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+      V2_PROMOTION_CLOUDBUILD_SUBMIT_ENABLED: "1",
+      DONBEOLJA_V2_CLOUDBUILD_DAILY_SUBMIT_LIMIT: "2",
+      DONBEOLJA_V2_CLOUDBUILD_RECENT_BUILDS_JSON: JSON.stringify([{ id: "a" }, { id: "b" }]),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "V2_PROMOTION_CLOUDBUILD_SUBMIT_BUDGET_BLOCKED");
+    assert.strictEqual(result.request.cloudbuild_submit_budget.ok, false);
+    assert.strictEqual(result.request.cloudbuild_submit_budget.build_n, 2);
+    assert.ok(result.request.cloudbuild_submit_budget.blockers.includes("CLOUDBUILD_SUBMIT_BUDGET:DAILY_LIMIT_EXCEEDED"));
+    const payload = JSON.parse(fs.readFileSync(result.output_file, "utf8"));
+    assert.strictEqual(payload.cloudbuild_submit_budget.ok, false);
+    assert.strictEqual(payload.cloudbuild_submit_budget.reason, "V2_CLOUDBUILD_SUBMIT_BUDGET_BLOCKED");
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (function submitRequestSurfacesAlertAttentionWithoutBlockingSubmit() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-submit-request-alert-attention-"));
   try {

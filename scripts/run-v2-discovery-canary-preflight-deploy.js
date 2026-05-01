@@ -8,13 +8,14 @@ const entryStreak = require("./check-v2-production-entry-route-canary-streak");
 const exitStreak = require("./check-v2-exit-runtime-canary-streak");
 const repairStreak = require("./check-v2-repair-queue-firestore-canary-streak");
 const runtimeManifest = require("./check-v2-runtime-discovery-canary-manifest");
+const cloudbuildSubmitBudget = require("./lib/cloudbuild-submit-budget");
 const { evaluateV2PerformanceStageMatrix } = require("../src/v2/performanceGate");
 const {
   DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT,
 } = require("../src/v2/discoveryCanaryNotionalPolicy");
 
 const DEPLOY_CONFIRM_PHRASE = "DEPLOY_V2_DISCOVERY_CANARY";
-const CLOUDBUILD_BUDGET_OVERRIDE_PHRASE = "OVERRIDE_V2_CLOUDBUILD_DAILY_BUDGET";
+const { CLOUDBUILD_BUDGET_OVERRIDE_PHRASE } = cloudbuildSubmitBudget;
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -25,11 +26,6 @@ function parseBool(value, fallback = false) {
   const text = String(value || "").trim().toLowerCase();
   if (!text) return Boolean(fallback);
   return text === "1" || text === "true" || text === "yes" || text === "on";
-}
-
-function toPositiveInt(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
 }
 
 function resolveSymbol(env = process.env) {
@@ -71,98 +67,6 @@ function readJsonIfExists(filePath) {
   } catch (_) {
     return null;
   }
-}
-
-function parseJsonArray(value) {
-  const parsed = typeof value === "string" ? JSON.parse(value) : value;
-  if (!parsed) return [];
-  return Array.isArray(parsed) ? parsed : [parsed];
-}
-
-function resolveCloudBuildProject(env = process.env) {
-  return trimOrNull(env.GOOGLE_CLOUD_PROJECT)
-    || trimOrNull(env.GCLOUD_PROJECT)
-    || trimOrNull(env.PROJECT_ID)
-    || trimOrNull(env.CLOUDSDK_CORE_PROJECT);
-}
-
-function collectRecentCloudBuilds({
-  env = process.env,
-  execFileSyncFn = execFileSync,
-  nowMs = Date.now(),
-  windowHours = 24,
-} = {}) {
-  const fixture = trimOrNull(env.DONBEOLJA_V2_CLOUDBUILD_RECENT_BUILDS_JSON);
-  if (fixture) return parseJsonArray(fixture);
-  const cutoffIso = new Date(Number(nowMs) - (Math.max(1, Number(windowHours) || 24) * 60 * 60 * 1000)).toISOString();
-  const args = [
-    "builds",
-    "list",
-    "--filter",
-    `createTime>="${cutoffIso}"`,
-    "--format=json",
-  ];
-  const project = resolveCloudBuildProject(env);
-  if (project) args.push(`--project=${project}`);
-  const out = execFileSyncFn("gcloud", args, {
-    cwd: process.cwd(),
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  return parseJsonArray(out);
-}
-
-function evaluateCloudBuildSubmitBudget({
-  env = process.env,
-  execFileSyncFn = execFileSync,
-  nowMs = Date.now(),
-} = {}) {
-  if (parseBool(env.DONBEOLJA_V2_CLOUDBUILD_SUBMIT_BUDGET_DISABLED, false)) {
-    return Object.freeze({
-      ok: true,
-      reason: "V2_CLOUDBUILD_SUBMIT_BUDGET_DISABLED",
-      blockers: Object.freeze([]),
-      disabled: true,
-    });
-  }
-  const limit = toPositiveInt(env.DONBEOLJA_V2_CLOUDBUILD_DAILY_SUBMIT_LIMIT, 6);
-  const windowHours = toPositiveInt(env.DONBEOLJA_V2_CLOUDBUILD_SUBMIT_BUDGET_WINDOW_HOURS, 24);
-  const overrideConfirmed = trimOrNull(env.DONBEOLJA_V2_CLOUDBUILD_SUBMIT_BUDGET_OVERRIDE_CONFIRM) === CLOUDBUILD_BUDGET_OVERRIDE_PHRASE;
-  let builds = [];
-  try {
-    builds = collectRecentCloudBuilds({ env, execFileSyncFn, nowMs, windowHours });
-  } catch (error) {
-    return Object.freeze({
-      ok: false,
-      reason: "V2_CLOUDBUILD_SUBMIT_BUDGET_READ_FAILED",
-      blockers: Object.freeze(["CLOUDBUILD_SUBMIT_BUDGET:READ_FAILED"]),
-      error: error && error.message ? String(error.message) : String(error),
-      limit,
-      window_hours: windowHours,
-      override_confirmed: overrideConfirmed,
-      override_phrase_required: CLOUDBUILD_BUDGET_OVERRIDE_PHRASE,
-    });
-  }
-  const rows = Array.isArray(builds) ? builds : [];
-  const buildN = rows.length;
-  const overBudget = buildN >= limit;
-  const blockers = overBudget && !overrideConfirmed
-    ? Object.freeze(["CLOUDBUILD_SUBMIT_BUDGET:DAILY_LIMIT_EXCEEDED"])
-    : Object.freeze([]);
-  return Object.freeze({
-    ok: blockers.length === 0,
-    reason: blockers.length === 0 ? "V2_CLOUDBUILD_SUBMIT_BUDGET_PASS" : "V2_CLOUDBUILD_SUBMIT_BUDGET_BLOCKED",
-    blockers,
-    build_n: buildN,
-    limit,
-    window_hours: windowHours,
-    override_confirmed: overrideConfirmed,
-    override_phrase_required: CLOUDBUILD_BUDGET_OVERRIDE_PHRASE,
-    recent_build_ids: Object.freeze(rows
-      .map((row) => trimOrNull(row && row.id))
-      .filter(Boolean)
-      .slice(0, 10)),
-  });
 }
 
 function resolvePerformanceMetricsFile(env = process.env) {
@@ -457,7 +361,7 @@ async function main(env = process.env, options = {}) {
   }
 
   const execFileSyncFn = typeof options.execFileSync === "function" ? options.execFileSync : execFileSync;
-  const cloudbuildBudget = evaluateCloudBuildSubmitBudget({
+  const cloudbuildBudget = cloudbuildSubmitBudget.evaluateCloudBuildSubmitBudget({
     env,
     execFileSyncFn,
     nowMs: Number.isFinite(Number(options.nowMs)) ? Number(options.nowMs) : Date.now(),
@@ -537,8 +441,8 @@ if (require.main === module) {
     collectPreflight,
     buildDiscoverySubstitutions,
     buildDeployArgs,
-    evaluateCloudBuildSubmitBudget,
-    collectRecentCloudBuilds,
+    evaluateCloudBuildSubmitBudget: cloudbuildSubmitBudget.evaluateCloudBuildSubmitBudget,
+    collectRecentCloudBuilds: cloudbuildSubmitBudget.collectRecentCloudBuilds,
     isActivePositionBootstrapOnly,
     buildPreflightBlockers,
     __test: {
@@ -555,7 +459,7 @@ if (require.main === module) {
       buildSubstitutionArg,
       DEPLOY_CONFIRM_PHRASE,
       CLOUDBUILD_BUDGET_OVERRIDE_PHRASE,
-      toPositiveInt,
+      toPositiveInt: cloudbuildSubmitBudget.toPositiveInt,
     },
   };
 }
