@@ -50,3 +50,19 @@ gcloud artifacts repositories set-cleanup-policies cloud-run-source-deploy \
 ```
 
 Do not remove the keep policy unless Cloud Run revision rollback policy is separately changed.
+
+## Cost Posture Guard
+
+Run the broader GCP cost posture guard before any discretionary deploy:
+
+```bash
+npm run check:v2-gcp-cost-posture
+```
+
+It blocks on:
+
+- CloudBuild churn above `DONBEOLJA_V2_CLOUDBUILD_DAILY_SUBMIT_LIMIT` in the last 24h.
+- Artifact Registry cleanup dry-run/policy drift.
+- Liquidation stream collector schedule/window regressions.
+
+It warns, but does not block, on Cloud Run min-instance and VPC connector baseline cost because those affect Binance private egress and exit/protection latency.
