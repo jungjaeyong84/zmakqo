@@ -39,6 +39,15 @@ function parseDateMs(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseBool(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "y", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "n", "off"].includes(raw)) return false;
+  return fallback;
+}
+
 function safeReadJson(filePath) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -90,6 +99,7 @@ function buildSystemSloState({
   lineageHealth = null,
   nativeTrailProtection = null,
   exitIntegrityCycle = null,
+  tradeAlertOutboxLineage = null,
   nowMs = Date.now(),
   maxAgeMs = null,
 } = {}) {
@@ -102,6 +112,7 @@ function buildSystemSloState({
   const exitIntegritySummary = exitIntegrityDoc.summary && typeof exitIntegrityDoc.summary === "object"
     ? exitIntegrityDoc.summary
     : exitIntegrityDoc;
+  const outboxLineage = tradeAlertOutboxLineage && typeof tradeAlertOutboxLineage === "object" ? tradeAlertOutboxLineage : {};
   const quality = readSummary(qualityDoc);
   const lineage = readSummary(lineageDoc);
   const resolvedMaxAgeMs = Math.max(60 * 1000, Number(maxAgeMs || process.env.SYSTEM_SLO_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
@@ -153,6 +164,20 @@ function buildSystemSloState({
   if (Number.isFinite(lineageIntentSignalNullRate) && lineageIntentSignalNullRate > 0.02) issues.push("LINEAGE_INTENT_SIGNAL_NULL_RATE");
   if (Number.isFinite(lineageFillSignalNullRate) && lineageFillSignalNullRate > 0.02) issues.push("LINEAGE_FILL_SIGNAL_NULL_RATE");
   if (Number.isFinite(lineageEntryFillIntentNullRate) && lineageEntryFillIntentNullRate > 0.02) issues.push("LINEAGE_FILL_INTENT_NULL_RATE");
+
+  const outboxLineageIssueRows = toNum(outboxLineage.issue_row_n);
+  const outboxLineageOk = outboxLineage.ok === true;
+  const outboxLineageProvided = Object.keys(outboxLineage).length > 0;
+  const outboxLineageHardBlock = parseBool(
+    process.env.SYSTEM_SLO_TRADE_ALERT_OUTBOX_LINEAGE_HARD_BLOCK
+    || process.env.TRADE_ALERT_OUTBOX_LINEAGE_HARD_BLOCK,
+    false
+  );
+  if (outboxLineageProvided && (outboxLineageOk === false || (Number.isFinite(outboxLineageIssueRows) && outboxLineageIssueRows > 0))) {
+    issues.push(outboxLineageHardBlock
+      ? "TRADE_ALERT_OUTBOX_LINEAGE_MISMATCH"
+      : "TRADE_ALERT_OUTBOX_SCHEMA_WARN");
+  }
 
   let status = "PASS";
   let reason = "SYSTEM_SLO_HEALTHY";
@@ -218,6 +243,10 @@ function buildSystemSloState({
       native_trail_protection_top_symbols: Array.isArray(nativeProtection.top_symbols) ? nativeProtection.top_symbols.slice(0, 10) : [],
       exit_integrity_status: exitIntegrityStatus,
       exit_integrity_live_issue_count: exitIntegrityLiveIssueCount,
+      trade_alert_outbox_lineage_status: upper(outboxLineage.reason),
+      trade_alert_outbox_lineage_checked_row_n: toNum(outboxLineage.checked_row_n),
+      trade_alert_outbox_lineage_issue_row_n: outboxLineageIssueRows,
+      trade_alert_outbox_lineage_hard_block: outboxLineageHardBlock,
     },
   };
 }

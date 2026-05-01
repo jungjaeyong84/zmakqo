@@ -42,6 +42,13 @@ async function run() {
       output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
       output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
     }),
+    runTradeAlertOutboxLineageCheck: async () => ({
+      ok: true,
+      reason: "TRADE_ALERT_OUTBOX_LINEAGE_EVIDENCE_PASS",
+      checked_row_n: 0,
+      issue_row_n: 0,
+      output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
+    }),
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadNativeTrailProtection: async () => ({ available: true, gap_count: 1, top_symbols: [{ symbol: "ETHUSDT", count: 1 }] }),
@@ -88,6 +95,8 @@ async function run() {
   assert.ok(String(result.trace.traceparent || "").startsWith("00-"));
   assert.strictEqual(result.native_trail_protection.gap_count, 1);
   assert.strictEqual(result.exit_integrity_cycle.summary.live_issue_count, 0);
+  assert.strictEqual(result.trade_alert_outbox_lineage.reason, "TRADE_ALERT_OUTBOX_LINEAGE_EVIDENCE_PASS");
+  assert.ok(String(result.artifacts.trade_alert_outbox_lineage_latest_json || "").startsWith(artifactsDir));
 
   let capturedExecutionQuality = null;
   let capturedLineageHealth = null;
@@ -103,6 +112,13 @@ async function run() {
       summary: { status: "OK", live_issue_count: 0 },
       output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
       output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
+    }),
+    runTradeAlertOutboxLineageCheck: async () => ({
+      ok: true,
+      reason: "TRADE_ALERT_OUTBOX_LINEAGE_EVIDENCE_PASS",
+      checked_row_n: 0,
+      issue_row_n: 0,
+      output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
     }),
     loadOpsRuntime: async () => ({ status: "보류", reason: "OPS_GUARD_HOLD", block_new_entries: true }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
@@ -145,6 +161,13 @@ async function run() {
       summary: { status: "OK", live_issue_count: 0 },
       output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
       output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
+    }),
+    runTradeAlertOutboxLineageCheck: async () => ({
+      ok: true,
+      reason: "TRADE_ALERT_OUTBOX_LINEAGE_EVIDENCE_PASS",
+      checked_row_n: 0,
+      issue_row_n: 0,
+      output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
     }),
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
@@ -196,6 +219,13 @@ async function run() {
       output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
       output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
     }),
+    runTradeAlertOutboxLineageCheck: async () => ({
+      ok: true,
+      reason: "TRADE_ALERT_OUTBOX_LINEAGE_EVIDENCE_PASS",
+      checked_row_n: 0,
+      issue_row_n: 0,
+      output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
+    }),
     loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
     loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
     loadExecutionQuality: async () => ({ generated_at: "2026-04-13T04:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } }),
@@ -222,6 +252,56 @@ async function run() {
   });
   assert.strictEqual(exitIntegrityBlocked.status, "중단");
   assert.strictEqual(exitIntegrityBlocked.exit_integrity_cycle.summary.live_issue_count, 2);
+
+  let capturedOutboxLineage = null;
+  const outboxLineageWarn = await runSystemRuntimeGuardsJob({
+    exchange: "BINANCEFUT",
+    nowMs: Date.parse("2026-04-13T06:00:00.000Z"),
+    remediateOnBlock: false,
+    dryRun: true,
+    artifactsDir,
+    runExitIntegrityCycle: async () => ({
+      ok: true,
+      status: "OK",
+      summary: { status: "OK", live_issue_count: 0 },
+      output_json: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.json"),
+      output_md: path.join(artifactsDir, "binance_exit_integrity_cycle_latest.md"),
+    }),
+    runTradeAlertOutboxLineageCheck: async (env) => {
+      assert.strictEqual(env.TRADE_ALERT_OUTBOX_LINEAGE_SOFT, "1");
+      assert.strictEqual(env.TRADE_ALERT_OUTBOX_LINEAGE_OUTPUT_DIR, artifactsDir);
+      return {
+        ok: false,
+        reason: "TRADE_ALERT_OUTBOX_LINEAGE_EVIDENCE_BLOCKED",
+        checked_row_n: 3,
+        issue_row_n: 1,
+        output_json: path.join(artifactsDir, "trade_alert_outbox_lineage_evidence_latest.json"),
+      };
+    },
+    loadOpsRuntime: async () => ({ status: "PASS", reason: "OPS_GUARD_OK", block_new_entries: false }),
+    loadServingRuntime: async () => ({ status: "PASS", reason: "ML_SERVING_OK", block_new_entries: false }),
+    loadExecutionQuality: async () => ({ generated_at: "2026-04-13T05:59:00.000Z", summary: { status: "EXECUTION_QUALITY_OK" } }),
+    loadLineageHealth: async () => ({ generated_at: "2026-04-13T05:59:00.000Z", summary: { verdict: "PASS" } }),
+    loadNativeTrailProtection: async () => ({ available: true, gap_count: 0, top_symbols: [] }),
+    buildSlo: (payload) => {
+      capturedOutboxLineage = payload.tradeAlertOutboxLineage;
+      return { status: "WARN", reason: "TRADE_ALERT_OUTBOX_SCHEMA_WARN", block_new_entries: false };
+    },
+    buildAnomaly: () => ({
+      status: "WARN",
+      reason: "ANOMALY_SYSTEM_SLO_HOLD",
+      circuit_breaker_open: false,
+      rollback_action: "NONE",
+    }),
+    recordSlo: async () => {},
+    recordAnomaly: async () => {},
+    recordRemediation: async () => {},
+    actuateServing: async () => ({ ok: true, skipped: true, reason: "NOOP" }),
+    exportTrace: async () => ({ ok: true, skipped: true, reason: "OTEL_EXPORT_SKIPPED" }),
+  });
+  assert.strictEqual(capturedOutboxLineage.issue_row_n, 1);
+  assert.strictEqual(outboxLineageWarn.trade_alert_outbox_lineage.issue_row_n, 1);
+  assert.ok(String(outboxLineageWarn.artifacts.trade_alert_outbox_lineage_latest_json || "").startsWith(artifactsDir));
 }
 
 run()

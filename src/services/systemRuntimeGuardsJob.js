@@ -17,6 +17,7 @@ const { exportTraceContext } = require("./otelExporter");
 const { normalizeTraceContext } = require("../utils/traceContext");
 const { loadNativeTrailProtectionRuntime } = require("./nativeTrailProtectionRuntime");
 const { runBinanceExitIntegrityCycle } = require("../../scripts/run-binance-exit-integrity-cycle");
+const { main: runTradeAlertOutboxLineageEvidenceCheck } = require("../../scripts/check-trade-alert-outbox-lineage-evidence");
 const {
   loadPreferredExecutionQualityInput,
   loadPreferredLineageHealthInput,
@@ -89,6 +90,7 @@ async function runSystemRuntimeGuardsJob({
   loadLineageHealth = loadPreferredLineageHealthInput,
   loadNativeTrailProtection = loadNativeTrailProtectionRuntime,
   runExitIntegrityCycle = runBinanceExitIntegrityCycle,
+  runTradeAlertOutboxLineageCheck = runTradeAlertOutboxLineageEvidenceCheck,
   refreshExecutionQualityInput = () => runRefreshScript(EXECUTION_QUALITY_REFRESH_SCRIPT),
   refreshLineageHealthInput = () => runRefreshScript(LINEAGE_HEALTH_REFRESH_SCRIPT),
 } = {}) {
@@ -120,6 +122,21 @@ async function runSystemRuntimeGuardsJob({
     loadOpsRuntime({ exchange: ex, force: true }),
     loadServingRuntime({ exchange: ex, force: true }),
   ]);
+  const tradeAlertOutboxLineage = await Promise.resolve().then(() => runTradeAlertOutboxLineageCheck({
+    ...process.env,
+    TRADE_ALERT_OUTBOX_LINEAGE_SOFT: "1",
+    TRADE_ALERT_OUTBOX_LINEAGE_OUTPUT_DIR: artifactBaseDir,
+  })).catch((err) => ({
+    ok: false,
+    reason: "TRADE_ALERT_OUTBOX_LINEAGE_EVIDENCE_THROWN",
+    blockers: ["TRADE_ALERT_OUTBOX_LINEAGE:CHECK_FAILED"],
+    error: err && err.message ? err.message : String(err),
+    checked_row_n: null,
+    checked_exit_like_row_n: null,
+    issue_row_n: null,
+    issues: [],
+    output_json: path.join(artifactBaseDir, "trade_alert_outbox_lineage_evidence_latest.json"),
+  }));
   const staleMaxAgeMs = Math.max(60 * 1000, Number(process.env.SYSTEM_SLO_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
   const [executionQuality, lineageHealth, nativeTrailProtection] = await Promise.all([
     Promise.resolve().then(() => loadExecutionQuality({
@@ -151,6 +168,7 @@ async function runSystemRuntimeGuardsJob({
     lineageHealth,
     nativeTrailProtection,
     exitIntegrityCycle,
+    tradeAlertOutboxLineage,
     nowMs,
   });
   const anomalyState = buildAnomaly({
@@ -301,6 +319,8 @@ async function runSystemRuntimeGuardsJob({
       native_trail_protection_gap_count: Number(nativeTrailProtection && nativeTrailProtection.gap_count || 0),
       exit_integrity_status: String(exitIntegrityCycle && exitIntegrityCycle.status || exitIntegrityCycle && exitIntegrityCycle.summary && exitIntegrityCycle.summary.status || "UNKNOWN"),
       exit_integrity_live_issue_count: Number(exitIntegrityCycle && exitIntegrityCycle.summary && exitIntegrityCycle.summary.live_issue_count || 0),
+      trade_alert_outbox_lineage_status: String(tradeAlertOutboxLineage && tradeAlertOutboxLineage.reason || "UNKNOWN"),
+      trade_alert_outbox_lineage_issue_row_n: Number(tradeAlertOutboxLineage && tradeAlertOutboxLineage.issue_row_n || 0),
       execution_quality_latency_driver: executionQualityRootCause.latency && executionQualityRootCause.latency.driver || null,
       execution_quality_partial_driver_market: executionQualityRootCause.partial_fill && executionQualityRootCause.partial_fill.driver_market || null,
       execution_quality_slippage_driver_market: executionQualityRootCause.slippage && executionQualityRootCause.slippage.driver_market || null,
@@ -327,11 +347,13 @@ async function runSystemRuntimeGuardsJob({
     execution_quality_focus: executionQualityRootCause,
     native_trail_protection: nativeTrailProtection,
     exit_integrity_cycle: exitIntegrityCycle,
+    trade_alert_outbox_lineage: tradeAlertOutboxLineage,
     artifacts: {
       system_slo_latest_json: sloPath,
       system_anomaly_latest_json: anomalyPath,
       native_trail_protection_latest_json: nativeTrailProtectionPath,
       binance_exit_integrity_cycle_latest_json: exitIntegrityCycle && exitIntegrityCycle.output_json ? exitIntegrityCycle.output_json : null,
+      trade_alert_outbox_lineage_latest_json: tradeAlertOutboxLineage && tradeAlertOutboxLineage.output_json ? tradeAlertOutboxLineage.output_json : path.join(artifactBaseDir, "trade_alert_outbox_lineage_evidence_latest.json"),
       system_anomaly_remediation_latest_json: remediation && remediation.artifacts ? remediation.artifacts.latest_json : null,
     },
   };

@@ -14,7 +14,6 @@ function positiveNumberOrDefault(value, fallback) {
 
 const PAGE_SIZE = Math.max(100, positiveNumberOrDefault(process.env.TRADE_ALERT_OUTBOX_LINEAGE_PAGE_SIZE, 1000));
 const DEFAULT_LOOKBACK_HOURS = Math.max(1, positiveNumberOrDefault(process.env.TRADE_ALERT_OUTBOX_LINEAGE_LOOKBACK_HOURS, 24));
-const OUT_DIR = path.join(process.cwd(), "ops", "daily");
 const SELECT_FIELDS = Object.freeze([
   "created_at",
   "updated_at",
@@ -281,15 +280,20 @@ function resolveSinceIso(env = process.env) {
   return new Date(Date.now() - DEFAULT_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
 }
 
+function resolveOutDir(env = process.env) {
+  return path.resolve(trimOrNull(env.TRADE_ALERT_OUTBOX_LINEAGE_OUTPUT_DIR) || path.join(process.cwd(), "ops", "daily"));
+}
+
 async function main(env = process.env) {
   const sinceIso = resolveSinceIso(env);
   const rows = normalizeBool(env.TRADE_ALERT_OUTBOX_LINEAGE_FIXTURE_EMPTY, false)
     ? []
     : await fetchRows({ db: getFirestore(), sinceIso });
   const report = buildReport({ rows, sinceIso });
-  fs.mkdirSync(OUT_DIR, { recursive: true });
-  const latestPath = path.join(OUT_DIR, "trade_alert_outbox_lineage_evidence_latest.json");
-  const datedPath = path.join(OUT_DIR, `${isoDate()}_trade_alert_outbox_lineage_evidence.json`);
+  const outDir = resolveOutDir(env);
+  fs.mkdirSync(outDir, { recursive: true });
+  const latestPath = path.join(outDir, "trade_alert_outbox_lineage_evidence_latest.json");
+  const datedPath = path.join(outDir, `${isoDate()}_trade_alert_outbox_lineage_evidence.json`);
   fs.writeFileSync(latestPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   fs.writeFileSync(datedPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   const line = JSON.stringify({ ...report, output_json: latestPath, output_dated_json: datedPath });
@@ -322,6 +326,7 @@ if (require.main === module) {
       includesAll,
       isExitLike,
       resolveSinceIso,
+      resolveOutDir,
       SELECT_FIELDS,
     },
   };
