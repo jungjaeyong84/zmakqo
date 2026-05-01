@@ -50,6 +50,59 @@ function run() {
   });
   assert.strictEqual(fallbackA, fallbackB, "fallback hash should be stable for identical payload identity");
 
+  const entryLong = __test.buildTradeAlertOutboxId({
+    type: "TRADE_EXECUTION_ALERT",
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    event: "LONG",
+    dedupeKey: "SOLUSDT__ENTRY__SIG__BINANCEFUT__SOLUSDT__15m__1777102200000__LONG",
+    payload: {
+      intent: "ENTRY",
+      signalId: "SIG__BINANCEFUT__SOLUSDT__15m__1777102200000__LONG",
+    },
+  });
+  const entryCanonical = __test.buildTradeAlertOutboxId({
+    type: "TRADE_EXECUTION_ALERT",
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    event: "ENTRY_LONG",
+    dedupeKey: "SOLUSDT__ENTRY__SIG__BINANCEFUT__SOLUSDT__15m__1777102200000__LONG",
+    payload: {
+      intent: "ENTRY",
+      signalId: "SIG__BINANCEFUT__SOLUSDT__15m__1777102200000__LONG",
+    },
+  });
+  const entryTier = __test.buildTradeAlertOutboxId({
+    type: "TRADE_EXECUTION_ALERT",
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    event: "PRE_REAL_LONG",
+    dedupeKey: "SOLUSDT__ENTRY__SIG__BINANCEFUT__SOLUSDT__15m__1777102200000__LONG",
+    payload: {
+      intent: "ENTRY",
+      signalId: "SIG__BINANCEFUT__SOLUSDT__15m__1777102200000__LONG",
+    },
+  });
+  assert.strictEqual(entryLong, entryCanonical, "entry event aliases must share one outbox id");
+  assert.strictEqual(entryLong, entryTier, "entry tier aliases must share one outbox id");
+  assert.ok(entryLong.includes("__ENTRY__"), "entry outbox id must expose canonical ENTRY event key");
+
+  const exitTp1 = __test.buildTradeAlertOutboxId({
+    type: "TRADE_EXECUTION_ALERT",
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    event: "EXIT_TP_P1_2.5P",
+    sourceFillId: "FILL__TP1__SOL",
+  });
+  const exitTrail = __test.buildTradeAlertOutboxId({
+    type: "TRADE_EXECUTION_ALERT",
+    exchange: "BINANCEFUT",
+    symbol: "SOLUSDT",
+    event: "EXIT_TRAIL",
+    sourceFillId: "FILL__TP1__SOL",
+  });
+  assert.notStrictEqual(exitTp1, exitTrail, "exit event keys must remain distinct unless canonical transition dedupe is supplied");
+
   const evidence = __test.resolveOutboxEvidenceFields({
     payload: {
       event: "EXIT_TP_P0_0.8P",

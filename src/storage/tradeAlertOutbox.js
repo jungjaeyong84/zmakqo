@@ -60,6 +60,32 @@ function buildFallbackDedupeSeed({
   return crypto.createHash("sha1").update(JSON.stringify(stable)).digest("hex").slice(0, 20);
 }
 
+function resolveOutboxEventKey({
+  event = null,
+  payload = null,
+  dedupeKey = null,
+} = {}) {
+  const src = payload && typeof payload === "object" ? payload : {};
+  const ev = upper(event || src.event);
+  const intent = upper(src.intent || src.event_intent || src.action);
+  const stableKey = String(dedupeKey || src.tradeAlertDedupeKey || src.trade_alert_dedupe_key || "").trim().toUpperCase();
+
+  if (intent === "ADD" || stableKey.includes("__ADD__")) return "ADD";
+  if (
+    intent === "ENTRY"
+    || stableKey.includes("__ENTRY__")
+    || ev === "LONG"
+    || ev === "SHORT"
+    || (ev && ev.startsWith("ENTRY_"))
+    || (ev && ev.startsWith("CORE_"))
+    || (ev && ev.startsWith("EARLY_"))
+    || (ev && ev.startsWith("PRE_REAL_"))
+  ) {
+    return "ENTRY";
+  }
+  return ev;
+}
+
 function normalizeStringList(values = []) {
   const raw = Array.isArray(values) ? values : [values];
   const seen = new Set();
@@ -158,12 +184,13 @@ function buildTradeAlertOutboxId({
   const stableSeed = trimOrNull(dedupeKey)
     || trimOrNull(sourceFillId)
     || buildFallbackDedupeSeed({ type, exchange, symbol, event, payload });
+  const eventKey = resolveOutboxEventKey({ event, payload, dedupeKey: stableSeed });
   return [
     "TRADE_ALERT_OUTBOX",
     compactIdToken(upper(type), "TRADE_EXECUTION_ALERT"),
     compactIdToken(upper(exchange), "BINANCEFUT"),
     compactIdToken(upper(symbol), "UNKNOWN"),
-    compactIdToken(upper(event), "UNKNOWN"),
+    compactIdToken(eventKey, "UNKNOWN"),
     compactIdToken(stableSeed, "NA"),
   ].join("__");
 }
@@ -330,6 +357,7 @@ module.exports = {
   __test: {
     buildTradeAlertOutboxId,
     buildFallbackDedupeSeed,
+    resolveOutboxEventKey,
     resolveOutboxEvidenceFields,
   },
 };
