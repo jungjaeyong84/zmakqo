@@ -32,6 +32,7 @@ const OUTBOX_SELECT_FIELDS = Object.freeze([
   "last_title",
   "canonical_transition_events",
   "canonical_primary_transition_event",
+  "payload",
 ]);
 const POSITION_SELECT_FIELDS = Object.freeze([
   "exchange",
@@ -94,6 +95,14 @@ function trimOrNull(value) {
   return text || null;
 }
 
+function resolveObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function resolveRowPayload(row = {}) {
+  return resolveObject(row.payload);
+}
+
 function isSimplifiedExitV2Position(row = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
   return meta.simplified_exit_v2_enabled === true || meta.simplifiedExitV2Enabled === true;
@@ -117,11 +126,16 @@ function normalizeTransitionEvent(value) {
 }
 
 function parseTransitionEvents(row = {}) {
+  const payload = resolveRowPayload(row);
   const values = [];
   if (Array.isArray(row.canonical_transition_events)) values.push(...row.canonical_transition_events);
   if (Array.isArray(row.canonicalTransitionEvents)) values.push(...row.canonicalTransitionEvents);
+  if (Array.isArray(payload.canonical_transition_events)) values.push(...payload.canonical_transition_events);
+  if (Array.isArray(payload.canonicalTransitionEvents)) values.push(...payload.canonicalTransitionEvents);
   if (row.canonical_primary_transition_event) values.push(row.canonical_primary_transition_event);
   if (row.canonicalTransitionEvent) values.push(row.canonicalTransitionEvent);
+  if (payload.canonical_primary_transition_event) values.push(payload.canonical_primary_transition_event);
+  if (payload.canonicalTransitionEvent) values.push(payload.canonicalTransitionEvent);
   const seen = new Set();
   return values
     .map((item) => normalizeTransitionEvent(item))
@@ -190,14 +204,22 @@ function summarizeFill(row = {}) {
 }
 
 function summarizeAlertAuditRow(row = {}) {
+  const payload = resolveRowPayload(row);
   return {
     ts: row.ts || null,
     ts_ms: toMs(row.ts),
-    symbol: upper(row.symbol),
-    event: upper(row.event),
-    source_fill_id: String(row.source_fill_id || "").trim() || null,
+    symbol: upper(row.symbol || payload.symbol),
+    event: upper(row.event || payload.event),
+    source_fill_id: String(
+      row.source_fill_id
+      || payload.sourceFillId
+      || payload.source_fill_id
+      || payload.fillId
+      || payload.fill_id
+      || ""
+    ).trim() || null,
     transitions: parseTransitionEvents(row),
-    title: row.title || null,
+    title: row.title || row.last_title || payload.title || null,
   };
 }
 
@@ -431,6 +453,7 @@ async function fetchRecentTradeAlertOutboxRows(db, sinceIso) {
         title: row.last_title || null,
         canonical_transition_events: Array.isArray(row.canonical_transition_events) ? row.canonical_transition_events : [],
         canonical_primary_transition_event: row.canonical_primary_transition_event || null,
+        payload: row.payload || null,
       });
     }
     if (snap.size < PAGE_SIZE) break;

@@ -16,6 +16,29 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
     }),
     ["TP1_REACHED", "TRAIL_ACTIVATED"]
   );
+  assert.deepStrictEqual(
+    __test.parseTransitionEvents({
+      payload: {
+        canonicalTransitionEvents: ["TP1_REACHED"],
+        canonicalTransitionEvent: "TRAIL_ACTIVE",
+      },
+    }),
+    ["TP1_REACHED", "TRAIL_ACTIVATED"]
+  );
+
+  const payloadOnlyAlert = __test.summarizeAlertAuditRow({
+    ts: "2026-04-17T00:00:21.000Z",
+    payload: {
+      symbol: "ETHUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      sourceFillId: "fill-payload-1",
+      canonicalTransitionEvents: ["TP1_REACHED"],
+      title: "ETH TP1 payload",
+    },
+  });
+  assert.strictEqual(payloadOnlyAlert.symbol, "ETHUSDT");
+  assert.strictEqual(payloadOnlyAlert.source_fill_id, "fill-payload-1");
+  assert.deepStrictEqual(payloadOnlyAlert.transitions, ["TP1_REACHED"]);
 
   const dedupedAlerts = __test.dedupeAlertRows([
     {
@@ -166,6 +189,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
   assert.strictEqual(healthyReport.symbols[0].flow.trail_transition_seen, true);
   assert.strictEqual(healthyReport.symbols[0].flow.native_tp_gap_age_ms, null);
   assert.ok(__test.FILL_SELECT_FIELDS.includes("canonical_transition_events"));
+  assert.ok(__test.OUTBOX_SELECT_FIELDS.includes("payload"));
   assert.ok(__test.POSITION_SELECT_FIELDS.includes("meta"));
 
   console.log("SIMPLIFIED_EXIT_V2_LIVE_FLOW_TEST_OK");

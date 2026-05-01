@@ -60,6 +60,92 @@ function buildFallbackDedupeSeed({
   return crypto.createHash("sha1").update(JSON.stringify(stable)).digest("hex").slice(0, 20);
 }
 
+function normalizeStringList(values = []) {
+  const raw = Array.isArray(values) ? values : [values];
+  const seen = new Set();
+  const out = [];
+  for (const item of raw) {
+    const value = upper(item);
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+function resolvePayloadObject(payload = null) {
+  return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
+}
+
+function resolveOutboxEvidenceFields({
+  payload = null,
+  prev = null,
+  sourceFillId = null,
+  dedupeKey = null,
+} = {}) {
+  const src = resolvePayloadObject(payload);
+  const previous = resolvePayloadObject(prev);
+  const transitionEvents = normalizeStringList([
+    ...(Array.isArray(src.canonicalTransitionEvents) ? src.canonicalTransitionEvents : []),
+    ...(Array.isArray(src.canonical_transition_events) ? src.canonical_transition_events : []),
+    src.canonicalTransitionEvent,
+    src.canonical_primary_transition_event,
+  ]);
+  const previousTransitionEvents = normalizeStringList(previous.canonical_transition_events);
+  const resolvedTransitionEvents = transitionEvents.length ? transitionEvents : previousTransitionEvents;
+  const primaryTransition = upper(
+    src.canonicalTransitionEvent
+      || src.canonical_primary_transition_event
+      || resolvedTransitionEvents[0]
+      || previous.canonical_primary_transition_event
+  );
+  return {
+    source_fill_id: trimOrNull(
+      sourceFillId
+        || src.sourceFillId
+        || src.source_fill_id
+        || src.fillId
+        || src.fill_id
+        || previous.source_fill_id
+    ),
+    dedupe_key: trimOrNull(
+      dedupeKey
+        || src.tradeAlertDedupeKey
+        || src.trade_alert_dedupe_key
+        || src.dedupeKey
+        || src.dedupe_key
+        || src.idempotencyKey
+        || src.idempotency_key
+        || previous.dedupe_key
+    ),
+    entry_event_id: trimOrNull(src.entryEventId || src.entry_event_id || previous.entry_event_id),
+    order_id: trimOrNull(src.orderId || src.order_id || previous.order_id),
+    client_order_id: trimOrNull(src.clientOrderId || src.client_order_id || previous.client_order_id),
+    raw_evidence_event: upper(src.rawEvidenceEvent || src.raw_evidence_event || src.event || previous.raw_evidence_event),
+    canonical_event: upper(
+      src.canonicalExitEvent
+        || src.canonical_exit_event
+        || src.canonicalEvent
+        || src.canonical_event
+        || previous.canonical_event
+    ),
+    canonical_stage: upper(
+      src.canonicalExitStage
+        || src.canonical_exit_stage
+        || src.canonicalStage
+        || src.canonical_stage
+        || previous.canonical_stage
+    ),
+    canonical_transition_events: resolvedTransitionEvents,
+    canonical_primary_transition_event: primaryTransition,
+    simplified_exit_v2_enabled: (
+      src.simplifiedExitV2Enabled === true
+        || src.simplified_exit_v2_enabled === true
+        || previous.simplified_exit_v2_enabled === true
+    ),
+  };
+}
+
 function buildTradeAlertOutboxId({
   type = null,
   exchange = null,
@@ -115,6 +201,12 @@ async function prepareTradeAlertOutbox({
 
   const now = nowIso();
   const attemptCount = Math.max(0, Number(prev && prev.attempt_count) || 0) + 1;
+  const payloadEvidence = resolveOutboxEvidenceFields({
+    payload,
+    prev,
+    sourceFillId,
+    dedupeKey,
+  });
   const doc = {
     trade_alert_outbox_id: outboxId,
     type: upper(type),
@@ -126,8 +218,17 @@ async function prepareTradeAlertOutbox({
     updated_at: now,
     last_attempt_at: now,
     attempt_count: attemptCount,
-    source_fill_id: trimOrNull(sourceFillId) || trimOrNull(prev && prev.source_fill_id),
-    dedupe_key: trimOrNull(dedupeKey) || trimOrNull(prev && prev.dedupe_key),
+    source_fill_id: payloadEvidence.source_fill_id,
+    dedupe_key: payloadEvidence.dedupe_key,
+    entry_event_id: payloadEvidence.entry_event_id,
+    order_id: payloadEvidence.order_id,
+    client_order_id: payloadEvidence.client_order_id,
+    raw_evidence_event: payloadEvidence.raw_evidence_event,
+    canonical_event: payloadEvidence.canonical_event,
+    canonical_stage: payloadEvidence.canonical_stage,
+    canonical_transition_events: payloadEvidence.canonical_transition_events,
+    canonical_primary_transition_event: payloadEvidence.canonical_primary_transition_event,
+    simplified_exit_v2_enabled: payloadEvidence.simplified_exit_v2_enabled,
     last_channel: trimOrNull(channel) || trimOrNull(prev && prev.last_channel),
     last_title: trimOrNull(title) || trimOrNull(prev && prev.last_title),
     last_body: trimOrNull(body) || trimOrNull(prev && prev.last_body),
@@ -229,5 +330,6 @@ module.exports = {
   __test: {
     buildTradeAlertOutboxId,
     buildFallbackDedupeSeed,
+    resolveOutboxEvidenceFields,
   },
 };

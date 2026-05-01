@@ -13,6 +13,29 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
     }),
     ["TP1_REACHED", "TRAIL_ACTIVATED"]
   );
+  assert.deepStrictEqual(
+    __test.parseTransitionEvents({
+      payload: {
+        canonicalTransitionEvents: ["TP1_REACHED"],
+        canonicalTransitionEvent: "TRAIL_ACTIVE",
+      },
+    }),
+    ["TP1_REACHED", "TRAIL_ACTIVATED"]
+  );
+
+  const payloadOnlyAlert = __test.summarizeAlertRow({
+    sent_at: "2026-04-17T00:00:22.000Z",
+    payload: {
+      symbol: "ETHUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      sourceFillId: "fill-payload-1",
+      canonicalTransitionEvents: ["TP1_REACHED"],
+      title: "ETHUSDT TP1 payload",
+    },
+  });
+  assert.strictEqual(payloadOnlyAlert.symbol, "ETHUSDT");
+  assert.strictEqual(payloadOnlyAlert.source_fill_id, "fill-payload-1");
+  assert.deepStrictEqual(payloadOnlyAlert.transitions, ["TP1_REACHED"]);
 
   const armedWithoutFill = __test.collectTp1Drilldown({
     symbol: "ETHUSDT",
@@ -214,6 +237,7 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-tp1-drilldow
   assert.strictEqual(healthy.symbols[0].tp1.native_tp_gap_age_ms, null);
   assert.ok(__test.INTENT_SELECT_FIELDS.includes("live_submit_order_id"));
   assert.ok(__test.OUTBOX_SELECT_FIELDS.includes("created_at"));
+  assert.ok(__test.OUTBOX_SELECT_FIELDS.includes("payload"));
 
   console.log("SIMPLIFIED_EXIT_V2_TP1_DRILLDOWN_TEST_OK");
 })().catch((err) => {
