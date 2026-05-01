@@ -563,6 +563,50 @@ async function run() {
   assert.strictEqual(augmentedRecoveryRequirement.reason, null);
   assert.deepStrictEqual(augmentedRecoveryRequirement.canonicalTransitionEvents, ["TP1_REACHED"]);
 
+  // Regression: V2 tick-exit direct alerts used to pass operator-facing
+  // BE_FIRED/TRAIL_FIRED transition names. tradeExecutionAlert intentionally
+  // accepts only canonical reducer vocabulary, so those were filtered out and
+  // became LINEAGE_GAP:MISSING_CANONICAL_EXIT_TRANSITION degraded alerts.
+  // BE remains the displayed event label, but the canonical proof is TRAIL_HIT.
+  const beHitRequirement = __test.resolveCanonicalExitAlertRequirement({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_BE_100P",
+    intent: "EXIT",
+    rawEvidenceEvent: "EXIT_BE_100P",
+    canonicalExitEvent: "EXIT_BE_100P",
+    canonicalExitStage: "TRAIL",
+    canonicalTransitionEvent: "TRAIL_HIT",
+    canonicalTransitionEvents: ["TRAIL_HIT"],
+    simplifiedExitV2Enabled: true,
+  });
+  assert.strictEqual(beHitRequirement.required, true);
+  assert.strictEqual(beHitRequirement.satisfied, true);
+  assert.strictEqual(beHitRequirement.reason, null);
+  assert.deepStrictEqual(beHitRequirement.canonicalTransitionEvents, ["TRAIL_HIT"]);
+
+  const beHitMessage = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    event: "EXIT_BE_100P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    fullExit: true,
+    notional: 120,
+    execPrice: 2301.52,
+    rawEvidenceEvent: "EXIT_BE_100P",
+    canonicalExitEvent: "EXIT_BE_100P",
+    canonicalExitStage: "TRAIL",
+    canonicalTransitionEvent: "TRAIL_HIT",
+    canonicalTransitionEvents: ["TRAIL_HIT"],
+    simplifiedExitV2Enabled: true,
+  });
+  assert.ok(beHitMessage, "BE direct exit alert must not degrade when canonical proof is TRAIL_HIT");
+  assert.ok(beHitMessage.title.includes("BE"), "operator-facing BE label must be preserved");
+  assert.ok(!beHitMessage.title.includes("LINEAGE_GAP"), "canonical BE alert must not be lineage-gap degraded");
+
   console.log("TRADE_EXECUTION_ALERT_TEST_OK");
 }
 

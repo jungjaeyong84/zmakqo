@@ -81,6 +81,10 @@ const tickExitSrc = fs.readFileSync(
     /canonicalExitEvent/.test(before),
     "(B5) place-success alert must stamp canonicalExitEvent"
   );
+  assert.ok(
+    /entryEventId:\s*meta\.entry_event_id/.test(before),
+    "(B6) place-success alert must carry entry_event_id lineage"
+  );
 })();
 
 // (C) Broker-flat alert site (β) sits inside the R2 pre-filter
@@ -101,6 +105,10 @@ const tickExitSrc = fs.readFileSync(
     /sendTradeExecutionAlert\(/.test(region),
     "(C4) broker-flat branch must call sendTradeExecutionAlert"
   );
+  assert.ok(
+    /entryEventId:\s*localMeta\.entry_event_id/.test(region),
+    "(C4b) broker-flat alert must carry entry_event_id lineage"
+  );
   // Per the issue this fixes (operator-reported missing alerts), the
   // broker-flat branch must run BEFORE `continue;` so each broker-flat
   // observation produces an alert.
@@ -119,7 +127,7 @@ const tickExitSrc = fs.readFileSync(
   const trail = f({ triggeredKinds: ["TRAIL"], fraction: 1 });
   assert.strictEqual(trail.event, "EXIT_TRAIL_100P", "(D1) TRAIL fraction=1 → EXIT_TRAIL_100P");
   assert.strictEqual(trail.stage, "TRAIL");
-  assert.strictEqual(trail.transitionEvent, "TRAIL_FIRED");
+  assert.strictEqual(trail.transitionEvent, "TRAIL_HIT");
 
   const tp1 = f({ triggeredKinds: ["TP_P1"], fraction: 0.5 });
   assert.strictEqual(tp1.event, "EXIT_TP_P1_50P", "(D2) TP_P1 fraction=0.5 → EXIT_TP_P1_50P");
@@ -129,19 +137,19 @@ const tickExitSrc = fs.readFileSync(
   const sl = f({ triggeredKinds: ["SL"], fraction: 1 });
   assert.strictEqual(sl.event, "EXIT_SL_100P", "(D3) SL fraction=1 → EXIT_SL_100P");
   assert.strictEqual(sl.stage, "SL");
-  assert.strictEqual(sl.transitionEvent, "SL_FIRED");
+  assert.strictEqual(sl.transitionEvent, "SL_HIT");
 
   // 2026-04-29 — classification priority correction. BE now dedicated.
   const beAlone = f({ triggeredKinds: ["BE"], fraction: 1 });
   assert.strictEqual(beAlone.event, "EXIT_BE_100P", "(D4) BE alone → EXIT_BE_100P (not TP_P1)");
-  assert.strictEqual(beAlone.stage, "BE");
-  assert.strictEqual(beAlone.transitionEvent, "BE_FIRED");
+  assert.strictEqual(beAlone.stage, "TRAIL");
+  assert.strictEqual(beAlone.transitionEvent, "TRAIL_HIT");
 
   // BE+TRAIL simultaneous (DOGE 07:30:33 case): BE wins, the operator
   // sees the precise stop that fired instead of the upstream trail level.
   const beAndTrail = f({ triggeredKinds: ["BE", "TRAIL"], fraction: 1 });
   assert.strictEqual(beAndTrail.event, "EXIT_BE_100P", "(D5) BE+TRAIL together → EXIT_BE_100P (BE priority)");
-  assert.strictEqual(beAndTrail.stage, "BE");
+  assert.strictEqual(beAndTrail.stage, "TRAIL");
 
   const generic = f({ triggeredKinds: [], fraction: 1 });
   assert.ok(generic.event && generic.event.startsWith("EXIT_GENERIC"), "(D6) unknown trigger → EXIT_GENERIC");

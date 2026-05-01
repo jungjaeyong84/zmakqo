@@ -173,6 +173,8 @@ async function collectAsyncUsesFirestoreActiveProtectionEvidence() {
     v1WriterHistory: path.join(tmp, "v1-writer.jsonl"),
     algoEndpointLatest: path.join(tmp, "algo.json"),
     algoEndpointHistory: path.join(tmp, "algo.jsonl"),
+    alertEventConsistency: path.join(tmp, "alert-event.json"),
+    tradeExecutionAlertCrossAudit: path.join(tmp, "alert-cross.json"),
   };
   writeJson(files.performanceGate, { ok: false, reason: "V2_PERFORMANCE_GATE_BLOCKED", blockers: ["PERFORMANCE_GATE:SAMPLE_INSUFFICIENT"], metrics: { sample_n: 0 } });
   writeJson(files.performanceReport, { summary: { outcome_n: 0, trade_n: 0 } });
@@ -180,6 +182,8 @@ async function collectAsyncUsesFirestoreActiveProtectionEvidence() {
   appendJsonl(files.v1WriterHistory, []);
   writeJson(files.algoEndpointLatest, { degraded_crit_n: 0, degraded_warn_n: 0 });
   appendJsonl(files.algoEndpointHistory, []);
+  writeJson(files.alertEventConsistency, { issue_n: 0, issue_fill_n: 0 });
+  writeJson(files.tradeExecutionAlertCrossAudit, { missing_alert_fill_n: 0, missing_verified_exit_alert_fill_n: 0, unmatched_alert_n: 0 });
   const nowMs = Date.parse("2026-05-01T03:00:00.000Z");
   const env = {
     V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_SOURCE: "FIRESTORE",
@@ -190,6 +194,8 @@ async function collectAsyncUsesFirestoreActiveProtectionEvidence() {
     V2_EVIDENCE_SNAPSHOT_V1_WRITER_HISTORY_FILE: files.v1WriterHistory,
     V2_EVIDENCE_SNAPSHOT_ALGO_ENDPOINT_FILE: files.algoEndpointLatest,
     V2_EVIDENCE_SNAPSHOT_ALGO_ENDPOINT_HISTORY_FILE: files.algoEndpointHistory,
+    V2_EVIDENCE_SNAPSHOT_ALERT_EVENT_CONSISTENCY_FILE: files.alertEventConsistency,
+    V2_EVIDENCE_SNAPSHOT_TRADE_EXECUTION_ALERT_CROSS_AUDIT_FILE: files.tradeExecutionAlertCrossAudit,
   };
   const snapshot = await collectAsync({
     env,
@@ -217,11 +223,15 @@ async function collectAsyncBlocksWhenFirestoreActiveProtectionReadDisabled() {
     performanceReport: path.join(tmp, "performance-report.json"),
     v1WriterLatest: path.join(tmp, "v1-writer.json"),
     algoEndpointLatest: path.join(tmp, "algo.json"),
+    alertEventConsistency: path.join(tmp, "alert-event.json"),
+    tradeExecutionAlertCrossAudit: path.join(tmp, "alert-cross.json"),
   };
   writeJson(files.performanceGate, { ok: false, reason: "V2_PERFORMANCE_GATE_BLOCKED", blockers: ["PERFORMANCE_GATE:SAMPLE_INSUFFICIENT"], metrics: { sample_n: 0 } });
   writeJson(files.performanceReport, { summary: { outcome_n: 0, trade_n: 0 } });
   writeJson(files.v1WriterLatest, { v1_place_futures_call_n_24h: 0 });
   writeJson(files.algoEndpointLatest, { degraded_crit_n: 0, degraded_warn_n: 0 });
+  writeJson(files.alertEventConsistency, { issue_n: 0, issue_fill_n: 0 });
+  writeJson(files.tradeExecutionAlertCrossAudit, { missing_alert_fill_n: 0, missing_verified_exit_alert_fill_n: 0, unmatched_alert_n: 0 });
   const snapshot = await collectAsync({
     env: {
       V2_EVIDENCE_SNAPSHOT_ACTIVE_PROTECTION_SOURCE: "FIRESTORE",
@@ -229,6 +239,8 @@ async function collectAsyncBlocksWhenFirestoreActiveProtectionReadDisabled() {
       V2_EVIDENCE_SNAPSHOT_PERFORMANCE_REPORT_FILE: files.performanceReport,
       V2_EVIDENCE_SNAPSHOT_V1_WRITER_FILE: files.v1WriterLatest,
       V2_EVIDENCE_SNAPSHOT_ALGO_ENDPOINT_FILE: files.algoEndpointLatest,
+      V2_EVIDENCE_SNAPSHOT_ALERT_EVENT_CONSISTENCY_FILE: files.alertEventConsistency,
+      V2_EVIDENCE_SNAPSHOT_TRADE_EXECUTION_ALERT_CROSS_AUDIT_FILE: files.tradeExecutionAlertCrossAudit,
     },
     nowMs: Date.parse("2026-05-01T03:00:00.000Z"),
   });

@@ -731,22 +731,25 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
   if (kinds.includes("BE")) {
     return {
       event: pctText ? `EXIT_BE_${pctText}P` : "EXIT_BE",
-      stage: "BE",
-      transitionEvent: "BE_FIRED",
+      // BE is an operator-facing label for the raised native stop after TP1.
+      // Canonical V2 reducers do not have a BE_FIRED transition; terminal
+      // stop fills on the runner are represented as TRAIL_HIT.
+      stage: "TRAIL",
+      transitionEvent: "TRAIL_HIT",
     };
   }
   if (kinds.includes("TRAIL")) {
     return {
       event: pctText ? `EXIT_TRAIL_${pctText}P` : "EXIT_TRAIL",
       stage: "TRAIL",
-      transitionEvent: "TRAIL_FIRED",
+      transitionEvent: "TRAIL_HIT",
     };
   }
   if (kinds.includes("SL") || kinds.includes("STOP_LOSS")) {
     return {
       event: pctText ? `EXIT_SL_${pctText}P` : "EXIT_SL",
       stage: "SL",
-      transitionEvent: "SL_FIRED",
+      transitionEvent: "SL_HIT",
     };
   }
   if (kinds.includes("TP_P1") || kinds.includes("TP1")) {
@@ -771,12 +774,12 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
 function resolveBrokerFlatAlertEvent({ posMeta = null } = {}) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
   if (meta.trail_active === true) {
-    return { event: "EXIT_TRAIL_100P", stage: "TRAIL", transitionEvent: "TRAIL_FIRED" };
+    return { event: "EXIT_TRAIL_100P", stage: "TRAIL", transitionEvent: "TRAIL_HIT" };
   }
   if (meta.tp_p1_done === true) {
     return { event: "EXIT_TP_P1_100P", stage: "TP1", transitionEvent: "TP1_REACHED" };
   }
-  return { event: "EXIT_SL_100P", stage: "SL", transitionEvent: "SL_FIRED" };
+  return { event: "EXIT_SL_100P", stage: "SL", transitionEvent: "SL_HIT" };
 }
 
 const pendingIntentState = new Map();
@@ -2839,6 +2842,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
               if (shouldDispatchTradeExecutionAlert(alertKey)) {
                 recordTradeExecutionAlertSent(alertKey);
                 const localSide = resolvePositionSideFromPosition(p, p && p.meta, "LONG");
+                const localMeta = p && p.meta && typeof p.meta === "object" ? p.meta : {};
                 sendTradeExecutionAlert({
                   exchange: "BINANCEFUT",
                   symbol: sym,
@@ -2851,6 +2855,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                   execQtyBase: Number(p.qty_base) || null,
                   closeRatio: 1,
                   fullExit: true,
+                  entryEventId: localMeta.entry_event_id || null,
                   rawEvidenceEvent: alertMap.event,
                   canonicalExitEvent: alertMap.event,
                   canonicalExitStage: alertMap.stage,
@@ -4059,6 +4064,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                       execQtyBase: v2DirectDispatch.qty,
                       closeRatio: v2DirectDispatch.fraction,
                       fullExit: Number(v2DirectDispatch.fraction) >= 0.999,
+                      entryEventId: meta.entry_event_id || null,
                       orderId: v2DispatchOrderId,
                       clientOrderId: v2DispatchClientOrderId,
                       runId: dispatchRunId,

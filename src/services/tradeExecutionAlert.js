@@ -347,6 +347,7 @@ function resolveCanonicalTransitionEventList(payload = {}) {
     "TP0_REACHED",
     "TP1_REACHED",
     "SL_HIT",
+    "TRAIL_HIT",
     "FORCE_EXIT_ALL",
     "EXTERNAL_CLOSE_SYNC",
     "TRAIL_ACTIVE",
@@ -399,7 +400,7 @@ function resolveSimplifiedExitV2MetaFromTransition({
   if (transition === "TP1_REACHED") {
     return buildV2Tp1AlertMeta(payload);
   }
-  if (transition === "TRAIL_ACTIVATED" || transition === "TRAIL_FINAL_EXIT") {
+  if (transition === "TRAIL_ACTIVATED" || transition === "TRAIL_HIT" || transition === "TRAIL_FINAL_EXIT") {
     return canonicalMeta && String(canonicalMeta.token || "").startsWith("TRAIL")
       ? canonicalMeta
       : { token: "TRAIL", label: "트레일링" };
@@ -429,7 +430,7 @@ function resolveSimplifiedExitV2AlertProjection(payload = {}, rawEvent = null) {
   const stage = primaryTransitionEvent === "TP0_REACHED" || primaryTransitionEvent === "TP1_REACHED"
     ? "TP1"
     : (
-      primaryTransitionEvent === "TRAIL_ACTIVATED" || primaryTransitionEvent === "TRAIL_FINAL_EXIT"
+      primaryTransitionEvent === "TRAIL_ACTIVATED" || primaryTransitionEvent === "TRAIL_HIT" || primaryTransitionEvent === "TRAIL_FINAL_EXIT"
         ? "TRAIL"
         : (
           primaryTransitionEvent === "SL_HIT"
