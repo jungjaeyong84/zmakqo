@@ -1,0 +1,34 @@
+[
+  {
+    "name": "keep-recent-deploy-images",
+    "action": {
+      "type": "Keep"
+    },
+    "mostRecentVersions": {
+      "keepCount": 50
+    }
+  },
+  {
+    "name": "delete-old-untagged-images",
+    "action": {
+      "type": "Delete"
+    },
+    "condition": {
+      "tagState": "untagged",
+      "olderThan": "604800s"
+    }
+  },
+  {
+    "name": "delete-old-v2-commit-tags",
+    "action": {
+      "type": "Delete"
+    },
+    "condition": {
+      "tagState": "tagged",
+      "tagPrefixes": [
+        "v2-"
+      ],
+      "olderThan": "3888000s"
+    }
+  }
+]
