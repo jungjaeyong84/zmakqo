@@ -74,6 +74,7 @@ const {
     "openclaw_server_primary_tick",
     "v2_signal_shadow_counterfactual_walker",
     "v2_signal_shadow_counterfactual_analyzer",
+    "v2_liquidation_stream_collector_window",
   ]) {
     assert.ok(cloudJobIds.has(required),
       `required Cloud Scheduler job missing: ${required}`);
@@ -123,6 +124,12 @@ const {
   assert.strictEqual(shadowAnalyzer.runtime_mode, "SHADOW_COUNTERFACTUAL_ANALYZER");
   assert.strictEqual(shadowAnalyzer.scheduler_schedule, "0 7 * * *");
   assert.strictEqual(shadowAnalyzer.produces_artifact, "v2_signal_shadow_counterfactual_analysis_latest.json");
+  const liquidationWindow = OPENCLAW_CLOUD_SCHEDULER_JOBS.find((job) => job.job_id === "v2_liquidation_stream_collector_window");
+  assert.ok(liquidationWindow, "liquidation stream collector window missing");
+  assert.strictEqual(liquidationWindow.http_path, "/api/openclaw/cron/v2-liquidation-stream-collector-window");
+  assert.strictEqual(liquidationWindow.criticality, "MEDIUM");
+  assert.strictEqual(liquidationWindow.runtime_mode, "LIQUIDATION_STREAM_WINDOW_COLLECTOR");
+  assert.strictEqual(liquidationWindow.scheduler_schedule, "* * * * *");
   // weekly_summary intentionally not on Cloud Scheduler yet — dashboard
   // content is too sparse pre-Day 14 to warrant a weekly digest.
   assert.ok(!cloudJobIds.has("openclaw_agent_weekly_summary"),

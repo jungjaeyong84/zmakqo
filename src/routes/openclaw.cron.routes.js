@@ -321,6 +321,28 @@ router.post("/api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer", requi
   }
 });
 
+// v2-liquidation-stream-collector-window: short bounded WebSocket window
+// that refreshes Binance force-order liquidation snapshots. This avoids
+// running an endless websocket inside a Cloud Scheduler HTTP request while
+// still keeping the latest 5m liquidation snapshot fresh for entry features.
+router.post("/api/openclaw/cron/v2-liquidation-stream-collector-window", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/run-v2-liquidation-stream-collector-window");
+    const outcome = await runWithShortTimeout(
+      "v2_liquidation_stream_collector_window",
+      () => main({ setProcessExitCode: false }),
+      90000
+    );
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // v2-production-entry-live: deliberately disabled by default. When enabled,
 // this endpoint still delegates only to the V2 production entry route.
 router.post("/api/openclaw/cron/v2-production-entry-live", requireSchedulerToken, express.json({ type: "*/*", limit: "128kb" }), async (req, res) => {
@@ -357,6 +379,7 @@ router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
       "POST /api/openclaw/cron/openclaw-server-primary-tick",
       "POST /api/openclaw/cron/v2-signal-shadow-counterfactual-walker",
       "POST /api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer",
+      "POST /api/openclaw/cron/v2-liquidation-stream-collector-window",
       "POST /api/openclaw/cron/v2-production-entry-live",
     ],
     now_iso: new Date().toISOString(),

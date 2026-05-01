@@ -91,4 +91,10 @@ create_index "position_read_model_latest(exchange,ts_ms desc)" \
   --field-config=field-path=exchange,order=ascending \
   --field-config=field-path=ts_ms,order=descending
 
+create_index "v2__signal_shadow_counterfactuals(status,horizon_close_ms)" \
+  --collection-group=v2__signal_shadow_counterfactuals \
+  --query-scope=COLLECTION \
+  --field-config=field-path=status,order=ascending \
+  --field-config=field-path=horizon_close_ms,order=ascending
+
 echo "[INDEX] done"

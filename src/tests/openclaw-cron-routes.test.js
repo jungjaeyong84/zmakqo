@@ -31,6 +31,9 @@ assert.ok(routeSource.includes("v2_signal_shadow_counterfactual_walker"), "shado
 assert.ok(routeSource.includes("/api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer"), "shadow counterfactual analyzer endpoint missing");
 assert.ok(routeSource.includes("analyze-v2-signal-shadow-counterfactuals"), "shadow counterfactual analyzer script binding missing");
 assert.ok(routeSource.includes("v2_signal_shadow_counterfactual_analyzer"), "shadow counterfactual analyzer timeout label missing");
+assert.ok(routeSource.includes("/api/openclaw/cron/v2-liquidation-stream-collector-window"), "liquidation stream collector window endpoint missing");
+assert.ok(routeSource.includes("run-v2-liquidation-stream-collector-window"), "liquidation stream collector window script binding missing");
+assert.ok(routeSource.includes("v2_liquidation_stream_collector_window"), "liquidation stream collector window timeout label missing");
 assert.ok(routeSource.includes("outcome.result && outcome.result.ok === true"), "route must fail HTTP status when canary result is blocked");
 assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-production-entry-route-canary"), "ping route list must expose canary endpoint");
 assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-exit-runtime-canary"), "ping route list must expose exit runtime canary endpoint");
@@ -39,5 +42,6 @@ assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-fill-sync"), "ping ro
 assert.ok(routeSource.includes("POST /api/openclaw/cron/openclaw-server-primary-tick"), "ping route list must expose server primary tick endpoint");
 assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-signal-shadow-counterfactual-walker"), "ping route list must expose walker endpoint");
 assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer"), "ping route list must expose analyzer endpoint");
+assert.ok(routeSource.includes("POST /api/openclaw/cron/v2-liquidation-stream-collector-window"), "ping route list must expose liquidation collector endpoint");
 
 console.log("OPENCLAW_CRON_ROUTES_TEST_OK");
