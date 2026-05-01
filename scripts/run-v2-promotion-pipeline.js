@@ -12,6 +12,7 @@ const unifiedPromotionReport = require("./generate-v2-unified-promotion-report")
 const deployDecision = require("./check-v2-promotion-deploy-decision");
 const gate = require("./check-v2-promotion-gate");
 const openclawDailyPerformanceReport = require("./generate-v2-openclaw-daily-performance-report");
+const openclawOutcomeAdjudicationCollector = require("./collect-v2-openclaw-outcome-adjudications");
 const performanceGate = require("./check-v2-performance-gate");
 const firestoreCostGuard = require("./check-v2-firestore-cost-guard");
 const repairFirestoreCanaryStreak = require("./check-v2-repair-queue-firestore-canary-streak");
@@ -24,6 +25,7 @@ const PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_FILENAME = "v2_production_entry_route
 const EXIT_RUNTIME_CANARY_STREAK_FILENAME = "v2_exit_runtime_canary_streak_latest.json";
 const PRODUCTION_ENTRY_PROTECTED_CANARY_FILENAME = "v2_production_entry_protected_canary_latest.json";
 const OPENCLAW_DAILY_PERFORMANCE_REPORT_FILENAME = "v2_openclaw_daily_performance_report_latest.json";
+const OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_FILENAME = "v2_openclaw_outcome_adjudication_collector_latest.json";
 const PERFORMANCE_GATE_FILENAME = "v2_performance_gate_latest.json";
 const FIRESTORE_COST_GUARD_FILENAME = "v2_firestore_cost_guard_latest.json";
 const REPAIR_FIRESTORE_CANARY_HISTORY_FILENAME = "v2_repair_queue_firestore_canary_history.jsonl";
@@ -70,6 +72,15 @@ function shouldRefreshProductionEntryRouteCanaryStreak(env = process.env) {
 
 function isLivePromotionMode(env = process.env) {
   return upper(env.V2_PROMOTION_MODE) === "LIVE";
+}
+
+function shouldRefreshOpenClawOutcomeAdjudications(env = process.env) {
+  const explicit = trimOrNull(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_ENABLED);
+  if (explicit === "0") return false;
+  if (explicit !== "1") return false;
+  if (String(env.V2_PROMOTION_REPLAY_FIXTURE_PROFILE || "").trim()) return false;
+  if (String(env.V2_PROMOTION_COMPARISON_FIXTURE_PROFILE || "").trim()) return false;
+  return ["CANARY", "LIVE"].includes(upper(env.V2_PROMOTION_MODE) || "CANARY");
 }
 
 function shouldRefreshExitRuntimeCanaryStreak(env = process.env) {
@@ -378,6 +389,55 @@ function refreshFirestoreCostGuard(env = process.env) {
   });
 }
 
+async function refreshOpenClawOutcomeAdjudications(env = process.env, { db = null } = {}) {
+  const artifactDir = resolveArtifactDir(env);
+  const outputFile = path.join(artifactDir, OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_FILENAME);
+  if (!shouldRefreshOpenClawOutcomeAdjudications(env)) {
+    return Object.freeze({
+      required: false,
+      skipped: true,
+      reason: "OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_REFRESH_SKIPPED",
+      report: null,
+      output_file: outputFile,
+    });
+  }
+  const collectorEnv = Object.freeze({
+    ...env,
+    V2_PROMOTION_ARTIFACT_DIR: artifactDir,
+    V2_OPENCLAW_OUTCOME_ADJUDICATION_OUTPUT_FILE: outputFile,
+    V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: trimOrNull(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE) || "AUTO",
+    V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE: trimOrNull(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE) || "1",
+  });
+  let report = null;
+  try {
+    report = await openclawOutcomeAdjudicationCollector.main({
+      env: collectorEnv,
+      db,
+      setProcessExitCode: false,
+    });
+  } catch (error) {
+    report = Object.freeze({
+      ok: false,
+      reason: "V2_OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_THROWN",
+      output_file: outputFile,
+      blockers: Object.freeze(["OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR:THROWN"]),
+      error: Object.freeze({
+        message: error && error.message ? error.message : String(error),
+      }),
+    });
+    writeJson(outputFile, report);
+  }
+  return Object.freeze({
+    required: true,
+    skipped: false,
+    reason: report && report.ok === true
+      ? "OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_REFRESH_PASS"
+      : "OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_REFRESH_BLOCKED",
+    report,
+    output_file: outputFile,
+  });
+}
+
 async function runPipeline(env = process.env, {
   selectorDb = null,
   collectorDb = null,
@@ -409,6 +469,9 @@ async function runPipeline(env = process.env, {
     db: collectorDb || selectorDb,
   });
   const productionEntryProtectedCanaryRefresh = await refreshProductionEntryProtectedCanary(effectiveEnv);
+  const openclawOutcomeAdjudicationRefresh = await refreshOpenClawOutcomeAdjudications(effectiveEnv, {
+    db: collectorDb || selectorDb,
+  });
   const performanceGateRefresh = await refreshPerformanceGate(effectiveEnv);
   const reportEnv = {
     ...effectiveEnv,
@@ -453,6 +516,9 @@ async function runPipeline(env = process.env, {
     productionEntryProtectedCanary: productionEntryProtectedCanaryRefresh.report,
     productionEntryProtectedCanaryFile: productionEntryProtectedCanaryRefresh.output_file,
     productionEntryProtectedCanaryStatus: productionEntryProtectedCanaryRefresh.reason,
+    openclawOutcomeAdjudicationCollector: openclawOutcomeAdjudicationRefresh.report,
+    openclawOutcomeAdjudicationCollectorFile: openclawOutcomeAdjudicationRefresh.output_file,
+    openclawOutcomeAdjudicationCollectorStatus: openclawOutcomeAdjudicationRefresh.reason,
     performanceGate: performanceGateRefresh.gate,
     performanceGateFile: performanceGateRefresh.output_file,
     performanceGateStatus: performanceGateRefresh.reason,
@@ -524,11 +590,13 @@ if (require.main === module) {
       shouldRefreshProductionEntryRouteCanaryStreak,
       shouldRefreshExitRuntimeCanaryStreak,
       shouldRefreshProductionEntryProtectedCanary,
+      shouldRefreshOpenClawOutcomeAdjudications,
       buildProductionEntryRouteCanaryStreakThrownReport,
       buildExitRuntimeCanaryStreakThrownReport,
       refreshProductionEntryRouteCanaryStreak,
       refreshExitRuntimeCanaryStreak,
       refreshProductionEntryProtectedCanary,
+      refreshOpenClawOutcomeAdjudications,
       refreshPerformanceGate,
       refreshFirestoreCostGuard,
     },

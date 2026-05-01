@@ -238,6 +238,66 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
   assert.strictEqual(err.message, "V2_PROMOTION_PIPELINE_MOCK_MIX_FORBIDDEN");
 })();
 
+(function outcomeCollectorRefreshPolicyIsExplicitAndFixtureSafe() {
+  assert.strictEqual(pipeline.__test.shouldRefreshOpenClawOutcomeAdjudications({
+    V2_PROMOTION_MODE: "CANARY",
+    V2_OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_ENABLED: "1",
+  }), true);
+  assert.strictEqual(pipeline.__test.shouldRefreshOpenClawOutcomeAdjudications({
+    V2_PROMOTION_MODE: "CANARY",
+    V2_OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_ENABLED: "1",
+    V2_PROMOTION_REPLAY_FIXTURE_PROFILE: "REFERENCE_PASS",
+  }), false);
+  assert.strictEqual(pipeline.__test.shouldRefreshOpenClawOutcomeAdjudications({
+    V2_PROMOTION_MODE: "CANARY",
+  }), false);
+})();
+
+(async function refreshesOpenClawOutcomeCollectorBeforePerformanceGateWhenExplicitlyEnabled() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-pipeline-outcome-collector-"));
+  const inputFile = path.join(dir, "fills.json");
+  try {
+    fs.writeFileSync(inputFile, `${JSON.stringify({
+      docs: [
+        {
+          id: "ENTRY__SOL",
+          action: "SYNC_FILL",
+          symbol: "SOLUSDT",
+          side: "BUY",
+          created_at: "2026-05-01T00:00:00.000Z",
+          external_realized_pnl: 0,
+          signal_doc_id: "SIG__BINANCEFUT__SOLUSDT__15m__0__V2_PROTECTED_ENTRY",
+        },
+        {
+          id: "EXIT__SOL",
+          action: "EXIT_TP_P1_2.5P",
+          symbol: "SOLUSDT",
+          side: "SELL",
+          created_at: "2026-05-01T01:00:00.000Z",
+          external_order_id: "EXIT__SOL__ORDER",
+          external_realized_pnl: 0.7,
+          canonical_transition_events: ["TP1_REACHED"],
+        },
+      ],
+    })}\n`, "utf8");
+    const refresh = await pipeline.__test.refreshOpenClawOutcomeAdjudications({
+      V2_PROMOTION_MODE: "CANARY",
+      V2_PROMOTION_ARTIFACT_DIR: dir,
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_ENABLED: "1",
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: "CACHE",
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_INPUT_FILE: inputFile,
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE: "0",
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_NOW: "2026-05-01T03:00:00.000Z",
+    });
+    assert.strictEqual(refresh.reason, "OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_REFRESH_PASS");
+    assert.strictEqual(refresh.report.source, "CACHE_FILE");
+    assert.strictEqual(refresh.report.summary.adjudication_n, 1);
+    assert.strictEqual(fs.existsSync(path.join(dir, "v2_openclaw_outcome_adjudication_collector_latest.json")), true);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (async function cleanPipelinePasses() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-pipeline-clean-"));
   try {

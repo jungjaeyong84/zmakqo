@@ -4,10 +4,20 @@ const fs = require("fs");
 const path = require("path");
 const { collectOpenClawOutcomeAdjudicationsFromFills } = require("../src/v2/openclawOutcomeAdjudicationCollector");
 const { putV2DocsBatch } = require("../src/v2/storage");
+const { getFirestore } = require("../src/storage/firestore");
 
 function boolFromEnv(value, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
   return ["1", "true", "yes", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function upper(value) {
+  return String(value || "").trim().toUpperCase() || null;
 }
 
 function readJson(filePath) {
@@ -19,27 +29,70 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function loadFills(inputPath) {
-  const payload = readJson(inputPath);
+function parseFillsPayload(payload) {
   if (Array.isArray(payload)) return payload;
   if (payload && Array.isArray(payload.docs)) return payload.docs;
   if (payload && Array.isArray(payload.fills)) return payload.fills;
   throw new Error("V2_OUTCOME_ADJUDICATION_INPUT_FILLS_REQUIRED");
 }
 
-async function main() {
-  const inputPath = process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_INPUT_FILE
+function loadFillsFromFile(inputPath) {
+  return parseFillsPayload(readJson(inputPath));
+}
+
+async function loadFillsFromFirestore({ db = null, env = process.env } = {}) {
+  const firestore = db || getFirestore();
+  if (!firestore || typeof firestore.collection !== "function") {
+    throw new Error("V2_OUTCOME_ADJUDICATION_FIRESTORE_REQUIRED");
+  }
+  const collection = trimOrNull(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_FILLS_COLLECTION) || "fills_paper";
+  const orderField = trimOrNull(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_FILLS_ORDER_FIELD) || "created_at";
+  const limit = Math.max(1, Math.min(
+    5000,
+    Number(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_FIRESTORE_LIMIT || 1500) || 1500
+  ));
+  const snap = await firestore.collection(collection).orderBy(orderField, "desc").limit(limit).get();
+  return {
+    source: "FIRESTORE",
+    collection,
+    order_field: orderField,
+    limit,
+    fills: snap.docs.map((doc) => {
+      const data = typeof doc.data === "function" ? doc.data() : {};
+      return { id: doc.id || data.id || null, ...data };
+    }),
+  };
+}
+
+async function loadFills({ inputPath, env = process.env, db = null } = {}) {
+  const source = upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE) || "AUTO";
+  if (source === "FIRESTORE") return loadFillsFromFirestore({ db, env });
+  if (source !== "FIRESTORE" && inputPath && fs.existsSync(inputPath)) {
+    return {
+      source: "CACHE_FILE",
+      input_file: inputPath,
+      fills: loadFillsFromFile(inputPath),
+    };
+  }
+  if (source === "CACHE" || source === "CACHE_FILE" || source === "FILE") {
+    throw new Error("V2_OUTCOME_ADJUDICATION_INPUT_FILE_MISSING");
+  }
+  return loadFillsFromFirestore({ db, env });
+}
+
+async function runCollector({ env = process.env, db = null } = {}) {
+  const inputPath = env.V2_OPENCLAW_OUTCOME_ADJUDICATION_INPUT_FILE
     || path.join("ops", "daily", "cache", "firestore_recent", "fills_paper.json");
-  const outputPath = process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_OUTPUT_FILE
+  const outputPath = env.V2_OPENCLAW_OUTCOME_ADJUDICATION_OUTPUT_FILE
     || path.join("ops", "daily", "v2_openclaw_outcome_adjudication_collector_latest.json");
-  const lookbackHours = Number(process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_LOOKBACK_HOURS || 72);
-  const writeEnabled = boolFromEnv(process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE, false);
-  const maxWrites = Math.max(0, Number(process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_MAX_WRITES || 450));
-  const fills = loadFills(inputPath);
+  const lookbackHours = Number(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_LOOKBACK_HOURS || 72);
+  const writeEnabled = boolFromEnv(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE, false);
+  const maxWrites = Math.max(0, Number(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_MAX_WRITES || 450));
+  const loaded = await loadFills({ inputPath, env, db });
   const result = collectOpenClawOutcomeAdjudicationsFromFills({
-    fills,
+    fills: loaded.fills,
     lookbackHours,
-    now: process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_NOW || null,
+    now: env.V2_OPENCLAW_OUTCOME_ADJUDICATION_NOW || null,
   });
   const writes = result.adjudications.slice(0, maxWrites).map((doc) => ({
     collectionKey: "OPENCLAW_OUTCOME_ADJUDICATIONS",
@@ -48,7 +101,7 @@ async function main() {
   }));
   let writeResult = null;
   if (writeEnabled && writes.length) {
-    writeResult = await putV2DocsBatch({ writes, env: process.env });
+    writeResult = await putV2DocsBatch({ db, writes, env });
   }
   const artifact = {
     ok: true,
@@ -56,6 +109,10 @@ async function main() {
       ? "V2_OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_WRITTEN"
       : "V2_OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_DRY_RUN",
     generated_at: new Date().toISOString(),
+    source: loaded.source,
+    source_collection: loaded.collection || null,
+    source_order_field: loaded.order_field || null,
+    source_limit: loaded.limit || null,
     input_file: inputPath,
     output_file: outputPath,
     write_enabled: writeEnabled,
@@ -88,12 +145,40 @@ async function main() {
       adjudicated_at: doc.adjudicated_at,
     })),
   };
-  writeJson(outputPath, artifact);
-  console.log(JSON.stringify(artifact, null, 2));
-  if (!result.adjudication_n) process.exitCode = 1;
+  return artifact;
 }
 
-main().catch((err) => {
-  console.error("COLLECT_V2_OPENCLAW_OUTCOME_ADJUDICATIONS_FAIL", err && err.stack ? err.stack : err);
-  process.exitCode = 1;
-});
+async function main({ env = process.env, db = null, setProcessExitCode = true } = {}) {
+  const artifact = await runCollector({ env, db });
+  writeJson(artifact.output_file, artifact);
+  console.log(JSON.stringify(artifact, null, 2));
+  if (
+    setProcessExitCode
+    && boolFromEnv(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_REQUIRE_NONEMPTY, false)
+    && !(artifact.summary && artifact.summary.adjudication_n > 0)
+  ) {
+    process.exitCode = 1;
+  }
+  return artifact;
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("COLLECT_V2_OPENCLAW_OUTCOME_ADJUDICATIONS_FAIL", err && err.stack ? err.stack : err);
+    process.exitCode = 1;
+  });
+} else {
+  module.exports = {
+    main,
+    runCollector,
+    loadFills,
+    loadFillsFromFile,
+    loadFillsFromFirestore,
+    __test: {
+      boolFromEnv,
+      trimOrNull,
+      upper,
+      parseFillsPayload,
+    },
+  };
+}

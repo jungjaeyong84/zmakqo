@@ -10,11 +10,12 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
 (() => {
   const registry = __test.buildStepRegistry();
   assert.ok(Array.isArray(registry));
-  assert.strictEqual(registry.length, 14);
+  assert.strictEqual(registry.length, 15);
 
   const ids = registry.map((row) => row.id);
   assert.deepStrictEqual(ids, [
     "analytics_local_cache",
+    "v2_outcome_adjudication_collector",
     "execution_quality",
     "execution_watch_markets",
     "signal_lineage_health",
@@ -29,6 +30,13 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
     "current_version_pine_sync",
     "hourly_overall_report",
   ]);
+
+  const outcomeCollectorStep = registry.find((row) => row.id === "v2_outcome_adjudication_collector");
+  assert.deepStrictEqual(outcomeCollectorStep.depends_on, ["analytics_local_cache"]);
+  assert.strictEqual(outcomeCollectorStep.produces_artifact, "v2_openclaw_outcome_adjudication_collector_latest.json");
+
+  const executionQualityStep = registry.find((row) => row.id === "execution_quality");
+  assert.deepStrictEqual(executionQualityStep.depends_on, ["v2_outcome_adjudication_collector"]);
 
   const watchMarketsStep = registry.find((row) => row.id === "execution_watch_markets");
   assert.deepStrictEqual(watchMarketsStep.depends_on, ["execution_quality"]);

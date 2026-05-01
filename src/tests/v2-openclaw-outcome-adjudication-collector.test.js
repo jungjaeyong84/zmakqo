@@ -1,11 +1,15 @@
 "use strict";
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const {
   collectOpenClawOutcomeAdjudicationsFromFills,
   groupRealizedExitFills,
 } = require("../v2/openclawOutcomeAdjudicationCollector");
 const { buildOpenClawDailyPerformanceReport } = require("../v2/openclawDailyPerformanceReport");
+const collectorScript = require("../../scripts/collect-v2-openclaw-outcome-adjudications");
 
 const entry = {
   id: "EXT__BINANCEFUT__SOLUSDT__ENTRY1",
@@ -148,6 +152,81 @@ const entry = {
   const report = buildOpenClawDailyPerformanceReport({ outcomes: result.adjudications });
   assert.strictEqual(report.sample_n, 0);
   assert.strictEqual(report.outcomes[0].performance_eligible, false);
+})();
+
+(async function collectorScriptFallsBackToFirestoreWhenCacheFileMissing() {
+  const db = {
+    collection(name) {
+      assert.strictEqual(name, "fills_paper");
+      return {
+        orderBy(field, direction) {
+          assert.strictEqual(field, "created_at");
+          assert.strictEqual(direction, "desc");
+          return {
+            limit(limit) {
+              assert.strictEqual(limit, 1500);
+              return {
+                async get() {
+                  return {
+                    docs: [
+                      { id: entry.id, data: () => ({ ...entry }) },
+                      {
+                        id: "EXT__BINANCEFUT__SOLUSDT__EXIT_FIRESTORE",
+                        data: () => ({
+                          action: "EXIT_TP_P1_2.5P",
+                          symbol: "SOLUSDT",
+                          side: "SELL",
+                          created_at: "2026-05-01T01:00:00.000Z",
+                          external_order_id: "EXIT_ORDER_FIRESTORE",
+                          external_realized_pnl: 0.5,
+                          canonical_transition_events: ["TP1_REACHED"],
+                        }),
+                      },
+                    ],
+                  };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  const artifact = await collectorScript.runCollector({
+    db,
+    env: {
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: "AUTO",
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_INPUT_FILE: path.join(os.tmpdir(), "missing-v2-fills-cache.json"),
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_NOW: "2026-05-01T03:00:00.000Z",
+    },
+  });
+  assert.strictEqual(artifact.source, "FIRESTORE");
+  assert.strictEqual(artifact.summary.adjudication_n, 1);
+  assert.strictEqual(artifact.write_enabled, false);
+})();
+
+(async function collectorScriptWritesArtifactFromCacheFile() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v2-outcome-collector-"));
+  const inputFile = path.join(dir, "fills.json");
+  const outputFile = path.join(dir, "collector.json");
+  try {
+    fs.writeFileSync(inputFile, `${JSON.stringify({ docs: [entry] })}\n`, "utf8");
+    const artifact = await collectorScript.main({
+      setProcessExitCode: false,
+      env: {
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: "CACHE",
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_INPUT_FILE: inputFile,
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_OUTPUT_FILE: outputFile,
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_NOW: "2026-05-01T03:00:00.000Z",
+      },
+    });
+    assert.strictEqual(artifact.source, "CACHE_FILE");
+    assert.strictEqual(fs.existsSync(outputFile), true);
+    const stored = JSON.parse(fs.readFileSync(outputFile, "utf8"));
+    assert.strictEqual(stored.summary.protected_entry_fill_n, 1);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
 })();
 
 console.log("V2_OPENCLAW_OUTCOME_ADJUDICATION_COLLECTOR_TEST_OK");

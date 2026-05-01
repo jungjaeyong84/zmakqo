@@ -184,11 +184,33 @@ function buildStepRegistry() {
       },
     },
     {
+      id: "v2_outcome_adjudication_collector",
+      kind: "script",
+      script: "collect-v2-openclaw-outcome-adjudications.js",
+      criticality: "HIGH",
+      depends_on: ["analytics_local_cache"],
+      produces_artifact: "v2_openclaw_outcome_adjudication_collector_latest.json",
+      run() {
+        const res = runScript(this.script, {
+          V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE || "AUTO",
+          V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE: process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE || "1",
+        });
+        const summary = res.parsed && res.parsed.summary ? res.parsed.summary : {};
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed
+            ? `source=${res.parsed.source || "N/A"} adjudication_n=${summary.adjudication_n ?? "N/A"} write_n=${res.parsed.write_n ?? "N/A"}`
+            : "N/A",
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+        };
+      },
+    },
+    {
       id: "execution_quality",
       kind: "script",
       script: "report-best-self-evolution-execution-quality.js",
       criticality: "HIGH",
-      depends_on: [],
+      depends_on: ["v2_outcome_adjudication_collector"],
       produces_artifact: "best_self_evolution_execution_quality_latest.json",
       run() {
         const res = runScript(this.script);
