@@ -44,6 +44,7 @@ const OUTBOX_SELECT_FIELDS = Object.freeze([
   "canonical_event",
   "canonical_stage",
   "simplified_exit_v2_enabled",
+  "payload",
 ]);
 
 function nowIso() {
@@ -131,6 +132,83 @@ function resolveCanonicalTransitionEvents(row = {}) {
       seen.add(item);
       return true;
     });
+}
+
+function resolveObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function resolveOutboxPayload(row = {}) {
+  return resolveObject(row.payload);
+}
+
+function resolveOutboxCanonicalTransitionEvents(row = {}) {
+  const payload = resolveOutboxPayload(row);
+  return resolveCanonicalTransitionEvents({
+    canonicalTransitionEvents: row.canonicalTransitionEvents
+      || row.canonical_transition_events
+      || payload.canonicalTransitionEvents
+      || payload.canonical_transition_events,
+    canonical_transition_events: row.canonical_transition_events
+      || payload.canonical_transition_events
+      || payload.canonicalTransitionEvents,
+    canonicalTransitionEvent: row.canonicalTransitionEvent
+      || row.canonical_primary_transition_event
+      || payload.canonicalTransitionEvent
+      || payload.canonical_transition_event
+      || payload.canonical_primary_transition_event,
+    canonical_primary_transition_event: row.canonical_primary_transition_event
+      || payload.canonical_primary_transition_event
+      || payload.canonicalTransitionEvent
+      || payload.canonical_transition_event,
+  });
+}
+
+function normalizeOutboxAlertRow(row = {}, { id = null } = {}) {
+  const payload = resolveOutboxPayload(row);
+  const ts = row.sent_at || row.updated_at || row.created_at || payload.sent_at || payload.updated_at || payload.created_at || null;
+  return {
+    id: id || row.id || null,
+    ts,
+    symbol: upper(row.symbol || payload.symbol),
+    event: upper(row.event || payload.event),
+    canonical_event: upper(
+      row.canonical_event
+        || payload.canonical_event
+        || payload.canonicalExitEvent
+        || payload.canonical_exit_event
+    ),
+    canonical_stage: upper(
+      row.canonical_stage
+        || payload.canonical_stage
+        || payload.canonicalExitStage
+        || payload.canonical_exit_stage
+    ),
+    canonical_transition_events: resolveOutboxCanonicalTransitionEvents(row),
+    simplified_exit_v2_enabled: row.simplified_exit_v2_enabled === true
+      || row.simplifiedExitV2Enabled === true
+      || payload.simplified_exit_v2_enabled === true
+      || payload.simplifiedExitV2Enabled === true,
+    source_fill_id: trimOrNull(
+      row.source_fill_id
+        || payload.sourceFillId
+        || payload.source_fill_id
+        || payload.fillId
+        || payload.fill_id
+    ),
+    dedupe_key: trimOrNull(
+      row.dedupe_key
+        || payload.tradeAlertDedupeKey
+        || payload.trade_alert_dedupe_key
+        || payload.dedupeKey
+        || payload.dedupe_key
+        || payload.idempotencyKey
+        || payload.idempotency_key
+    ),
+    title: row.last_title || payload.title || null,
+    body: row.last_body || payload.body || null,
+    source: "trade_alert_outbox",
+  };
 }
 
 function hasForbiddenSimplifiedExitV2Transition(row = {}) {
@@ -258,14 +336,8 @@ async function fetchRecentOutboxAlertRows(db, sinceMs) {
       const tsMs = toMs(ts);
       if (!Number.isFinite(tsMs) || tsMs < sinceMs) continue;
       rows.push({
+        ...normalizeOutboxAlertRow(row, { id: doc.id }),
         ts: new Date(tsMs).toISOString(),
-        symbol: upper(row.symbol),
-        event: upper(row.event),
-        source_fill_id: trimOrNull(row.source_fill_id),
-        dedupe_key: trimOrNull(row.dedupe_key),
-        title: row.last_title || null,
-        body: row.last_body || null,
-        source: "trade_alert_outbox",
       });
     }
     if (snap.size < PAGE_SIZE) break;
@@ -566,6 +638,8 @@ if (require.main === module) {
       hasCanonicalExitTransition,
       hasForbiddenSimplifiedExitV2Transition,
       isActionableVerifiedExitFill,
+      normalizeOutboxAlertRow,
+      resolveOutboxCanonicalTransitionEvents,
       FILL_SELECT_FIELDS,
       OUTBOX_SELECT_FIELDS,
     },

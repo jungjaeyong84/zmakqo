@@ -73,6 +73,44 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
   );
   assert.ok(simplifiedV2CanonicalMatch, "v2 raw tp0 evidence must match by canonical tp1 event");
 
+  const outboxPayloadOnly = __test.normalizeOutboxAlertRow({
+    id: "OUTBOX_1",
+    created_at: "2026-04-16T01:57:20.000Z",
+    type: "TRADE_EXECUTION_ALERT",
+    status: "SENT",
+    payload: {
+      symbol: "LINKUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      sourceFillId: "EXT__PAYLOAD_1",
+      canonicalExitEvent: "EXIT_TP_P1_2.5P",
+      canonicalExitStage: "TP1",
+      canonicalTransitionEvents: ["TP1_REACHED"],
+      simplifiedExitV2Enabled: true,
+      tradeAlertDedupeKey: "LINKUSDT|EXIT_TP_P1_2.5P|2026-04-16T01:57:11.214Z",
+      title: "LINKUSDT TP1 50% 청산",
+    },
+  });
+  assert.strictEqual(outboxPayloadOnly.symbol, "LINKUSDT");
+  assert.strictEqual(outboxPayloadOnly.source_fill_id, "EXT__PAYLOAD_1");
+  assert.strictEqual(outboxPayloadOnly.canonical_event, "EXIT_TP_P1_2.5P");
+  assert.deepStrictEqual(outboxPayloadOnly.canonical_transition_events, ["TP1_REACHED"]);
+  assert.strictEqual(outboxPayloadOnly.simplified_exit_v2_enabled, true);
+
+  const payloadCanonicalMatch = __test.pickMatchingAlert(
+    {
+      fill_id: "EXT__PAYLOAD_1",
+      symbol: "LINKUSDT",
+      event: "EXIT_TP_P0_0.8P",
+      canonical_event: "EXIT_TP_P1_2.5P",
+      canonical_transition_events: ["TP1_REACHED"],
+      simplified_exit_v2_enabled: true,
+      created_ms: Date.parse("2026-04-16T01:57:11.214Z"),
+      created_at: "2026-04-16T01:57:11.214Z",
+    },
+    [outboxPayloadOnly]
+  );
+  assert.ok(payloadCanonicalMatch, "outbox payload-only canonical evidence must match v2 exit fills");
+
   const report = __test.buildReport({
     coverageReady: true,
     fills: [
@@ -163,6 +201,7 @@ const { __test } = require("../../scripts/report-trade-execution-alert-cross-aud
   assert.strictEqual(deduped.length, 1);
   assert.ok(__test.FILL_SELECT_FIELDS.includes("canonical_transition_events"));
   assert.ok(__test.OUTBOX_SELECT_FIELDS.includes("created_at"));
+  assert.ok(__test.OUTBOX_SELECT_FIELDS.includes("payload"));
 
   console.log("TRADE_EXECUTION_ALERT_CROSS_AUDIT_TEST_OK");
 })().catch((err) => {
