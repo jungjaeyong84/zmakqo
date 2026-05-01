@@ -125,6 +125,7 @@ async function runSystemRuntimeGuardsJob({
   const tradeAlertOutboxLineage = await Promise.resolve().then(() => runTradeAlertOutboxLineageCheck({
     ...process.env,
     TRADE_ALERT_OUTBOX_LINEAGE_SOFT: "1",
+    TRADE_ALERT_OUTBOX_LINEAGE_QUIET: "1",
     TRADE_ALERT_OUTBOX_LINEAGE_OUTPUT_DIR: artifactBaseDir,
   })).catch((err) => ({
     ok: false,

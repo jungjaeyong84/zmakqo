@@ -298,11 +298,11 @@ async function main(env = process.env) {
   fs.writeFileSync(datedPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   const line = JSON.stringify({ ...report, output_json: latestPath, output_dated_json: datedPath });
   if (report.ok !== true && normalizeBool(env.TRADE_ALERT_OUTBOX_LINEAGE_SOFT, false) !== true) {
-    console.error(line);
+    if (normalizeBool(env.TRADE_ALERT_OUTBOX_LINEAGE_QUIET, false) !== true) console.error(line);
     process.exitCode = 1;
     return report;
   }
-  console.log(line);
+  if (normalizeBool(env.TRADE_ALERT_OUTBOX_LINEAGE_QUIET, false) !== true) console.log(line);
   return report;
 }
 

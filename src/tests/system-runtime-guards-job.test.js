@@ -269,6 +269,7 @@ async function run() {
     }),
     runTradeAlertOutboxLineageCheck: async (env) => {
       assert.strictEqual(env.TRADE_ALERT_OUTBOX_LINEAGE_SOFT, "1");
+      assert.strictEqual(env.TRADE_ALERT_OUTBOX_LINEAGE_QUIET, "1");
       assert.strictEqual(env.TRADE_ALERT_OUTBOX_LINEAGE_OUTPUT_DIR, artifactsDir);
       return {
         ok: false,
