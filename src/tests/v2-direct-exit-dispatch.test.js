@@ -22,13 +22,14 @@ const {
 })();
 
 (function testCloseFraction() {
-  assert.deepStrictEqual(__test.resolveCloseFraction(["SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL_OR_BE" });
-  assert.deepStrictEqual(__test.resolveCloseFraction(["TRAIL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL_OR_BE" });
-  assert.deepStrictEqual(__test.resolveCloseFraction(["BE"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL_OR_BE" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["TRAIL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["BE"]), { fraction: 0, reason: "BE_NATIVE_STOP_MANAGEMENT_ONLY" });
   assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1"]), { fraction: 0.5, reason: "PARTIAL_CLOSE_TP1" });
   assert.deepStrictEqual(__test.resolveCloseFraction(["TP_C"]), { fraction: 0.5, reason: "PARTIAL_CLOSE_TP1" });
   // Both fire — full close (safer)
-  assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1", "SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL_OR_BE" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1", "SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["BE", "TRAIL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
   assert.deepStrictEqual(__test.resolveCloseFraction([]), { fraction: 0, reason: "NO_ACTIONABLE_TRIGGER" });
 })();
 
@@ -130,6 +131,9 @@ const {
   assert.strictEqual(buildV2DirectExitDispatch({ triggeredKinds: ["SL"], positionSide: "LONG", positionQtyBase: 0, symbol: "X" }).dispatch, false, "zero qty");
   assert.strictEqual(buildV2DirectExitDispatch({ triggeredKinds: [], positionSide: "LONG", positionQtyBase: 1, symbol: "X" }).dispatch, false, "no triggers");
   assert.strictEqual(buildV2DirectExitDispatch({ triggeredKinds: ["UNKNOWN"], positionSide: "LONG", positionQtyBase: 1, symbol: "X" }).dispatch, false, "unknown kind");
+  const beOnly = buildV2DirectExitDispatch({ triggeredKinds: ["BE"], positionSide: "LONG", positionQtyBase: 1, symbol: "X" });
+  assert.strictEqual(beOnly.dispatch, false, "BE alone is native stop management, not direct market close");
+  assert.strictEqual(beOnly.reason, "BE_NATIVE_STOP_MANAGEMENT_ONLY");
 })();
 
 // (D) determinism

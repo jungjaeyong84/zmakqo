@@ -283,6 +283,60 @@ function almostEqual(a, b, eps = 1e-9) {
 }
 
 // ── 7) 출력 필드 shape 계약 ────────────────────────────────────────────
+// ── 7a) TP1 직후 현재가가 BE 후보와 너무 가까우면 raise 금지 ───────────
+// 3x leverage, floor=2.0%, buffer=0.1% => LONG BE price is only +0.7%
+// above entry. If TP1 is +0.833% and price has already pulled back near
+// BE, placing a new STOP_MARKET can be immediately-triggered by Binance
+// and fail-closed into full runner liquidation. The helper must inhibit
+// that refresh until price is safely beyond BE by minMarketGapPct.
+{
+  const res = compute({
+    side: "LONG",
+    avgPrice: 100,
+    leverage: 3,
+    floorPct: 0.02,
+    bufferPct: 0.001,
+    currentPrice: 100.75,
+    minMarketGapPct: 0.001,
+    currentStop: 98,
+  });
+  assert.strictEqual(res.inputsValid, true);
+  assert.strictEqual(res.marketSafelyPastBe, false);
+  assert.strictEqual(res.shouldRaiseStop, false);
+  assert.strictEqual(res.inhibitReason, "BE_MARKET_ALREADY_CROSSED_OR_TOO_CLOSE");
+}
+
+// ── 7b) 가격이 충분히 BE 위/아래로 지나간 경우에만 raise 허용 ─────────
+{
+  const resLong = compute({
+    side: "LONG",
+    avgPrice: 100,
+    leverage: 3,
+    floorPct: 0.02,
+    bufferPct: 0.001,
+    currentPrice: 101,
+    minMarketGapPct: 0.001,
+    currentStop: 98,
+  });
+  assert.strictEqual(resLong.marketSafelyPastBe, true);
+  assert.strictEqual(resLong.shouldRaiseStop, true);
+
+  const resShort = compute({
+    side: "SHORT",
+    avgPrice: 100,
+    leverage: 3,
+    floorPct: 0.02,
+    bufferPct: 0.001,
+    currentPrice: 99.25,
+    minMarketGapPct: 0.001,
+    currentStop: 102,
+  });
+  assert.strictEqual(resShort.marketSafelyPastBe, false);
+  assert.strictEqual(resShort.shouldRaiseStop, false);
+  assert.strictEqual(resShort.inhibitReason, "BE_MARKET_ALREADY_CROSSED_OR_TOO_CLOSE");
+}
+
+// ── 8) 출력 필드 shape 계약 ────────────────────────────────────────────
 // 2026-04-29 — 새 BE noise-buffer 도입으로 결과 객체에 `bufferPct` 와
 // `totalFloorPct` 두 키가 추가됐다. 호출부의 기존 사용 (avg / bePrice /
 // floorPct / shouldRaiseStop / inputsValid / currentStop / leverage /
@@ -293,8 +347,13 @@ function almostEqual(a, b, eps = 1e-9) {
   const res = compute({ side: "LONG", avgPrice: 100, leverage: 2, floorPct: 0.01, currentStop: 95 });
   assert.deepStrictEqual(
     Object.keys(res).sort(),
-    ["avg", "bePrice", "bufferPct", "currentStop", "floorPct", "inputsValid", "leverage", "shouldRaiseStop", "side", "totalFloorPct"].sort(),
-    "결과 객체는 정해진 키 집합만 노출한다 (호출부가 의존하는 계약 — 2026-04-29 bufferPct/totalFloorPct 추가)"
+    [
+      "avg", "bePrice", "bufferPct", "currentPrice", "currentStop",
+      "floorPct", "inhibitReason", "inputsValid", "leverage",
+      "marketSafelyPastBe", "minMarketGapPct", "shouldRaiseStop",
+      "side", "totalFloorPct",
+    ].sort(),
+    "결과 객체는 정해진 키 집합만 노출한다 (호출부가 의존하는 계약)"
   );
   // 옛 caller 가 bufferPct 를 안 넘겼을 때 bePrice 는 변하지 않는지 회귀 보호.
   assert.ok(almostEqual(res.bePrice, 100 * (1 + 0.01 / 2)),

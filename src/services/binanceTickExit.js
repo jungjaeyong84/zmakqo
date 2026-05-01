@@ -278,6 +278,8 @@ function computeBreakEvenRaiseDecision({
   leverage,
   floorPct,
   bufferPct = 0,
+  currentPrice = null,
+  minMarketGapPct = 0,
   currentStop,
 } = {}) {
   const s = String(side || "").trim().toUpperCase();
@@ -297,6 +299,9 @@ function computeBreakEvenRaiseDecision({
   const bufferRaw = Number(bufferPct);
   const buffer = Number.isFinite(bufferRaw) && bufferRaw >= 0 ? bufferRaw : 0;
   const stopRaw = Number(currentStop);
+  const currentPxRaw = Number(currentPrice);
+  const minGapRaw = Number(minMarketGapPct);
+  const minGap = Number.isFinite(minGapRaw) && minGapRaw >= 0 ? minGapRaw : 0;
   // "미보호" semantic: finite 하고 양수일 때만 실제 stop 으로 취급한다.
   // 그 외 (NaN / Infinity / 0 / 음수 / null→0 / undefined→NaN) 은 NaN
   // 으로 정규화해 downstream `!Number.isFinite` 가드가 무조건 raise 로
@@ -313,7 +318,13 @@ function computeBreakEvenRaiseDecision({
       ? avg * (1 - (totalFloor / lev))
       : avg * (1 + (totalFloor / lev)))
     : null;
-  const shouldRaiseStop = inputsValid && (
+  const marketPrice = Number.isFinite(currentPxRaw) && currentPxRaw > 0 ? currentPxRaw : null;
+  const marketSafelyPastBe = !inputsValid || marketPrice == null
+    ? true
+    : (s === "SHORT"
+      ? marketPrice < (bePrice * (1 - minGap))
+      : marketPrice > (bePrice * (1 + minGap)));
+  const shouldRaiseStop = inputsValid && marketSafelyPastBe && (
     !Number.isFinite(stop)
     || (s === "LONG" && bePrice > stop + 1e-9)
     || (s === "SHORT" && bePrice < stop - 1e-9)
@@ -324,11 +335,15 @@ function computeBreakEvenRaiseDecision({
     leverage: levFinite ? lev : null,
     floorPct: floorFinite ? floor : null,
     bufferPct: buffer,
+    minMarketGapPct: minGap,
     totalFloorPct: floorFinite ? totalFloor : null,
     currentStop: Number.isFinite(stop) ? stop : null,
+    currentPrice: marketPrice,
+    marketSafelyPastBe,
     inputsValid,
     bePrice,
     shouldRaiseStop,
+    inhibitReason: inputsValid && !marketSafelyPastBe ? "BE_MARKET_ALREADY_CROSSED_OR_TOO_CLOSE" : null,
   };
 }
 
@@ -2602,15 +2617,13 @@ function computeExitTriggers({ pos, rules, leverageEff, nativeProtectionState } 
   // UTC well before any V2 server-native generator existed, ruling
   // out the F2 path as the cause): every entry was being chopped.
   //
-  // Fix: gate the BE trigger on tpP1Done === true. SL/TP_P1/TP_C/TRAIL
-  // semantics already gate themselves correctly; BE was the outlier.
-  if (tpP1Done) {
-    const bePct = computeBePct(rules, leverageEff, pos.exchange);
-    if (Number.isFinite(bePct)) {
-      const bePx = pnlToPrice({ avg, pnlPct: Number(bePct) / leverageEff, side });
-      if (Number.isFinite(bePx)) out.push({ kind: "BE", price: bePx });
-    }
-  }
+  // 2026-05-02 root-cause fix: BE must be a native stop-management layer,
+  // not a direct market-close trigger. The direct dispatch path turns any
+  // triggered kind in this list into a reduceOnly MARKET order; when BE was
+  // present here, a normal post-TP1 retrace could produce "TP1 reached →
+  // BE direct dispatch → full runner close" within the same candle. Native
+  // STOP_MARKET remains the BE enforcement mechanism; this trigger list is
+  // limited to price levels where immediate dispatch is the intended action.
 
   const trailDelay = resolveTrailDelayState({
     meta,
@@ -3054,6 +3067,13 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         let _beRefreshRes = null;
         let _beError = null;
         let _beErrorStack = null;
+        let _beMarketPrice = null;
+        let _beMarketSafelyPast = null;
+        let _beInhibitReason = null;
+        let _beMinMarketGapPct = null;
+        let _beDelayConfigured = null;
+        let _beDelayActive = null;
+        let _beDelayReleaseReason = null;
         // 2026-04-19: transient-Firestore retry context for the BE-raise path.
         // Production surfaced two consecutive BE-raise failures on the same
         // BTCUSDT SHORT position (19:20 `10 ABORTED` contention; 20:17
@@ -3085,12 +3105,32 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
           const _beBufferPct = Number.isFinite(_beBufferPctEnv) && _beBufferPctEnv >= 0
             ? _beBufferPctEnv
             : 0.0010; // default 0.10 % — see computeBreakEvenRaiseDecision rationale.
+          const _beMinMarketGapPctEnv = Number(process.env.ENGINE_BE_RAISE_MIN_MARKET_GAP_PCT);
+          _beMinMarketGapPct = Number.isFinite(_beMinMarketGapPctEnv) && _beMinMarketGapPctEnv >= 0
+            ? _beMinMarketGapPctEnv
+            : 0.0010;
+          const _beTrailDelay = resolveTrailDelayState({
+            meta: _tMeta,
+            tpP1Done: _tpP1Done,
+            currentBarMs: tickNow,
+            closePx: price,
+            side: _beSide,
+            leverageEff: _tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1),
+            rules: _beRules,
+          });
+          _beDelayConfigured = _beTrailDelay && _beTrailDelay.delayActive === true;
+          _beDelayActive = _beTrailDelay && _beTrailDelay.trailActive === true;
+          _beDelayReleaseReason = _beTrailDelay && _beTrailDelay.releaseReason
+            ? String(_beTrailDelay.releaseReason)
+            : null;
           const _beDecision = computeBreakEvenRaiseDecision({
             side: _beSide,
             avgPrice: pos && pos.avg_price,
             leverage: _tMeta && (_tMeta.external_leverage || _tMeta.leverage || pos.leverage || 1),
             floorPct: _beRules && _beRules.RUNNER_MIN_PROFIT_PCT,
             bufferPct: _beBufferPct,
+            currentPrice: price,
+            minMarketGapPct: _beMinMarketGapPct,
             currentStop: _tMeta && _tMeta.native_protection_stop_price,
           });
           _beAvg = _beDecision.avg;
@@ -3099,8 +3139,17 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
           _currentStop = _beDecision.currentStop;
           _inputsValid = _beDecision.inputsValid;
           _bePrice = _beDecision.bePrice;
+          _beMarketPrice = _beDecision.currentPrice;
+          _beMarketSafelyPast = _beDecision.marketSafelyPastBe;
+          _beInhibitReason = _beDecision.inhibitReason;
           _shouldRaiseStop = _beDecision.shouldRaiseStop;
-          if (_inputsValid && !_shouldRaiseStop) {
+          if (_inputsValid && _beMarketSafelyPast === false) {
+            _shouldRaiseStop = false;
+            _decisionStage = "BE_MARKET_INHIBITED";
+          } else if (_inputsValid && _beDelayConfigured === true && _beDelayActive !== true) {
+            _shouldRaiseStop = false;
+            _decisionStage = "BE_DELAY_HELD";
+          } else if (_inputsValid && !_shouldRaiseStop) {
             _decisionStage = "RAISE_NOT_NEEDED";
           } else if (_inputsValid && _shouldRaiseStop) {
             _cooldownPassed = shouldRunNativeProtectionRefreshCooldown({ symbol, now: tickNow, cooldownMs: 5000 });
@@ -3161,6 +3210,13 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
               be_price: _bePrice,
               floor_pct: _beFloorPct,
               be_buffer_pct: _beBufferPct,
+              min_market_gap_pct: _beMinMarketGapPct,
+              market_price: _beMarketPrice,
+              market_safely_past_be: _beMarketSafelyPast,
+              inhibit_reason: _beInhibitReason,
+              be_delay_configured: _beDelayConfigured,
+              be_delay_active: _beDelayActive,
+              be_delay_release_reason: _beDelayReleaseReason,
               total_floor_pct: _beDecision.totalFloorPct,
               trail_enabled: _trailEnabled === true,
               ...buildBreakEvenStopRefreshObservability(_beRefreshRes),
@@ -3225,6 +3281,13 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             floor_pct: Number.isFinite(_beFloorPct) ? _beFloorPct : null,
             current_stop: Number.isFinite(_currentStop) ? _currentStop : null,
             be_price: _bePrice,
+            min_market_gap_pct: _beMinMarketGapPct,
+            market_price: _beMarketPrice,
+            market_safely_past_be: _beMarketSafelyPast,
+            inhibit_reason: _beInhibitReason,
+            be_delay_configured: _beDelayConfigured,
+            be_delay_active: _beDelayActive,
+            be_delay_release_reason: _beDelayReleaseReason,
             should_raise_stop: _shouldRaiseStop === true,
             cooldown_passed: _cooldownPassed,
             decision_stage: _decisionStage,

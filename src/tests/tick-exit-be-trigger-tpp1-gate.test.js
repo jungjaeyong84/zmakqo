@@ -9,8 +9,8 @@
 // unfavorable tick immediately after entry triggered the fast-lane
 // BE close and the position was chopped within seconds.
 //
-// Fix: BE trigger is only emitted when tpP1Done === true. This test
-// pins that semantic.
+// Fix: BE is never emitted as a direct market-close trigger. BE is enforced
+// only by native STOP management after TP1. This test pins that semantic.
 
 const assert = require("assert");
 const path = require("path");
@@ -70,9 +70,9 @@ function kindsOf(triggers) {
   assert.ok(kinds.includes("TP_P1"), `(A) TP_P1 trigger should still be present, got ${JSON.stringify(kinds)}`);
 })();
 
-// (B) TP1 reached — BE trigger MUST be present (post-TP1 break-even
-//     stop semantic).
-(function testPostTp1BeTriggerPresent() {
+// (B) TP1 reached — BE trigger must still be absent from direct dispatch.
+//     Native STOP refresh owns break-even enforcement.
+(function testPostTp1BeTriggerAbsent() {
   const triggers = computeExitTriggers({
     pos: buildPos({ tpP1Done: true }),
     rules: buildRules(),
@@ -81,8 +81,8 @@ function kindsOf(triggers) {
   });
   const kinds = kindsOf(triggers);
   assert.ok(
-    kinds.includes("BE"),
-    `(B) BE trigger MUST fire after TP1 reached (break-even stop). Got kinds=${JSON.stringify(kinds)}`
+    !kinds.includes("BE"),
+    `(B) BE trigger must NOT enter direct dispatch after TP1. Got kinds=${JSON.stringify(kinds)}`
   );
 })();
 
@@ -96,8 +96,8 @@ function kindsOf(triggers) {
   });
   const kinds = kindsOf(triggers);
   assert.ok(
-    kinds.includes("BE"),
-    `(C) BE trigger MUST fire on SHORT after TP1 reached. Got kinds=${JSON.stringify(kinds)}`
+    !kinds.includes("BE"),
+    `(C) BE trigger must NOT enter direct dispatch on SHORT after TP1. Got kinds=${JSON.stringify(kinds)}`
   );
 })();
 
@@ -117,9 +117,8 @@ function kindsOf(triggers) {
   );
 })();
 
-// (E) Source-level pin: the literal `if (tpP1Done) {` must wrap the
-//     BE-trigger push so a future regression that drops the guard
-//     fails CI.
+// (E) Source-level pin: no direct BE push site may exist. Break-even is
+//     native STOP management only.
 (function testSourcePin() {
   const fs = require("fs");
   const src = fs.readFileSync(
@@ -127,13 +126,7 @@ function kindsOf(triggers) {
     "utf8"
   );
   const beIdx = src.indexOf('out.push({ kind: "BE"');
-  assert.ok(beIdx > 0, "(E) BE push site not found in binanceTickExit.js");
-  // Walk ~600 chars upward and require an `if (tpP1Done) {` clause
-  const upstream = src.slice(Math.max(0, beIdx - 600), beIdx);
-  assert.ok(
-    /if\s*\(\s*tpP1Done\s*\)\s*\{/.test(upstream),
-    "(E) BE trigger push must be guarded by `if (tpP1Done) { ... }`"
-  );
+  assert.strictEqual(beIdx, -1, "(E) BE direct trigger push must not exist in binanceTickExit.js");
 })();
 
 console.log("TICK_EXIT_BE_TRIGGER_TPP1_GATE_TEST_OK");
