@@ -170,6 +170,77 @@ async function deployFlagRequiresConfirmPhrase() {
   });
 }
 
+function cloudBuildSubmitBudgetBlocksDailyChurn() {
+  const builds = Array.from({ length: 6 }, (_, index) => ({ id: `build-${index + 1}` }));
+  const result = runner.evaluateCloudBuildSubmitBudget({
+    env: {
+      DONBEOLJA_V2_CLOUDBUILD_RECENT_BUILDS_JSON: JSON.stringify(builds),
+      DONBEOLJA_V2_CLOUDBUILD_DAILY_SUBMIT_LIMIT: "6",
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_CLOUDBUILD_SUBMIT_BUDGET_BLOCKED");
+  assert(result.blockers.includes("CLOUDBUILD_SUBMIT_BUDGET:DAILY_LIMIT_EXCEEDED"));
+  assert.strictEqual(result.build_n, 6);
+  assert.strictEqual(result.limit, 6);
+}
+
+function cloudBuildSubmitBudgetOverrideIsExplicit() {
+  const builds = Array.from({ length: 7 }, (_, index) => ({ id: `build-${index + 1}` }));
+  const result = runner.evaluateCloudBuildSubmitBudget({
+    env: {
+      DONBEOLJA_V2_CLOUDBUILD_RECENT_BUILDS_JSON: JSON.stringify(builds),
+      DONBEOLJA_V2_CLOUDBUILD_DAILY_SUBMIT_LIMIT: "6",
+      DONBEOLJA_V2_CLOUDBUILD_SUBMIT_BUDGET_OVERRIDE_CONFIRM: runner.__test.CLOUDBUILD_BUDGET_OVERRIDE_PHRASE,
+    },
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_CLOUDBUILD_SUBMIT_BUDGET_PASS");
+  assert.strictEqual(result.override_confirmed, true);
+  assert.strictEqual(result.build_n, 7);
+}
+
+async function deployConfirmedStopsBeforeGcloudWhenBudgetExceeded() {
+  await withPatchedRunChecks({
+    entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
+    exit: async () => makeReport(true, "V2_EXIT_RUNTIME_CANARY_STREAK_PASS"),
+    repair: () => makeReport(true, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"),
+  }, async () => {
+    const perfFile = writePerfMetrics({
+      sample_n: 55,
+      win_rate_pct: 49,
+      profit_factor: 1.11,
+      expectancy: 0.01,
+      net_pnl_pct: 0.7,
+      mdd_pct: -4.5,
+      cost_ratio_pct: 0.12,
+      latest_error_count_24h: 0,
+    });
+    const stateFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "v2-discovery-state-")), "state.json");
+    let submitCalled = false;
+    const result = await runner.main({
+      TAG: "v2-fixture",
+      COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+      DONBEOLJA_V2_DISCOVERY_CANARY_DEPLOY: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_DEPLOY_CONFIRM: runner.__test.DEPLOY_CONFIRM_PHRASE,
+      DONBEOLJA_V2_DISCOVERY_CANARY_AUTODEPLOY_STATE_FILE: stateFile,
+      DONBEOLJA_V2_CLOUDBUILD_RECENT_BUILDS_JSON: JSON.stringify(Array.from({ length: 6 }, (_, index) => ({ id: `build-${index + 1}` }))),
+      DONBEOLJA_V2_CLOUDBUILD_DAILY_SUBMIT_LIMIT: "6",
+      V2_PERFORMANCE_GATE_INPUT_FILE: perfFile,
+    }, {
+      softFail: true,
+      execFileSync: () => {
+        submitCalled = true;
+        throw new Error("GCLOUD_SUBMIT_SHOULD_NOT_RUN");
+      },
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "V2_CLOUDBUILD_SUBMIT_BUDGET_BLOCKED");
+    assert.strictEqual(submitCalled, false);
+    assert(result.blockers.includes("CLOUDBUILD_SUBMIT_BUDGET:DAILY_LIMIT_EXCEEDED"));
+  });
+}
+
 async function passingPreflightCanBuildTwoSymbolDiscoveryCommand() {
   await withPatchedRunChecks({
     entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
@@ -285,6 +356,9 @@ async function run() {
   await passingPreflightBuildsDiscoveryDeployCommand();
   await passingPreflightDoesNotDeployWithoutExplicitArm();
   await deployFlagRequiresConfirmPhrase();
+  cloudBuildSubmitBudgetBlocksDailyChurn();
+  cloudBuildSubmitBudgetOverrideIsExplicit();
+  await deployConfirmedStopsBeforeGcloudWhenBudgetExceeded();
   await passingPreflightCanBuildTwoSymbolDiscoveryCommand();
   await passingPreflightCanBuildFullUniverseMinimumNotionalCommand();
   await activePositionEvidencePendingAllowsDiscoveryBootstrapOnly();
