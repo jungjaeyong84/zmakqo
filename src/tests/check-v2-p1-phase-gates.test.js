@@ -110,6 +110,38 @@ function activeProtectionStreakPassesCleanWindow() {
   assert.strictEqual(result.metrics.run_n, 3);
 }
 
+function activeProtectionStreakRunCheckReadsJsonlRows() {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "active-protection-streak-jsonl-"));
+  const historyFile = path.join(tmpDir, "history.jsonl");
+  fs.writeFileSync(historyFile, [
+    JSON.stringify({
+      generated_at: "2026-04-26T02:00:00.000Z",
+      ok: true,
+      unprotected_position_n: 0,
+      critical_issue_n: 0,
+    }),
+    JSON.stringify({
+      generated_at: "2026-04-26T03:00:00.000Z",
+      ok: true,
+      unprotected_position_n: 0,
+      critical_issue_n: 0,
+    }),
+  ].join("\n") + "\n");
+  const originalNow = Date.now;
+  Date.now = () => Date.parse("2026-04-26T03:10:00.000Z");
+  try {
+    const result = runActiveProtectionReconciliationStreakCheck({
+      V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_FILE: historyFile,
+      V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_REQUIRED: "1",
+      V2_ACTIVE_PROTECTION_RECONCILIATION_STREAK_MIN_RUN_N: "2",
+    });
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.metrics.run_n, 2);
+  } finally {
+    Date.now = originalNow;
+  }
+}
+
 function activeProtectionStreakBlocksUnprotectedWindow() {
   const nowMs = Date.parse("2026-04-26T03:00:00.000Z");
   const result = evaluateActiveProtectionReconciliationStreak({
@@ -139,6 +171,7 @@ function activeProtectionStreakBlocksUnprotectedWindow() {
   v1WriterDenyStreakBlocksNonZeroWriteArtifact();
   activeProtectionStreakBlocksWhenRequiredHistoryMissing();
   activeProtectionStreakPassesCleanWindow();
+  activeProtectionStreakRunCheckReadsJsonlRows();
   activeProtectionStreakBlocksUnprotectedWindow();
   console.log("CHECK_V2_P1_PHASE_GATES_TEST_OK");
 })().catch((error) => {

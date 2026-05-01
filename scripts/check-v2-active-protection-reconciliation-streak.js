@@ -28,11 +28,12 @@ function numberWithDefault(value, fallback) {
 
 function readJsonlSafe(file) {
   try {
-    return fs.readFileSync(file, "utf8")
+    const rows = fs.readFileSync(file, "utf8")
       .split(/\n/)
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => JSON.parse(line));
+    return { rows };
   } catch (error) {
     return { error, rows: [] };
   }
