@@ -2,6 +2,7 @@
 
 const assert = require("assert");
 const {
+  __test,
   evaluateCloudBuildTriggerDrift,
   loadTriggersFromEnv,
   normalizeTrigger,
@@ -71,9 +72,17 @@ function envFixtureParsesSingleOrArray() {
   assert.strictEqual(normalizeTrigger(rows[0]).id, "one");
 }
 
+function resolvesExplicitGcloudBinary() {
+  assert.strictEqual(
+    __test.resolveGcloudBinary({ V2_CLOUDBUILD_TRIGGER_GCLOUD_BIN: "/tmp/gcloud-test-bin", PATH: "" }),
+    "/tmp/gcloud-test-bin",
+  );
+}
+
 disabledLatestUnknownTriggerDoesNotBlock();
 enabledLatestUnknownTriggerBlocks();
 enabledTriggerMissingSubstitutionsBlocks();
 enabledV2TriggerPasses();
 envFixtureParsesSingleOrArray();
+resolvesExplicitGcloudBinary();
 console.log("CHECK_V2_CLOUDBUILD_TRIGGER_DRIFT_TEST_OK");

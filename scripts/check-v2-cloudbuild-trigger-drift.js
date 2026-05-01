@@ -2,6 +2,8 @@
 "use strict";
 
 const { execFileSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 
 function trimOrNull(value) {
   const text = String(value == null ? "" : value).trim();
@@ -76,8 +78,36 @@ function loadTriggersFromEnv(env = process.env) {
   return Array.isArray(parsed) ? parsed : [parsed];
 }
 
-function loadTriggersFromGcloud() {
-  const out = execFileSync("gcloud", ["builds", "triggers", "list", "--format=json"], {
+function resolveExecutableFromPath(name, env = process.env) {
+  const paths = String(env.PATH || "").split(path.delimiter).filter(Boolean);
+  for (const dir of paths) {
+    const candidate = path.join(dir, name);
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch (_) {
+      // Ignore unreadable PATH entries.
+    }
+  }
+  return null;
+}
+
+function resolveGcloudBinary(env = process.env) {
+  const explicit = trimOrNull(env.V2_CLOUDBUILD_TRIGGER_GCLOUD_BIN);
+  if (explicit) return explicit;
+  return resolveExecutableFromPath("gcloud", env)
+    || ["/google-cloud-sdk/bin/gcloud", "/usr/lib/google-cloud-sdk/bin/gcloud", "/opt/google-cloud-sdk/bin/gcloud"]
+      .find((candidate) => {
+        try {
+          return fs.existsSync(candidate);
+        } catch (_) {
+          return false;
+        }
+      })
+    || "gcloud";
+}
+
+function loadTriggersFromGcloud(env = process.env) {
+  const out = execFileSync(resolveGcloudBinary(env), ["builds", "triggers", "list", "--format=json"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -97,7 +127,7 @@ function main(env = process.env) {
   }
   let triggers;
   try {
-    triggers = loadTriggersFromEnv(env) || loadTriggersFromGcloud();
+    triggers = loadTriggersFromEnv(env) || loadTriggersFromGcloud(env);
   } catch (error) {
     const result = Object.freeze({
       ok: false,
@@ -127,6 +157,7 @@ if (require.main === module) {
     normalizeTrigger,
     evaluateCloudBuildTriggerDrift,
     loadTriggersFromEnv,
-    __test: { trimOrNull, parseBool, isMasterCloudBuildTrigger },
+    loadTriggersFromGcloud,
+    __test: { trimOrNull, parseBool, isMasterCloudBuildTrigger, resolveExecutableFromPath, resolveGcloudBinary },
   };
 }
