@@ -176,23 +176,22 @@ async function evaluateDiscoveryCanaryRealizedPerformanceGuard({
   fills = null,
   nowMs = Date.now(),
 } = {}) {
-  const enabled = parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED, true);
+  const enabled = parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED, false);
   const sym = upper(symbol);
-  if (!enabled) {
-    return Object.freeze({ ok: true, reason: "V2_DISCOVERY_CANARY_REALIZED_GUARD_DISABLED", symbol: sym });
-  }
-  if (!sym) {
-    return Object.freeze({ ok: false, reason: "V2_DISCOVERY_CANARY_REALIZED_GUARD_SYMBOL_REQUIRED" });
-  }
-
   const quarantine = parseSymbolSet(env.DONBEOLJA_V2_DISCOVERY_CANARY_QUARANTINE_SYMBOLS);
-  if (quarantine.has(sym)) {
+  if (sym && quarantine.has(sym)) {
     return Object.freeze({
       ok: false,
       reason: "V2_DISCOVERY_CANARY_SYMBOL_QUARANTINED",
       blockers: Object.freeze(["DISCOVERY_CANARY_REALIZED_GUARD:SYMBOL_QUARANTINED"]),
       symbol: sym,
     });
+  }
+  if (!enabled) {
+    return Object.freeze({ ok: true, reason: "V2_DISCOVERY_CANARY_REALIZED_GUARD_DISABLED", symbol: sym });
+  }
+  if (!sym) {
+    return Object.freeze({ ok: false, reason: "V2_DISCOVERY_CANARY_REALIZED_GUARD_SYMBOL_REQUIRED" });
   }
 
   const lookbackHours = toNumberOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_LOOKBACK_HOURS) ?? 72;

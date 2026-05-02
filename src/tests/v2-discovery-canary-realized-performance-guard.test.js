@@ -7,6 +7,9 @@ const {
 } = require("../v2/discoveryCanaryRealizedPerformanceGuard");
 
 const nowMs = Date.parse("2026-05-02T00:00:00.000Z");
+const realizedGuardEnabledEnv = Object.freeze({
+  DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED: "1",
+});
 
 function exitFill({ symbol = "DOGEUSDT", action = "EXIT_SL_1.65P", pnl = -1, fee = 0.05, minutesAgo = 10, entry = "ENTRY1" } = {}) {
   return {
@@ -51,6 +54,7 @@ function exitFill({ symbol = "DOGEUSDT", action = "EXIT_SL_1.65P", pnl = -1, fee
 (async function recentLossClusterBlocksSymbol() {
   const result = await evaluateDiscoveryCanaryRealizedPerformanceGuard({
     env: {
+      ...realizedGuardEnabledEnv,
       DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MIN_TRADES: "4",
       DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MAX_NET_LOSS_QUOTE: "2",
       DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MIN_WIN_RATE_PCT: "35",
@@ -73,7 +77,10 @@ function exitFill({ symbol = "DOGEUSDT", action = "EXIT_SL_1.65P", pnl = -1, fee
 
 (async function insufficientSampleDoesNotBlock() {
   const result = await evaluateDiscoveryCanaryRealizedPerformanceGuard({
-    env: { DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MIN_TRADES: "4" },
+    env: {
+      ...realizedGuardEnabledEnv,
+      DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MIN_TRADES: "4",
+    },
     symbol: "TAOUSDT",
     nowMs,
     fills: [exitFill({ symbol: "TAOUSDT", entry: "T1", pnl: -1 })],
@@ -85,6 +92,7 @@ function exitFill({ symbol = "DOGEUSDT", action = "EXIT_SL_1.65P", pnl = -1, fee
 (async function lowWinRateWithoutNetLossOrSlClusterDoesNotBlock() {
   const result = await evaluateDiscoveryCanaryRealizedPerformanceGuard({
     env: {
+      ...realizedGuardEnabledEnv,
       DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MIN_TRADES: "4",
       DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MAX_NET_LOSS_QUOTE: "2",
       DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MIN_WIN_RATE_PCT: "35",
@@ -101,6 +109,26 @@ function exitFill({ symbol = "DOGEUSDT", action = "EXIT_SL_1.65P", pnl = -1, fee
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_REALIZED_GUARD_PASS");
+})();
+
+(async function defaultDisabledDoesNotBlockRecentLossCluster() {
+  const result = await evaluateDiscoveryCanaryRealizedPerformanceGuard({
+    env: {
+      DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MIN_TRADES: "4",
+      DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MAX_NET_LOSS_QUOTE: "2",
+      DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_MIN_WIN_RATE_PCT: "35",
+    },
+    symbol: "DOGEUSDT",
+    nowMs,
+    fills: [
+      exitFill({ entry: "E1", pnl: -1.1 }),
+      exitFill({ entry: "E2", pnl: -0.8, minutesAgo: 20 }),
+      exitFill({ entry: "E3", pnl: -0.9, minutesAgo: 30 }),
+      exitFill({ entry: "E4", pnl: 0.2, action: "EXIT_TP_P1_2.5P", minutesAgo: 40 }),
+    ],
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_REALIZED_GUARD_DISABLED");
 })();
 
 console.log("V2_DISCOVERY_CANARY_REALIZED_PERFORMANCE_GUARD_TEST_OK");

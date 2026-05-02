@@ -94,6 +94,7 @@ async function passingPreflightBuildsDiscoveryDeployCommand() {
     );
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED, "1");
+    assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED, "0");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_SHADOW_EXIT_WRITE_ENABLED, "1");
     assert.strictEqual(result.substitutions._DONBEOLJA_V2_SHADOW_ALERT_DELIVERY_ENABLED, "1");

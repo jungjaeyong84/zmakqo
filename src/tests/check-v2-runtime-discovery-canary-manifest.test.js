@@ -12,6 +12,7 @@ function serviceJson({
   commit = "0123456789abcdef0123456789abcdef01234567",
   endpointEnabled = "1",
   discoveryEnabled = "1",
+  realizedGuardEnabled = "0",
 } = {}) {
   return Object.freeze({
     metadata: Object.freeze({
@@ -56,6 +57,7 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT", value: "8" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY", value: "UNLIMITED" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE", value: "10" }),
+                Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED", value: realizedGuardEnabled }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_TOTAL_NOTIONAL_QUOTE", value: "1300" }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE", value: "200" }),
                 Object.freeze({ name: "DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE", value: "900" }),
@@ -193,6 +195,20 @@ function traceOnlyServiceJson({
   });
   assert.strictEqual(result.ok, false);
   assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:FORBIDDEN_ENV_PRESENT:OPENAI_API_KEY"));
+}
+
+{
+  const unsafeService = JSON.parse(JSON.stringify(serviceJson()));
+  const envRow = unsafeService.spec.template.spec.containers[0].env
+    .find((row) => row.name === "DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED");
+  envRow.value = "1";
+  const result = checker.runCheck({
+    DONBEOLJA_V2_RUNTIME_SERVICE_JSON: JSON.stringify(unsafeService),
+    TAG: "v2-fixture",
+    COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+  });
+  assert.strictEqual(result.ok, false);
+  assert(result.blockers.includes("RUNTIME_DISCOVERY_CANARY:DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED_MISMATCH"));
 }
 
 {
