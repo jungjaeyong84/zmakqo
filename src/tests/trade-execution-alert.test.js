@@ -458,6 +458,58 @@ async function run() {
   assert.strictEqual(simplifiedStopHitProjection.stage, "SL");
   assert.strictEqual(simplifiedStopHitProjection.meta.token, "SL_1.65");
 
+  const simplifiedSlWithLegacyTp1Rule = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "TAOUSDT",
+    event: "EXIT_SL_1.65P",
+    intent: "EXIT",
+    side: "SELL",
+    positionSideBefore: "LONG",
+    executionMode: "LIVE",
+    notional: 119.04,
+    execPrice: 269.92,
+    fullExit: true,
+    realizedPnl: -0.669,
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_SL_1.65P",
+    canonicalExitStage: "SL",
+    canonicalTransitionEvent: "SL_HIT",
+    canonicalTransitionEvents: ["SL_HIT"],
+    contractEntryQtyAbs: 0.441,
+    contractTp1AllowedAbs: 0.2205,
+    contractRunnerRemainingAbs: 0.441,
+    contractObservedQtyAbs: 0.179,
+    chosenStopPrice: 0,
+    runnerFloorStop: 0,
+    trailStopByR: 0,
+    nativeStopPrice: 0,
+    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(simplifiedSlWithLegacyTp1Rule, "simplified v2 sl message should exist");
+  assert.strictEqual(simplifiedSlWithLegacyTp1Rule.title, "TAOUSDT SL_1.65 전량 청산");
+  assert.ok(simplifiedSlWithLegacyTp1Rule.body.includes("실행계약: SL_1.65"), "SL alert should keep executed stop contract");
+  assert.ok(simplifiedSlWithLegacyTp1Rule.body.includes("전략계약: SL_1.65 / TP1_2.5 / TRAIL_0.6R / RUNNER_MIN_1.65 / BE_0.15"), "non-TP1 V2 alerts must display protected-entry TP1 target, not legacy 1.65");
+  assert.ok(!simplifiedSlWithLegacyTp1Rule.body.includes("TP1_1.65"), "V2 SL alert must not leak legacy TP1_1.65 label");
+  assert.ok(!simplifiedSlWithLegacyTp1Rule.body.includes("stop근거:"), "zero-only stop authority fields should be suppressed");
+
+  const simplifiedEntryWithLegacyTp1Rule = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "TAOUSDT",
+    event: "ENTRY_LONG",
+    intent: "ENTRY",
+    side: "BUY",
+    positionSideAfter: "LONG",
+    executionMode: "LIVE",
+    notional: 120,
+    execPrice: 270,
+    appliedLeverage: 3,
+    simplifiedExitV2Enabled: true,
+    exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+  });
+  assert.ok(simplifiedEntryWithLegacyTp1Rule, "simplified v2 entry message should exist");
+  assert.ok(simplifiedEntryWithLegacyTp1Rule.body.includes("청산규칙: SL_1.65 / TP1_2.5 / TRAIL_0.6R / RUNNER_MIN_1.65 / BE_0.15"), "entry alert should use the same V2 protected-entry contract display");
+  assert.ok(!simplifiedEntryWithLegacyTp1Rule.body.includes("TP1_1.65"), "V2 entry alert must not leak legacy TP1_1.65 label");
+
   const simplifiedExternalCloseRequirement = __test.resolveCanonicalExitAlertRequirement({
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",

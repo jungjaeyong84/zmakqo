@@ -321,6 +321,18 @@ function isSimplifiedExitV2Enabled(payload = {}) {
   return false;
 }
 
+function hasExplicitSimplifiedExitV2Flag(payload = {}) {
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.simplifiedExitV2Enabled !== undefined || payload.simplified_exit_v2_enabled !== undefined) {
+    return payload.simplifiedExitV2Enabled === true || payload.simplified_exit_v2_enabled === true;
+  }
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : null;
+  if (meta && (meta.simplifiedExitV2Enabled !== undefined || meta.simplified_exit_v2_enabled !== undefined)) {
+    return meta.simplifiedExitV2Enabled === true || meta.simplified_exit_v2_enabled === true;
+  }
+  return false;
+}
+
 function isCanonicalStageExit(stage) {
   const normalized = String(stage || "").trim().toUpperCase();
   return normalized === "TP0" || normalized === "TP1" || normalized === "TRAIL";
@@ -686,13 +698,17 @@ function resolveExitIntegrityLines(payload = {}) {
   const runnerFloorStop = Number(payload.runnerFloorStop);
   const trailStopByR = Number(payload.trailStopByR);
   const nativeStopPrice = Number(payload.nativeStopPrice);
+  const validChosenStopPrice = Number.isFinite(chosenStopPrice) && chosenStopPrice > 0;
+  const validRunnerFloorStop = Number.isFinite(runnerFloorStop) && runnerFloorStop > 0;
+  const validTrailStopByR = Number.isFinite(trailStopByR) && trailStopByR > 0;
+  const validNativeStopPrice = Number.isFinite(nativeStopPrice) && nativeStopPrice > 0;
   const stopParts = [];
-  if (chosenSource || Number.isFinite(chosenStopPrice)) {
-    stopParts.push(`chosen ${chosenSource || "-"} ${Number.isFinite(chosenStopPrice) ? formatMoney(chosenStopPrice) : "-"}`);
+  if (chosenSource || validChosenStopPrice) {
+    stopParts.push(`chosen ${chosenSource || "-"} ${validChosenStopPrice ? formatMoney(chosenStopPrice) : "-"}`);
   }
-  if (Number.isFinite(runnerFloorStop)) stopParts.push(`floor ${formatMoney(runnerFloorStop)}`);
-  if (Number.isFinite(trailStopByR)) stopParts.push(`r ${formatMoney(trailStopByR)}`);
-  if (Number.isFinite(nativeStopPrice)) stopParts.push(`native ${formatMoney(nativeStopPrice)}`);
+  if (validRunnerFloorStop) stopParts.push(`floor ${formatMoney(runnerFloorStop)}`);
+  if (validTrailStopByR) stopParts.push(`r ${formatMoney(trailStopByR)}`);
+  if (validNativeStopPrice) stopParts.push(`native ${formatMoney(nativeStopPrice)}`);
   if (stopParts.length) {
     lines.push(`stop근거: ${stopParts.join(" / ")}`);
   }
@@ -759,9 +775,8 @@ function resolveExitRulesForAlertDisplay(payload = {}, resolvedExitMeta = null) 
     ? payload.exitRules
     : ((payload.exit_rules && typeof payload.exit_rules === "object") ? payload.exit_rules : null);
   if (!rules) return null;
-  const simplified = resolvedExitMeta && resolvedExitMeta.simplifiedExitV2;
-  const isV2Tp1 = simplified && simplified.enabled === true && simplified.primaryTransitionEvent === "TP1_REACHED";
-  if (!isV2Tp1) return rules;
+  const explicitSimplifiedV2 = hasExplicitSimplifiedExitV2Flag(payload);
+  if (!explicitSimplifiedV2) return rules;
   return {
     ...rules,
     TP_P1: resolveV2Tp1TargetPctForAlert(payload),
@@ -1034,7 +1049,7 @@ function buildMessage(payload) {
     }
     lines.push(...resolveSizingLines(payload));
     lines.push(...resolveMarketRegimeLines(payload, feat));
-    const rulesTxt = formatExitRulesCompact(payload.exitRules || payload.exit_rules);
+    const rulesTxt = formatExitRulesCompact(resolveExitRulesForAlertDisplay(payload));
     if (rulesTxt) lines.push(`청산규칙: ${rulesTxt}`);
     const replayReason = resolveTradeAlertReplayReason(payload);
     if (replayReason) lines.push(`재발송사유: ${replayReason}`);
