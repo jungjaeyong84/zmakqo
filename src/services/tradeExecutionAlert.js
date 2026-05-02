@@ -397,6 +397,22 @@ function normalizeSimplifiedExitV2TransitionEvents(payload = {}) {
     seen.add(event);
     normalized.push(event);
   }
+  // TP1 fill and trail activation can be written in the same canonical batch.
+  // The executed contract is still the TP1 partial; TRAIL_ACTIVATED is the
+  // post-TP1 runner protection state. If primary_transition_event is
+  // TRAIL_ACTIVATED, resolveCanonicalTransitionEventList() prepends it and the
+  // alert used to mislabel TP1 as TRAIL.
+  if (
+    normalized.includes("TP1_REACHED") &&
+    normalized.includes("TRAIL_ACTIVATED") &&
+    !normalized.includes("TRAIL_HIT") &&
+    !normalized.includes("TRAIL_FINAL_EXIT")
+  ) {
+    return [
+      "TP1_REACHED",
+      ...normalized.filter((event) => event !== "TP1_REACHED"),
+    ];
+  }
   return normalized;
 }
 
@@ -680,6 +696,34 @@ function resolveCanonicalStageLines(payload = {}, resolved = {}) {
     lines.push(`정본전이: ${transitionEvents.join(" -> ")}`);
   }
   return lines;
+}
+
+function buildExitEventFromMeta(meta = null, fallback = null) {
+  const token = String(meta && meta.token || "").trim().toUpperCase();
+  if (token.startsWith("TP1_")) return `EXIT_TP_P1_${token.slice(4)}P`;
+  if (token === "TP1") return "EXIT_TP_P1";
+  if (token.startsWith("SL_")) return `EXIT_SL_${token.slice(3)}P`;
+  if (token === "SL") return "EXIT_SL";
+  if (token.startsWith("TRAIL_")) return `EXIT_TRAIL_${token.slice(6)}P`;
+  if (token === "TRAIL") return "EXIT_TRAIL";
+  if (token.startsWith("BE_")) return `EXIT_BE_${token.slice(3)}P`;
+  if (token === "EXTERNAL_SYNC") return "EXIT_EXTERNAL_SYNC";
+  if (token === "FORCE_EXIT_ALL") return "FORCE_EXIT_ALL";
+  return String(fallback || "").trim().toUpperCase() || null;
+}
+
+function resolveDisplayExitEventForAlert(resolved = {}, fallback = null) {
+  const projected = buildExitEventFromMeta(resolved && resolved.meta, fallback);
+  const raw = String(resolved && resolved.rawEvidenceEvent || fallback || "").trim().toUpperCase();
+  if (
+    resolved &&
+    resolved.simplifiedExitV2 &&
+    resolved.simplifiedExitV2.enabled === true &&
+    projected
+  ) {
+    return projected;
+  }
+  return raw || projected;
 }
 
 function resolveExitIntegrityLines(payload = {}) {
@@ -1102,7 +1146,15 @@ function buildMessage(payload) {
     if (rulesTxt) lines.push(`전략계약: ${rulesTxt}`);
     const replayReason = resolveTradeAlertReplayReason(payload);
     if (replayReason) lines.push(`재발송사유: ${replayReason}`);
-    lines.push(`이벤트: ${formatEventTag(resolvedExitMeta.rawEvidenceEvent || event)}`);
+    const displayEvent = resolveDisplayExitEventForAlert(resolvedExitMeta, event);
+    lines.push(`이벤트: ${formatEventTag(displayEvent || resolvedExitMeta.rawEvidenceEvent || event)}`);
+    if (
+      displayEvent &&
+      resolvedExitMeta.rawEvidenceEvent &&
+      displayEvent !== resolvedExitMeta.rawEvidenceEvent
+    ) {
+      lines.push(`원본이벤트: ${formatEventTag(resolvedExitMeta.rawEvidenceEvent)}`);
+    }
     return { title, body: lines.join("\n") };
   }
 

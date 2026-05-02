@@ -31,7 +31,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
 const { isIntentCanceledLikeStatus } = require("../utils/intentStatus");
 const { deriveSignalDocId } = require("../utils/signalDocId");
 const { inferTakeProfitKindFromQtyRatio } = require("./binancePositionReconciler");
-const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
+const { isSimplifiedExitV2Active, DEFAULT_TP1_TARGET_PCT } = require("./simplifiedExitV2");
 const { sendKoreanTelegramSummary } = require("../../scripts/lib/automation-utils");
 const {
   resolveExitStageAbsoluteContractQtyRatio,
@@ -2904,7 +2904,15 @@ function shouldEmitExternalFillSyncExitAlert({
 function buildExitEventByKind(kind, rules, positionCtx = null) {
   const k = String(kind || "").toUpperCase();
   const slLabel = pctLabel(rules && rules.SL);
-  const tpLabel = pctLabel(rules && rules.TP_P1);
+  const tp1Rule = Number(rules && rules.TP_P1);
+  const tp1TargetPct = (
+    isSimplifiedExitV2Enabled(positionCtx) &&
+    Number.isFinite(tp1Rule) &&
+    Math.abs(tp1Rule - 0.0165) <= 1e-9
+  )
+    ? DEFAULT_TP1_TARGET_PCT
+    : tp1Rule;
+  const tpLabel = pctLabel(tp1TargetPct);
   const trailLabel = pctLabel(rules && rules.TRAIL_PCT);
   if (k === "SL") return slLabel ? `EXIT_SL_${slLabel}P` : "EXIT_SL";
   if (k === "TP0") return buildExitEventByKind("TP1", rules, positionCtx);

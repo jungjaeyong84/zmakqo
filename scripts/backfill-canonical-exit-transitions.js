@@ -146,6 +146,7 @@ function buildCanonicalTransitionPayload(row = {}) {
     canonicalEvent: buildCanonicalExitEvent({
       stage,
       fallbackEvent,
+      simplifiedExitV2Enabled: isSimplifiedExitV2Row(row),
     }) || fallbackEvent,
     transitionEvents,
     chainKey: String(row.canonical_exit_chain_key || extra.canonical_exit_chain_key || row.authoritative_exit_chain_key || extra.authoritative_exit_chain_key || "").trim() || null,

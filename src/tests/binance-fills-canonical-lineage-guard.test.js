@@ -66,9 +66,50 @@ async function run() {
     rules,
   });
   assert.strictEqual(allowed.stage, "TP1");
-  assert.strictEqual(allowed.event, "EXIT_TP_P1_1.65P");
+  assert.strictEqual(allowed.event, "EXIT_TP_P1_2.5P");
   assert.strictEqual(allowed.entryLineageMissing, false);
   assert.strictEqual(__test.shouldPromoteCanonicalExternalExit(allowed), true);
+
+  const simplifiedV2Tp1 = __test.resolveCanonicalExternalExitEvent({
+    authorityMap,
+    exchange: "BINANCEFUT",
+    symbol: "ARBUSDT",
+    event: "EXIT_TP_P1_1.65P",
+    entryEventId: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+    signalDocId: "SIG__ARB__TP1",
+    orderMeta: { orderId: 15531075054, clientOrderId: "TP1__PRATTV2__1368b04bf2" },
+    positionCtx: {
+      executionMode: "LIVE",
+      state: "ACTIVE",
+      qty_base: 972.4,
+      entry_qty_base: 972.4,
+      simplifiedExitV2Enabled: true,
+      meta: {
+        entry_event_id: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+        execution_mode: "LIVE",
+        simplified_exit_v2_enabled: true,
+        tp_p1_done: false,
+        trail_active: false,
+      },
+    },
+    rules,
+    observedQtyRatio: 0.5,
+    fullExit: false,
+  });
+  assert.strictEqual(simplifiedV2Tp1.stage, "TP1");
+  assert.strictEqual(simplifiedV2Tp1.event, "EXIT_TP_P1_2.5P");
+  assert.deepStrictEqual(simplifiedV2Tp1.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
+  assert.strictEqual(simplifiedV2Tp1.primaryTransitionEvent, "TP1_REACHED");
+
+  assert.strictEqual(
+    __test.normalizeExitEventForRules("EXIT_TP_P1_1.65P", rules, {
+      executionMode: "LIVE",
+      simplifiedExitV2Enabled: true,
+      meta: { simplified_exit_v2_enabled: true },
+    }),
+    "EXIT_TP_P1_2.5P",
+    "V2 simplified TP1 persistence must normalize legacy 1.65 labels at the source",
+  );
 
   const externalFullClose = __test.resolveCanonicalExternalExitEvent({
     authorityMap,

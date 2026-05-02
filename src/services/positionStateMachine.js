@@ -1,6 +1,6 @@
 "use strict";
 
-const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
+const { isSimplifiedExitV2Active, DEFAULT_TP1_TARGET_PCT } = require("./simplifiedExitV2");
 
 function toNum(value) {
   const num = Number(value);
@@ -85,6 +85,7 @@ function isSimplifiedExitV2Enabled({
   positionSnapshot = null,
 } = {}) {
   if (simplifiedExitV2Enabled === true) return true;
+  if (simplifiedExitV2Enabled === false) return false;
   const snapshot = positionSnapshot && typeof positionSnapshot === "object" ? positionSnapshot : {};
   return isSimplifiedExitV2Active(snapshot);
 }
@@ -234,12 +235,29 @@ function buildCanonicalExitEvent({
   stage = null,
   rules = null,
   fallbackEvent = null,
+  simplifiedExitV2Enabled = null,
+  positionSnapshot = null,
 } = {}) {
   const resolvedStage = normalizeExitStage(stage);
   const fallback = toUpper(fallbackEvent, null);
   if (resolvedStage === "TP0" || resolvedStage === "TP1") {
-    const token = nonZeroPctToken(rules && rules.TP_P1);
-    if (fallback && (fallback.startsWith("EXIT_TP_P1") || fallback.startsWith("EXIT_TP_C"))) return fallback;
+    const simplifiedV2 = isSimplifiedExitV2Enabled({
+      simplifiedExitV2Enabled,
+      positionSnapshot,
+    });
+    const rawTp1 = toNum(rules && rules.TP_P1);
+    const fallbackIsLegacyV2Tp1 = simplifiedV2 === true && /^EXIT_TP_P1_1\.65P$/.test(fallback || "");
+    const effectiveTp1 = (
+      simplifiedV2 === true &&
+      (
+        (Number.isFinite(rawTp1) && Math.abs(rawTp1 - 0.0165) <= 1e-9) ||
+        (!Number.isFinite(rawTp1) && fallbackIsLegacyV2Tp1)
+      )
+    )
+      ? DEFAULT_TP1_TARGET_PCT
+      : rawTp1;
+    const token = nonZeroPctToken(effectiveTp1);
+    if (fallback && !fallbackIsLegacyV2Tp1 && (fallback.startsWith("EXIT_TP_P1") || fallback.startsWith("EXIT_TP_C"))) return fallback;
     return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
   }
   if (resolvedStage === "TRAIL") {
@@ -700,9 +718,13 @@ function resolveCanonicalExitTransitionEvents({
   } else if (effectiveStage === "OTHER_EXIT" || effectiveStage === "OTHER") {
     if (fullExit === true) events.push("EXTERNAL_CLOSE_SYNC");
   }
+  let primaryTransitionEvent = events.length ? events[events.length - 1] : null;
+  if (effectiveStage === "TP1" && events.includes("TP1_REACHED")) {
+    primaryTransitionEvent = "TP1_REACHED";
+  }
   return {
     transitionEvents: events,
-    primaryTransitionEvent: events.length ? events[events.length - 1] : null,
+    primaryTransitionEvent,
   };
 }
 
@@ -857,6 +879,10 @@ function resolveCanonicalExitWritePayload({
 } = {}) {
   const rawEvent = toUpper(event, null);
   const rawStage = normalizeExitStage(currentStage || classifyExitEventStage(rawEvent));
+  const snapshot = normalizeSnapshot(positionSnapshot || {});
+  const simplifiedV2 = isSimplifiedExitV2Enabled({
+    positionSnapshot: snapshot,
+  });
   const decision = resolveCanonicalExitAuthorityDecision({
     exchange,
     symbol,
@@ -880,6 +906,8 @@ function resolveCanonicalExitWritePayload({
       : (buildCanonicalExitEvent({
           stage: decision.stage,
           rules,
+          simplifiedExitV2Enabled: simplifiedV2,
+          positionSnapshot: snapshot,
           fallbackEvent: decision.stage === rawStage ? rawEvent : null,
         }) || rawEvent),
     stage: decision.stage,
