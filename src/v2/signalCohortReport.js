@@ -63,6 +63,7 @@ function extractOutcomeContext(row) {
     getPath(evidence, ["bundle", "signalCriteria"]),
     getPath(evidence, ["canonical_evidence_summary", "signal_criteria"])
   )) || {};
+  const entryFeatures = asObject(evidence.entry_features) || {};
   const regimeProfile = asObject(firstValue(
     evidence.signal_regime_profile,
     criteria.regime_profile,
@@ -84,22 +85,29 @@ function extractOutcomeContext(row) {
 
   const symbol = upper(firstValue(row && row.symbol, evidence.symbol, getPath(evidence, ["bundle", "signalIntent", "symbol"]))) || "UNKNOWN";
   const side = upper(firstValue(row && row.side, evidence.side, getPath(evidence, ["bundle", "signalIntent", "side"]))) || "UNKNOWN";
-  const setupType = upper(firstValue(evidence.setup_type, setupGate.setup_type)) || "UNKNOWN";
-  const structuralRegime = upper(firstValue(evidence.structural_regime, regimeProfile.structural_regime, evidence.market_regime)) || "UNKNOWN";
-  const regimeCohort = upper(firstValue(evidence.regime_cohort, regimeProfile.regime_cohort)) || `${structuralRegime}__UNKNOWN__UNKNOWN`;
-  const edgeCohort = upper(firstValue(evidence.edge_cohort, expectedEdgeModel.edge_cohort)) || "UNKNOWN";
-  const signalScore = toNumberOrNull(firstValue(evidence.signal_score, criteria.signal_score));
-  const volumeZScore = toNumberOrNull(firstValue(evidence.volume_zscore, triggerGate.volume_zscore));
-  const triggerConfirmed = firstValue(evidence.trigger_confirmed, triggerGate.trigger_confirmed) === true;
+  const setupType = upper(firstValue(evidence.setup_type, entryFeatures.setup_type, setupGate.setup_type)) || "UNKNOWN";
+  const structuralRegime = upper(firstValue(
+    evidence.structural_regime,
+    entryFeatures.structural_regime,
+    entryFeatures.htf_regime,
+    regimeProfile.structural_regime,
+    evidence.market_regime,
+  )) || "UNKNOWN";
+  const regimeCohort = upper(firstValue(evidence.regime_cohort, entryFeatures.regime_cohort, regimeProfile.regime_cohort)) || `${structuralRegime}__UNKNOWN__UNKNOWN`;
+  const edgeCohort = upper(firstValue(evidence.edge_cohort, entryFeatures.edge_cohort, expectedEdgeModel.edge_cohort)) || "UNKNOWN";
+  const signalScore = toNumberOrNull(firstValue(evidence.signal_score, entryFeatures.signal_score, entryFeatures.score_norm, criteria.signal_score));
+  const volumeZScore = toNumberOrNull(firstValue(evidence.volume_zscore, entryFeatures.volume_zscore, entryFeatures.volume_ratio, triggerGate.volume_zscore));
+  const triggerConfirmed = firstValue(evidence.trigger_confirmed, entryFeatures.trigger_confirmed, triggerGate.trigger_confirmed) === true;
   const expectedNetRAfterCost = toNumberOrNull(firstValue(
     evidence.expected_net_r_after_cost,
+    entryFeatures.expected_net_r_after_cost,
     getPath(criteria, ["expected_edge_gate", "expected_net_r_after_cost"]),
     expectedEdgeModel.net_r_multiple
   ));
   const timingMeasurement = asObject(evidence.timing_measurement) || {};
-  const entryGrade = upper(firstValue(evidence.entry_grade, criteria.entry_grade, timingMeasurement.entry_grade)) || "UNKNOWN";
-  const triggerType = upper(firstValue(evidence.trigger_type, criteria.trigger_type, triggerGate.trigger_type, timingMeasurement.trigger_type)) || "UNKNOWN";
-  const timingBucket = upper(firstValue(evidence.timing_bucket, timingMeasurement.timing_bucket, evidence.febt_phase)) || "UNKNOWN";
+  const entryGrade = upper(firstValue(evidence.entry_grade, entryFeatures.entry_grade, criteria.entry_grade, timingMeasurement.entry_grade)) || "UNKNOWN";
+  const triggerType = upper(firstValue(evidence.trigger_type, entryFeatures.trigger_type, criteria.trigger_type, triggerGate.trigger_type, timingMeasurement.trigger_type)) || "UNKNOWN";
+  const timingBucket = upper(firstValue(evidence.timing_bucket, entryFeatures.timing_bucket, timingMeasurement.timing_bucket, evidence.febt_phase)) || "UNKNOWN";
 
   return Object.freeze({
     symbol,

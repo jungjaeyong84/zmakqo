@@ -23,6 +23,7 @@ function buildEnv(overrides = {}) {
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT: "8",
     DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY: "UNLIMITED",
     DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE: "10",
+    DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED: "0",
     DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED: "1",
     ML_LIVE_SERVING_ARMED: "0",
     OPENCLAW_AGENT_APPLY_ENABLED: "0",
@@ -273,6 +274,33 @@ async function dogeLowNotionalBlocksWhenPartialTp1CannotMeetExchangeMinimum() {
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED");
   assert.strictEqual(result.entrySizingDecision.reason, "PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
+}
+
+async function quarantinedSymbolBlocksBeforeProductionRouteRequest() {
+  const result = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env: buildEnv({
+      DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_QUARANTINE_SYMBOLS: "BNBUSDT",
+    }),
+    intentRow: buildIntent(),
+    liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
+    referencePrice: 600,
+    nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
+    marketDataQuality: marketDataQuality(),
+    exchangeInfo: {
+      minNotional: 5,
+      minQty: 0.01,
+      stepSize: 0.01,
+    },
+    discoveryState: {
+      active_position_n: 0,
+      trade_count_24h: 0,
+      daily_realized_pnl_quote: 0,
+    },
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_DISCOVERY_CANARY_REALIZED_SYMBOL_GUARD_BLOCKED");
+  assert.strictEqual(result.realized_performance_guard.reason, "V2_DISCOVERY_CANARY_SYMBOL_QUARANTINED");
 }
 
 async function serverSignalRoutesToV2ProductionEntryLiveRequest() {
@@ -597,6 +625,7 @@ async function main() {
   await bridgeDoesNotReissueAlreadyClaimedPermit();
   await dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop();
   await dogeLowNotionalBlocksWhenPartialTp1CannotMeetExchangeMinimum();
+  await quarantinedSymbolBlocksBeforeProductionRouteRequest();
   await linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied();
   await marketDataQualityBlockFailsClosed();
   await shadowCounterfactualWireUpDerivesInputsFromBundle();

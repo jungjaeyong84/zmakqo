@@ -21,6 +21,17 @@ const entry = {
   external_realized_pnl: 0,
   signal_doc_id: "SIG__BINANCEFUT__SOLUSDT__15m__0__V2_PROTECTED_ENTRY",
   canonical_exit_chain_key: "BINANCEFUT__SOLUSDT__SIGNAL__SIG__BINANCEFUT__SOLUSDT__15m__0__V2_PROTECTED_ENTRY",
+  features_json: {
+    setup_type: "PULLBACK_RECLAIM",
+    structural_regime: "TREND",
+    regime_cohort: "TREND__NORMAL_VOL__ADEQUATE",
+    edge_cohort: "BUILDABLE_EDGE",
+    signal_score: 86,
+    trigger_confirmed: true,
+    trigger_type: "RECLAIM",
+    volume_zscore: 1.4,
+    expected_net_r_after_cost: 0.33,
+  },
 };
 
 (function createsPerformanceEligibleWinFromProtectedEntryAndTp1Exit() {
@@ -109,6 +120,34 @@ const entry = {
   assert.strictEqual(groups[0].realized_pnl, 1);
 })();
 
+(function groupsMultiLegExitFillsByEntryLineageBeforeOrderId() {
+  const groups = groupRealizedExitFills([
+    {
+      id: "tp",
+      action: "EXIT_TP_P1_2.5P",
+      symbol: "BNBUSDT",
+      side: "SELL",
+      created_at: "2026-05-01T01:00:00.000Z",
+      entry_event_id: "ENTRY_BNB_1",
+      external_order_id: "TP_ORDER",
+      external_realized_pnl: 0.7,
+    },
+    {
+      id: "trail",
+      action: "EXIT_TRAIL_100P",
+      symbol: "BNBUSDT",
+      side: "SELL",
+      created_at: "2026-05-01T01:05:00.000Z",
+      entry_event_id: "ENTRY_BNB_1",
+      external_order_id: "TRAIL_ORDER",
+      external_realized_pnl: 1.3,
+    },
+  ]);
+  assert.strictEqual(groups.length, 1);
+  assert.strictEqual(groups[0].fills.length, 2);
+  assert.strictEqual(groups[0].realized_pnl, 2);
+})();
+
 (function missingProtectedEntryLineageIsSkipped() {
   const result = collectOpenClawOutcomeAdjudicationsFromFills({
     now: "2026-05-01T03:00:00.000Z",
@@ -152,6 +191,59 @@ const entry = {
   const report = buildOpenClawDailyPerformanceReport({ outcomes: result.adjudications });
   assert.strictEqual(report.sample_n, 0);
   assert.strictEqual(report.outcomes[0].performance_eligible, false);
+})();
+
+(function unverifiedLineageGapIsWrittenButExcludedFromPerformance() {
+  const result = collectOpenClawOutcomeAdjudicationsFromFills({
+    now: "2026-05-01T03:00:00.000Z",
+    lookbackHours: 24,
+    fills: [
+      entry,
+      {
+        id: "unverified-exit",
+        action: "EXIT_UNVERIFIED_SYNC",
+        symbol: "SOLUSDT",
+        side: "SELL",
+        created_at: "2026-05-01T02:00:00.000Z",
+        entry_event_id: "ENTRY_SOL_1",
+        external_order_id: "UNVERIFIED",
+        external_realized_pnl: -1,
+        status_reason: "MISSING_CANONICAL_EXIT_TRANSITION",
+      },
+    ],
+  });
+  assert.strictEqual(result.adjudication_n, 1);
+  const doc = result.adjudications[0];
+  assert.strictEqual(doc.adjudication_family, "OPERATOR");
+  assert.strictEqual(doc.adjudication_label, "LINEAGE_GAP");
+  assert.strictEqual(doc.evidence.lineage_quality, "LINEAGE_GAP_EXCLUDED");
+  const report = buildOpenClawDailyPerformanceReport({ outcomes: result.adjudications });
+  assert.strictEqual(report.sample_n, 0);
+  assert.strictEqual(report.outcomes[0].performance_eligible, false);
+})();
+
+(function entryFeaturesPopulateCohortContext() {
+  const result = collectOpenClawOutcomeAdjudicationsFromFills({
+    now: "2026-05-01T03:00:00.000Z",
+    lookbackHours: 24,
+    fills: [
+      entry,
+      {
+        id: "feature-exit",
+        action: "EXIT_TP_P1_2.5P",
+        symbol: "SOLUSDT",
+        side: "SELL",
+        created_at: "2026-05-01T01:00:00.000Z",
+        external_order_id: "FEATURE_EXIT",
+        external_realized_pnl: 1,
+        canonical_transition_events: ["TP1_REACHED"],
+      },
+    ],
+  });
+  const report = buildOpenClawDailyPerformanceReport({ outcomes: result.adjudications });
+  assert.strictEqual(report.outcomes[0].context.setup_type, "PULLBACK_RECLAIM");
+  assert.strictEqual(report.outcomes[0].context.regime_cohort, "TREND__NORMAL_VOL__ADEQUATE");
+  assert.strictEqual(report.outcomes[0].context.edge_cohort, "BUILDABLE_EDGE");
 })();
 
 (async function collectorScriptFallsBackToFirestoreWhenCacheFileMissing() {

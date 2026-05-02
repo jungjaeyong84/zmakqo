@@ -23,6 +23,16 @@ function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function parseObject(value) {
+  if (asObject(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    return asObject(JSON.parse(value));
+  } catch (_) {
+    return null;
+  }
+}
+
 function toNumberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -96,6 +106,16 @@ function isOperatorExternalExit(row) {
   return action === "EXIT_EXTERNAL_SYNC" || action === "MANUAL_CLOSE_SYNC";
 }
 
+function isUnverifiedOrLineageGapExit(row) {
+  const action = normalizeAction(row) || "";
+  const statusReason = upper(row && (row.status_reason || row.reason || row.decision_reason)) || "";
+  const lineageReason = upper(row && (row.lineage_gap_reason || row.lineage_reason)) || "";
+  const text = `${action} ${statusReason} ${lineageReason}`;
+  return text.includes("UNVERIFIED")
+    || text.includes("MISSING_CANONICAL_EXIT_TRANSITION")
+    || text.includes("LINEAGE_GAP");
+}
+
 function positionSideFromEntrySide(side) {
   const normalized = upper(side);
   if (normalized === "BUY" || normalized === "LONG") return "LONG";
@@ -125,6 +145,15 @@ function mapExitEvent(rows) {
 
 function groupKeyForExit(row) {
   const symbol = normalizeSymbol(row) || "UNKNOWN";
+  const lineageKey = trimOrNull(row && (
+    row.entry_event_id
+    || row.position_cycle_id
+    || row.canonical_exit_chain_key
+    || row.authoritative_exit_chain_key
+    || row.signal_id
+    || row.signal_doc_id
+  ));
+  if (lineageKey) return `${symbol}__ENTRY__${lineageKey}`;
   const orderId = trimOrNull(row && (row.external_order_id || row.order_id || row.live_order_id));
   const action = normalizeAction(row) || "EXIT";
   if (orderId) return `${symbol}__ORDER__${orderId}`;
@@ -152,6 +181,7 @@ function groupRealizedExitFills(rows = []) {
       realized_pnl: pnl,
       realized_exit_event: mapExitEvent(sorted),
       operator_external: sorted.some(isOperatorExternalExit),
+      lineage_gap: sorted.some(isUnverifiedOrLineageGapExit),
     });
   }).sort((a, b) => (a.latest_ms || 0) - (b.latest_ms || 0));
 }
@@ -224,9 +254,11 @@ function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {})
   if (!exitGroup || !entry) return null;
   const ids = syntheticOpenClawIds({ entry, exitGroup });
   const at = isoFromMs(exitGroup.latest_ms) || isoFromMs(nowMs) || new Date().toISOString();
-  const family = exitGroup.operator_external ? "OPERATOR" : "MODEL";
+  const family = (exitGroup.operator_external || exitGroup.lineage_gap) ? "OPERATOR" : "MODEL";
   let label = "OUTCOME_UNKNOWN";
-  if (family === "OPERATOR") {
+  if (exitGroup.lineage_gap) {
+    label = "LINEAGE_GAP";
+  } else if (family === "OPERATOR") {
     label = "EXTERNAL_SYNC";
   } else if (exitGroup.realized_pnl > 0) {
     label = "MODEL_WIN";
@@ -234,7 +266,12 @@ function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {})
     label = "MODEL_ERROR";
   }
   const entryRow = asObject(entry.row) || {};
+  const entryFeatures = parseObject(entryRow.features_json) || parseObject(entryRow.features) || null;
   const fillIds = exitGroup.fills.map((row) => trimOrNull(row.id || row.trade_id)).filter(Boolean);
+  const exitActions = exitGroup.fills.map(normalizeAction).filter(Boolean);
+  const exitReasons = Array.from(new Set(exitGroup.fills.map((row) => upper(row && (
+    row.status_reason || row.reason || row.decision_reason || row.lineage_gap_reason
+  ))).filter(Boolean)));
   return Object.freeze(buildOpenClawOutcomeAdjudicationDoc({
     openclawDecisionId: ids.openclawDecisionId,
     signalIntentId: ids.signalIntentId,
@@ -250,12 +287,25 @@ function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {})
     adjudicatedAt: at,
     evidence: {
       source: "V2_OUTCOME_ADJUDICATION_COLLECTOR",
-      lineage_quality: "BROKER_SYNC_RECONCILED",
-      lineage_reconciled: true,
+      lineage_quality: exitGroup.lineage_gap ? "LINEAGE_GAP_EXCLUDED" : "BROKER_SYNC_RECONCILED",
+      lineage_reconciled: exitGroup.lineage_gap !== true,
       broker_sync_reconciled: true,
-      performance_eligibility_basis: family === "MODEL" ? "V2_PROTECTED_ENTRY_MATCHED_TO_CANONICAL_EXIT_FILL" : "OPERATOR_EXTERNAL_SYNC_EXCLUDED",
+      performance_eligibility_basis: family === "MODEL" ? "V2_PROTECTED_ENTRY_MATCHED_TO_CANONICAL_EXIT_FILL" : "OPERATOR_OR_LINEAGE_GAP_EXCLUDED",
+      lineage_gap: exitGroup.lineage_gap === true,
       symbol: entry.symbol,
       side: entry.position_side,
+      setup_type: entryFeatures && upper(entryFeatures.setup_type),
+      structural_regime: entryFeatures && upper(entryFeatures.structural_regime || entryFeatures.htf_regime || entryFeatures.market_regime),
+      regime_cohort: entryFeatures && upper(entryFeatures.regime_cohort),
+      edge_cohort: entryFeatures && upper(entryFeatures.edge_cohort),
+      signal_score: entryFeatures && toNumberOrNull(entryFeatures.signal_score ?? entryFeatures.score_norm),
+      trigger_confirmed: entryFeatures && entryFeatures.trigger_confirmed === true,
+      trigger_type: entryFeatures && upper(entryFeatures.trigger_type),
+      volume_zscore: entryFeatures && toNumberOrNull(entryFeatures.volume_zscore ?? entryFeatures.volume_ratio),
+      expected_net_r_after_cost: entryFeatures && toNumberOrNull(entryFeatures.expected_net_r_after_cost),
+      entry_grade: entryFeatures && upper(entryFeatures.entry_grade),
+      timing_bucket: entryFeatures && upper(entryFeatures.timing_bucket),
+      entry_features: entryFeatures,
       exit_side: exitGroup.side,
       entry_fill_id: trimOrNull(entryRow.id),
       entry_trade_id: trimOrNull(entryRow.trade_id),
@@ -266,7 +316,8 @@ function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {})
       exit_group_key: exitGroup.key,
       exit_fill_ids: fillIds,
       exit_order_id: trimOrNull(exitGroup.fills[0] && (exitGroup.fills[0].external_order_id || exitGroup.fills[0].order_id || exitGroup.fills[0].live_order_id)),
-      exit_actions: exitGroup.fills.map(normalizeAction).filter(Boolean),
+      exit_actions: exitActions,
+      exit_status_reasons: exitReasons,
       exit_canonical_transition_events: Array.from(new Set(exitGroup.fills.flatMap((row) => asArray(row.canonical_transition_events).map(upper).filter(Boolean)))),
       source_fill_count: exitGroup.fills.length,
       realized_pnl_source: "BINANCE_USER_TRADES_REALIZED_PNL",
@@ -336,12 +387,15 @@ module.exports = {
     upper,
     asArray,
     asObject,
+    parseObject,
     toNumberOrNull,
     hash12,
     timestampMs,
     normalizeAction,
     normalizeSide,
     realizedPnl,
+    isOperatorExternalExit,
+    isUnverifiedOrLineageGapExit,
     mapExitEvent,
     positionSideFromEntrySide,
     oppositeExitSideForPosition,

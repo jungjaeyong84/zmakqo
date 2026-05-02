@@ -30,6 +30,10 @@ function performanceExclusionReason(row) {
   const statusReason = upper(evidence.status_reason);
   const decisionReason = upper(evidence.decision_reason);
   const fillSource = upper(evidence.fill_source || evidence.source);
+  const lineageQuality = upper(evidence.lineage_quality);
+  const performanceBasis = upper(evidence.performance_eligibility_basis);
+  const exitActions = asArray(evidence.exit_actions).map(upper).filter(Boolean);
+  const exitReasons = asArray(evidence.exit_status_reasons).map(upper).filter(Boolean);
   const intentId = trimOrNull(row && (row.signal_intent_id || row.intent_id || (row.evidence && row.evidence.signal_intent_id)));
   const decisionId = trimOrNull(row && row.openclaw_decision_id);
   const positionCycleId = trimOrNull(row && row.position_cycle_id);
@@ -37,9 +41,17 @@ function performanceExclusionReason(row) {
   if (family === "OPERATOR" || family === "SYSTEM") return `FAMILY_${family}`;
   if (evidenceFamily === "OPERATOR" || evidenceFamily === "SYSTEM") return `EVIDENCE_FAMILY_${evidenceFamily}`;
   if (label === "MANUAL_INTERVENTION" || label === "EXTERNAL_SYNC") return `LABEL_${label}`;
+  if (label === "LINEAGE_GAP") return "LABEL_LINEAGE_GAP";
   if (realizedExitEvent && realizedExitEvent.includes("EXTERNAL")) return `EXIT_EVENT_${realizedExitEvent}`;
   if (realizedExitEvent && realizedExitEvent.includes("MANUAL")) return `EXIT_EVENT_${realizedExitEvent}`;
+  if (realizedExitEvent && realizedExitEvent.includes("UNVERIFIED")) return `EXIT_EVENT_${realizedExitEvent}`;
+  if (realizedExitEvent && realizedExitEvent.includes("LINEAGE_GAP")) return `EXIT_EVENT_${realizedExitEvent}`;
   if (statusReason === "EXTERNAL_FILL_RECONCILED" || decisionReason === "EXTERNAL_FILL_RECONCILED") return "EXTERNAL_FILL_RECONCILED";
+  if (statusReason === "MISSING_CANONICAL_EXIT_TRANSITION" || decisionReason === "MISSING_CANONICAL_EXIT_TRANSITION") return "LINEAGE_GAP_MISSING_CANONICAL_EXIT_TRANSITION";
+  if (lineageQuality && (lineageQuality.includes("GAP") || lineageQuality.includes("MISSING"))) return `LINEAGE_QUALITY_${lineageQuality}`;
+  if (performanceBasis && performanceBasis.includes("LINEAGE_GAP")) return `PERFORMANCE_BASIS_${performanceBasis}`;
+  if (exitActions.some((action) => action.includes("UNVERIFIED") || action.includes("EXTERNAL") || action.includes("MANUAL"))) return "EXIT_ACTION_UNVERIFIED_OR_EXTERNAL";
+  if (exitReasons.some((reason) => reason.includes("MISSING_CANONICAL_EXIT_TRANSITION") || reason.includes("LINEAGE_GAP"))) return "EXIT_REASON_LINEAGE_GAP";
   if (fillSource === "EXTERNAL" || fillSource === "MANUAL") return `FILL_SOURCE_${fillSource}`;
   if (evidence.manual_recovery === true || evidence.operator_recovery === true || evidence.external_reconciliation === true) return "MANUAL_OR_EXTERNAL_RECOVERY";
   if (!intentId || !decisionId || !positionCycleId) return "MISSING_OPENCLAW_LINEAGE";

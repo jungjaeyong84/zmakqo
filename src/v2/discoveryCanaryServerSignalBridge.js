@@ -21,6 +21,7 @@ const { DISCOVERY_CONFIRM_PHRASE } = require("./discoveryCanaryContract");
 const { evaluateMarketDataQualityGate } = require("./marketDataQualityGate");
 const { resolveV2CollectionRef } = require("./storage");
 const { collectBinanceMicrostructureFeatures } = require("./binanceMicrostructureFeatures");
+const { evaluateDiscoveryCanaryRealizedPerformanceGuard } = require("./discoveryCanaryRealizedPerformanceGuard");
 // 2026-04-29 — entry-time trade alert dispatch. Until today the only
 // ENTRY alert path was fillSync's polling-driven flushFillSyncAlertBatches
 // (3-min cadence), so a successful V2 production entry route execution
@@ -708,6 +709,20 @@ async function buildDiscoveryCanaryLiveRequestFromIntent({
   if (!row) return Object.freeze({ ok: false, reason: "V2_DISCOVERY_BRIDGE_INTENT_REQUIRED" });
   const symbol = upper(row.symbol_or_pair_id || row.symbol);
   if (!symbol) return Object.freeze({ ok: false, reason: "V2_DISCOVERY_BRIDGE_SYMBOL_REQUIRED" });
+  const realizedGuard = await evaluateDiscoveryCanaryRealizedPerformanceGuard({
+    env,
+    db,
+    symbol,
+    nowMs,
+  });
+  if (!realizedGuard || realizedGuard.ok !== true) {
+    return Object.freeze({
+      ok: false,
+      reason: "V2_DISCOVERY_CANARY_REALIZED_SYMBOL_GUARD_BLOCKED",
+      realized_performance_guard: realizedGuard || null,
+      blockers: realizedGuard && realizedGuard.blockers || Object.freeze(["DISCOVERY_CANARY_REALIZED_GUARD:BLOCKED"]),
+    });
+  }
   const marketPack = marketDataQuality
     ? { quality: marketDataQuality, book: null }
     : await collectMarketDataQuality({
@@ -776,6 +791,7 @@ async function buildDiscoveryCanaryLiveRequestFromIntent({
     request,
     bundle,
     market_data_quality: marketPack.quality,
+    realized_performance_guard: realizedGuard,
     discovery_canary_state: state,
     exchange_info: info,
   });

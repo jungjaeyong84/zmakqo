@@ -127,4 +127,32 @@ const outcomes = [
   assert.strictEqual(report.outcomes[3].performance_exclusion_reason, "FAMILY_OPERATOR");
 }
 
+{
+  const lineageGap = {
+    openclaw_outcome_adjudication_id: "oa5",
+    openclaw_decision_id: "d5",
+    position_cycle_id: "p5",
+    signal_intent_id: "s5",
+    adjudication_label: "LINEAGE_GAP",
+    adjudication_family: "OPERATOR",
+    realized_exit_event: "BROKER_SYNC_EXIT",
+    realized_pnl: -5,
+    evidence: {
+      symbol: "AXSUSDT",
+      lineage_quality: "LINEAGE_GAP_EXCLUDED",
+      exit_actions: ["EXIT_UNVERIFIED_SYNC"],
+      exit_status_reasons: ["MISSING_CANONICAL_EXIT_TRANSITION"],
+    },
+    adjudicated_at: "2026-04-23T05:00:00.000Z",
+  };
+  const summary = summarizeOpenClawOutcomes(outcomes.concat(lineageGap));
+  assert.strictEqual(summary.performance_eligible_outcome_n, 3);
+  assert.strictEqual(summary.performance_excluded_outcome_n, 1);
+  assert.strictEqual(summary.net_pnl_usdt, 14);
+  const report = buildOpenClawDailyPerformanceReport({ outcomes: outcomes.concat(lineageGap) });
+  assert.strictEqual(report.sample_n, 3);
+  assert.strictEqual(report.outcomes[3].performance_eligible, false);
+  assert.strictEqual(report.outcomes[3].performance_exclusion_reason, "FAMILY_OPERATOR");
+}
+
 console.log("V2_OPENCLAW_DAILY_PERFORMANCE_REPORT_TEST_OK");
