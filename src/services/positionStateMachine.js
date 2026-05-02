@@ -247,11 +247,12 @@ function buildCanonicalExitEvent({
     });
     const rawTp1 = toNum(rules && rules.TP_P1);
     const fallbackIsLegacyV2Tp1 = simplifiedV2 === true && /^EXIT_TP_P1_1\.65P$/.test(fallback || "");
+    const fallbackIsRetiredTp0 = simplifiedV2 === true && /^EXIT_TP_P0_/.test(fallback || "");
     const effectiveTp1 = (
       simplifiedV2 === true &&
       (
         (Number.isFinite(rawTp1) && Math.abs(rawTp1 - 0.0165) <= 1e-9) ||
-        (!Number.isFinite(rawTp1) && fallbackIsLegacyV2Tp1)
+        ((!Number.isFinite(rawTp1) || rawTp1 === 0) && (fallbackIsLegacyV2Tp1 || fallbackIsRetiredTp0))
       )
     )
       ? DEFAULT_TP1_TARGET_PCT

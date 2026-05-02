@@ -24,7 +24,7 @@ function run() {
     canonical_exit_event: "EXIT_TP_P1_2.5P",
     canonical_exit_stage: "TP1",
     canonical_transition_events: ["TP1_REACHED", "TRAIL_ACTIVATED"],
-    canonical_primary_transition_event: "TRAIL_ACTIVATED",
+    canonical_primary_transition_event: "TP1_REACHED",
   });
 
   const trailFinal = __test.buildCanonicalFillMetadata({
@@ -60,10 +60,10 @@ function run() {
     qty_fraction: 0.25,
     simplified_exit_v2_enabled: true,
   }), {
-    canonical_exit_event: "EXIT_TP_P1",
+    canonical_exit_event: "EXIT_TP_P1_2.5P",
     canonical_exit_stage: "TP1",
     canonical_transition_events: ["TP1_REACHED", "TRAIL_ACTIVATED"],
-    canonical_primary_transition_event: "TRAIL_ACTIVATED",
+    canonical_primary_transition_event: "TP1_REACHED",
   });
 
   const unchanged = __test.isMetadataUnchanged({

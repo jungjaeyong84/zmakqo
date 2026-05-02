@@ -103,9 +103,9 @@ function run() {
   //
   // Sub-fix: positionStateMachine.buildCanonicalExitEvent previously
   // rendered "EXIT_TP_P1_0P" when no rules.TP_P1 was supplied (because
-  // `Number(null) === 0`). Step 19 introduced a non-zero token guard
-  // so the bare `EXIT_TP_P1` name is emitted instead — that's a real
-  // production fix surfaced by this orphan test.
+  // `Number(null) === 0`). The current V2 contract must not fall back
+  // to a bare or legacy TP1 label; retired TP0 evidence is normalized to
+  // the actual V2 TP1 target.
   const tp0SimplifiedV2 = __test.buildCanonicalTransitionPayload({
     fill_id: "fill-btc-tp0-v2",
     exchange: "BINANCEFUT",
@@ -114,7 +114,7 @@ function run() {
     simplified_exit_v2_enabled: true,
   });
   assert.ok(tp0SimplifiedV2, "simplified_v2 + legacy TP0 must reclassify, not skip");
-  assert.strictEqual(tp0SimplifiedV2.canonicalEvent, "EXIT_TP_P1");
+  assert.strictEqual(tp0SimplifiedV2.canonicalEvent, "EXIT_TP_P1_2.5P");
   assert.deepStrictEqual(tp0SimplifiedV2.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
 
   console.log("BACKFILL_CANONICAL_EXIT_TRANSITIONS_TEST_OK");

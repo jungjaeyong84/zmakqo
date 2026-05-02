@@ -42,15 +42,25 @@ function buildCanonicalFillMetadata(row = {}) {
   if (!stage) return null;
   const transitionEvents = buildTransitionEvents(stage, row);
   if (!transitionEvents.length) return null;
+  const simplifiedExitV2 = isSimplifiedExitV2Row(row);
   const canonicalExitEvent = buildCanonicalExitEvent({
     stage,
     fallbackEvent,
+    simplifiedExitV2Enabled: simplifiedExitV2,
+    positionSnapshot: row,
   }) || fallbackEvent;
+  const primaryTransitionEvent = (
+    simplifiedExitV2 === true &&
+    stage === "TP1" &&
+    transitionEvents.includes("TP1_REACHED")
+  )
+    ? "TP1_REACHED"
+    : (transitionEvents[transitionEvents.length - 1] || null);
   return {
     canonical_exit_event: canonicalExitEvent,
     canonical_exit_stage: stage,
     canonical_transition_events: transitionEvents,
-    canonical_primary_transition_event: transitionEvents[transitionEvents.length - 1] || null,
+    canonical_primary_transition_event: primaryTransitionEvent,
   };
 }
 

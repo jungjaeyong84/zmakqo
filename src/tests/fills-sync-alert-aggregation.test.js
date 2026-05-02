@@ -23,8 +23,8 @@ async function run() {
   assert.ok(approxEqual(rescueExitRules.BE_PCT, 0.0015), "rescue cohort alert must use current BE");
   assert.strictEqual(
     fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P1_2.5P", rescueExitRules),
-    "EXIT_TP_P1_1.65P",
-    "legacy TP1 event label must be normalized to current cohort rule"
+    "EXIT_TP_P1_2.5P",
+    "V2 TP1 event labels must not be downgraded to the legacy rescue 1.65 contract"
   );
 
   const firstCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
@@ -364,8 +364,8 @@ async function run() {
 
   assert.strictEqual(
     fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P0_0.8P", rescueExitRules),
-    "EXIT_TP_P1_1.65P",
-    "legacy TP0 raw evidence must normalize to canonical TP1 under current rules"
+    "EXIT_TP_P1_2.5P",
+    "legacy TP0 raw evidence must normalize to canonical V2 TP1 under current rules"
   );
 
   const nativeTpCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
@@ -845,8 +845,8 @@ async function run() {
   });
   assert.strictEqual(
     postFillRemainingAwareTp0,
-    "EXIT_TP_P1_1.65P",
-    "post-fill remaining-aware inference must map legacy TP0 evidence into canonical TP1"
+    "EXIT_TP_P1_2.5P",
+    "post-fill remaining-aware inference must map legacy TP0 evidence into canonical V2 TP1"
   );
 
   const postFillRemainingAwareTp1 = await fillsSyncTest.resolveExternalExitEvent({
@@ -872,7 +872,7 @@ async function run() {
   });
   assert.strictEqual(
     postFillRemainingAwareTp1,
-    "EXIT_TP_P1_1.65P",
+    "EXIT_TP_P1_2.5P",
     "post-fill remaining-aware inference must reclassify ETH-like oversized TP0 alerts to TP1"
   );
 
@@ -899,7 +899,7 @@ async function run() {
   });
   assert.strictEqual(
     activeExitStageBackstop,
-    "EXIT_TP_P1_1.65P",
+    "EXIT_TP_P1_2.5P",
     "active stage backstop must promote repeated TP0 classifications to TP1 once TP0 is already done"
   );
 
