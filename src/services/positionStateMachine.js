@@ -697,6 +697,8 @@ function resolveCanonicalExitTransitionEvents({
     events.push(simplifiedV2 ? "TRAIL_FINAL_EXIT" : (likelyFinal ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"));
   } else if (effectiveStage === "SL") {
     events.push("SL_HIT");
+  } else if (effectiveStage === "OTHER_EXIT" || effectiveStage === "OTHER") {
+    if (fullExit === true) events.push("EXTERNAL_CLOSE_SYNC");
   }
   return {
     transitionEvents: events,

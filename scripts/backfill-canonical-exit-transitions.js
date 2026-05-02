@@ -44,10 +44,13 @@ const FILL_SELECT_FIELDS = Object.freeze([
   "canonical_primary_transition_event",
   "canonical_exit_chain_key",
   "canonical_exit_reason",
+  "canonical_exit_blocked_invariant",
+  "canonical_exit_ledger_blocked_invariant",
   "entry_event_id",
   "signal_doc_id",
   "external_order_id",
   "external_client_order_id",
+  "external_order_close_position",
   "simplified_exit_v2_enabled",
   "simplifiedExitV2Enabled",
   "extra",
@@ -61,6 +64,15 @@ function upper(value) {
 function toNum(value) {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function isSyntheticEntryEventId(value) {
+  return String(value || "").trim().toUpperCase().startsWith("SYN|");
+}
+
+function isAuthoritativeEntryEventId(value) {
+  const text = String(value || "").trim();
+  return !!(text && !isSyntheticEntryEventId(text));
 }
 
 function isSimplifiedExitV2Row(row = {}) {
@@ -81,6 +93,10 @@ function buildTransitionEvents(stage, row) {
   if (stage === "TP0") return ["TP1_REACHED"];
   if (stage === "TP1") return simplifiedExitV2 ? ["TP1_REACHED", "TRAIL_ACTIVATED"] : ["TP1_REACHED", "TRAIL_ACTIVE"];
   if (stage === "TRAIL") return simplifiedExitV2 ? ["TRAIL_FINAL_EXIT"] : [qty >= 0.999 ? "TRAIL_FINAL_EXIT" : "TRAIL_PARTIAL"];
+  if ((stage === "OTHER_EXIT" || stage === "OTHER") && (
+    row.external_order_close_position === true
+    || (row.extra && row.extra.external_order_close_position === true)
+  )) return ["EXTERNAL_CLOSE_SYNC"];
   return [];
 }
 
@@ -105,9 +121,19 @@ function buildCanonicalTransitionPayload(row = {}) {
   const fallbackEvent = upper(row.canonical_exit_event || extra.canonical_exit_event || row.event);
   const stage = upper(row.canonical_exit_stage || extra.canonical_exit_stage) || classifyExitEventStage(fallbackEvent);
   if (!stage) return null;
-  const transitionEventsRaw = Array.isArray(row.canonical_transition_events)
-    ? row.canonical_transition_events
-    : (Array.isArray(extra.canonical_transition_events) ? extra.canonical_transition_events : buildTransitionEvents(stage, row));
+  if (
+    row.canonical_exit_blocked_invariant === true
+    || extra.canonical_exit_blocked_invariant === true
+    || row.canonical_exit_ledger_blocked_invariant === true
+    || extra.canonical_exit_ledger_blocked_invariant === true
+  ) {
+    return null;
+  }
+  const rowTransitionEvents = Array.isArray(row.canonical_transition_events) ? row.canonical_transition_events : null;
+  const extraTransitionEvents = Array.isArray(extra.canonical_transition_events) ? extra.canonical_transition_events : null;
+  const transitionEventsRaw = rowTransitionEvents && rowTransitionEvents.length
+    ? rowTransitionEvents
+    : (extraTransitionEvents && extraTransitionEvents.length ? extraTransitionEvents : buildTransitionEvents(stage, row));
   const transitionEvents = transitionEventsRaw.map((item) => upper(item)).filter(Boolean);
   if (!transitionEvents.length) return null;
   return {
@@ -133,6 +159,51 @@ function buildCanonicalTransitionPayload(row = {}) {
     ledger: buildLedger(row),
     source: "CANONICAL_EXIT_TRANSITION_BACKFILL",
   };
+}
+
+function applyRecoveredEntryLineageToPayload(payload = null, recovered = null) {
+  if (!payload || typeof payload !== "object") return payload;
+  const entryEventId = String(recovered && (recovered.entry_event_id || recovered.entryEventId) || "").trim();
+  if (!isAuthoritativeEntryEventId(entryEventId)) return payload;
+  const exchange = upper(payload.exchange);
+  const symbol = upper(payload.symbol);
+  return {
+    ...payload,
+    entryEventId,
+    signalDocId: String(payload.signalDocId || recovered.signal_doc_id || recovered.signalDocId || "").trim() || null,
+    chainKey: exchange && symbol
+      ? `${exchange}__${symbol}__ENTRY__${entryEventId}`
+      : payload.chainKey,
+  };
+}
+
+async function recoverAuthoritativeEntryLineageForPayload(db, payload) {
+  if (!payload || !db) return payload;
+  if (!isSyntheticEntryEventId(payload.entryEventId)) return payload;
+  const symbol = upper(payload.symbol);
+  if (!symbol) return payload;
+  try {
+    const snap = await db.collection("canonical_exit_transitions")
+      .where("symbol", "==", symbol)
+      .limit(50)
+      .get();
+    const maxTradeMs = Number.isFinite(Number(payload.tradeMs)) ? Number(payload.tradeMs) : Infinity;
+    const candidates = [];
+    snap.forEach((doc) => {
+      const row = doc.data() || {};
+      const transition = upper(row.canonical_transition_event || row.transition_event);
+      if (!["TP1_REACHED", "TRAIL_ACTIVATED", "TRAIL_ACTIVE", "TRAIL_FINAL_EXIT", "TRAIL_HIT"].includes(transition)) return;
+      const entryEventId = String(row.entry_event_id || "").trim();
+      if (!isAuthoritativeEntryEventId(entryEventId)) return;
+      const ts = toNum(row.ts_ms || row.trade_ms || row.created_at_ms) || Date.parse(row.created_at || "");
+      if (Number.isFinite(ts) && ts > maxTradeMs + 60 * 1000) return;
+      candidates.push({ ...row, entry_event_id: entryEventId, _ts: Number.isFinite(ts) ? ts : 0 });
+    });
+    candidates.sort((a, b) => Number(b._ts || 0) - Number(a._ts || 0));
+    return candidates[0] ? applyRecoveredEntryLineageToPayload(payload, candidates[0]) : payload;
+  } catch (_) {
+    return payload;
+  }
 }
 
 async function filterMissingTransitionEvents(db, payload) {
@@ -171,7 +242,8 @@ async function main() {
       const row = { id: doc.id, ...(doc.data() || {}) };
       if (upper(row.exchange) !== "BINANCEFUT") continue;
       scanned += 1;
-      const payload = buildCanonicalTransitionPayload(row);
+      let payload = buildCanonicalTransitionPayload(row);
+      payload = await recoverAuthoritativeEntryLineageForPayload(db, payload);
       if (!payload || !payload.fillId) continue;
       candidateFillN += 1;
       const missingTransitions = await filterMissingTransitionEvents(db, payload);
@@ -221,6 +293,7 @@ module.exports = {
     buildTransitionEvents,
     buildLedger,
     buildCanonicalTransitionPayload,
+    applyRecoveredEntryLineageToPayload,
     FILL_SELECT_FIELDS,
   },
 };

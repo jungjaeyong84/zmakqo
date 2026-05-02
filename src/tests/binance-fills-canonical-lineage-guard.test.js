@@ -70,6 +70,69 @@ async function run() {
   assert.strictEqual(allowed.entryLineageMissing, false);
   assert.strictEqual(__test.shouldPromoteCanonicalExternalExit(allowed), true);
 
+  const externalFullClose = __test.resolveCanonicalExternalExitEvent({
+    authorityMap,
+    exchange: "BINANCEFUT",
+    symbol: "ARBUSDT",
+    event: "EXIT_EXTERNAL_SYNC",
+    entryEventId: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+    signalDocId: "SIG__ARB__TRAIL",
+    orderMeta: { orderId: 15531136931, closePosition: true },
+    positionCtx: {
+      state: "ACTIVE",
+      qty_base: 486.2,
+      entry_qty_base: 972.4,
+      meta: {
+        entry_event_id: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+        tp_p1_done: true,
+        trail_active: true,
+        simplified_exit_v2_enabled: true,
+      },
+    },
+    recentTp1: {
+      event: "EXIT_TP_P1_1.65P",
+      entryEventId: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+    },
+    rules,
+    fullExit: true,
+  });
+  assert.strictEqual(externalFullClose.entryLineageMissing, false);
+  assert.strictEqual(externalFullClose.event, "EXIT_EXTERNAL_SYNC");
+  assert.ok(
+    externalFullClose.transitionEvents.includes("EXTERNAL_CLOSE_SYNC"),
+    "full EXIT_EXTERNAL_SYNC must produce a canonical close transition",
+  );
+  assert.strictEqual(__test.shouldPromoteCanonicalExternalExit(externalFullClose), true);
+
+  const recoveredRecentTp1 = __test.buildRecentExitHintFromCanonicalTransition({
+    canonical_transition_event: "TP1_REACHED",
+    canonical_event: "EXIT_TP_P1_1.65P",
+    entry_event_id: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+    external_order_id: 15531075054,
+    external_client_order_id: "TP1__PRATTV2__1368b04bf2",
+    ts_ms: 1777697255081,
+  });
+  assert.strictEqual(recoveredRecentTp1.entryEventId, "ENTRYV2__ARBUSDT__SHORT__15530666104");
+  assert.strictEqual(recoveredRecentTp1.event, "EXIT_TP_P1_1.65P");
+
+  const recoveredEntryContext = __test.pickExitEntryContext({
+    intentEntryCtx: {
+      entryEventId: "SYN|BINANCEFUT|ARBUSDT|NA|1777690082417|OPENING_SHORT|OPENING_SHORT",
+      entrySignalType: "SYNC_FILL",
+    },
+    inferredEntryCtx: {
+      entryEventId: "SYN|BINANCEFUT|ARBUSDT|NA|1777690082417|OPENING_SHORT|OPENING_SHORT",
+      entrySignalType: "SYNC_FILL",
+    },
+    recentTp1: recoveredRecentTp1,
+  });
+  assert.strictEqual(
+    recoveredEntryContext.entryEventId,
+    "ENTRYV2__ARBUSDT__SHORT__15530666104",
+    "authoritative TP1 lineage must beat SYN fallback on runner/full-exit sync",
+  );
+  assert.strictEqual(recoveredEntryContext.source, "RECENT_TP1");
+
   const nonTp1ShadowWrite = await __test.maybeWriteV2ShadowTp1Transition({
     symbol: "ETHUSDT",
     event: "EXIT_SL",

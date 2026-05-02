@@ -58,6 +58,41 @@ function run() {
   assert.deepStrictEqual(trailPayload.transitionEvents, ["TRAIL_FINAL_EXIT"]);
   assert.ok(Array.isArray(__test.FILL_SELECT_FIELDS));
   assert.ok(__test.FILL_SELECT_FIELDS.includes("extra"));
+  assert.ok(__test.FILL_SELECT_FIELDS.includes("external_order_close_position"));
+  assert.ok(__test.FILL_SELECT_FIELDS.includes("canonical_exit_ledger_blocked_invariant"));
+
+  const externalClosePayload = __test.buildCanonicalTransitionPayload({
+    fill_id: "fill-arb-external-close",
+    exchange: "BINANCEFUT",
+    symbol: "ARBUSDT",
+    event: "EXIT_EXTERNAL_SYNC",
+    canonical_exit_stage: "OTHER_EXIT",
+    canonical_transition_events: [],
+    external_order_close_position: true,
+    entry_event_id: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+  });
+  assert.deepStrictEqual(externalClosePayload.transitionEvents, ["EXTERNAL_CLOSE_SYNC"]);
+
+  const blockedInvariantPayload = __test.buildCanonicalTransitionPayload({
+    fill_id: "fill-axs-blocked",
+    exchange: "BINANCEFUT",
+    symbol: "AXSUSDT",
+    event: "EXIT_TRAIL",
+    canonical_exit_stage: "TRAIL",
+    canonical_exit_ledger_blocked_invariant: true,
+    entry_event_id: "SYN|BINANCEFUT|AXSUSDT|NA|1777551408190|OPENING_SHORT|OPENING_SHORT",
+  });
+  assert.strictEqual(blockedInvariantPayload, null);
+
+  const recoveredLineagePayload = __test.applyRecoveredEntryLineageToPayload(externalClosePayload, {
+    entry_event_id: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+    signal_doc_id: "SIG__ARB__TP1",
+  });
+  assert.strictEqual(recoveredLineagePayload.entryEventId, "ENTRYV2__ARBUSDT__SHORT__15530666104");
+  assert.strictEqual(
+    recoveredLineagePayload.chainKey,
+    "BINANCEFUT__ARBUSDT__ENTRY__ENTRYV2__ARBUSDT__SHORT__15530666104",
+  );
 
   // 2026-04-28 senior audit Step 19 — V1 TP0 retirement contract: under
   // simplified_exit_v2, legacy TP0 fills are reclassified into the TP1

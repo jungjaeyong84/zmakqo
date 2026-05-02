@@ -2099,6 +2099,127 @@ function filterRecentExitHintForEntry(recent = null, entryEventId = null) {
   return recent;
 }
 
+function isSyntheticEntryEventId(value = null) {
+  return String(value || "").trim().toUpperCase().startsWith("SYN|");
+}
+
+function isAuthoritativeEntryEventId(value = null) {
+  const text = String(value || "").trim();
+  return !!(text && !isSyntheticEntryEventId(text));
+}
+
+function normalizeCanonicalTransitionEvent(value = null) {
+  return String(value || "").trim().toUpperCase() || null;
+}
+
+function buildRecentExitHintFromCanonicalTransition(row = null) {
+  const data = row && typeof row === "object" ? row : {};
+  const transitionEvent = normalizeCanonicalTransitionEvent(
+    data.canonical_transition_event || data.transition_event || data.primary_transition_event
+  );
+  const entryEventId = String(data.entry_event_id || data.entryEventId || "").trim();
+  if (!transitionEvent || !entryEventId) return null;
+  const canonicalEvent = String(data.canonical_event || data.event || "").trim().toUpperCase();
+  const tsMs = Number(data.ts_ms || data.trade_ms || data.created_at_ms || parseSortableTimeMs(data.created_at));
+  const event = canonicalEvent
+    || (transitionEvent === "TP1_REACHED" ? "EXIT_TP_P1_RECOVERED" : null)
+    || (transitionEvent === "TRAIL_ACTIVATED" || transitionEvent === "TRAIL_FINAL_EXIT" || transitionEvent === "TRAIL_HIT" ? "EXIT_TRAIL_RECOVERED" : null)
+    || transitionEvent;
+  return {
+    tradeMs: Number.isFinite(tsMs) ? tsMs : null,
+    event,
+    entryEventId,
+    orderId: Number.isFinite(Number(data.external_order_id || data.order_id))
+      ? Number(data.external_order_id || data.order_id)
+      : null,
+    clientOrderId: String(data.external_client_order_id || data.client_order_id || "").trim() || null,
+    execPrice: Number.isFinite(Number(data.exec_price || data.fill_price))
+      ? Number(data.exec_price || data.fill_price)
+      : null,
+    transitionEvent,
+    source: "CANONICAL_EXIT_TRANSITIONS",
+  };
+}
+
+async function loadRecentCanonicalExitHintForSymbol({
+  db = null,
+  symbol = null,
+  tradeMs = null,
+  env = process.env,
+} = {}) {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  if (!normalizedSymbol) return null;
+  try {
+    const result = await queryV2DocsByField({
+      db,
+      env,
+      collectionKey: "CANONICAL_EXIT_TRANSITIONS",
+      field: "symbol",
+      value: normalizedSymbol,
+      limit: 50,
+    });
+    const maxTradeMs = Number.isFinite(Number(tradeMs)) ? Number(tradeMs) : Infinity;
+    const candidates = (Array.isArray(result && result.rows) ? result.rows : [])
+      .map(buildRecentExitHintFromCanonicalTransition)
+      .filter(Boolean)
+      .filter((row) => {
+        const ev = normalizeCanonicalTransitionEvent(row.transitionEvent);
+        return ev === "TP1_REACHED" || ev === "TRAIL_ACTIVATED" || ev === "TRAIL_FINAL_EXIT" || ev === "TRAIL_HIT";
+      })
+      .filter((row) => !Number.isFinite(Number(row.tradeMs)) || Number(row.tradeMs) <= maxTradeMs + 60 * 1000)
+      .sort((a, b) => (Number(b.tradeMs) || 0) - (Number(a.tradeMs) || 0));
+    return candidates[0] || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function pickExitEntryContext({
+  intentEntryCtx = null,
+  inferredEntryCtx = null,
+  existingEntryEventId = null,
+  existingEntrySignalType = null,
+  recentTp1 = null,
+  recentTrail = null,
+  recentTp0 = null,
+} = {}) {
+  const candidates = [
+    {
+      entryEventId: String(existingEntryEventId || "").trim() || null,
+      entrySignalType: String(existingEntrySignalType || "").trim() || null,
+      source: "EXISTING_FILL",
+    },
+    {
+      entryEventId: String(intentEntryCtx && intentEntryCtx.entryEventId || "").trim() || null,
+      entrySignalType: String(intentEntryCtx && intentEntryCtx.entrySignalType || "").trim() || null,
+      source: "INTENT",
+    },
+    {
+      entryEventId: String(inferredEntryCtx && inferredEntryCtx.entryEventId || "").trim() || null,
+      entrySignalType: String(inferredEntryCtx && inferredEntryCtx.entrySignalType || "").trim() || null,
+      source: "POSITION_CONTEXT",
+    },
+    {
+      entryEventId: String(recentTrail && recentTrail.entryEventId || "").trim() || null,
+      entrySignalType: null,
+      source: "RECENT_TRAIL",
+    },
+    {
+      entryEventId: String(recentTp1 && recentTp1.entryEventId || "").trim() || null,
+      entrySignalType: null,
+      source: "RECENT_TP1",
+    },
+    {
+      entryEventId: String(recentTp0 && recentTp0.entryEventId || "").trim() || null,
+      entrySignalType: null,
+      source: "RECENT_TP0",
+    },
+  ].filter((row) => row.entryEventId);
+  const authoritative = candidates.find((row) => isAuthoritativeEntryEventId(row.entryEventId));
+  const fallback = candidates[0] || null;
+  return authoritative || fallback || { entryEventId: null, entrySignalType: null, source: "MISSING" };
+}
+
 function resolveExternalSyncHintStage({
   event,
   orderMeta,
@@ -2464,7 +2585,9 @@ async function loadExistingV2CanonicalStageForFill({ db = null, env = process.en
       limit: 10,
     });
     const rows = Array.isArray(result && result.rows) ? result.rows : [];
-    const events = new Set(rows.map((row) => String(row && row.transition_event || "").trim().toUpperCase()).filter(Boolean));
+    const events = new Set(rows.map((row) => String(
+      row && (row.canonical_transition_event || row.transition_event) || ""
+    ).trim().toUpperCase()).filter(Boolean));
     if (events.has("SL_HIT")) return "SL";
     if (events.has("TRAIL_HIT") || events.has("TRAIL_FINAL_EXIT")) return "TRAIL";
     if (events.has("TP1_REACHED")) return "TP1";
@@ -3044,6 +3167,8 @@ function resolveCanonicalExternalExitEvent({
   recentTp1 = null,
   recentTrail = null,
   rules = null,
+  observedQtyRatio = null,
+  fullExit = false,
 } = {}) {
   const currentEvent = String(event || "").trim().toUpperCase();
   const { chainKey, confidence: chainKeyConfidence } = resolveExitAuthorityChainKey({
@@ -3078,6 +3203,8 @@ function resolveCanonicalExternalExitEvent({
       trail: String(recentTrail && recentTrail.event || "").trim().toUpperCase().startsWith("EXIT_TRAIL") ? "TRAIL" : null,
     },
     rules,
+    observedQtyRatio,
+    fullExit: fullExit === true,
   });
 }
 
@@ -4329,9 +4456,26 @@ async function syncMarketTrades({
       const existingSignalDocId = String(existingFillSnapshot && existingFillSnapshot.signal_doc_id || "").trim() || null;
       const exitRules = resolveAlertExitRules(positionCtx, defaultExitRules);
       const contextEntryEventId = String(positionCtx && positionCtx.entryEventId || "").trim() || null;
-      const recentTp1 = filterRecentExitHintForEntry(recentTp1BySymbol.get(sym) || null, contextEntryEventId);
-      const recentTp0 = filterRecentExitHintForEntry(recentTp0BySymbol.get(sym) || null, contextEntryEventId);
-      const recentTrail = filterRecentExitHintForEntry(recentTrailBySymbol.get(sym) || null, contextEntryEventId);
+      let rawRecentTp1 = recentTp1BySymbol.get(sym) || null;
+      let rawRecentTp0 = recentTp0BySymbol.get(sym) || null;
+      let rawRecentTrail = recentTrailBySymbol.get(sym) || null;
+      const looksLikeExitEarly = isMeaningfulRealizedPnl(t && t.realizedPnl);
+      if (looksLikeExitEarly && !rawRecentTp1 && !rawRecentTrail) {
+        const recoveredRecent = await loadRecentCanonicalExitHintForSymbol({
+          db,
+          symbol: sym,
+          tradeMs,
+        });
+        const recoveredTransition = normalizeCanonicalTransitionEvent(recoveredRecent && recoveredRecent.transitionEvent);
+        if (recoveredTransition === "TP1_REACHED" || recoveredTransition === "TRAIL_ACTIVATED") {
+          rawRecentTp1 = recoveredRecent;
+        } else if (recoveredTransition === "TRAIL_FINAL_EXIT" || recoveredTransition === "TRAIL_HIT") {
+          rawRecentTrail = recoveredRecent;
+        }
+      }
+      let recentTp1 = filterRecentExitHintForEntry(rawRecentTp1, contextEntryEventId);
+      let recentTp0 = filterRecentExitHintForEntry(rawRecentTp0, contextEntryEventId);
+      let recentTrail = filterRecentExitHintForEntry(rawRecentTrail, contextEntryEventId);
       const execPrice = Number(t.price);
       const execQtyBase = Number(t.qty);
       const notional = Number(t.quoteQty) || (Number.isFinite(execPrice) && Number.isFinite(execQtyBase) ? execPrice * execQtyBase : null);
@@ -4391,6 +4535,8 @@ async function syncMarketTrades({
         recentTp1,
         recentTrail,
         rules: exitRules,
+        observedQtyRatio: Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : null,
+        fullExit: resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio: null }),
       });
       // The canonical reducer may refuse to mutate when lineage is incomplete.
       // That must not erase raw exchange evidence like native TP1 fills from the
@@ -4510,8 +4656,30 @@ async function syncMarketTrades({
           inferredEntryCtx = { entryEventId: null, entrySignalType: null };
         }
       }
-      const entryEventId = intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || existingEntryEventId || null;
-      const entrySignalType = intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || existingEntrySignalType || null;
+      const entryContext = looksLikeExit
+        ? pickExitEntryContext({
+          intentEntryCtx,
+          inferredEntryCtx,
+          existingEntryEventId,
+          existingEntrySignalType,
+          recentTp1: rawRecentTp1,
+          recentTrail: rawRecentTrail,
+          recentTp0: rawRecentTp0,
+        })
+        : {
+          entryEventId: intentEntryCtx.entryEventId || inferredEntryCtx.entryEventId || existingEntryEventId || null,
+          entrySignalType: intentEntryCtx.entrySignalType || inferredEntryCtx.entrySignalType || existingEntrySignalType || null,
+          source: "ENTRY_OR_SYNC",
+        };
+      const entryEventId = entryContext.entryEventId || null;
+      const entrySignalType = entryContext.entrySignalType
+        || intentEntryCtx.entrySignalType
+        || inferredEntryCtx.entrySignalType
+        || existingEntrySignalType
+        || (entryEventId ? "V2_PROTECTED_ENTRY" : null);
+      recentTp1 = filterRecentExitHintForEntry(rawRecentTp1, entryEventId);
+      recentTp0 = filterRecentExitHintForEntry(rawRecentTp0, entryEventId);
+      recentTrail = filterRecentExitHintForEntry(rawRecentTrail, entryEventId);
       const decisionReason = intent ? (intent.reason || intent.event || "EXTERNAL_FILL_RECONCILED") : "EXTERNAL_FILL_RECONCILED";
       event = looksLikeExit
         ? resolvePersistedExternalExitEvent({
@@ -4524,6 +4692,7 @@ async function syncMarketTrades({
         }) || event
         : event;
       const rawEvidenceEvent = event;
+      const preliminaryFullExit = resolveFillSyncAlertFullExit({ event, orderMeta, closeRatio: null });
       canonicalStageDecision = resolveCanonicalExternalExitEvent({
         authorityMap: exitQtyAuthorityMap,
         exchange: "BINANCEFUT",
@@ -4537,6 +4706,8 @@ async function syncMarketTrades({
         recentTp1,
         recentTrail,
         rules: exitRules,
+        observedQtyRatio: Number.isFinite(Number(qtyPct)) ? Number(qtyPct) : null,
+        fullExit: preliminaryFullExit,
       });
       event = resolvePostCanonicalPersistedExitEvent({
         canonicalStageDecision,
@@ -4694,6 +4865,7 @@ async function syncMarketTrades({
           external_after_tp1_sec: Number.isFinite(recentTp1LagSec) ? recentTp1LagSec : null,
           external_position_side: t.positionSide || null,
           external_realized_pnl: realizedPnl,
+          entry_lineage_source: entryContext && entryContext.source || null,
           canonical_exit_event: canonicalStageDecision.event || null,
           canonical_transition_events: Array.isArray(canonicalTransitionDecision.transitionEvents)
             ? canonicalTransitionDecision.transitionEvents
@@ -5475,6 +5647,10 @@ module.exports = {
     shouldRunExternalExitSideEffects,
     resolvePostCanonicalPersistedExitEvent,
     filterRecentExitHintForEntry,
+    isSyntheticEntryEventId,
+    isAuthoritativeEntryEventId,
+    buildRecentExitHintFromCanonicalTransition,
+    pickExitEntryContext,
     maybeWriteV2ShadowTp1Transition,
     resolveLegacyCanonicalTp1WriteGate,
     maybeWriteV2ShadowStopExit,
