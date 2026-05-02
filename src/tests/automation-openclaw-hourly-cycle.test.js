@@ -110,6 +110,32 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
   assert.strictEqual(executed.reason, "INLINE_DONE");
   assert.ok(Number.isFinite(executed.duration_ms));
 
+  assert.strictEqual(
+    __test.resolveScriptTimeoutMs("automation-hourly-overall-report.js", {}),
+    120000
+  );
+  assert.strictEqual(
+    __test.resolveScriptTimeoutMs("automation-hourly-overall-report.js", { OPENCLAW_HOURLY_STEP_TIMEOUT_MS: "45000" }),
+    45000
+  );
+  assert.strictEqual(
+    __test.resolveScriptTimeoutMs("automation-hourly-overall-report.js", { OPENCLAW_HOURLY_OVERALL_REPORT_TIMEOUT_MS: "30000" }),
+    30000
+  );
+  assert.strictEqual(
+    __test.resolveScriptTimeoutMs("some-step.js", {}),
+    180000
+  );
+
+  const hangScript = path.join(os.tmpdir(), `hourly-cycle-hang-${process.pid}.js`);
+  fs.writeFileSync(hangScript, "setTimeout(() => {}, 10000);\n", "utf8");
+  const timedOut = __test.runNodeScript(hangScript, {}, { timeoutMs: 50 });
+  assert.strictEqual(timedOut.ok, false);
+  assert.strictEqual(timedOut.timed_out, true);
+  assert.strictEqual(timedOut.error_code, "ETIMEDOUT");
+  assert.strictEqual(__test.scriptFailureReason(timedOut), "TIMEOUT_50MS");
+  fs.rmSync(hangScript, { force: true });
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hourly-cycle-"));
   const reportPath = path.join(tmpDir, "binance_exit_integrity_cycle_latest.json");
   fs.writeFileSync(reportPath, `${JSON.stringify({ generated_at: "2026-04-17T00:00:00.000Z" })}\n`, "utf8");

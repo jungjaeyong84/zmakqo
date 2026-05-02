@@ -112,21 +112,60 @@ function extractJson(stdout = "") {
   return null;
 }
 
-function runScript(script, env = {}) {
-  const scriptPath = path.join(REPO_ROOT, "scripts", script);
+function toNonNegativeInteger(value, fallback = null) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.trunc(n);
+}
+
+function resolveScriptTimeoutMs(script, env = process.env) {
+  const name = String(script || "").trim();
+  if (name === "automation-hourly-overall-report.js") {
+    return toNonNegativeInteger(
+      env.OPENCLAW_HOURLY_OVERALL_REPORT_TIMEOUT_MS,
+      toNonNegativeInteger(env.OPENCLAW_HOURLY_STEP_TIMEOUT_MS, 120000)
+    );
+  }
+  return toNonNegativeInteger(env.OPENCLAW_HOURLY_STEP_TIMEOUT_MS, 180000);
+}
+
+function runNodeScript(scriptPath, env = {}, options = {}) {
+  const timeoutMs = toNonNegativeInteger(options.timeoutMs, 0);
   const child = spawnSync(process.execPath, [scriptPath], {
     cwd: REPO_ROOT,
     encoding: "utf8",
     env: { ...process.env, ...env },
     maxBuffer: 1024 * 1024 * 16,
+    timeout: timeoutMs,
+    killSignal: "SIGTERM",
   });
+  const timedOut = child.error && child.error.code === "ETIMEDOUT";
   return {
-    ok: child.status === 0,
+    ok: child.status === 0 && !timedOut,
     exit_code: child.status,
+    signal: child.signal || null,
+    timed_out: Boolean(timedOut),
+    timeout_ms: timeoutMs,
+    error_code: child.error && child.error.code ? child.error.code : null,
     parsed: extractJson(child.stdout),
     stdout_tail: String(child.stdout || "").trim().split(/\r?\n/).filter(Boolean).slice(-5),
     stderr_tail: String(child.stderr || "").trim().split(/\r?\n/).filter(Boolean).slice(-5),
   };
+}
+
+function runScript(script, env = {}, options = {}) {
+  const scriptPath = path.join(REPO_ROOT, "scripts", script);
+  return runNodeScript(scriptPath, env, {
+    ...options,
+    timeoutMs: options.timeoutMs != null ? options.timeoutMs : resolveScriptTimeoutMs(script),
+  });
+}
+
+function scriptFailureReason(res) {
+  if (!res) return "SCRIPT_FAILED";
+  if (res.timed_out === true) return `TIMEOUT_${res.timeout_ms || 0}MS`;
+  if (res.error_code) return res.error_code;
+  return `EXIT_${res.exit_code}`;
 }
 
 function toStepResult(step, result = {}, context = {}) {
@@ -201,7 +240,7 @@ function buildStepRegistry() {
           summary: res.parsed
             ? `source=${res.parsed.source || "N/A"} adjudication_n=${summary.adjudication_n ?? "N/A"} write_n=${res.parsed.write_n ?? "N/A"}`
             : "N/A",
-          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -217,7 +256,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.status || res.parsed.reason || "OK") || "OK",
-          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -233,7 +272,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (`status=${res.parsed.status || "N/A"} top=${res.parsed.top_watch_market || "N/A"} market_n=${res.parsed.review_market_n ?? "N/A"}`) || "OK",
-          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -249,7 +288,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.verdict || res.parsed.reason || res.parsed.status) || "OK",
-          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -291,7 +330,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? ((res.parsed && res.parsed.skipped === true) ? "SKIP" : "PASS") : "FAIL",
           summary: res.parsed && (`status=${res.parsed.status || "N/A"} live_issue_count=${res.parsed.summary && res.parsed.summary.live_issue_count != null ? res.parsed.summary.live_issue_count : "N/A"}`) || "N/A",
-          reason: res.parsed && (res.parsed.status || res.parsed.reason) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.status || res.parsed.reason) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -307,7 +346,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.reason || res.parsed.status || "OK") || "OK",
-          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -323,7 +362,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed ? `mismatch_n=${res.parsed.mismatch_n ?? "N/A"}` : "N/A",
-          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -339,7 +378,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.status || res.parsed.reason || (res.parsed.ok === true ? "OK" : null)) || "OK",
-          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -358,7 +397,7 @@ function buildStepRegistry() {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed
             && (`applied=${res.parsed.applied ? "YES" : "NO"} ev_patch=${res.parsed.ev_patch_n ?? "N/A"} cooldown_patch=${res.parsed.cooldown_patch_n ?? "N/A"} other_watch_only_patch=${res.parsed.other_server_policy_watch_only_patch_n ?? "N/A"}`),
-          reason: res.parsed && (res.parsed.reason || (res.parsed.applied ? "APPLIED" : "DRY_RUN")) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || (res.parsed.applied ? "APPLIED" : "DRY_RUN")) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -390,7 +429,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.verdict || res.parsed.reason || res.parsed.status) || "OK",
-          reason: res.parsed && (res.parsed.reason || res.parsed.verdict || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.verdict || res.parsed.status) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -421,7 +460,7 @@ function buildStepRegistry() {
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed && (res.parsed.status || res.parsed.reason) || (res.ok ? "OK" : "FAIL"),
-          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -435,9 +474,9 @@ function buildStepRegistry() {
       run() {
         const res = runScript(this.script, { SKIP_ALERT: process.env.SKIP_ALERT || "" });
         return {
-          status: res.ok ? "PASS" : "FAIL",
+          status: res.ok ? "PASS" : (res.timed_out ? "WARN" : "FAIL"),
           summary: res.parsed && (res.parsed.status || res.parsed.reason || (res.parsed.ok === true ? "OK" : null)) || "OK",
-          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? `EXIT_${res.exit_code}` : null),
+          reason: res.parsed && (res.parsed.reason || res.parsed.status) || (!res.ok ? scriptFailureReason(res) : null),
         };
       },
     },
@@ -508,6 +547,9 @@ if (require.main === module) {
       readExitIntegrityCycleGeneratedAtMs,
       resolveExitIntegrityMinIntervalMs,
       shouldRunExitIntegrityCycle,
+      resolveScriptTimeoutMs,
+      runNodeScript,
+      scriptFailureReason,
     },
   };
 }
