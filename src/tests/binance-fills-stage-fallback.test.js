@@ -40,7 +40,7 @@ async function run() {
   });
   assert.strictEqual(
     ambiguousWithoutRecentTp0,
-    "EXIT_TP_P1_1.65P",
+    "EXIT_TP_P1_2.5P",
     "when post-fill remaining-aware quantity is closer to TP1, the classifier must not default back to TP0"
   );
 
@@ -75,7 +75,7 @@ async function run() {
     rules,
     qtyPct: null,
   });
-  assert.strictEqual(ambiguousAfterRecentTp0, "EXIT_TP_P1_1.65P");
+  assert.strictEqual(ambiguousAfterRecentTp0, "EXIT_TP_P1_2.5P");
 
   const matchedTrailIntentMustStayTrail = await __test.resolveExternalExitEvent({
     intent: {
@@ -140,7 +140,7 @@ async function run() {
   });
   assert.strictEqual(
     matchedLegacyTp0IntentMustNormalizeToTp1AcrossSplitFills,
-    "EXIT_TP_P1_1.65P",
+    "EXIT_TP_P1_2.5P",
     "under TP0 retirement, split fills from a legacy TP0 order must normalize to TP1 so canonical stage stays on the simplified v2 contract"
   );
 
@@ -167,7 +167,7 @@ async function run() {
       tradeMs: Date.parse("2026-04-16T01:45:26.010Z"),
     },
     recentTp1: {
-      event: "EXIT_TP_P1_1.65P",
+      event: "EXIT_TP_P1_2.5P",
       orderId: 3002,
       clientOrderId: "fut_axs_tp1",
       tradeMs: Date.parse("2026-04-16T01:46:48.408Z"),
