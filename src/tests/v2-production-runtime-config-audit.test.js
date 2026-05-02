@@ -44,6 +44,7 @@ const {
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "8");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "UNLIMITED");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE, "10");
+  assert.strictEqual(result.substitutions._DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED, "0");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_RISK_GOVERNOR_REQUIRED, "1");
   assert.strictEqual(result.substitutions._DONBEOLJA_V2_INITIAL_PROTECTION_DEADLINE_ENABLED, "1");
@@ -103,6 +104,7 @@ const {
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "$_DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "$_DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY");
   assert.strictEqual(result.main_service_env.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE, "$_DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE");
+  assert.strictEqual(result.main_service_env.DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED, "$_DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED");
   assert.strictEqual(result.main_service_env.OPENCLAW_AGENT_APPLY_ENABLED, "0");
   assert.strictEqual(result.main_service_env.ML_LIVE_SERVING_ARMED, "$_ML_LIVE_SERVING_ARMED");
   assert.strictEqual(result.main_service_env.OPENCLAW_NARRATIVE_SHADOW_ONLY, "1");
@@ -151,6 +153,7 @@ const {
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT, "$_DONBEOLJA_V2_DISCOVERY_CANARY_MAX_POSITION_COUNT");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY, "$_DONBEOLJA_V2_DISCOVERY_CANARY_MAX_TRADES_PER_DAY");
   assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE, "$_DONBEOLJA_V2_DISCOVERY_CANARY_DAILY_LOSS_HALT_QUOTE");
+  assert.strictEqual(result.exit_service_env.DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED, "$_DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED");
   assert.strictEqual(result.exit_service_env.OPENCLAW_AGENT_APPLY_ENABLED, "0");
   assert.strictEqual(result.exit_service_env.ML_LIVE_SERVING_ARMED, "$_ML_LIVE_SERVING_ARMED");
   assert.strictEqual(result.exit_service_env.OPENCLAW_NARRATIVE_SHADOW_ONLY, "1");
