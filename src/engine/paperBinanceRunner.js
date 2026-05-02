@@ -14484,7 +14484,7 @@ async function runPaperBinanceForBar({
     })();
     if (v2EntryGeneratorEnabled) {
       const sameTfBars = await queryBars({ exchange, symbol, tf: signalTf, limit: 200 });
-      const htfBars = await queryBars({ exchange, symbol, tf: "4h", limit: 70 });
+      const htfBars = await queryBars({ exchange, symbol, tf: SERVER_NATIVE_HTF_TF, limit: 70 });
       const cooldownState = await getV2ServerEntryCooldownState({ exchange, symbol, tf: signalTf });
       const v2GenResult = generateV2EntrySignals({
         exchange,
@@ -18267,7 +18267,7 @@ async function runPaperFuturesForBar({
     })();
     if (v2EntryGeneratorEnabled) {
       const sameTfBars = await queryBars({ exchange, symbol, tf: signalTf, limit: 200 });
-      const htfBars = await queryBars({ exchange, symbol, tf: "4h", limit: 70 });
+      const htfBars = await queryBars({ exchange, symbol, tf: SERVER_NATIVE_HTF_TF, limit: 70 });
       const cooldownState = await getV2ServerEntryCooldownState({ exchange, symbol, tf: signalTf });
       const v2GenResult = generateV2EntrySignals({
         exchange,

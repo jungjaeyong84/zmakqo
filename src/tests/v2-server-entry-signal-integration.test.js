@@ -130,6 +130,22 @@ const path = require("path");
     dispatchHits >= 2,
     `(E2) handoff-dispatched log must appear in both sibling functions (got ${dispatchHits})`
   );
+
+  // (E3) HTF read key contract. marketRunner refreshes HTF snapshots
+  // under tf="240m"; the V2 generator reader must use the same doc-id
+  // key. A regression to tf="4h" makes every symbol skip with
+  // HTF_INSUFFICIENT_BARS while the scheduler still returns 200.
+  const badHtfReads = src.match(/queryBars\(\{\s*exchange,\s*symbol,\s*tf:\s*"4h",\s*limit:\s*70\s*\}\)/g) || [];
+  assert.strictEqual(
+    badHtfReads.length,
+    0,
+    "(E3) V2 generator HTF reads must use SERVER_NATIVE_HTF_TF/240m, not 4h"
+  );
+  const htfReadHits = src.match(/queryBars\(\{\s*exchange,\s*symbol,\s*tf:\s*SERVER_NATIVE_HTF_TF,\s*limit:\s*70\s*\}\)/g) || [];
+  assert.ok(
+    htfReadHits.length >= 2,
+    `(E3) both V2 generator injection sites must read HTF via SERVER_NATIVE_HTF_TF (got ${htfReadHits.length})`
+  );
 })();
 
 // (F) marketRunner 240m HTF cache refresh
