@@ -1,6 +1,6 @@
 "use strict";
 
-// 2026-04-28 Stage X — XRPUSDT 잔량 dust 가 매 15분 bar 마다 EXIT_TP_P1
+// 2026-04-28 Stage X — XRPUSDT 잔량 dust 가 매 15분 bar 마다 EXIT_TP_FULL
 // signal 을 trigger 해 telegram alert 폭탄을 일으킨 사례. signalEngine
 // 의 generateSignals 가 dust threshold 미만 position 에 대해 모든 exit
 // signal 을 silent skip 하도록 guard 추가.
@@ -76,8 +76,8 @@ const _priorThresh = process.env.SIGNAL_DUST_NOTIONAL_THRESHOLD_USDT;
     leverage: 2,
     currentBarCloseMs: NOW_BAR_MS,
   });
-  // TP1 도달 시 EXIT_TP_P1_* event 가 list 안에.
-  const tpEvents = signals.filter((s) => /^EXIT_TP_P1_/.test(s.event));
+  // TP1 도달 시 current full-TP event 가 list 안에.
+  const tpEvents = signals.filter((s) => /^EXIT_TP_FULL_/.test(s.event));
   assert.ok(tpEvents.length >= 1, "(B) 정상 size → TP1 emit");
 }
 

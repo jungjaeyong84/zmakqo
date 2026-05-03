@@ -90,7 +90,7 @@ function run() {
     trading_mode: "EXIT_ONLY",
     leverage: 2,
     currentBarCloseMs: 1_800_101_000_000,
-    bar: { close: 100.9, c: 100.9 },
+    bar: { close: 101.3, c: 101.3 },
     position: {
       state: "ACTIVE",
       size_pct: 1,
@@ -107,8 +107,8 @@ function run() {
     },
   });
   assert.strictEqual(simplifiedTp1OnlySignals.length, 1, "simplified v2 must emit only tp1 when profit already crossed tp1");
-  assert.strictEqual(simplifiedTp1OnlySignals[0].event, "EXIT_TP_P1_1.65P");
-  assert.strictEqual(simplifiedTp1OnlySignals[0].qty_pct, 0.5);
+  assert.strictEqual(simplifiedTp1OnlySignals[0].event, "EXIT_TP_FULL_2.5P");
+  assert.strictEqual(simplifiedTp1OnlySignals[0].qty_pct, 1);
 
   const staleTp0Signals = generateSignals({
     exchange: "BINANCEFUT",
@@ -172,6 +172,12 @@ function run() {
       position_side: "SHORT",
       meta: {
         external_leverage: 2,
+        exit_rules_override: {
+          TP_P1_QTY: 0.5,
+          TRAIL_PCT: 0.01,
+          TRAIL_R_MULTIPLE: 0.6,
+          RUNNER_MIN_PROFIT_PCT: 0.003,
+        },
         tp_p1_done: true,
         trail_active: false,
         tp_p1_price: 98.4,
@@ -240,8 +246,8 @@ function run() {
     },
   });
   assert.strictEqual(rescueTp1.length, 1, "rescue cohort should shorten tp1");
-  assert.strictEqual(rescueTp1[0].event, "EXIT_TP_P1_1.65P");
-  assert.strictEqual(rescueTp1[0].qty_pct, 0.5, "TP1 contract must remain 50% of the original position");
+  assert.strictEqual(rescueTp1[0].event, "EXIT_TP_FULL_2.5P");
+  assert.strictEqual(rescueTp1[0].qty_pct, 1, "TP1 full-exit contract must close the active position");
 
   const tp0Tp1Cascade = generateSignals({
     exchange: "BINANCEFUT",
@@ -249,7 +255,7 @@ function run() {
     trading_mode: "EXIT_ONLY",
     leverage: 2,
     currentBarCloseMs: 1_800_101_000_000,
-    bar: { close: 100.9, c: 100.9 },
+    bar: { close: 101.3, c: 101.3 },
     position: {
       state: "ACTIVE",
       size_pct: 1,
@@ -266,8 +272,8 @@ function run() {
     },
   });
   assert.strictEqual(tp0Tp1Cascade.length, 1, "when pnl already crossed tp1, only tp1 must be emitted");
-  assert.strictEqual(tp0Tp1Cascade[0].event, "EXIT_TP_P1_1.65P");
-  assert.strictEqual(tp0Tp1Cascade[0].qty_pct, 0.5);
+  assert.strictEqual(tp0Tp1Cascade[0].event, "EXIT_TP_FULL_2.5P");
+  assert.strictEqual(tp0Tp1Cascade[0].qty_pct, 1);
 
   const tp1AfterTp0Remaining = generateSignals({
     exchange: "BINANCEFUT",
@@ -289,7 +295,7 @@ function run() {
     },
   });
   assert.strictEqual(tp1AfterTp0Remaining.length, 1, "TP1 should still fire after TP0");
-  assert.strictEqual(tp1AfterTp0Remaining[0].qty_pct, 0.5, "TP1 qty must stay absolute even after TP0");
+  assert.strictEqual(tp1AfterTp0Remaining[0].qty_pct, 0.75, "TP1 full-exit qty must close the active position");
 
   const rescueRules = resolveExitRulesForPosition({
     exchange: "BINANCEFUT",
@@ -299,10 +305,10 @@ function run() {
       },
     },
   });
-  assert.strictEqual(rescueRules.TP_P1, 0.0165);
-  assert.strictEqual(rescueRules.BE_PCT, 0.0015);
-  assert.strictEqual(rescueRules.TRAIL_R_MULTIPLE, 0.6);
-  assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
+  assert.strictEqual(rescueRules.TP_P1, 0.025);
+  assert.strictEqual(rescueRules.BE_PCT, null);
+  assert.strictEqual(rescueRules.TRAIL_R_MULTIPLE, null);
+  assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, null);
 
   const mixedRules = resolveExitRulesForPosition({
     exchange: "BINANCEFUT",
@@ -312,10 +318,10 @@ function run() {
       },
     },
   });
-  assert.strictEqual(mixedRules.TP_P1, 0.0165);
-  assert.strictEqual(mixedRules.BE_PCT, 0.0015);
-  assert.strictEqual(mixedRules.TRAIL_R_MULTIPLE, 0.6);
-  assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
+  assert.strictEqual(mixedRules.TP_P1, 0.025);
+  assert.strictEqual(mixedRules.BE_PCT, null);
+  assert.strictEqual(mixedRules.TRAIL_R_MULTIPLE, null);
+  assert.strictEqual(mixedRules.RUNNER_MIN_PROFIT_PCT, null);
 
   const promotedMixedRules = resolveExitRulesForPosition({
     exchange: "BINANCEFUT",
@@ -328,9 +334,9 @@ function run() {
     },
   });
   assert.strictEqual(promotedMixedRules.TP_P1, 0.025);
-  assert.strictEqual(promotedMixedRules.BE_PCT, 0.002);
-  assert.strictEqual(promotedMixedRules.TRAIL_R_MULTIPLE, 0.75);
-  assert.strictEqual(promotedMixedRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
+  assert.strictEqual(promotedMixedRules.BE_PCT, null);
+  assert.strictEqual(promotedMixedRules.TRAIL_R_MULTIPLE, null);
+  assert.strictEqual(promotedMixedRules.RUNNER_MIN_PROFIT_PCT, null);
 
   const promotedBaseRules = resolveExitRulesForPosition({
     exchange: "BINANCEFUT",
@@ -417,9 +423,9 @@ function run() {
     cohort: "BASE",
     ladderState: samplingStage,
   });
-  assert.strictEqual(ladderAppliedRules.TP_P1, 0.0165);
-  assert.strictEqual(ladderAppliedRules.BE_PCT, 0.0015);
-  assert.strictEqual(ladderAppliedRules.TRAIL_R_MULTIPLE, 0.6);
+  assert.strictEqual(ladderAppliedRules.TP_P1, 0.025);
+  assert.strictEqual(ladderAppliedRules.BE_PCT, null);
+  assert.strictEqual(ladderAppliedRules.TRAIL_R_MULTIPLE, null);
 }
 
 try {

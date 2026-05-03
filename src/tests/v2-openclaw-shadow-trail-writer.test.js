@@ -88,12 +88,16 @@ function seedTp1Done(store) {
   });
   const tp1 = reduceCanonicalExit({
     positionCycle: base.positionCycle,
-    projection: base.projection,
+    projection: {
+      ...base.projection,
+      tp1_target_qty_abs: 0.005,
+      runner_remaining_qty_abs: 0.01,
+    },
     evidence: {
       kind: "TP1_CONFIRMED",
       sourceFillId: "FILL__BTC__TP1",
       sourceOrderId: "ORDER__BTC__TP1",
-      fillQtyAbs: base.projection.tp1_target_qty_abs,
+      fillQtyAbs: 0.005,
     },
   });
   const protection = buildProtectionRuntimeDoc({

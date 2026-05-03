@@ -40,6 +40,11 @@ function run() {
           tp_p0_done: false,
           tp_p1_done: true,
           trail_active: true,
+          exit_rules_override: {
+            TP_P1_QTY: 0.5,
+            TRAIL_R_MULTIPLE: 0.6,
+            RUNNER_MIN_PROFIT_PCT: 0.0165,
+          },
           native_protection_stop_price: null,
           native_protection_stop_order_id: null,
           native_protection_refresh_status: "FAILED",
@@ -83,10 +88,10 @@ function run() {
       },
     ],
   });
-  assert.strictEqual(simplifiedV2Runner.rows[0].stage, "RUNNER");
+  assert.strictEqual(simplifiedV2Runner.rows[0].stage, "EXITED_TP1");
   assert.strictEqual(simplifiedV2Runner.rows[0].simplified_exit_v2_enabled, true);
   assert.ok(!simplifiedV2Runner.rows[0].issues.some((issue) => issue.code === "TP1_DONE_WITHOUT_TP0_DONE"));
-  assert.ok(simplifiedV2Runner.rows[0].issues.some((issue) => issue.code === "NATIVE_REFRESH_UNHEALTHY"));
+  assert.ok(simplifiedV2Runner.rows[0].issues.some((issue) => issue.code === "TP1_FULL_EXIT_DONE_BUT_POSITION_ACTIVE"));
 
   const artifactOnly = buildLiveAuthorityBoard({
     positions: [
@@ -102,8 +107,8 @@ function run() {
           tp_p1_done: false,
           trail_active: false,
           native_protection_tp_order_id: "tp-order-1",
-          native_protection_tp_qty_ratio: 0.5,
-          native_protection_tp_qty_base: 0.014,
+          native_protection_tp_qty_ratio: 1,
+          native_protection_tp_qty_base: 0.028,
           native_protection_refresh_status: "OK",
         },
       },
@@ -132,6 +137,11 @@ function run() {
           tp_p0_done: true,
           tp_p1_done: true,
           trail_active: true,
+          exit_rules_override: {
+            TP_P1_QTY: 0.5,
+            TRAIL_R_MULTIPLE: 0.6,
+            RUNNER_MIN_PROFIT_PCT: 0.0165,
+          },
           native_protection_stop_price: null,
           native_protection_stop_order_id: null,
           native_protection_refresh_status: "FAILED",
@@ -171,6 +181,11 @@ function run() {
           tp_p0_done: false,
           tp_p1_done: true,
           trail_active: true,
+          exit_rules_override: {
+            TP_P1_QTY: 0.5,
+            TRAIL_R_MULTIPLE: 0.6,
+            RUNNER_MIN_PROFIT_PCT: 0.0165,
+          },
           native_protection_stop_price: 637.75,
           native_protection_stop_order_id: "4000001106791779",
           native_protection_refresh_status: "OK",

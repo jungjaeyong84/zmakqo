@@ -323,6 +323,7 @@ function evaluateTp1LadderStage({ cohort, kpi = null, config = null, explicitSta
 
 function applyTp1LadderPolicy({ rules = null, cohort = null, ladderState = null } = {}) {
   if (!rules || typeof rules !== "object") return rules;
+  if (isFullTpExitRatio(rules.TP_P1_QTY)) return rules;
   const state = (ladderState && typeof ladderState === "object") ? ladderState : {};
   const profile = String(state.profile || "").trim().toUpperCase();
   if (!profile) return rules;
@@ -743,7 +744,10 @@ function resolveExitRulesForPosition({ exchange, position, exitProfileMode } = {
       exchange,
     });
     forcedResolved.exit_profile = forcedProfileMode;
-    return forcedResolved;
+    return stripTp0RulesForSimplifiedExitV2(forcedResolved, {
+      execution_mode: "LIVE",
+      executionMode: "LIVE",
+    });
   }
   const profileMode = normalizeExitProfileMode(exitProfileMode, "BASE");
   const base = getExitRulesForProfile(exchange, profileMode);
@@ -1044,7 +1048,9 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
   const trailLabel = pctLabel(TRAIL_PCT);
   const beLabel = pctLabel(BE_PCT);
   const slEvent = slPctLabel ? `EXIT_SL_${slPctLabel}P` : "EXIT_SL";
-  const tpP1Event = tpP1Label ? `EXIT_TP_P1_${tpP1Label}P` : "EXIT_TP_P1";
+  const tpP1Event = isFullTpExitRatio(TP_P1_QTY)
+    ? (tpP1Label ? `EXIT_TP_FULL_${tpP1Label}P` : "EXIT_TP_FULL")
+    : (tpP1Label ? `EXIT_TP_P1_${tpP1Label}P` : "EXIT_TP_P1");
   const tpCEvent = tpCLabel ? `EXIT_TP_C_${tpCLabel}P` : "EXIT_TP_C";
   const trailEvent = Number.isFinite(TRAIL_R_MULTIPLE) && TRAIL_R_MULTIPLE > 0
     ? "EXIT_TRAIL"
@@ -1099,7 +1105,7 @@ function generateSignals({ exchange, symbol, bar, position, trading_mode, levera
       event: tpP1Event,
       side: exitSide,
       qty_pct: qty,
-      reason: "EXIT_TAKE_PROFIT_P1",
+      reason: isFullTpExitRatio(TP_P1_QTY) ? "EXIT_TAKE_PROFIT_FULL" : "EXIT_TAKE_PROFIT_P1",
       features: {
         pnl_pct: pnlPctEffective,
         pnl_pct_raw: pnlPct,

@@ -200,7 +200,7 @@ function buildFakeDb(store) {
   });
   assert.strictEqual(audit.ok, false);
   assert.ok(audit.failed_check_ids.includes("COLLECTED_TERMINAL_FULL_EXIT_EVIDENCE_PRESENT"));
-  assert.ok(audit.failed_check_ids.includes("COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT"));
+  assert.ok(!audit.failed_check_ids.includes("COLLECTED_STOP_TERMINAL_FILL_EVIDENCE_PRESENT"));
   assert.ok(audit.failed_check_ids.includes("REPLAY_GATE_EPISODE_VALID"));
 })();
 
@@ -568,7 +568,7 @@ function buildFakeDb(store) {
     decision_mode: "SHADOW",
     created_at: "2026-04-20T00:00:00.000Z",
   };
-  const nonTerminalTransitions = episode.transitions.slice(0, 2);
+  const nonTerminalTransitions = [];
   const store = {
     [`${PREFIX}position_cycles_v2`]: {
       [episode.positionCycle.position_cycle_id]: {
@@ -598,7 +598,7 @@ function buildFakeDb(store) {
       nonTerminalTransitions.map((row, index) => [`t${index}`, row])
     ),
     [`${PREFIX}trade_alert_outbox_v2`]: Object.fromEntries(
-      episode.outboxes.slice(0, 2).map((row, index) => [`o${index}`, row])
+      [].map((row, index) => [`o${index}`, row])
     ),
     [`${PREFIX}exit_repair_requests_v2`]: {},
     [`${PREFIX}signal_intents_v2`]: {
@@ -800,7 +800,7 @@ function buildFakeDb(store) {
         V2_PROMOTION_COLLECT_SHADOW_PROPOSAL_ID: shadowProposal.ml_ai_signal_proposal_id,
         V2_PROMOTION_COLLECT_WEBHOOK_SIGNAL_INTENT_ID: webhookBundle.signalIntent.signal_intent_id,
         V2_PROMOTION_COLLECT_WEBHOOK_DECISION_ID: webhookBundle.openclawDecision.openclaw_decision_id,
-        V2_PROMOTION_COLLECT_TRANSITIONS_LIMIT: "2",
+        V2_PROMOTION_COLLECT_TRANSITIONS_LIMIT: "1",
       },
     });
   } catch (error) {

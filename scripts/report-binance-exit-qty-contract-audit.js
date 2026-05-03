@@ -35,7 +35,7 @@ function classifyExitEvent(event) {
   const ev = upper(event);
   if (!ev) return "OTHER";
   if (ev.startsWith("EXIT_TP_P0")) return "TP0";
-  if (ev.startsWith("EXIT_TP_P1")) return "TP1";
+  if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_FULL")) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
   if (ev === "FORCE_EXIT_ALL" || ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL") return "FORCE_EXIT_ALL";

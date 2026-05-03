@@ -12,7 +12,20 @@ const { V2_SERVICE_BOUNDARIES, assertSingleExchangeWriter } = require("../v2/bou
   assert.strictEqual(cfg.dryRun, true);
   assert.strictEqual(cfg.canaryOnly, true);
   assert.ok(String(cfg.collections.POSITION_CYCLES).includes("position_cycles_v2"));
-  assert.deepStrictEqual(Object.keys(cfg.defaultProtectionModel).sort(), ["tp1QtyRatio", "tp1TargetPct"]);
+  assert.deepStrictEqual(Object.keys(cfg.defaultProtectionModel).sort(), [
+    "beEnabled",
+    "runnerEnabled",
+    "stopLossPct",
+    "tp1QtyRatio",
+    "tp1TargetPct",
+    "trailEnabled",
+  ]);
+  assert.strictEqual(cfg.defaultProtectionModel.tp1TargetPct, 0.025);
+  assert.strictEqual(cfg.defaultProtectionModel.tp1QtyRatio, 1);
+  assert.strictEqual(cfg.defaultProtectionModel.stopLossPct, 0.0165);
+  assert.strictEqual(cfg.defaultProtectionModel.beEnabled, false);
+  assert.strictEqual(cfg.defaultProtectionModel.runnerEnabled, false);
+  assert.strictEqual(cfg.defaultProtectionModel.trailEnabled, false);
   assert.deepStrictEqual(Object.keys(cfg.defaultRepairQueuePolicy).sort(), [
     "batchLimit",
     "maxCompletionFailureCount",

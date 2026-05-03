@@ -120,7 +120,7 @@ async function submitterRunsProtectionOnlyAfterFilledEntryReceipt() {
   assert.deepStrictEqual(calls.map((row) => row.type), ["entry-submit", "protection"]);
   assert.strictEqual(result.executedEntry.positionCycle.status, "PROTECTION_PENDING");
   assert.strictEqual(result.executedEntry.positionCycle.entry_event_id, "ENTRY__ETH__SUBMITTER");
-  assert.strictEqual(result.executedEntry.protectionPlan.tp1_qty_abs, 0.4);
+  assert.strictEqual(result.executedEntry.protectionPlan.tp1_qty_abs, 0.8);
 }
 
 async function acceptedButUnfilledEntryReceiptReturnsStructuredPostSubmitFailure() {

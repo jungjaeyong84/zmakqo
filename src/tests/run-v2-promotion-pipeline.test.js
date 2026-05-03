@@ -996,7 +996,7 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
       collectorDb: buildFakeDb(store),
     });
     assert.strictEqual(result.report.pass, false);
-    assert.ok(result.report.blockers.some((row) => row.includes("TERMINAL_TRANSITION_MISSING")));
+    assert.ok(result.report.blockers.some((row) => row.includes("TERMINAL_EXIT_QTY_MISMATCH")));
     assert.strictEqual(result.deployDecision.approved, false);
     const storedDecision = JSON.parse(fs.readFileSync(path.join(dir, "promotion-deploy-decision.json"), "utf8"));
     assert.strictEqual(storedDecision.bounded_runtime_summary.collector_query_budget.limits.transitionsLimit, 50);

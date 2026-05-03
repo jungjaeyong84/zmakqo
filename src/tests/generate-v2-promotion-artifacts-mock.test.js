@@ -64,7 +64,7 @@ const { __test } = require("../../scripts/generate-v2-promotion-artifacts-mock")
     const source = JSON.parse(fs.readFileSync(sourceFile, "utf8"));
     assert.strictEqual(replay.pass, true);
     assert.strictEqual(replay.episode_n, 4);
-    assert.strictEqual(replay.transition_event_coverage.TRAIL_HIT > 0, true);
+    assert.strictEqual(replay.transition_event_coverage.TP1_FULL_EXIT > 0, true);
     assert.strictEqual(shadow.warn_n, 0);
     assert.strictEqual(source.warn_n, 0);
     assert.ok(logs.some((line) => line.includes("V2_PROMOTION_ARTIFACTS_MOCK_GENERATED")));

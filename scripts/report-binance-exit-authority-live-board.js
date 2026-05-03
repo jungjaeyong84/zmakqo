@@ -10,6 +10,7 @@ const { getPositionRuntimeObservation, resolveTrailObservationSnapshot } = requi
 const { resolveExitRulesForPosition } = require("../src/engine/signalEngine");
 const { resolveTp1RemainingContractQtyRatio } = require("../src/utils/exitQtyContract");
 const { resolveCanonicalPositionExitStage } = require("../src/services/positionStateMachine");
+const { isFullTpExitRatio } = require("../src/v2/exitPolicy");
 
 function nowIso() {
   return new Date().toISOString();
@@ -90,15 +91,17 @@ function resolveAuthorityNativeProtection(meta = {}, trailSnapshot = {}) {
   };
 }
 
-function resolveStage(row = {}) {
+function resolveStage(row = {}, options = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
   const simplifiedExitV2Enabled = isSimplifiedExitV2Position(row);
+  const fullTpExit = options.fullTpExit === true;
   const canonical = resolveCanonicalPositionExitStage({
     positionSnapshot: row,
     simplifiedExitV2Enabled,
     fallbackStage: meta.canonical_exit_stage || meta.authoritative_exit_stage || null,
   });
   if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
+  if (canonical.stage === "TP1" && fullTpExit) return { canonical_stage: "EXITED_TP1", stage: "EXITED_TP1", source: canonical.source };
   if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "RUNNER", source: canonical.source };
   if (canonical.stage === "TP0") return { canonical_stage: "TP1", stage: "PRE_TP1", source: canonical.source };
   return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
@@ -114,12 +117,13 @@ function summarizeLivePosition(row = {}, context = {}) {
     exchange: upper(row.exchange) || "BINANCEFUT",
     position: row,
   });
+  const fullTpExit = isFullTpExitRatio(rules.TP_P1_QTY);
   const symbol = upper(row.symbol_or_pair_id || row.symbol);
   const qtyBase = toNum(row.qty_base, 0) || 0;
   const tp0Done = meta.tp_p0_done === true;
   const tp1Done = meta.tp_p1_done === true;
   const trailActive = meta.trail_active === true;
-  const expectedTp1RemainingRatio = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+  const expectedTp1RemainingRatio = resolveTp1RemainingContractQtyRatio(rules, 1);
   const actualTp1Ratio = toNum(meta.native_protection_tp_qty_ratio);
   const actualTp1Base = toNum(meta.native_protection_tp_qty_base);
   const expectedTp1Base = qtyBase > 0 ? Number((qtyBase * expectedTp1RemainingRatio).toFixed(8)) : null;
@@ -127,7 +131,7 @@ function summarizeLivePosition(row = {}, context = {}) {
   const stopOrderId = nativeProtection.stopOrderId;
   const tpOrderId = meta.native_protection_tp_order_id || null;
   const refreshStatus = nativeProtection.refreshStatus;
-  const stageInfo = resolveStage(row);
+  const stageInfo = resolveStage(row, { fullTpExit });
   const stage = stageInfo.stage;
   const trailStopByR = toNum(trailSnapshot.trail_stop_by_r);
   const chosenStopPrice = toNum(trailSnapshot.chosen_stop_price ?? trailSnapshot.computed_trail_stop);
@@ -160,16 +164,19 @@ function summarizeLivePosition(row = {}, context = {}) {
       }
     }
   }
-  if (trailActive || tp1Done) {
+  if (!fullTpExit && (trailActive || tp1Done)) {
     if (!stopOrderId && !Number.isFinite(stopPrice)) {
       issues.push({ code: "TRAIL_STOP_MISSING", detail: "TP1/Trail 단계인데 native stop 메타가 없음" });
     }
   }
-  if (trailActive && tp1Done !== true) {
+  if (!fullTpExit && trailActive && tp1Done !== true) {
     issues.push({ code: "TRAIL_ACTIVE_WITHOUT_TP1_DONE", detail: "trail_active=true 인데 tp_p1_done=false" });
   }
-  if (tp1Done && trailActive !== true) {
+  if (!fullTpExit && tp1Done && trailActive !== true) {
     issues.push({ code: "TP1_DONE_WITHOUT_TRAIL_ACTIVE", detail: "tp_p1_done=true 인데 trail_active=false" });
+  }
+  if (fullTpExit && tp1Done && qtyBase > 0) {
+    issues.push({ code: "TP1_FULL_EXIT_DONE_BUT_POSITION_ACTIVE", detail: "TP1 전량청산 계약에서 tp_p1_done=true 이지만 active position qty가 남아 있음" });
   }
   if ((stage === "PRE_TP1" || stage === "TRAIL" || stage === "RUNNER") && (refreshStatus === "FAILED" || refreshStatus === "MISSING")) {
     issues.push({ code: "NATIVE_REFRESH_UNHEALTHY", detail: `native_protection_refresh_status=${refreshStatus}` });

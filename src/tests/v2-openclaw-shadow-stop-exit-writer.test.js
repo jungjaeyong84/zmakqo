@@ -123,7 +123,11 @@ function seedTrailActive(store) {
   });
   const tp1 = reduceCanonicalExit({
     positionCycle: base.positionCycle,
-    projection: base.projection,
+    projection: {
+      ...base.projection,
+      tp1_target_qty_abs: 0.5,
+      runner_remaining_qty_abs: 1,
+    },
     evidence: {
       kind: "TP1_CONFIRMED",
       sourceFillId: "FILL__ETH__TP1",

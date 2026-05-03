@@ -20,7 +20,7 @@ function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
 
-const TERMINAL_STAGES = new Set(["EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
+const TERMINAL_STAGES = new Set(["EXITED_TP1", "EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
 const REQUIRED_COLLECTED_RUNTIME_CHAIN_CHECK_IDS = Object.freeze([
   "COLLECTED_POSITION_CYCLE_ID_PRESENT",
   "COLLECTED_ENTRY_EVENT_ID_PRESENT",
@@ -106,7 +106,7 @@ function hasExchangeEvidenceSnapshot(snapshot) {
 }
 
 function isTerminalTransitionEvent(event) {
-  return ["SL_HIT", "TRAIL_HIT", "EXTERNAL_CLOSE_SYNC", "MANUAL_CLOSE_SYNC"].includes(upper(event));
+  return ["TP1_FULL_EXIT", "SL_HIT", "TRAIL_HIT", "EXTERNAL_CLOSE_SYNC", "MANUAL_CLOSE_SYNC"].includes(upper(event));
 }
 
 function isStopTerminalTransitionEvent(event) {

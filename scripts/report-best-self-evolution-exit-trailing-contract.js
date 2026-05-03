@@ -54,14 +54,18 @@ function normalizeExitProfileMode(raw, fallback = "BASE") {
 
 function summarizeRules(rules = null) {
   const r = rules && typeof rules === "object" ? rules : {};
+  const nullWhenNonPositive = (value) => {
+    const n = toNum(value);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
   return {
     sl_pct_abs: pctAbs(r.SL),
     tp1_pct: pctSigned(r.TP_P1),
     tp1_qty_pct: pctSigned(resolveExitStageAbsoluteContractQtyRatio("TP1", r)),
-    be_pct: pctSigned(r.BE_PCT),
-    trail_r_multiple: toNum(r.TRAIL_R_MULTIPLE),
-    trail_pct_fallback: pctSigned(r.TRAIL_PCT),
-    runner_min_profit_pct: pctSigned(r.RUNNER_MIN_PROFIT_PCT),
+    be_pct: nullWhenNonPositive(pctSigned(r.BE_PCT)),
+    trail_r_multiple: nullWhenNonPositive(r.TRAIL_R_MULTIPLE),
+    trail_pct_fallback: nullWhenNonPositive(pctSigned(r.TRAIL_PCT)),
+    runner_min_profit_pct: nullWhenNonPositive(pctSigned(r.RUNNER_MIN_PROFIT_PCT)),
   };
 }
 
@@ -85,10 +89,10 @@ function deriveSummary({ runtime, systemByExchange } = {}) {
       exchange,
       profile_mode: profileMode,
       charter_ok: charter && charter.ok === true,
-      canonical_mode: Number.isFinite(Number(expected.TRAIL_R_MULTIPLE)) ? "TRAIL_R_MULTIPLE" : "TRAIL_PCT",
+      canonical_mode: Number.isFinite(Number(rules.TRAIL_R_MULTIPLE)) && Number(rules.TRAIL_R_MULTIPLE) > 0 ? "TRAIL_R_MULTIPLE" : "TP_FULL_ONLY",
       trail_r_multiple: entryExitContract.trail_r_multiple,
       legacy_trail_pct: entryExitContract.trail_pct_fallback != null ? (entryExitContract.trail_pct_fallback / 100) : null,
-      event_name_mode: Number.isFinite(Number(rules.TRAIL_R_MULTIPLE)) ? "EXIT_TRAIL_GENERIC" : "EXIT_TRAIL_PCT_TOKEN",
+      event_name_mode: Number.isFinite(Number(rules.TRAIL_R_MULTIPLE)) && Number(rules.TRAIL_R_MULTIPLE) > 0 ? "EXIT_TRAIL_GENERIC" : "EXIT_TP_FULL_GENERIC",
       expected_label: trailCheck && trailCheck.expected_label ? trailCheck.expected_label : null,
       actual_label: trailCheck && trailCheck.actual_label ? trailCheck.actual_label : null,
       entry_exit_contract: entryExitContract,
@@ -96,17 +100,17 @@ function deriveSummary({ runtime, systemByExchange } = {}) {
   });
 
   const mismatch = contracts.find((row) => row.charter_ok !== true) || null;
-  const canonicalExchanges = contracts.filter((row) => row.canonical_mode === "TRAIL_R_MULTIPLE");
+  const canonicalExchanges = contracts.filter((row) => row.canonical_mode === "TP_FULL_ONLY");
   const activeBinance = contracts.find((row) => row.exchange === "BINANCEFUT") || null;
   return {
-    status: mismatch ? "EXIT_TRAILING_CONTRACT_MISMATCH" : "EXIT_TRAILING_CONTRACT_ACTIVE",
+    status: mismatch ? "EXIT_FULL_TP_CONTRACT_MISMATCH" : "EXIT_FULL_TP_CONTRACT_ACTIVE",
     runtime_source_mode: String(runtimeSummary.source_mode || runtimeSummary.canonical_engine_source_mode || "").trim() || null,
-    canonical_mode: "TRAIL_R_MULTIPLE",
+    canonical_mode: "TP_FULL_ONLY",
     r_basis: "STRUCTURE_STOP",
     leverage_invariant_r: true,
     r_fallback_basis: "LEVERAGED_SL_FALLBACK",
-    legacy_pct_fallback_enabled: true,
-    generic_trail_event_when_r_enabled: true,
+    legacy_pct_fallback_enabled: false,
+    generic_trail_event_when_r_enabled: false,
     exchange_n: contracts.length,
     canonical_exchange_n: canonicalExchanges.length,
     mismatch_exchange: mismatch ? mismatch.exchange : null,
@@ -114,15 +118,15 @@ function deriveSummary({ runtime, systemByExchange } = {}) {
     active_binance_entry_exit_contract: activeBinance ? activeBinance.entry_exit_contract : null,
     exchange_contracts: contracts,
     notes: [
-      "Server trailing must use TRAIL_R_MULTIPLE as the canonical contract.",
+      "Server exit contract is TP1 full close only.",
       "Entry R distance must be anchored to structure stop_price first, not leverage-scaled SL distance.",
-      "TRAIL_PCT is retained only as a legacy fallback and display compatibility field.",
-      "When TRAIL_R_MULTIPLE is active, new trailing exits should emit generic EXIT_TRAIL instead of percent-token events.",
+      "BE, trailing, and runner are disabled for current V2 discovery canary.",
+      "New TP exits should emit full TP events instead of partial TP1/trailing continuation events.",
     ],
     next_actions: [
-      "keep trailing exit stop computation anchored to structure stop-based entry R distance",
-      "prefer TRAIL_R_MULTIPLE in alerts, dashboards, and audits",
-      "do not reintroduce percent-token trailing events for new R-based exits",
+      "keep TP1 target, quantity, and Telegram labels aligned to TP_FULL_2.5",
+      "do not re-enable BE, trailing, or runner without a new promotion design",
+      "continue auditing legacy trailing artifacts as forensic-only evidence",
       "allow leveraged SL distance only as a missing-structure fallback",
     ],
   };
@@ -131,7 +135,7 @@ function deriveSummary({ runtime, systemByExchange } = {}) {
 function renderMarkdown(report = {}) {
   const s = report.summary || {};
   const lines = [
-    "# BEST Self-Evolution Exit Trailing Contract",
+    "# BEST Self-Evolution Exit Contract",
     "",
     `- generated_at_kst: ${report.generated_at_kst || "N/A"}`,
     `- cycle_id: ${report.cycle_id || "N/A"}`,
@@ -144,7 +148,7 @@ function renderMarkdown(report = {}) {
     `- legacy_pct_fallback_enabled: ${s.legacy_pct_fallback_enabled ? "YES" : "NO"}`,
     `- generic_trail_event_when_r_enabled: ${s.generic_trail_event_when_r_enabled ? "YES" : "NO"}`,
     `- active_binance_profile_mode: ${s.active_binance_profile_mode || "N/A"}`,
-    `- active_binance_contract: ${s.active_binance_entry_exit_contract ? `SL_${s.active_binance_entry_exit_contract.sl_pct_abs ?? "N/A"} / TP1_${s.active_binance_entry_exit_contract.tp1_pct ?? "N/A"} / TP1_QTY_${s.active_binance_entry_exit_contract.tp1_qty_pct ?? "N/A"} / BE_${s.active_binance_entry_exit_contract.be_pct ?? "N/A"} / TRAIL_R_${s.active_binance_entry_exit_contract.trail_r_multiple ?? "N/A"} / RUNNER_MIN_${s.active_binance_entry_exit_contract.runner_min_profit_pct ?? "N/A"}` : "N/A"}`,
+    `- active_binance_contract: ${s.active_binance_entry_exit_contract ? `SL_${s.active_binance_entry_exit_contract.sl_pct_abs ?? "N/A"} / TP1_${s.active_binance_entry_exit_contract.tp1_pct ?? "N/A"} / TP1_QTY_${s.active_binance_entry_exit_contract.tp1_qty_pct ?? "N/A"} / BE_${s.active_binance_entry_exit_contract.be_pct ?? "OFF"} / TRAIL_R_${s.active_binance_entry_exit_contract.trail_r_multiple ?? "OFF"} / RUNNER_MIN_${s.active_binance_entry_exit_contract.runner_min_profit_pct ?? "OFF"}` : "N/A"}`,
     "",
     "## Exchange Contracts",
   ];

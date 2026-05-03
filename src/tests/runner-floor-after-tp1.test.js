@@ -1,6 +1,6 @@
 "use strict";
 
-// Regression guard for the TP1→trail gap fix (2026-04-18).
+// Regression guard for the retired TP1→runner-floor path.
 //
 // Before the fix:
 //   computeRunnerMinProfitStopPrice required BOTH tpP1Done AND trailActive,
@@ -25,10 +25,10 @@ const { CHARTER_EXPECTATIONS } = require("../config/charterExpectations");
   // ── Charter default must exist ────────────────────────────────────
   const expDefault = CHARTER_EXPECTATIONS.signal_engine.default;
   const expBinance = CHARTER_EXPECTATIONS.signal_engine.by_exchange.BINANCEFUT;
-  assert.strictEqual(expDefault.RUNNER_MIN_PROFIT_PCT, 0.003,
-    "charter default RUNNER_MIN_PROFIT_PCT must be 0.003 (was undefined before the fix)");
-  assert.strictEqual(expBinance.RUNNER_MIN_PROFIT_PCT, 0.003,
-    "BINANCEFUT RUNNER_MIN_PROFIT_PCT must be 0.003");
+  assert.strictEqual(expDefault.RUNNER_MIN_PROFIT_PCT, null,
+    "current V2 full-TP contract must not arm a runner floor by default");
+  assert.strictEqual(expBinance.RUNNER_MIN_PROFIT_PCT, null,
+    "BINANCEFUT current V2 full-TP contract must not arm a runner floor");
 
   // ── Runner floor must activate the moment TP1 is done, regardless ──
   // ── of trailActive state. This is the entire point of the fix.    ──

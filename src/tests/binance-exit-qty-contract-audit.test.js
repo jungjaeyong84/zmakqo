@@ -6,35 +6,22 @@ const { __test } = require("../../scripts/report-binance-exit-qty-contract-audit
 function run() {
   assert.strictEqual(__test.classifyExitEvent("EXIT_TP_P0_0.8P"), "TP0");
   assert.strictEqual(__test.classifyExitEvent("EXIT_TP_P1_1.65P"), "TP1");
+  assert.strictEqual(__test.classifyExitEvent("EXIT_TP_FULL_2.5P"), "TP1");
   assert.strictEqual(__test.classifyExitEvent("EXIT_TRAIL"), "TRAIL");
   assert.strictEqual(__test.classifyExitEvent("FORCE_EXIT_ALL"), "FORCE_EXIT_ALL");
   assert.strictEqual(__test.classifyExitEvent("EXIT_SL_1.65P"), "SL");
 
-  // 2026-04-28 senior audit Step 22 — Stage R retired V1 TP0
-  // (TP_P0_QTY=0 by default). The pre-Stage R "OK" fixture had TP0
-  // (0.25) + TP1 (0.375) + TRAIL (0.375) = 1.0; this is now flagged as
-  // TP0_ABS_OVER because the audit script uses current rules (TP_P0_QTY=0)
-  // for evaluation. Updated fixture reflects the post-retirement
-  // simplified-exit-v2 shape: TP1 (0.5) + TRAIL (0.5) = 1.0, no TP0
-  // partial close.
+  // Current V2 exit contract is full TP only: TP1 closes 100%, no TP0,
+  // no trail/runner remainder.
   const rows = [
     {
       exchange: "BINANCEFUT",
       symbol: "BTCUSDT",
       entry_event_id: "ENTRY_A",
       fill_id: "F1",
-      event: "EXIT_TP_P1_2.5P",
-      qty_pct: 0.5,
+      event: "EXIT_TP_FULL_2.5P",
+      qty_pct: 1,
       created_at: "2026-04-12T00:00:00.000Z",
-    },
-    {
-      exchange: "BINANCEFUT",
-      symbol: "BTCUSDT",
-      entry_event_id: "ENTRY_A",
-      fill_id: "F2",
-      event: "EXIT_TRAIL",
-      qty_pct: 0.5,
-      created_at: "2026-04-12T00:01:00.000Z",
     },
   ];
   const okReport = __test.buildReport(rows);
@@ -57,8 +44,8 @@ function run() {
       symbol: "BTCUSDT",
       entry_event_id: "ENTRY_B",
       fill_id: "F5",
-      event: "EXIT_TP_P1_1.65P",
-      qty_pct: 1.0,
+      event: "EXIT_TP_FULL_2.5P",
+      qty_pct: 1.1,
       created_at: "2026-04-12T00:04:00.000Z",
     },
     {
@@ -107,8 +94,8 @@ function run() {
       symbol: "ETHUSDT",
       entry_event_id: "ENTRY_D",
       fill_id: "F9",
-      event: "EXIT_TP_P1_1.65P",
-      qty_pct: 1.0,
+      event: "EXIT_TP_FULL_2.5P",
+      qty_pct: 1.1,
       created_at: "2026-04-12T00:08:00.000Z",
       extra: { exit_qty_contract_backfilled_at: "2026-04-12T00:10:00.000Z" },
     },

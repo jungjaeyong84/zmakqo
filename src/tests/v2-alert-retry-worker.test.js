@@ -68,7 +68,7 @@ function buildStoredOutbox() {
       kind: "TP1_CONFIRMED",
       sourceFillId: "FILL__TP1__RETRY",
       sourceOrderId: "ORDER__TP1__RETRY",
-      fillQtyAbs: 0.5,
+      fillQtyAbs: 1,
     },
   });
   const prepared = prepareExitTransitionAlert({
@@ -85,7 +85,7 @@ function buildStoredOutbox() {
   const outbox = buildStoredOutbox();
   assert.ok(outbox.prepared_payload);
   assert.ok(outbox.delivery_request);
-  assert.strictEqual(outbox.delivery_request.title, "[ETHUSDT] TP1");
+  assert.strictEqual(outbox.delivery_request.title, "[ETHUSDT] TP_FULL");
 })();
 
 (async function storedRetryUsesPersistedRequestOnly() {
