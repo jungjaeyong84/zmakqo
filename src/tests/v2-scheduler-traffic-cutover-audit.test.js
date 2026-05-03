@@ -95,6 +95,22 @@ function buildPassingState() {
         time_zone_match: true,
       },
       {
+        job_id: "v2_performance_evidence_cycle",
+        scheduler_name: "v2-performance-evidence-cycle",
+        enabled: true,
+        criticality: "HIGH",
+        state: "ENABLED",
+        expected_http_path: "/api/openclaw/cron/v2-performance-evidence-cycle",
+        actual_http_path: "/api/openclaw/cron/v2-performance-evidence-cycle",
+        path_match: true,
+        expected_schedule: "10 * * * *",
+        actual_schedule: "10 * * * *",
+        schedule_match: true,
+        expected_time_zone: "Asia/Seoul",
+        actual_time_zone: "Asia/Seoul",
+        time_zone_match: true,
+      },
+      {
         job_id: "openclaw_server_primary_tick",
         scheduler_name: "openclaw-server-primary-tick",
         enabled: true,
@@ -155,6 +171,8 @@ function buildPassingState() {
   assert.ok(report.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_active_protection_reconciliation" && job.path_match === true));
   assert.ok(report.required_openclaw_job_ids.includes("v2_fill_sync"));
   assert.ok(report.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_fill_sync" && job.path_match === true));
+  assert.ok(report.required_openclaw_job_ids.includes("v2_performance_evidence_cycle"));
+  assert.ok(report.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "v2_performance_evidence_cycle" && job.path_match === true));
   assert.ok(report.required_openclaw_job_ids.includes("openclaw_server_primary_tick"));
   assert.ok(report.openclaw_cloud_scheduler_jobs.some((job) => job.job_id === "openclaw_server_primary_tick" && job.path_match === true));
 })();

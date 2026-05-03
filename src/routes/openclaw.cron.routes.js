@@ -256,6 +256,29 @@ router.post("/api/openclaw/cron/v2-fill-sync", requireSchedulerToken, async (req
   }
 });
 
+// v2-performance-evidence-cycle: closes the production accounting loop after
+// fill-sync by refreshing outcome adjudications, the daily performance report,
+// the performance gate, and the formal-live readiness artifact. A blocked
+// performance gate is still a successful collection run; only collector/script
+// failures make the HTTP job fail.
+router.post("/api/openclaw/cron/v2-performance-evidence-cycle", requireSchedulerToken, async (req, res) => {
+  try {
+    const { main } = require("../../scripts/run-v2-performance-evidence-cycle");
+    const outcome = await runWithShortTimeout(
+      "v2_performance_evidence_cycle",
+      () => main({ env: process.env, setProcessExitCode: false }),
+      300000
+    );
+    const resultOk = outcome.ok === true && outcome.result && outcome.result.ok === true;
+    return res.status(resultOk ? 200 : 500).json({
+      ...outcome,
+      ok: resultOk,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });
+  }
+});
+
 // openclaw-server-primary-tick: authoritative server-native paper tick that
 // refreshes bars_snapshots and generates server-primary paper signals under
 // the OpenClaw scheduler SOT. This replaces the old legacy tick path for V2.
@@ -376,6 +399,7 @@ router.get("/api/openclaw/cron/_ping", requireSchedulerToken, (req, res) => {
       "POST /api/openclaw/cron/v2-exit-runtime-canary",
       "POST /api/openclaw/cron/v2-active-protection-reconciliation",
       "POST /api/openclaw/cron/v2-fill-sync",
+      "POST /api/openclaw/cron/v2-performance-evidence-cycle",
       "POST /api/openclaw/cron/openclaw-server-primary-tick",
       "POST /api/openclaw/cron/v2-signal-shadow-counterfactual-walker",
       "POST /api/openclaw/cron/v2-signal-shadow-counterfactual-analyzer",
