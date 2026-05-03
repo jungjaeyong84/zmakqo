@@ -70,7 +70,7 @@ function resolveTp1QtyRatio({ entryQtyAbs = null, tp1QtyAbs = null } = {}) {
   const tpQty = toNumberOrNull(tp1QtyAbs);
   if (!(Number.isFinite(entryQty) && entryQty > 0 && Number.isFinite(tpQty) && tpQty > 0)) return null;
   const ratio = tpQty / entryQty;
-  if (!Number.isFinite(ratio) || ratio <= 0 || ratio >= 1) return null;
+  if (!Number.isFinite(ratio) || ratio <= 0 || ratio > 1) return null;
   return ratio;
 }
 
@@ -213,7 +213,7 @@ async function writeOpenClawShadowEntryBootstrap({
 
   const stopLossPct = computePctDistance({ entryPrice, targetPrice: protection.nativeStopPrice });
   const tp1TargetPct = computePctDistance({ entryPrice, targetPrice: protection.nativeTp1Price });
-  const tp1QtyRatio = resolveTp1QtyRatio({ entryQtyAbs, tp1QtyAbs: protection.nativeTp1QtyAbs }) || 0.5;
+  const tp1QtyRatio = resolveTp1QtyRatio({ entryQtyAbs, tp1QtyAbs: protection.nativeTp1QtyAbs }) || 1;
   const bootstrap = buildV2EntryBootstrap({
     exchange: upper(input.exchange) || "BINANCEFUT",
     symbol,

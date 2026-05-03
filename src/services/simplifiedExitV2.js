@@ -1,5 +1,7 @@
 "use strict";
 
+const { V2_SIMPLE_EXIT_CONTRACT, isFullTpExitRatio } = require("../v2/exitPolicy");
+
 const ECONOMIC_STATE = Object.freeze({
   FULL: "FULL",
   RUNNER: "RUNNER",
@@ -22,6 +24,7 @@ const ORDER_ROLE = Object.freeze({
 const EVENT = Object.freeze({
   ENTRY_FILLED: "ENTRY_FILLED",
   TP1_REACHED: "TP1_REACHED",
+  TP1_FULL_EXIT: "TP1_FULL_EXIT",
   TRAIL_ACTIVATED: "TRAIL_ACTIVATED",
   TRAIL_FINAL_EXIT: "TRAIL_FINAL_EXIT",
   SL_HIT: "SL_HIT",
@@ -29,10 +32,10 @@ const EVENT = Object.freeze({
   EXTERNAL_CLOSE_SYNC: "EXTERNAL_CLOSE_SYNC",
 });
 
-const DEFAULT_TP1_QTY_RATIO = 0.5;
-const DEFAULT_TP1_TARGET_PCT = 0.025;
-const DEFAULT_FLOOR_LOCK_PCT = 0.0025;
-const DEFAULT_TRAIL_PCT = 0.01;
+const DEFAULT_TP1_QTY_RATIO = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio;
+const DEFAULT_TP1_TARGET_PCT = V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct;
+const DEFAULT_FLOOR_LOCK_PCT = 0;
+const DEFAULT_TRAIL_PCT = null;
 const DEFAULT_SIMPLIFIED_EXIT_V2_ENABLED = true;
 
 function toNum(value) {
@@ -255,7 +258,8 @@ function buildSimplifiedExitPlan({
   if (!normalizedSide) issues.push(buildIssue("INVALID_SIDE", { side }));
   if (!(normalizedEntryPrice > 0)) issues.push(buildIssue("INVALID_ENTRY_PRICE", { entryPrice }));
   if (!(normalizedEntryQtyAbs > 0)) issues.push(buildIssue("INVALID_ENTRY_QTY_ABS", { entryQtyAbs }));
-  if (!(normalizedTp1QtyRatio > 0 && normalizedTp1QtyRatio < 1)) {
+  const fullTpExit = isFullTpExitRatio(normalizedTp1QtyRatio);
+  if (!(normalizedTp1QtyRatio > 0 && normalizedTp1QtyRatio <= 1)) {
     issues.push(buildIssue("INVALID_TP1_QTY_RATIO", { tp1QtyRatio }));
   }
   if (!(normalizedTp1TargetPct > 0)) {
@@ -264,7 +268,7 @@ function buildSimplifiedExitPlan({
   if (!(normalizedStopLossPct > 0)) {
     issues.push(buildIssue("INVALID_STOP_LOSS_PCT", { stopLossPct }));
   }
-  if (!(normalizedTrailPct > 0)) {
+  if (!fullTpExit && !(normalizedTrailPct > 0)) {
     issues.push(buildIssue("INVALID_TRAIL_PCT", { trailPct }));
   }
 
@@ -298,13 +302,13 @@ function buildSimplifiedExitPlan({
       minNotional: normalizedMinNotional,
     }));
   }
-  if (runnerQtyAbs < normalizedMinQty) {
+  if (!fullTpExit && runnerQtyAbs < normalizedMinQty) {
     issues.push(buildIssue("RUNNER_QTY_BELOW_MIN_QTY", {
       runnerQtyAbs,
       minQty: normalizedMinQty,
     }));
   }
-  if (normalizedMinNotional > 0 && runnerNotional < normalizedMinNotional) {
+  if (!fullTpExit && normalizedMinNotional > 0 && runnerNotional < normalizedMinNotional) {
     issues.push(buildIssue("RUNNER_NOTIONAL_BELOW_MIN_NOTIONAL", {
       runnerNotional,
       minNotional: normalizedMinNotional,
@@ -319,17 +323,19 @@ function buildSimplifiedExitPlan({
     entry_price: normalizedEntryPrice,
     entry_qty_abs: normalizedEntryQtyAbs,
     tp1_qty_ratio: normalizedTp1QtyRatio,
+    tp1_exit_mode: fullTpExit ? V2_SIMPLE_EXIT_CONTRACT.tp1_exit_mode : "PARTIAL_RUNNER",
     tp1_target_pct: normalizedTp1TargetPct,
     tp1_target_price: tp1TargetPrice,
     tp1_target_qty_abs: tp1TargetQtyAbs,
     tp1_notional: tp1Notional,
     runner_qty_abs: runnerQtyAbs,
     runner_notional: runnerNotional,
+    runner_enabled: !fullTpExit,
     stop_loss_pct: normalizedStopLossPct,
     initial_stop_price: initialStopPrice,
     floor_lock_pct: normalizedFloorLockPct,
     runner_floor_stop: runnerFloorStop,
-    trail_pct: normalizedTrailPct,
+    trail_pct: fullTpExit ? null : normalizedTrailPct,
   };
 }
 
@@ -348,15 +354,20 @@ function accumulateAbsoluteFillQty(currentFilledQtyAbs, fillQtyAbs) {
 function resolveTp1Completion({
   tp1FilledQtyAbs,
   tp1TargetQtyAbs,
+  entryQtyAbs = null,
   epsilonAbs = 1e-9,
 } = {}) {
   const filled = Math.max(0, toNum(tp1FilledQtyAbs) || 0);
   const target = Math.max(0, toNum(tp1TargetQtyAbs) || 0);
+  const entry = Math.max(0, toNum(entryQtyAbs) || 0);
   const tp1Complete = target > 0 && almostGte(filled, target, epsilonAbs);
+  const fullTpExit = tp1Complete && entry > 0 && almostGte(target, entry, epsilonAbs);
   return {
     tp1_complete: tp1Complete,
     remaining_qty_abs: Math.max(0, target - filled),
-    next_economic_state: tp1Complete ? ECONOMIC_STATE.RUNNER : ECONOMIC_STATE.FULL,
+    next_economic_state: tp1Complete
+      ? (fullTpExit ? ECONOMIC_STATE.FLAT : ECONOMIC_STATE.RUNNER)
+      : ECONOMIC_STATE.FULL,
   };
 }
 
@@ -372,7 +383,9 @@ function classifySimplifiedExitEvent({
   if (externalClose) return EVENT.EXTERNAL_CLOSE_SYNC;
   const currentEconomicState = toUpper(economicState);
   if (fillOrderId != null && tp1OrderId != null && String(fillOrderId) === String(tp1OrderId)) {
-    return EVENT.TP1_REACHED;
+    return currentEconomicState === ECONOMIC_STATE.FLAT
+      ? EVENT.TP1_FULL_EXIT
+      : EVENT.TP1_REACHED;
   }
   if (fillOrderId != null && activeStopOrderId != null && String(fillOrderId) === String(activeStopOrderId)) {
     return currentEconomicState === ECONOMIC_STATE.RUNNER
@@ -503,6 +516,7 @@ function buildSimplifiedExitShadowView({
   const tp1 = resolveTp1Completion({
     tp1FilledQtyAbs: inferredTp1FilledQtyAbs,
     tp1TargetQtyAbs: plan.tp1_target_qty_abs,
+    entryQtyAbs: plan.entry_qty_abs,
   });
   let economicState = tp1.next_economic_state;
   if (!(normalizedCurrentQtyAbs > 0)) {

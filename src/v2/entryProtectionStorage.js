@@ -6,6 +6,7 @@ const { resolveV2CollectionName } = require("./storage");
 const { buildProtectedActivePositionCycleDoc } = require("./entryBootstrap");
 const { assertRuntimeExecutionChain } = require("./runtimeChainAudit");
 const { buildEntryProtectionRepairRequests } = require("./entryProtectionRepairRequests");
+const { V2_SIMPLE_EXIT_CONTRACT, buildV2SimpleExitRulesPatch } = require("./exitPolicy");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -112,6 +113,9 @@ function buildProtectedEntryReadModelSnapshot({
     native_protection_tp_price: tp1Price,
     native_protection_tp_qty_base: tp1QtyAbs,
     native_protection_tp_qty_ratio: Number.isFinite(tp1QtyRatio) ? tp1QtyRatio : null,
+    exit_contract_id: V2_SIMPLE_EXIT_CONTRACT.contract_id,
+    exit_contract_mode: "TP_FULL_ONLY",
+    exit_rules_override: buildV2SimpleExitRulesPatch(),
     native_protection_tp_status: upper(runtimeDoc.tp1_order_status) === "PLACED" ? "OK" : upper(runtimeDoc.tp1_order_status),
     native_protection_refresh_status: upper(runtimeDoc.native_refresh_status),
     native_protection_health_status: upper(runtimeDoc.health_status),

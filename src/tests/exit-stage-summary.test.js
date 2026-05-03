@@ -20,6 +20,49 @@ const { buildExitStageView } = require("../utils/exitStageView");
         leverage: 2,
         tp_p1_done: false,
         trail_active: false,
+        native_protection_stop_price: 99.175,
+        native_protection_tp_price: 101.25,
+        native_protection_refresh_status: "OK",
+        native_protection_tp_status: "OK",
+        exit_rules_override: {
+          SL: 0.0165,
+          TP_P1: 0.025,
+          TP_P1_QTY: 1,
+          TRAIL_R_MULTIPLE: null,
+          TRAIL_PCT: null,
+          BE_PCT: null,
+        },
+      },
+    },
+  });
+  assert(stage, "stage must exist for current V2 full-TP position");
+  assert.equal(stage.compact_headline.left_label, "SL");
+  assert.equal(stage.compact_headline.right_label, "TP1");
+  assert.equal(stage.tp1_qty_pct, 1);
+  assert.equal(stage.simplified_exit_v2_state, "FULL");
+  assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, []);
+  assert.strictEqual(stage.simplified_exit_v2_shadow.tp1_target_qty_abs, 0.15);
+  assert.strictEqual(stage.simplified_exit_v2_shadow.runner_qty_abs, 0);
+  assert.ok(Math.abs(stage.simplified_exit_v2_shadow.tp1_target_price - 101.25) < 1e-9);
+})();
+
+(() => {
+  const stage = buildExitStageView({
+    exchange: "BINANCEFUT",
+    closePrice: 101,
+    leverageFallback: 2,
+    position: {
+      state: "ACTIVE",
+      size_pct: 0.15,
+      qty_base: 0.15,
+      avg_price: 100,
+      position_side: "LONG",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        entry_qty_base: 0.15,
+        leverage: 2,
+        tp_p1_done: false,
+        trail_active: false,
         native_protection_stop_price: 98.35,
         native_protection_tp_price: 103.25,
         native_protection_refresh_status: "OK",
@@ -50,13 +93,13 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert(stage.simplified_exit_v2_shadow, "shadow view must exist");
   assert.equal(stage.simplified_exit_v2_shadow.tp1_target_qty_abs, 0.075);
   assert.equal(stage.simplified_exit_v2_shadow.runner_qty_abs, 0.075);
-  assert.ok(Math.abs(stage.simplified_exit_v2_shadow.tp1_target_price - 102.5) < 1e-9);
+  assert.ok(Math.abs(stage.simplified_exit_v2_shadow.tp1_target_price - 101.25) < 1e-9);
 })();
 
 (() => {
   const stage = buildExitStageView({
     exchange: "BINANCEFUT",
-    closePrice: 102,
+    closePrice: 100.5,
     position: {
       state: "ACTIVE",
       position_state: "ACTIVE",
@@ -124,20 +167,20 @@ const { buildExitStageView } = require("../utils/exitStageView");
     },
   });
   assert(stage, "stage must exist for trailing position");
-  assert.equal(stage.trail_r_multiple, 0.6);
+  assert.equal(stage.trail_r_multiple, 0.9);
   assert.equal(stage.compact_headline.left_label, "Trail");
-  assert.equal(stage.compact_headline.left_price, 109.505);
+  assert.equal(stage.compact_headline.left_price, 109.2575);
   assert.equal(stage.compact_headline.right_label, "SL");
   assert.equal(stage.compact_headline.right_price, 98.35);
   assert.equal(stage.canonical_exit_stage, "TRAIL");
   assert.equal(stage.canonical_exit_stage_source, "POSITION_STATE_MACHINE_TRAIL_ACTIVE");
   assert.equal(stage.canonical_runner_remaining_abs, 0.125);
   assert.equal(stage.canonical_runner_remaining_source, "META");
-  assert.equal(stage.trail_stop_by_r, 109.505);
-  assert.equal(stage.r_based_trail_stop, 109.505);
+  assert.equal(stage.trail_stop_by_r, 109.2575);
+  assert.equal(stage.r_based_trail_stop, 109.2575);
   assert.equal(stage.chosen_stop_source, "TRAIL");
-  assert.equal(stage.chosen_stop_price, 109.505);
-  assert.equal(stage.final_effective_stop, 109.505);
+  assert.equal(stage.chosen_stop_price, 109.2575);
+  assert.equal(stage.final_effective_stop, 109.2575);
   assert.deepStrictEqual(stage.stop_divergence_codes, ["NATIVE_STOP_MISMATCH"]);
   assert.equal(stage.simplified_exit_v2_available, true);
   assert.equal(stage.simplified_exit_v2_state, "RUNNER");

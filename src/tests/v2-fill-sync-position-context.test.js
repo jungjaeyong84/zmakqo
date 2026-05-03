@@ -23,9 +23,9 @@ async function run() {
       position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__SHORT__abc123",
       stage: "PRE_TP1",
       entry_qty_abs: 0.053,
-      tp1_target_qty_abs: 0.0265,
+      tp1_target_qty_abs: 0.053,
       tp1_filled_qty_abs: 0,
-      runner_remaining_qty_abs: 0.0265,
+      runner_remaining_qty_abs: 0,
       tp1_done: false,
       trail_active: false,
     },
@@ -46,8 +46,8 @@ async function run() {
   assert.strictEqual(ctx.simplifiedExitV2Enabled, true);
   assert.strictEqual(ctx.tpP1Done, false);
   assert.strictEqual(ctx.trailActive, false);
-  assert.strictEqual(ctx.nativeProtectionTpQtyBase, 0.0265);
-  assert.strictEqual(ctx.nativeProtectionTpQtyRatio, 0.5);
+  assert.strictEqual(ctx.nativeProtectionTpQtyBase, 0.053);
+  assert.strictEqual(ctx.nativeProtectionTpQtyRatio, 1);
   assert.strictEqual(ctx.entryTimeMs, 1777521677485);
   assert.strictEqual(__test.isTradeBeforePositionEntry(ctx, 1777521600000), true);
   assert.strictEqual(__test.isTradeBeforePositionEntry(ctx, 1777521680000), false);
@@ -127,13 +127,13 @@ async function run() {
     event,
     entryEventId: ctx.entryEventId,
     positionCtx: ctx,
-    rules: { TP_P1: 0.025, TP_P1_QTY: 0.5 },
+    rules: { TP_P1: 0.025, TP_P1_QTY: 1 },
   });
   assert.strictEqual(canonical.stage, "TP1");
-  assert.ok(canonical.transitionEvents.includes("TP1_REACHED"));
+  assert.ok(canonical.transitionEvents.includes("TP1_FULL_EXIT"));
   assert.strictEqual(canonical.entryLineageMissing, false);
   assert.strictEqual(canonical.ledger.entry_qty_abs, 0.053);
-  assert.strictEqual(canonical.ledger.tp1_allowed_abs, 0.0265);
+  assert.strictEqual(canonical.ledger.tp1_allowed_abs, 0.053);
 
   const canonicalSl = __test.resolveCanonicalExternalExitEvent({
     authorityMap: new Map(),

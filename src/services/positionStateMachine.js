@@ -289,7 +289,7 @@ function inferSimplifiedV2RunnerStage(snapshot = {}) {
   const tp1Ratio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules, {
     simplifiedExitV2Enabled: true,
     positionSnapshot: snapshot,
-  }) ?? 0.5;
+  }) ?? 1;
   if (!(Number.isFinite(entryQtyAbs) && entryQtyAbs > 0 && Number.isFinite(currentQtyAbs) && currentQtyAbs > 0)) {
     return null;
   }
@@ -311,7 +311,7 @@ function resolveExitStageAbsoluteContractQtyRatio(stage, rules = {}, options = {
   const simplifiedV2 = isSimplifiedExitV2Enabled(options);
   if (currentStage === "TP0") return simplifiedV2 ? 0 : clamp01(toNum(rules.TP_P0_QTY) ?? 0.25);
   if (currentStage === "TP1") {
-    if (simplifiedV2) return clamp01(toNum(rules.TP_P1_QTY) ?? 0.5);
+    if (simplifiedV2) return clamp01(toNum(rules.TP_P1_QTY) ?? 1);
     const tp0 = clamp01(toNum(rules.TP_P0_QTY) ?? 0.25) ?? 0.25;
     const tp1Remaining = clamp01(toNum(rules.TP_P1_QTY) ?? 0.5) ?? 0.5;
     return clamp01(tp1Remaining * Math.max(0, 1 - tp0));
@@ -421,7 +421,7 @@ function buildExitQuantityContractLedger({
   const tp1AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules || {}, {
     simplifiedExitV2Enabled: simplifiedV2,
     positionSnapshot: snapshot,
-  }) ?? (simplifiedV2 ? 0.5 : 0.375);
+  }) ?? (simplifiedV2 ? 1 : 0.375);
   const tp0ConsumedRatio = simplifiedV2
     ? 0
     : (clamp01(Math.max(
@@ -702,8 +702,8 @@ function resolveCanonicalExitTransitionEvents({
   const events = [];
   const effectiveStage = tp0RetiredRuntime && stage === "TP0" ? "TP1" : stage;
   if (effectiveStage === "TP1") {
-    if (snapshot.tp_p1_done !== true) events.push("TP1_REACHED");
-    if (snapshot.trail_active !== true) events.push(simplifiedV2 ? "TRAIL_ACTIVATED" : "TRAIL_ACTIVE");
+    if (snapshot.tp_p1_done !== true) events.push(simplifiedV2 ? "TP1_FULL_EXIT" : "TP1_REACHED");
+    if (!simplifiedV2 && snapshot.trail_active !== true) events.push("TRAIL_ACTIVE");
   } else if (effectiveStage === "TRAIL") {
     const recentTrail = normalizeExitStage(recent.trail) === "TRAIL";
     if (snapshot.trail_active !== true && !recentTrail) events.push(simplifiedV2 ? "TRAIL_ACTIVATED" : "TRAIL_ACTIVE");
@@ -720,8 +720,8 @@ function resolveCanonicalExitTransitionEvents({
     if (fullExit === true) events.push("EXTERNAL_CLOSE_SYNC");
   }
   let primaryTransitionEvent = events.length ? events[events.length - 1] : null;
-  if (effectiveStage === "TP1" && events.includes("TP1_REACHED")) {
-    primaryTransitionEvent = "TP1_REACHED";
+  if (effectiveStage === "TP1" && (events.includes("TP1_FULL_EXIT") || events.includes("TP1_REACHED"))) {
+    primaryTransitionEvent = events.includes("TP1_FULL_EXIT") ? "TP1_FULL_EXIT" : "TP1_REACHED";
   }
   return {
     transitionEvents: events,
@@ -741,6 +741,7 @@ function resolveCanonicalAlertExitStage({
   const ordered = primary ? [primary, ...events.filter((item) => item !== primary)] : events;
 
   if (ordered.includes("TRAIL_FINAL_EXIT") || ordered.includes("TRAIL_PARTIAL")) return "TRAIL";
+  if (ordered.includes("TP1_FULL_EXIT")) return "TP1";
   if (ordered.includes("TP1_REACHED")) return "TP1";
   if (ordered.includes("TP0_REACHED")) return "TP1";
   if (ordered.includes("TRAIL_ACTIVE") || ordered.includes("TRAIL_ACTIVATED")) return "TRAIL";
@@ -818,7 +819,7 @@ function resolveCanonicalExitStageFromCycleEvidence({
   cycleTrades = null,
   positionQty = null,
   tp0QtyRatio = 0.25,
-  tp1QtyRatio = 0.5,
+  tp1QtyRatio = 1,
   simplifiedExitV2Enabled = null,
 } = {}) {
   const simplifiedV2 = simplifiedExitV2Enabled === true;
@@ -839,7 +840,7 @@ function resolveCanonicalExitStageFromCycleEvidence({
     TP_P1_QTY: tp1QtyRatio,
   }, {
     simplifiedExitV2Enabled: simplifiedV2,
-  }) ?? (simplifiedV2 ? 0.5 : 0.375);
+  }) ?? (simplifiedV2 ? 1 : 0.375);
   const trailRemainingRatio = Math.max(0, 1 - ((simplifiedV2 ? 0 : (toNum(tp0QtyRatio) ?? 0.25)) + tp1AbsRatio));
   if (simplifiedV2 && exits.length >= 1 && Math.abs(remainingRatio - trailRemainingRatio) <= 0.04) {
     return { stage: "TRAIL", entries, exits, totalEntryQty, remainingQty, remainingRatio, expectedAfterTp1: trailRemainingRatio };
@@ -979,7 +980,7 @@ function resolveCanonicalExitAuthorityDecision({
   const tp1AllowedRatio = resolveExitStageAbsoluteContractQtyRatio("TP1", rules || {}, {
     simplifiedExitV2Enabled: simplifiedV2,
     positionSnapshot: snapshot,
-  }) ?? (simplifiedV2 ? 0.5 : 0.375);
+  }) ?? (simplifiedV2 ? 1 : 0.375);
   const tp0Locked = tp0RetiredRuntime
     ? false
     : (Number(ledger.tp0_consumed_ratio || 0) >= Math.max(0, tp0AllowedRatio - 0.03));

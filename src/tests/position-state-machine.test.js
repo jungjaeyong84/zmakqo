@@ -320,8 +320,8 @@ function run() {
     },
     simplifiedExitV2Enabled: true,
   });
-  assert.deepStrictEqual(simplifiedTp0Transition.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
-  assert.strictEqual(simplifiedTp0Transition.primaryTransitionEvent, "TP1_REACHED");
+  assert.deepStrictEqual(simplifiedTp0Transition.transitionEvents, ["TP1_FULL_EXIT"]);
+  assert.strictEqual(simplifiedTp0Transition.primaryTransitionEvent, "TP1_FULL_EXIT");
 
   const simplifiedTp1Transition = resolveCanonicalExitTransitionEvents({
     resolvedStage: "TP1",
@@ -331,8 +331,8 @@ function run() {
     },
     simplifiedExitV2Enabled: true,
   });
-  assert.deepStrictEqual(simplifiedTp1Transition.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
-  assert.strictEqual(simplifiedTp1Transition.primaryTransitionEvent, "TP1_REACHED");
+  assert.deepStrictEqual(simplifiedTp1Transition.transitionEvents, ["TP1_FULL_EXIT"]);
+  assert.strictEqual(simplifiedTp1Transition.primaryTransitionEvent, "TP1_FULL_EXIT");
 
   const simplifiedTrailTransition = resolveCanonicalExitTransitionEvents({
     resolvedStage: "TRAIL",

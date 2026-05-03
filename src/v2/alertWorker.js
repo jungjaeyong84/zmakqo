@@ -21,7 +21,8 @@ function toNumberOrNull(value) {
 
 function isTerminalStage(stage) {
   const normalized = upper(stage);
-  return normalized === "EXITED_SL"
+  return normalized === "EXITED_TP1"
+    || normalized === "EXITED_SL"
     || normalized === "EXITED_TRAIL"
     || normalized === "EXITED_EXTERNAL"
     || normalized === "EXITED_MANUAL";
@@ -46,7 +47,9 @@ function validateTerminalAlertLedger({ positionCycle, transition, projection } =
   );
   if (!(entryQtyAbs > 0)) throw new Error("ALERT_ENTRY_QTY_REQUIRED");
   if (!(finalExitQtyAbs >= 0)) throw new Error("ALERT_TERMINAL_EXIT_QTY_MISSING");
-  const expectedFinalExitQtyAbs = Number((entryQtyAbs - tp1FilledQtyAbs).toFixed(8));
+  const expectedFinalExitQtyAbs = upper(transition && transition.transition_event) === "TP1_FULL_EXIT"
+    ? entryQtyAbs
+    : Number((entryQtyAbs - tp1FilledQtyAbs).toFixed(8));
   if (Math.abs(finalExitQtyAbs - expectedFinalExitQtyAbs) > EPSILON) {
     throw new Error("ALERT_TERMINAL_EXIT_QTY_MISMATCH");
   }
@@ -55,6 +58,7 @@ function validateTerminalAlertLedger({ positionCycle, transition, projection } =
 
 function resolveTransitionLabel(event) {
   const kind = upper(event);
+  if (kind === "TP1_FULL_EXIT") return "TP_FULL";
   if (kind === "TP1_REACHED") return "TP1";
   if (kind === "TRAIL_ACTIVATED") return "TRAIL_START";
   if (kind === "SL_HIT") return "SL";

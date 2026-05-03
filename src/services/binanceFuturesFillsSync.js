@@ -1071,7 +1071,7 @@ function resolveFillSyncAlertCloseRatioInfo({ event, intent, qtyScale, execQtyBa
         source: qtyScaleMode || "SYNCED_QTY_PCT",
       };
     }
-    const tp1ContractQtyRatio = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+    const tp1ContractQtyRatio = resolveTp1RemainingContractQtyRatio(rules, 1);
     if (Number.isFinite(tp1ContractQtyRatio) && tp1ContractQtyRatio > 0) {
       return {
         closeRatio: tp1ContractQtyRatio,
@@ -2122,6 +2122,7 @@ function buildRecentExitHintFromCanonicalTransition(row = null) {
   const canonicalEvent = String(data.canonical_event || data.event || "").trim().toUpperCase();
   const tsMs = Number(data.ts_ms || data.trade_ms || data.created_at_ms || parseSortableTimeMs(data.created_at));
   const event = canonicalEvent
+    || (transitionEvent === "TP1_FULL_EXIT" ? "EXIT_TP_P1_RECOVERED" : null)
     || (transitionEvent === "TP1_REACHED" ? "EXIT_TP_P1_RECOVERED" : null)
     || (transitionEvent === "TRAIL_ACTIVATED" || transitionEvent === "TRAIL_FINAL_EXIT" || transitionEvent === "TRAIL_HIT" ? "EXIT_TRAIL_RECOVERED" : null)
     || transitionEvent;
@@ -2164,7 +2165,7 @@ async function loadRecentCanonicalExitHintForSymbol({
       .filter(Boolean)
       .filter((row) => {
         const ev = normalizeCanonicalTransitionEvent(row.transitionEvent);
-        return ev === "TP1_REACHED" || ev === "TRAIL_ACTIVATED" || ev === "TRAIL_FINAL_EXIT" || ev === "TRAIL_HIT";
+        return ev === "TP1_FULL_EXIT" || ev === "TP1_REACHED" || ev === "TRAIL_ACTIVATED" || ev === "TRAIL_FINAL_EXIT" || ev === "TRAIL_HIT";
       })
       .filter((row) => !Number.isFinite(Number(row.tradeMs)) || Number(row.tradeMs) <= maxTradeMs + 60 * 1000)
       .sort((a, b) => (Number(b.tradeMs) || 0) - (Number(a.tradeMs) || 0));
@@ -2590,7 +2591,7 @@ async function loadExistingV2CanonicalStageForFill({ db = null, env = process.en
     ).trim().toUpperCase()).filter(Boolean));
     if (events.has("SL_HIT")) return "SL";
     if (events.has("TRAIL_HIT") || events.has("TRAIL_FINAL_EXIT")) return "TRAIL";
-    if (events.has("TP1_REACHED")) return "TP1";
+    if (events.has("TP1_FULL_EXIT") || events.has("TP1_REACHED")) return "TP1";
     return null;
   } catch (_) {
     return null;
@@ -2702,7 +2703,7 @@ function buildV2PositionEntryContext({
   const tp1TargetQtyAbs = positiveNumberOrNull(proj.tp1_target_qty_abs)
     || positiveNumberOrNull(runtime.tp1_target_qty_abs)
     || positiveNumberOrNull(runtime.tp1_qty_abs)
-    || (entryQtyAbs != null ? entryQtyAbs * 0.5 : null);
+    || (entryQtyAbs != null ? entryQtyAbs : null);
   const tp1FilledQtyAbs = finiteNumberOrNull(proj.tp1_filled_qty_abs);
   const runnerRemainingQtyAbs = positiveNumberOrNull(proj.runner_remaining_qty_abs);
   const stage = String(proj.stage || cycle.stage || "").trim().toUpperCase();
@@ -3404,7 +3405,7 @@ async function maybeWriteV2ShadowTp1Transition({
   const transitions = Array.isArray(transitionEvents)
     ? transitionEvents.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
     : [];
-  if (!isTpP1Event(event) && !transitions.includes("TP1_REACHED")) {
+  if (!isTpP1Event(event) && !transitions.includes("TP1_REACHED") && !transitions.includes("TP1_FULL_EXIT")) {
     return {
       ok: true,
       written: false,
@@ -3453,7 +3454,7 @@ function resolveLegacyCanonicalTp1WriteGate({
   const transitions = Array.isArray(transitionEvents)
     ? transitionEvents.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean)
     : [];
-  const requiresTp1Gate = isTpP1Event(event) || transitions.includes("TP1_REACHED");
+  const requiresTp1Gate = isTpP1Event(event) || transitions.includes("TP1_REACHED") || transitions.includes("TP1_FULL_EXIT");
   if (!requiresTp1Gate) return { ok: true, reason: "TP1_GATE_NOT_APPLICABLE" };
 
   const result = shadowTp1Write && typeof shadowTp1Write === "object" ? shadowTp1Write : null;
@@ -3819,7 +3820,7 @@ function inferTakeProfitKindFromQtyPct(qtyPct, rules, positionCtx = null) {
     // 5pp absolute floor) to be classified as TP1; smaller fractions are
     // partial-fill noise and must be ignored so that `tp_p1_done` never gets
     // set on a 5% exit.
-    const target = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+    const target = resolveTp1RemainingContractQtyRatio(rules, 1);
     if (!Number.isFinite(target) || target <= 0) return null;
     const tolerance = Math.max(0.05, target * 0.4);
     if (Math.abs(ratio - target) > tolerance) return null;
@@ -3843,7 +3844,7 @@ function inferTakeProfitKindFromPostFillRemainingAwareQty(execQtyBase, positionQ
   const ratio = clamp01(execQty / (remainingQty + execQty));
   if (!Number.isFinite(ratio) || ratio <= 0) return null;
   const tp0Ref = resolveTp0ContractQtyRatio(rules, 0.25);
-  const tp1Ref = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+  const tp1Ref = resolveTp1RemainingContractQtyRatio(rules, 1);
   const candidates = [];
   if (Number.isFinite(tp0Ref) && tp0Ref > 0) {
     candidates.push({ kind: "TP0", dist: Math.abs(ratio - tp0Ref), ref: tp0Ref });

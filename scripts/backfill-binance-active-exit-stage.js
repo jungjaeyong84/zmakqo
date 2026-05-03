@@ -253,9 +253,7 @@ function buildStageReclassificationPlan(summary = {}) {
   const plan = [];
   if (Array.isArray(summary.issues) && summary.issues.includes("LATEST_TP0_SHOULD_BE_TP1")) {
     for (const fillId of buildTp0ToTp1ReclassificationTargets(summary)) {
-      const targetTp1Event = summary.simplified_exit_v2_enabled === true
-        ? "EXIT_TP_P1_2.5P"
-        : "EXIT_TP_P1_1.65P";
+      const targetTp1Event = "EXIT_TP_P1_2.5P";
       plan.push({
         fill_id: fillId,
         from_event_stage: "TP0",

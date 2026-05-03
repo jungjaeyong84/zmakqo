@@ -5,6 +5,7 @@ const {
   V2_DECISION_MODES,
   V2_SIGNAL_SOURCE_MODES,
 } = require("./constants");
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -63,9 +64,9 @@ function buildV2ExecutedEntryFromIntent({
   entryFillGroupId,
   entryPrice,
   entryQtyAbs,
-  stopLossPct = 0.0165,
-  tp1TargetPct = 0.025,
-  tp1QtyRatio = 0.5,
+  stopLossPct = V2_SIMPLE_EXIT_CONTRACT.stop_loss_pct,
+  tp1TargetPct = V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+  tp1QtyRatio = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
   leverage = null,
   protectionLeverageNormalize = undefined,
 } = {}) {

@@ -235,7 +235,7 @@ async function dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop() {
   assert.ok(criteria.expected_edge_gate.expected_net_r_after_cost > 1.4);
 }
 
-async function dogeLowNotionalBlocksWhenPartialTp1CannotMeetExchangeMinimum() {
+async function dogeLowNotionalPassesWhenFullTpCanMeetExchangeMinimum() {
   const result = await buildDiscoveryCanaryLiveRequestFromIntent({
     env: buildEnv({
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "DOGEUSDT:6",
@@ -271,9 +271,8 @@ async function dogeLowNotionalBlocksWhenPartialTp1CannotMeetExchangeMinimum() {
       daily_realized_pnl_quote: 0,
     },
   });
-  assert.strictEqual(result.ok, false);
-  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED");
-  assert.strictEqual(result.entrySizingDecision.reason, "PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
+  assert.strictEqual(result.ok, true);
+  assert.ok(result.body || result.request || result.endpointBody, "approved bridge result must carry a production entry request payload");
 }
 
 async function quarantinedSymbolBlocksBeforeProductionRouteRequest() {
@@ -624,7 +623,7 @@ async function main() {
   await bridgePersistsRouteRequiredLedgersBeforeEndpoint();
   await bridgeDoesNotReissueAlreadyClaimedPermit();
   await dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop();
-  await dogeLowNotionalBlocksWhenPartialTp1CannotMeetExchangeMinimum();
+  await dogeLowNotionalPassesWhenFullTpCanMeetExchangeMinimum();
   await quarantinedSymbolBlocksBeforeProductionRouteRequest();
   await linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied();
   await marketDataQualityBlockFailsClosed();

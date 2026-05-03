@@ -15,6 +15,7 @@ const { canonicalExternalEntryEvent, resolveEntryTimingTier } = require("../util
 // commit 11760325) and migrated here. Production-equivalent across
 // the 4 historical variants — see canonical module header.
 const { normalizeTpP1EventForExchange } = require("../utils/signalTypeNormalization");
+const { isFullTpExitRatio } = require("../v2/exitPolicy");
 
 const channelCache = new Map();
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -289,10 +290,9 @@ function resolveV2Tp1TargetPctForAlert(payload = {}) {
     ? payload.exitRules
     : ((payload.exit_rules && typeof payload.exit_rules === "object") ? payload.exit_rules : null);
   const rulesTp1 = firstFinitePositiveRatio(rules && rules.TP_P1);
-  // In V2 live-write the historical 1.65% TP1 token is a legacy/rescue
-  // signal-engine label, not the protected-entry TP1 contract. Without this
-  // guard operators see "TP1_1.65" even though native protection was placed at
-  // the V2 default 2.5% leveraged-PnL target.
+  // V2 live-write has a single TP contract: full close at 2.5% leveraged PnL.
+  // Historical reducer labels can still appear in old forensic payloads, but
+  // operator-facing contracts must resolve to the protected-entry TP target.
   if (rulesTp1 && Math.abs(rulesTp1 - 0.0165) > 1e-9) return rulesTp1;
   return 0.025;
 }
@@ -300,7 +300,7 @@ function resolveV2Tp1TargetPctForAlert(payload = {}) {
 function buildV2Tp1AlertMeta(payload = {}) {
   const pct = resolveV2Tp1TargetPctForAlert(payload);
   const token = ratioToPctToken(pct) || "2.5";
-  return { token: `TP1_${token}`, label: `익절(TP1) ${token}%` };
+  return { token: `TP_FULL_${token}`, label: `전량익절(TP) ${token}%` };
 }
 
 function isSimplifiedExitV2Enabled(payload = {}) {
@@ -357,6 +357,7 @@ function resolveCanonicalTransitionEventList(payload = {}) {
     "ENTRY_FILL",
     "ENTRY_FILLED",
     "TP0_REACHED",
+    "TP1_FULL_EXIT",
     "TP1_REACHED",
     "SL_HIT",
     "TRAIL_HIT",
@@ -425,7 +426,7 @@ function resolveSimplifiedExitV2MetaFromTransition({
   const canonicalMeta = canonicalExitEvent
     ? parseExitEventMeta(canonicalExitEvent, { simplifiedExitV2Enabled: true })
     : null;
-  if (transition === "TP1_REACHED") {
+  if (transition === "TP1_FULL_EXIT" || transition === "TP1_REACHED") {
     return buildV2Tp1AlertMeta(payload);
   }
   if (transition === "TRAIL_ACTIVATED" || transition === "TRAIL_HIT" || transition === "TRAIL_FINAL_EXIT") {
@@ -455,7 +456,7 @@ function resolveSimplifiedExitV2AlertProjection(payload = {}, rawEvent = null) {
     canonicalExitEvent,
     payload,
   });
-  const stage = primaryTransitionEvent === "TP0_REACHED" || primaryTransitionEvent === "TP1_REACHED"
+  const stage = primaryTransitionEvent === "TP0_REACHED" || primaryTransitionEvent === "TP1_REACHED" || primaryTransitionEvent === "TP1_FULL_EXIT"
     ? "TP1"
     : (
       primaryTransitionEvent === "TRAIL_ACTIVATED" || primaryTransitionEvent === "TRAIL_HIT" || primaryTransitionEvent === "TRAIL_FINAL_EXIT"
@@ -700,6 +701,7 @@ function resolveCanonicalStageLines(payload = {}, resolved = {}) {
 
 function buildExitEventFromMeta(meta = null, fallback = null) {
   const token = String(meta && meta.token || "").trim().toUpperCase();
+  if (token.startsWith("TP_FULL_")) return `EXIT_TP_FULL_${token.slice(8)}P`;
   if (token.startsWith("TP1_")) return `EXIT_TP_P1_${token.slice(4)}P`;
   if (token === "TP1") return "EXIT_TP_P1";
   if (token.startsWith("SL_")) return `EXIT_SL_${token.slice(3)}P`;
@@ -799,15 +801,18 @@ function formatExitRulesCompact(exitRules) {
   if (!exitRules || typeof exitRules !== "object") return null;
   const sl = ratioToPctToken(exitRules.SL, { abs: true });
   const tp1 = ratioToPctToken(exitRules.TP_P1);
+  const fullTpOnly = isFullTpExitRatio(exitRules.TP_P1_QTY)
+    || exitRules.TP_FULL_ONLY === true
+    || String(exitRules.exit_contract_mode || "").trim().toUpperCase() === "TP_FULL_ONLY";
   const trailR = Number(exitRules.TRAIL_R_MULTIPLE);
-  const trail = Number.isFinite(trailR) && trailR > 0
+  const trail = !fullTpOnly && Number.isFinite(trailR) && trailR > 0
     ? `${String(trailR).replace(/\.?0+$/, "")}R`
-    : ratioToPctToken(exitRules.TRAIL_PCT);
-  const runnerMin = ratioToPctToken(exitRules.RUNNER_MIN_PROFIT_PCT);
-  const be = ratioToPctToken(exitRules.BE_PCT);
+    : (!fullTpOnly ? ratioToPctToken(exitRules.TRAIL_PCT) : null);
+  const runnerMin = !fullTpOnly ? ratioToPctToken(exitRules.RUNNER_MIN_PROFIT_PCT) : null;
+  const be = !fullTpOnly && exitRules.BE_ENABLE !== false ? ratioToPctToken(exitRules.BE_PCT) : null;
   const parts = [];
   if (sl) parts.push(`SL_${sl}`);
-  if (tp1) parts.push(`TP1_${tp1}`);
+  if (tp1) parts.push(fullTpOnly ? `TP_FULL_${tp1}` : `TP1_${tp1}`);
   if (trail) parts.push(`TRAIL_${trail}`);
   if (runnerMin) parts.push(`RUNNER_MIN_${runnerMin}`);
   if (be) parts.push(`BE_${be}`);
@@ -819,11 +824,21 @@ function resolveExitRulesForAlertDisplay(payload = {}, resolvedExitMeta = null) 
     ? payload.exitRules
     : ((payload.exit_rules && typeof payload.exit_rules === "object") ? payload.exit_rules : null);
   if (!rules) return null;
-  const explicitSimplifiedV2 = hasExplicitSimplifiedExitV2Flag(payload);
-  if (!explicitSimplifiedV2) return rules;
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta : null;
+  const simplifiedV2 = hasExplicitSimplifiedExitV2Flag(payload)
+    || String(payload.exit_contract_mode || (meta && meta.exit_contract_mode) || "").trim().toUpperCase() === "TP_FULL_ONLY"
+    || String(payload.exitContractMode || (meta && meta.exitContractMode) || "").trim().toUpperCase() === "TP_FULL_ONLY";
+  if (!simplifiedV2) return rules;
   return {
     ...rules,
     TP_P1: resolveV2Tp1TargetPctForAlert(payload),
+    TP_P1_QTY: 1,
+    TP_FULL_ONLY: true,
+    TRAIL_R_MULTIPLE: null,
+    TRAIL_PCT: null,
+    RUNNER_MIN_PROFIT_PCT: null,
+    BE_ENABLE: false,
+    BE_PCT: null,
   };
 }
 
@@ -1114,7 +1129,8 @@ function buildMessage(payload) {
     const exitMeta = resolvedExitMeta.meta;
     const exitLabel = resolveExitLabel(payload, exitMeta);
     const executedContract = String(exitMeta && exitMeta.token || "").trim() || resolveExecutedExitContract(event);
-    const qtyText = fullExit ? "전량" : (formatPercent(closeRatio) || "부분");
+    const tpFullExecuted = String(executedContract || "").trim().toUpperCase().startsWith("TP_FULL_");
+    const qtyText = (fullExit || tpFullExecuted) ? "전량" : (formatPercent(closeRatio) || "부분");
     const reclassification = resolveCanonicalReclassificationLine(resolvedExitMeta);
     const suppressRawTp0V2ReclassTitle = (
       resolvedExitMeta
@@ -1183,7 +1199,9 @@ function buildDegradedExitMessage(payload = {}, { reason } = {}) {
   const unit = exchange.includes("BINANCE") ? "USDT" : "KRW";
   const closeRatio = Number(payload.closeRatio);
   const fullExit = payload.fullExit === true
-    || (Number.isFinite(closeRatio) && closeRatio >= 0.999);
+    || (Number.isFinite(closeRatio) && closeRatio >= 0.999)
+    || event === "EXIT_TP_FULL_2.5P"
+    || event.startsWith("EXIT_TP_FULL_");
   const qtyText = fullExit ? "전량" : (formatPercent(closeRatio) || "부분");
   const direction = resolveDirection({
     intent,
@@ -1244,6 +1262,7 @@ function buildFailureMessage(payload) {
   const exitMeta = resolvedExitMeta.meta;
   const exitLabel = resolveExitLabel(payload, exitMeta);
   const executedContract = String(exitMeta && exitMeta.token || "").trim() || resolveExecutedExitContract(event);
+  const tpFullExecuted = String(executedContract || "").trim().toUpperCase().startsWith("TP_FULL_");
   const closeRatio = Number(payload.closeRatio);
   const qtyPct = Number(payload.qtyPct);
   const execPrice = Number(payload.execPrice);
@@ -1260,7 +1279,7 @@ function buildFailureMessage(payload) {
   const directionKo = direction === "SHORT" ? "숏" : (direction === "LONG" ? "롱" : null);
   const reason = String(payload.reason || payload.cancelReason || payload.statusReason || "LIVE_FAILED").trim() || "LIVE_FAILED";
   const note = String(payload.note || payload.cancelNote || payload.error || "").trim();
-  const qtyLabel = payload.fullExit === true
+  const qtyLabel = payload.fullExit === true || tpFullExecuted
     ? "전량"
     : (formatPercent(closeRatio) || formatPercent(qtyPct) || null);
 

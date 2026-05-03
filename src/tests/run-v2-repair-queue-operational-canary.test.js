@@ -19,7 +19,7 @@ async function scriptWritesOperationalCanaryArtifact() {
     assert.strictEqual(output.ok, true);
     assert.strictEqual(output.reason, "V2_REPAIR_QUEUE_OPERATIONAL_CANARY_HEALTHY");
     assert.strictEqual(output.output_filename, "v2_repair_queue_operational_canary_latest.json");
-    assert.strictEqual(output.selected_issue_code, "TRAIL_STOP_MISSING");
+    assert.strictEqual(output.selected_issue_code, "NATIVE_REFRESH_UNHEALTHY");
     assert.ok(fs.existsSync(filePath));
     const persisted = JSON.parse(fs.readFileSync(filePath, "utf8"));
     assert.strictEqual(persisted.ok, true);

@@ -38,26 +38,29 @@ function buildRepairQueueOperationalCanaryFixture({
     exit_rules_override: {
       SL: 0.0165,
       TP_P1: 0.025,
-      TP_P1_QTY: 0.5,
-      RUNNER_MIN_PROFIT_PCT: 0.0015,
+      TP_P1_QTY: 1,
+      BE_ENABLE: false,
+      BE_PCT: null,
+      TRAIL_R_MULTIPLE: null,
+      RUNNER_MIN_PROFIT_PCT: null,
     },
   };
   const positionCycleId = positionCycle.position_cycle_id;
   const projection = buildExitRuntimeProjectionDoc({
     positionCycleId,
-    stage: "TRAIL_ACTIVE",
-    tp1Done: true,
-    trailActive: true,
+    stage: "PRE_TP1",
+    tp1Done: false,
+    trailActive: false,
     entryQtyAbs: 1,
-    tp1TargetPrice: 2542,
-    tp1TargetQtyAbs: 0.5,
-    tp1FilledQtyAbs: 0.5,
-    runnerRemainingQtyAbs: 0.5,
-    runnerFloorStop: 2425,
-    trailStopByR: 2445,
-    chosenStopSource: "TRAIL",
-    chosenStopPrice: 2445,
-    finalEffectiveStop: 2445,
+    tp1TargetPrice: 2562.5,
+    tp1TargetQtyAbs: 1,
+    tp1FilledQtyAbs: 0,
+    runnerRemainingQtyAbs: 0,
+    runnerFloorStop: null,
+    trailStopByR: null,
+    chosenStopSource: "SL",
+    chosenStopPrice: 2458.75,
+    finalEffectiveStop: 2458.75,
     nativeStopPrice: null,
     healthStatus: "DEGRADED_REPAIRABLE",
   });
@@ -67,8 +70,8 @@ function buildRepairQueueOperationalCanaryFixture({
       slOrderId: "STOP__OLD_OPERATIONAL_CANARY",
       tp1OrderId: "TP1__OPERATIONAL_CANARY_OK",
       nativeStopPrice: null,
-      nativeTp1Price: 2542,
-      nativeRefreshStatus: "OK",
+      nativeTp1Price: 2562.5,
+      nativeRefreshStatus: "ERROR",
       lastRefreshAt: recordedAt,
       lastGapMs: 1000,
       healthStatus: "DEGRADED_REPAIRABLE",
@@ -97,13 +100,13 @@ function buildRepairQueueOperationalCanaryFixture({
     exchangeState,
     createdAt: recordedAt,
   });
-  const selectedRepairRequest = watchdog.repairRequests.find((row) => row.issue_code === "TRAIL_STOP_MISSING");
+  const selectedRepairRequest = watchdog.repairRequests.find((row) => row.issue_code === "NATIVE_REFRESH_UNHEALTHY");
   if (!selectedRepairRequest) {
-    throw new Error("OPERATIONAL_CANARY_TRAIL_STOP_REPAIR_REQUEST_REQUIRED");
+    throw new Error("OPERATIONAL_CANARY_NATIVE_REFRESH_REPAIR_REQUEST_REQUIRED");
   }
   return Object.freeze({
     positionCycleId,
-    expectedStopPrice: 2445,
+    expectedStopPrice: 2458.75,
     watchdog,
     selectedRepairRequest,
     docsByCollectionKey: Object.freeze({
@@ -137,11 +140,11 @@ function evaluateOperationalCanaryResult({
   const issueCodes = Array.isArray(watchdog.issueCodes) ? watchdog.issueCodes : [];
   const repairRequests = Array.isArray(watchdog.repairRequests) ? watchdog.repairRequests : [];
   const invariants = Object.freeze({
-    watchdog_detected_trail_stop_missing: issueCodes.includes("TRAIL_STOP_MISSING"),
+    watchdog_detected_native_refresh_unhealthy: issueCodes.includes("NATIVE_REFRESH_UNHEALTHY"),
     watchdog_generated_repair_requests: repairRequests.length >= 1,
     selected_request_generated_by_watchdog: repairRequests.some((row) => (
       row.exit_repair_request_id === selected.exit_repair_request_id &&
-      row.issue_code === "TRAIL_STOP_MISSING"
+      row.issue_code === "NATIVE_REFRESH_UNHEALTHY"
     )),
     service_healthy: serviceResult && serviceResult.ok === true && serviceResult.status === "HEALTHY",
     exactly_one_repair_requested: Number(summary.requested_repair_n) === 1,

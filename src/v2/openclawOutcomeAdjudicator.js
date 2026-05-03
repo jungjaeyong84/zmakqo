@@ -122,7 +122,7 @@ function classifyOutcome({
   if (protectionOk === false) {
     return Object.freeze({ label: "PROTECTION_ERROR", family: "SYSTEM" });
   }
-  if (event === "TP1_REACHED" || event === "TRAIL_HIT" || (Number.isFinite(pnl) && pnl > 0)) {
+  if (event === "TP1_FULL_EXIT" || event === "TP1_REACHED" || event === "TRAIL_HIT" || (Number.isFinite(pnl) && pnl > 0)) {
     return Object.freeze({ label: "MODEL_WIN", family: "MODEL" });
   }
   if (event === "SL_HIT" || (Number.isFinite(pnl) && pnl < 0)) {

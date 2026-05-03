@@ -1,5 +1,7 @@
 "use strict";
 
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
+
 const {
   V2_NAMESPACE,
   V2_EXCHANGE,
@@ -49,8 +51,12 @@ function resolveV2RuntimeConfig(env = process.env) {
     collections,
     v1FreezeRequired: true,
     defaultProtectionModel: Object.freeze({
-      tp1QtyRatio: 0.5,
-      tp1TargetPct: 0.025,
+      tp1QtyRatio: V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
+      tp1TargetPct: V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+      stopLossPct: V2_SIMPLE_EXIT_CONTRACT.stop_loss_pct,
+      runnerEnabled: V2_SIMPLE_EXIT_CONTRACT.runner_enabled,
+      trailEnabled: V2_SIMPLE_EXIT_CONTRACT.trail_enabled,
+      beEnabled: V2_SIMPLE_EXIT_CONTRACT.be_enabled,
     }),
     defaultComparisonThresholds: Object.freeze({
       qualityScoreAbsDeltaWarn: 0.15,

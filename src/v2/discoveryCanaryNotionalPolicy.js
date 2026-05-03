@@ -1,16 +1,12 @@
 "use strict";
 
-// 2026-04-27 — bumped per-symbol budget from 11~42 USDT to ≥120 USDT so that
-// the TP1 50% partial close (now ≥60 USDT, +20% margin over Binance's 50
-// USDT MIN_NOTIONAL filter) clears the filter even after qty stepSize
-// flooring + price drift. Below the bump, partial TP1 orders were silently
-// rejected on small symbols (LINKUSDT seen at 41 USDT entry → 20.4 USDT
-// TP1 partial → MIN_NOTIONAL fail), leaving the position protected only by
-// SL with no automated profit-taking. The first bump to 100 USDT left
-// margin=0 (TP1 partial = exactly 50 USDT) which a single rounding step
-// could push under the threshold; 120 USDT carries enough headroom for
-// stepSize/price-drift jitter. BTCUSDT stays at 155 since it already
-// cleared the threshold and the holdout budget is meaningful for it.
+// 2026-04-27 — bumped per-symbol budget from 11~42 USDT to >=120 USDT because
+// Binance's 50 USDT MIN_NOTIONAL filter made partial TP1 orders unreliable on
+// small symbols after stepSize flooring and price drift. Current V2 no longer
+// uses partial TP1: the position exits fully at TP_FULL_2.5, but the larger
+// notional still keeps the native take-profit order above exchange filters.
+// BTCUSDT stays at 155 since it already cleared the threshold and the holdout
+// budget is meaningful for it.
 const DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP = Object.freeze({
   BTCUSDT: 155,
   ETHUSDT: 120,

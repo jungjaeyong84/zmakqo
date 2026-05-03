@@ -46,7 +46,7 @@ async function firestoreBackedCanarySeedsThenConsumesPendingWatchdogRequest() {
   assert.strictEqual(output.firestore_write_performed, true);
   assert.strictEqual(output.exchange_write_performed, false);
   assert.strictEqual(output.seed_write_n, 4);
-  assert.strictEqual(output.selected_issue_code, "TRAIL_STOP_MISSING");
+  assert.strictEqual(output.selected_issue_code, "NATIVE_REFRESH_UNHEALTHY");
   assert.strictEqual(output.summary.requested_repair_n, 1);
   assert.strictEqual(output.summary.delegated_repair_n, 1);
   assert.strictEqual(output.summary.completion_success_n, 1);

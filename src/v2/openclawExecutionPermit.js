@@ -1,6 +1,7 @@
 "use strict";
 
 const { buildOpenClawExecutionPermitDoc } = require("./contracts");
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
 const { putV2Doc } = require("./storage");
 
 function trimOrNull(value) {
@@ -66,9 +67,13 @@ function issueOpenClawExecutionPermit({
     },
     riskBudget: riskBudget || {},
     exitContract: exitContract || {
-      tp1_qty_ratio: 0.5,
-      tp1_target_pct: 0.025,
-      tp0_supported: false,
+      tp1_qty_ratio: V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
+      tp1_target_pct: V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+      tp1_exit_mode: V2_SIMPLE_EXIT_CONTRACT.tp1_exit_mode,
+      tp0_supported: V2_SIMPLE_EXIT_CONTRACT.tp0_supported,
+      runner_enabled: V2_SIMPLE_EXIT_CONTRACT.runner_enabled,
+      trail_enabled: V2_SIMPLE_EXIT_CONTRACT.trail_enabled,
+      be_enabled: V2_SIMPLE_EXIT_CONTRACT.be_enabled,
     },
     approvalReason,
     issuedAt: issued,

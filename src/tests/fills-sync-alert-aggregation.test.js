@@ -13,14 +13,14 @@ async function run() {
     position: {
       meta: {
         openclaw_market_regime_cohort: "RESCUE",
-        exit_rules_override: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
+        exit_rules_override: { SL: -0.0165, TP_P1: 0.025, TP_P1_QTY: 1, TRAIL_R_MULTIPLE: null, RUNNER_MIN_PROFIT_PCT: null, BE_ENABLE: false, BE_PCT: null },
       },
     },
-  }, { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 });
-  assert.ok(approxEqual(rescueExitRules.TP_P1, 0.0165), "rescue cohort alert must use current TP1");
-  assert.ok(approxEqual(rescueExitRules.TRAIL_R_MULTIPLE, 0.6), "rescue cohort alert must use current trailing R");
-  assert.ok(approxEqual(rescueExitRules.RUNNER_MIN_PROFIT_PCT, 0.0165), "rescue cohort alert must honor minimum Binance runner floor");
-  assert.ok(approxEqual(rescueExitRules.BE_PCT, 0.0015), "rescue cohort alert must use current BE");
+  }, { SL: -0.0165, TP_P1: 0.025, TP_P1_QTY: 1, TRAIL_R_MULTIPLE: null, RUNNER_MIN_PROFIT_PCT: null, BE_ENABLE: false, BE_PCT: null });
+  assert.ok(approxEqual(rescueExitRules.TP_P1, 0.025), "rescue cohort alert must use current V2 full-TP target");
+  assert.strictEqual(rescueExitRules.TRAIL_R_MULTIPLE, null, "V2 full-TP contract must not re-enable trailing R");
+  assert.strictEqual(rescueExitRules.RUNNER_MIN_PROFIT_PCT, null, "V2 full-TP contract must not re-enable runner floor");
+  assert.strictEqual(rescueExitRules.BE_PCT, null, "V2 full-TP contract must not re-enable BE");
   assert.strictEqual(
     fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P1_2.5P", rescueExitRules),
     "EXIT_TP_P1_2.5P",
@@ -590,8 +590,8 @@ async function run() {
 
   const msg = alertTest.buildMessage(merged.payload);
   assert.ok(msg, "aggregated TP1 alert message must be buildable");
-  assert.strictEqual(msg.title, "XRPUSDT TP1_2.5 50% 청산");
-  assert.ok(msg.body.includes("종류: 익절(TP1) 2.5%"), "TP1 label must be preserved");
+  assert.strictEqual(msg.title, "XRPUSDT 정본재분류 TP1_2.5->TP_FULL_2.5 전량 청산");
+  assert.ok(msg.body.includes("종류: 전량익절(TP) 2.5%"), "full TP label must be preserved");
   assert.ok(msg.body.includes("청산규모: 402.37 USDT"), "aggregated notional must be visible");
 
   const repeatedContractRatioBatches = new Map();
@@ -787,7 +787,7 @@ async function run() {
     exitRules: rescueExitRules,
   });
   assert.ok(rescueTrailMsg.body.includes("실행계약: TRAIL"), "trail alert must show executed contract separately");
-  assert.ok(rescueTrailMsg.body.includes("전략계약: SL_1.65 / TP1_1.65 / TRAIL_0.6R / RUNNER_MIN_1.65 / BE_0.15"), "trail alert must reflect current rescue cohort rules under strategy label");
+  assert.ok(rescueTrailMsg.body.includes("전략계약: SL_1.65 / TP_FULL_2.5"), "trail alert must reflect current V2 full-TP rules under strategy label");
 
   const sameOrderAsRecentTp1 = fillsSyncTest.isSameOrderAsRecentTp1(
     { orderId: 14608292413, clientOrderId: "dbj_same_order" },

@@ -1,5 +1,7 @@
 "use strict";
 
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
+
 // 2026-04-27 Stage A — V2 protection plan 의 SL/TP1 가격이 V1 의 leverage 정규화
 // (`pnlPct/lev`) 와 어긋나 prod 에서 실제 PnL 손절/익절 기준이 leverage 만큼
 // 더 멀리 잡혔던 회귀를 회복하기 위한 격리 경로.
@@ -85,9 +87,9 @@ function buildInitialProtectionPlan({
   positionSide,
   entryPrice,
   entryQtyAbs,
-  stopLossPct = 0.0165,
-  tp1TargetPct = 0.025,
-  tp1QtyRatio = 0.5,
+  stopLossPct = V2_SIMPLE_EXIT_CONTRACT.stop_loss_pct,
+  tp1TargetPct = V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+  tp1QtyRatio = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
   exchange = "BINANCEFUT",
   leverage = null,
   protectionLeverageNormalize = isProtectionLeverageNormalizeEnabled(),
@@ -96,12 +98,12 @@ function buildInitialProtectionPlan({
   const side = upper(positionSide);
   const qty = toNumber(entryQtyAbs);
   const entry = toNumber(entryPrice);
-  const tpQtyRatioClamped = clampRatio(tp1QtyRatio, 0.5);
+  const tpQtyRatioClamped = clampRatio(tp1QtyRatio, V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio);
   if (!sym) throw new Error("SYMBOL_REQUIRED");
   if (side !== "LONG" && side !== "SHORT") throw new Error("POSITION_SIDE_REQUIRED");
   if (!(Number.isFinite(qty) && qty > 0)) throw new Error("ENTRY_QTY_ABS_REQUIRED");
   if (!(Number.isFinite(entry) && entry > 0)) throw new Error("ENTRY_PRICE_REQUIRED");
-  if (tpQtyRatioClamped <= 0 || tpQtyRatioClamped >= 1) throw new Error("TP1_QTY_RATIO_INVALID");
+  if (tpQtyRatioClamped <= 0 || tpQtyRatioClamped > 1) throw new Error("TP1_QTY_RATIO_INVALID");
 
   const closeSide = side === "LONG" ? "SELL" : "BUY";
   const tp1QtyAbs = Number((qty * tpQtyRatioClamped).toFixed(8));

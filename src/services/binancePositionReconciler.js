@@ -272,7 +272,7 @@ function recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
     stopLossPct: Math.abs(toNum(rules.SL)),
     floorLockPct: toNum(rules.RUNNER_MIN_PROFIT_PCT),
     trailPct: toNum(rules.TRAIL_PCT),
-    tp1QtyRatio: resolveConfiguredTp1QtyRatio(baseMeta, 0.5),
+    tp1QtyRatio: resolveConfiguredTp1QtyRatio(baseMeta, 1),
     tp1TargetPct: toNum(rules.TP_P1),
     legacyCanonicalStage: baseMeta.canonical_exit_stage ?? baseMeta.authoritative_exit_stage ?? null,
     legacyTp0Done: false,
@@ -510,7 +510,7 @@ function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase, meta = {
     };
   }
   if (simplifiedExitV2Enabled) {
-    const configuredTp1QtyRatio = resolveConfiguredTp1QtyRatio(meta, 0.5);
+    const configuredTp1QtyRatio = resolveConfiguredTp1QtyRatio(meta, 1);
     const [tp1] = [...candidates].sort((a, b) => {
       const aDist = Number.isFinite(a.qtyRatio) && Number.isFinite(configuredTp1QtyRatio)
         ? Math.abs(a.qtyRatio - configuredTp1QtyRatio)

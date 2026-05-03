@@ -2,7 +2,7 @@
 
 const { buildRepairRequestDoc } = require("./contracts");
 
-const TERMINAL_STAGES = new Set(["EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
+const TERMINAL_STAGES = new Set(["EXITED_TP1", "EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
 
 function trimOrNull(value) {
   const text = String(value || "").trim();

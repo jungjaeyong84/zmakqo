@@ -182,6 +182,7 @@ function run() {
     closePrice: 103,
     tp1FilledQtyAbs: 0.5,
     tp1Done: true,
+    tp1QtyRatio: 0.5,
     trailHighPrice: 103,
     currentStopPrice: 101.2,
     stopLossPct: 0.00825,

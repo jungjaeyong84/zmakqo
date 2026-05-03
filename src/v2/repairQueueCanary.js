@@ -142,26 +142,29 @@ function buildRepairQueueCanaryFixture({
     exit_rules_override: {
       SL: 0.0165,
       TP_P1: 0.025,
-      TP_P1_QTY: 0.5,
-      RUNNER_MIN_PROFIT_PCT: 0.0015,
+      TP_P1_QTY: 1,
+      BE_ENABLE: false,
+      BE_PCT: null,
+      TRAIL_R_MULTIPLE: null,
+      RUNNER_MIN_PROFIT_PCT: null,
     },
   };
   const positionCycleId = positionCycle.position_cycle_id;
   const projection = buildExitRuntimeProjectionDoc({
     positionCycleId,
-    stage: "TRAIL_ACTIVE",
-    tp1Done: true,
-    trailActive: true,
+    stage: "PRE_TP1",
+    tp1Done: false,
+    trailActive: false,
     entryQtyAbs: 1,
-    tp1TargetPrice: 2542,
-    tp1TargetQtyAbs: 0.5,
-    tp1FilledQtyAbs: 0.5,
-    runnerRemainingQtyAbs: 0.5,
-    runnerFloorStop: 2425,
-    trailStopByR: 2445,
-    chosenStopSource: "TRAIL",
-    chosenStopPrice: 2445,
-    finalEffectiveStop: 2445,
+    tp1TargetPrice: 2562.5,
+    tp1TargetQtyAbs: 1,
+    tp1FilledQtyAbs: 0,
+    runnerRemainingQtyAbs: 0,
+    runnerFloorStop: null,
+    trailStopByR: null,
+    chosenStopSource: "SL",
+    chosenStopPrice: 2458.75,
+    finalEffectiveStop: 2458.75,
     nativeStopPrice: null,
     healthStatus: "DEGRADED_REPAIRABLE",
   });
@@ -171,7 +174,7 @@ function buildRepairQueueCanaryFixture({
       slOrderId: "STOP__OLD_CANARY",
       tp1OrderId: "TP1__CANARY_OK",
       nativeStopPrice: null,
-      nativeTp1Price: 2542,
+      nativeTp1Price: 2562.5,
       nativeRefreshStatus: "ERROR",
       lastRefreshAt: recordedAt,
       lastGapMs: 1000,
@@ -179,7 +182,7 @@ function buildRepairQueueCanaryFixture({
       slOrderStatus: "FAILED",
       tp1OrderStatus: "PLACED",
       runtimeWriteReason: "REFRESH_STOP_FAILED",
-      placementIssueCodes: ["TRAIL_STOP_MISSING", "UNPROTECTED_ACTIVE_POSITION"],
+      placementIssueCodes: ["NATIVE_REFRESH_UNHEALTHY", "UNPROTECTED_ACTIVE_POSITION"],
       placementAttemptId: "PRATT__OLD_CANARY",
       placementRetryId: "OLD",
       placementStartedAt: recordedAt,
@@ -192,13 +195,13 @@ function buildRepairQueueCanaryFixture({
   };
   const repairRequest = buildRepairRequestDoc({
     positionCycleId,
-    stage: "TRAIL_ACTIVE",
-    issueCode: "TRAIL_STOP_MISSING",
+    stage: "PRE_TP1",
+    issueCode: "NATIVE_REFRESH_UNHEALTHY",
     healthStatus: "DEGRADED_REPAIRABLE",
     requestedAction: "REFRESH_NATIVE_STOP",
     detail: {
       canary_fixture: true,
-      expected_stop_price: 2445,
+      expected_stop_price: 2458.75,
     },
     createdAt: recordedAt,
   });
@@ -218,7 +221,7 @@ function buildRepairQueueCanaryFixture({
   };
   return Object.freeze({
     positionCycleId,
-    expectedStopPrice: 2445,
+    expectedStopPrice: 2458.75,
     docsByCollectionKey,
   });
 }

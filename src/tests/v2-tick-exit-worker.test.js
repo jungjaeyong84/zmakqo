@@ -19,9 +19,14 @@ function buildTrailActiveProjection() {
     entryPrice: 2000,
     entryQtyAbs: 1,
   });
+  const legacyPartialProjection = Object.freeze({
+    ...base.projection,
+    tp1_target_qty_abs: 0.5,
+    runner_remaining_qty_abs: 1,
+  });
   const tp1 = reduceCanonicalExit({
     positionCycle: base.positionCycle,
-    projection: base.projection,
+    projection: legacyPartialProjection,
     evidence: {
       kind: "TP1_CONFIRMED",
       sourceFillId: "FILL__TP1__1",

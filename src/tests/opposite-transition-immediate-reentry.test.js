@@ -171,7 +171,7 @@ async function run() {
     TP_P0: 0.008,
     TP_P0_QTY: 0.25,
     TP_P1: 0.025,
-    TP_P1_RESCUE_COHORT: 0.0165,
+    TP_P1_RESCUE_COHORT: 0.025,
     TP_P1_MIXED_COHORT: 0.025,
     SL: -0.0165,
     BE_ENABLE: true,
@@ -194,12 +194,13 @@ async function run() {
     features: {},
   });
   assert.strictEqual(rescueAdjusted.tp1LadderState.profile, "RESCUE");
-  assert.strictEqual(rescueAdjusted.appliedExitRules.TP_P0, 0.008);
-  assert.strictEqual(rescueAdjusted.appliedExitRules.TP_P1, 0.0165);
-  assert.strictEqual(rescueAdjusted.appliedExitRules.BE_PCT, 0.0015);
-  assert.strictEqual(rescueAdjusted.appliedExitRules.TRAIL_R_MULTIPLE, 0.6);
-  assert.strictEqual(rescueAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
-  assert.strictEqual(rescueAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT, 0.0165);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.TP_P0, 0);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.TP_P0_QTY, 0);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.TP_P1, 0.025);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.BE_PCT, null);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.TRAIL_R_MULTIPLE, null);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, null);
+  assert.strictEqual(rescueAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT, null);
 
   const binanceDefaultAdjusted = __test.applyEntryExitRuleRuntimeAdjustments({
     exchange: "BINANCEFUT",
@@ -211,8 +212,9 @@ async function run() {
     },
   });
   assert.strictEqual(binanceDefaultAdjusted.tp1LadderState.profile, "RESCUE");
-  assert.strictEqual(binanceDefaultAdjusted.appliedExitRules.TP_P1, 0.0165);
-  assert.strictEqual(binanceDefaultAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, 0.0165);
+  assert.strictEqual(binanceDefaultAdjusted.appliedExitRules.TP_P1, 0.025);
+  assert.strictEqual(binanceDefaultAdjusted.appliedExitRules.TP_P1_QTY, 1);
+  assert.strictEqual(binanceDefaultAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, null);
 
   const explicitExitPolicyAdjusted = __test.applyEntryExitRuleRuntimeAdjustments({
     exchange: "BINANCEFUT",
@@ -228,28 +230,29 @@ async function run() {
     },
   });
   assert.strictEqual(explicitExitPolicyAdjusted.tp1LadderState, null);
-  assert.ok(Math.abs(explicitExitPolicyAdjusted.appliedExitRules.TP_P1 - 0.022) < 1e-12);
-  assert.ok(Math.abs(explicitExitPolicyAdjusted.appliedExitRules.SL - (-0.011)) < 1e-12);
-  assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.BE_PCT, 0.002);
-  assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, 0.022);
-  assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.TRAIL_R_MULTIPLE, 0.7);
+  assert.ok(Math.abs(explicitExitPolicyAdjusted.appliedExitRules.TP_P1 - 0.025) < 1e-12);
+  assert.ok(Math.abs(explicitExitPolicyAdjusted.appliedExitRules.SL - (-0.0165)) < 1e-12);
+  assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.BE_PCT, null);
+  assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.RUNNER_MIN_PROFIT_PCT, null);
+  assert.strictEqual(explicitExitPolicyAdjusted.appliedExitRules.TRAIL_R_MULTIPLE, null);
 
   assert.strictEqual(
     __test.shouldRepairActiveExitRuntimeState({
       positionSide: "LONG",
       entryPrice: 1.3738,
       posMeta: {
+        simplified_exit_v2_enabled: true,
         native_protection_side: "LONG",
         native_protection_entry_price: 1.3738,
         exit_rules_override: {
-          TP_P0: 0.008,
-          TP_P0_QTY: 0.25,
-          TP_P1: 0.0165,
-          TP_P1_QTY: 0.5,
+          TP_P0: 0,
+          TP_P0_QTY: 0,
+          TP_P1: 0.025,
+          TP_P1_QTY: 1,
           SL: -0.0165,
-          BE_ENABLE: true,
-          BE_PCT: 0.0015,
-          TRAIL_R_MULTIPLE: 0.6,
+          BE_ENABLE: false,
+          BE_PCT: null,
+          TRAIL_R_MULTIPLE: null,
         },
       },
     }),
@@ -285,11 +288,11 @@ async function run() {
       exit_profile_reason: "MANUAL_BASE_PROFILE",
       exit_rules_override: {
         TP_P1: 0.025,
-        TP_P1_QTY: 0.5,
+        TP_P1_QTY: 1,
         SL: -0.0165,
-        BE_ENABLE: true,
-        BE_PCT: 0.0025,
-        TRAIL_PCT: 0.01,
+        BE_ENABLE: false,
+        BE_PCT: null,
+        TRAIL_PCT: null,
       },
       tp1_ladder_profile: "RESCUE",
       tp1_ladder_stage: 0,
@@ -299,7 +302,11 @@ async function run() {
   assert.strictEqual(repairedMeta.exit_profile_reason, "ACTIVE_POSITION_RUNTIME_REPAIR");
   assert.strictEqual(repairedMeta.exit_rules_override.TP_P0, 0, "runtime repair must keep TP0 retired");
   assert.strictEqual(repairedMeta.exit_rules_override.TP_P0_QTY, 0);
-  assert.strictEqual(repairedMeta.exit_rules_override.TP_P1, 0.0165);
+  assert.strictEqual(repairedMeta.exit_rules_override.TP_P1, 0.025);
+  assert.strictEqual(repairedMeta.exit_rules_override.TP_P1_QTY, 1);
+  assert.strictEqual(repairedMeta.exit_rules_override.BE_ENABLE, false);
+  assert.strictEqual(repairedMeta.exit_rules_override.BE_PCT, null);
+  assert.strictEqual(repairedMeta.exit_rules_override.TRAIL_R_MULTIPLE, null);
 
   const invalidViolations = __test.collectCriticalExitRuleViolations({
     rules: {
@@ -327,7 +334,7 @@ async function run() {
       TP_P0: 0,
       TP_P0_QTY: 0,
       TP_P1: 0.025,
-      TP_P1_QTY: 0.5,
+      TP_P1_QTY: 1,
       SL: -0.0165,
       BE_ENABLE: true,
       BE_PCT: 0.0025,
@@ -367,13 +374,12 @@ async function run() {
   });
   assert.strictEqual(fullyRepairedMeta.exit_rules_override.TP_P0, 0, "repair must keep TP0 retired");
   assert.strictEqual(fullyRepairedMeta.exit_rules_override.TP_P0_QTY, 0, "repair must keep TP0 qty retired");
-  assert.ok(fullyRepairedMeta.exit_rules_override.TP_P1 > 0, "repair must restore TP1");
-  assert.ok(fullyRepairedMeta.exit_rules_override.SL < 0, "repair must restore negative SL");
-  assert.ok(fullyRepairedMeta.exit_rules_override.BE_PCT >= 0, "repair must restore BE");
-  assert.ok(
-    fullyRepairedMeta.exit_rules_override.TRAIL_PCT > 0 || fullyRepairedMeta.exit_rules_override.TRAIL_R_MULTIPLE > 0,
-    "repair must restore trailing rule"
-  );
+  assert.strictEqual(fullyRepairedMeta.exit_rules_override.TP_P1, 0.025, "repair must restore V2 full TP");
+  assert.strictEqual(fullyRepairedMeta.exit_rules_override.TP_P1_QTY, 1, "repair must restore full close ratio");
+  assert.strictEqual(fullyRepairedMeta.exit_rules_override.SL, -0.0165, "repair must restore V2 SL");
+  assert.strictEqual(fullyRepairedMeta.exit_rules_override.BE_ENABLE, false, "repair must keep BE disabled");
+  assert.strictEqual(fullyRepairedMeta.exit_rules_override.BE_PCT, null, "repair must not restore BE");
+  assert.strictEqual(fullyRepairedMeta.exit_rules_override.TRAIL_R_MULTIPLE, null, "repair must not restore trailing rule");
 
   process.env.SIMPLIFIED_EXIT_V2_ENABLED = "1";
   const simplifiedFullyRepairedMeta = await __test.repairActivePositionExitRuntimeState({

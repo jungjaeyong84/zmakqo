@@ -2,6 +2,7 @@
 
 const { buildV2ExecutedEntryFromIntent, validateExecutableEntryIntent } = require("./entryExecutor");
 const { runV2EntryProtectionActivation } = require("./entryProtectionRunner");
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -265,9 +266,9 @@ async function runV2EntrySubmitter({
   protectionTransports,
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
-  stopLossPct = 0.0165,
-  tp1TargetPct = 0.025,
-  tp1QtyRatio = 0.5,
+  stopLossPct = V2_SIMPLE_EXIT_CONTRACT.stop_loss_pct,
+  tp1TargetPct = V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+  tp1QtyRatio = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
   leverage = null,
   protectionLeverageNormalize = undefined,
   runProtectionActivation = runV2EntryProtectionActivation,

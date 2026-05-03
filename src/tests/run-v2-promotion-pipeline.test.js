@@ -902,7 +902,7 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
     decision_mode: "SHADOW",
     created_at: "2026-04-20T00:00:00.000Z",
   };
-  const nonTerminalTransitions = episode.transitions.slice(0, 2);
+  const nonTerminalTransitions = [];
   const store = {
     [`${PREFIX}position_cycles_v2`]: {
       [episode.positionCycle.position_cycle_id]: {
@@ -914,9 +914,10 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
     [`${PREFIX}exit_runtime_projection_v2`]: {
       [episode.projection.exit_runtime_projection_id]: {
         ...episode.projection,
-        stage: "TRAIL_ACTIVE",
-        trail_active: true,
-        health_status: "HEALTHY",
+        stage: "EXITED_TP1",
+        tp1_done: true,
+        trail_active: false,
+        health_status: "TERMINAL_EXITED",
       },
     },
     [`${PREFIX}protection_runtime_v2`]: {
@@ -934,7 +935,7 @@ function buildExitRuntimeCanaryHistoryDb(rows) {
       nonTerminalTransitions.map((row, index) => [`t${index}`, row])
     ),
     [`${PREFIX}trade_alert_outbox_v2`]: Object.fromEntries(
-      episode.outboxes.slice(0, 2).map((row, index) => [`o${index}`, row])
+      episode.outboxes.slice(0, 0).map((row, index) => [`o${index}`, row])
     ),
     [`${PREFIX}exit_repair_requests_v2`]: {},
     [`${PREFIX}signal_intents_v2`]: {

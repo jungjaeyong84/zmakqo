@@ -25,8 +25,8 @@ const {
   assert.deepStrictEqual(__test.resolveCloseFraction(["SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
   assert.deepStrictEqual(__test.resolveCloseFraction(["TRAIL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
   assert.deepStrictEqual(__test.resolveCloseFraction(["BE"]), { fraction: 0, reason: "BE_NATIVE_STOP_MANAGEMENT_ONLY" });
-  assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1"]), { fraction: 0.5, reason: "PARTIAL_CLOSE_TP1" });
-  assert.deepStrictEqual(__test.resolveCloseFraction(["TP_C"]), { fraction: 0.5, reason: "PARTIAL_CLOSE_TP1" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1"]), { fraction: 1.0, reason: "FULL_CLOSE_TP1" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["TP_C"]), { fraction: 1.0, reason: "FULL_CLOSE_TP1" });
   // Both fire — full close (safer)
   assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1", "SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
   assert.deepStrictEqual(__test.resolveCloseFraction(["BE", "TRAIL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
@@ -73,7 +73,7 @@ const {
   assert.ok(out.idempotencyKey.includes("BTCUSDT"));
 })();
 
-(function testPartialCloseTP1() {
+(function testFullCloseTP1() {
   const out = buildV2DirectExitDispatch({
     triggeredKinds: ["TP_P1"],
     positionSide: "SHORT",
@@ -84,13 +84,13 @@ const {
   });
   assert.strictEqual(out.dispatch, true);
   assert.strictEqual(out.closeSide, "BUY");
-  assert.strictEqual(out.fraction, 0.5);
-  assert.strictEqual(out.qty, 0.5);
+  assert.strictEqual(out.fraction, 1.0);
+  assert.strictEqual(out.qty, 1.0);
 })();
 
 (function testRoundDownBelowDustGuard() {
-  // dust fraction 0.001 default, position 100, half = 50, but minQty 60
-  // → qty 50 < minQty 60, dustRatio 0.5 (NOT dust) → still dispatch (50)
+  // V2 full-TP contract closes the whole position. A minQty guard must not
+  // silently convert a full TP trigger back into the old 50% partial close.
   // dustRatio < 0.001 means qty is < 0.1% of position which would be dust.
   const out = buildV2DirectExitDispatch({
     triggeredKinds: ["TP_P1"],
@@ -101,27 +101,9 @@ const {
     stepSize: 1,
     minQty: 60,
   });
-  // qty=50, dustRatio = 50/100 = 0.5, far above 0.001 → dispatch
+  // qty=100, dustRatio = 1, far above 0.001 → dispatch
   assert.strictEqual(out.dispatch, true);
-  assert.strictEqual(out.qty, 50);
-
-  // Dust guard: fires when qty < minQty AND qty/position < dustFraction.
-  // Construct that case:
-  //   position=100000, fraction=0.5 → qty=50000
-  //   minQty=60000  (qty < minQty ✓)
-  //   minQtyDustFraction=0.6  → 0.5 ratio < 0.6 → skip
-  const dust = buildV2DirectExitDispatch({
-    triggeredKinds: ["TP_P1"],
-    positionSide: "LONG",
-    positionQtyBase: 100000,
-    symbol: "DOGEUSDT",
-    runId: "RUN_DUST",
-    stepSize: 1,
-    minQty: 60000,
-    minQtyDustFraction: 0.6,
-  });
-  assert.strictEqual(dust.dispatch, false);
-  assert.strictEqual(dust.reason, "QTY_BELOW_MIN_QTY_DUST");
+  assert.strictEqual(out.qty, 100);
 })();
 
 // (C) negative paths

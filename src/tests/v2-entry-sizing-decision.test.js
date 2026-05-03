@@ -155,7 +155,7 @@ function liveCfg() {
   assert.strictEqual(err.message, "ENTRY_SIZING_DECISION_NOT_APPROVED");
 })();
 
-(function partialTp1MinNotionalIsRequiredWhenEnabled() {
+(function tpFullMinNotionalPassesWhenEntryMinNotionalPasses() {
   const decision = buildV2EntrySizingDecision({
     entryIntent: entryIntent({ symbol: "DOGEUSDT" }),
     referencePrice: 0.1,
@@ -166,10 +166,8 @@ function liveCfg() {
     stepSize: 1,
     requirePartialTp1MinNotional: true,
   });
-  assert.strictEqual(decision.ok, false);
-  assert.strictEqual(decision.reason, "PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
-  assert.strictEqual(decision.detail.tp1_qty_abs, 30);
-  assert.ok(decision.detail.tp1_notional_quote < 5);
+  assert.strictEqual(decision.ok, true);
+  assert.ok(decision.notional_quote >= 5);
 
   const accepted = buildV2EntrySizingDecision({
     entryIntent: entryIntent({ symbol: "DOGEUSDT" }),

@@ -165,7 +165,8 @@ function buildTrailActivationEvidenceId({
 
 function isTerminalProjectionStage(stage) {
   const normalized = upper(stage);
-  return normalized === "EXITED_SL"
+  return normalized === "EXITED_TP1"
+    || normalized === "EXITED_SL"
     || normalized === "EXITED_TRAIL"
     || normalized === "EXITED_EXTERNAL"
     || normalized === "EXITED_MANUAL";

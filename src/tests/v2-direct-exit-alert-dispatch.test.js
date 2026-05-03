@@ -130,9 +130,9 @@ const tickExitSrc = fs.readFileSync(
   assert.strictEqual(trail.transitionEvent, "TRAIL_HIT");
 
   const tp1 = f({ triggeredKinds: ["TP_P1"], fraction: 0.5 });
-  assert.strictEqual(tp1.event, "EXIT_TP_P1_50P", "(D2) TP_P1 fraction=0.5 → EXIT_TP_P1_50P");
+  assert.strictEqual(tp1.event, "EXIT_TP_P1_50P", "(D2) TP_P1 fraction=0.5 keeps raw event label for audit");
   assert.strictEqual(tp1.stage, "TP1");
-  assert.strictEqual(tp1.transitionEvent, "TP1_REACHED");
+  assert.strictEqual(tp1.transitionEvent, "TP1_FULL_EXIT");
 
   const sl = f({ triggeredKinds: ["SL"], fraction: 1 });
   assert.strictEqual(sl.event, "EXIT_SL_100P", "(D3) SL fraction=1 → EXIT_SL_100P");

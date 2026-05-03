@@ -50,8 +50,8 @@ function run() {
       },
     },
   });
-  assert.ok(Array.isArray(linked) && linked.length > 0, "linked TP1 meta should produce exit signal");
-  assert.strictEqual(linked[0].event, "EXIT_BE_0.15P", "linked TP1 meta should produce BE signal");
+  assert.ok(Array.isArray(linked), "linked TP1 meta should return a signal array");
+  assert.strictEqual(linked.length, 0, "linked TP1 meta must not produce BE after V2 full-TP simplification");
 
   const snapshotMerged = generateSignals({
     ...common,
@@ -75,8 +75,8 @@ function run() {
       },
     },
   });
-  assert.ok(Array.isArray(snapshotMerged) && snapshotMerged.length > 0, "embedded trail snapshot should be used by generateSignals");
-  assert.strictEqual(snapshotMerged[0].event, "EXIT_TRAIL");
+  assert.ok(Array.isArray(snapshotMerged), "embedded trail snapshot should return a signal array");
+  assert.strictEqual(snapshotMerged.length, 0, "embedded trail snapshot must not produce trail after V2 full-TP simplification");
 }
 
 try {

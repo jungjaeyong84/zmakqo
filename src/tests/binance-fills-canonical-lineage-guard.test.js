@@ -93,13 +93,13 @@ async function run() {
       },
     },
     rules,
-    observedQtyRatio: 0.5,
-    fullExit: false,
+    observedQtyRatio: 1,
+    fullExit: true,
   });
   assert.strictEqual(simplifiedV2Tp1.stage, "TP1");
   assert.strictEqual(simplifiedV2Tp1.event, "EXIT_TP_P1_2.5P");
-  assert.deepStrictEqual(simplifiedV2Tp1.transitionEvents, ["TP1_REACHED", "TRAIL_ACTIVATED"]);
-  assert.strictEqual(simplifiedV2Tp1.primaryTransitionEvent, "TP1_REACHED");
+  assert.deepStrictEqual(simplifiedV2Tp1.transitionEvents, ["TP1_FULL_EXIT"]);
+  assert.strictEqual(simplifiedV2Tp1.primaryTransitionEvent, "TP1_FULL_EXIT");
 
   assert.strictEqual(
     __test.normalizeExitEventForRules("EXIT_TP_P1_1.65P", rules, {

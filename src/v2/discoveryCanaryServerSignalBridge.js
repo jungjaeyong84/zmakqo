@@ -1,5 +1,7 @@
 "use strict";
 
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
+
 const crypto = require("crypto");
 const { getFirestore } = require("../storage/firestore");
 const { listExchangePositionReadViews } = require("../services/positionReadModel");
@@ -166,12 +168,18 @@ function estimateCostREquivalent({ costEstimateBps = null, stopPct = null, gross
   return null;
 }
 
-function stepSafeNotional({ maxNotionalQuote = null, referencePrice = null, stepSize = null, minNotionalQuote = null, tp1QtyRatio = 0.5 } = {}) {
+function stepSafeNotional({
+  maxNotionalQuote = null,
+  referencePrice = null,
+  stepSize = null,
+  minNotionalQuote = null,
+  tp1QtyRatio = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
+} = {}) {
   const maxNotional = toNumberOrNull(maxNotionalQuote);
   const price = toNumberOrNull(referencePrice);
   const step = toNumberOrNull(stepSize);
   const minNotional = toNumberOrNull(minNotionalQuote) ?? 0;
-  const ratio = toNumberOrNull(tp1QtyRatio) ?? 0.5;
+  const ratio = toNumberOrNull(tp1QtyRatio) ?? V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio;
   if (!(maxNotional > 0) || !(price > 0) || !(step > 0)) return maxNotional;
   const units = Math.floor(maxNotional / price / step);
   const safeQty = units * step;

@@ -6,7 +6,7 @@ const { buildExitStageView } = require("../utils/exitStageView");
 (() => {
   const stage = buildExitStageView({
     exchange: "BINANCEFUT",
-    closePrice: 101,
+    closePrice: 100.5,
     leverageFallback: 2,
     position: {
       state: "ACTIVE",

@@ -44,7 +44,7 @@ function buildPreparedAlert() {
       kind: "TP1_CONFIRMED",
       sourceFillId: "FILL__TP1__DELIVERY",
       sourceOrderId: "ORDER__TP1__DELIVERY",
-      fillQtyAbs: 0.5,
+      fillQtyAbs: 1,
     },
   });
   return prepareExitTransitionAlert({
@@ -57,10 +57,10 @@ function buildPreparedAlert() {
 (function deliveryRequestUsesPreparedPayloadOnly() {
   const prepared = buildPreparedAlert();
   const request = buildExitTransitionDeliveryRequest({ preparedAlert: prepared });
-  assert.strictEqual(request.title, "[ETHUSDT] TP1");
+  assert.strictEqual(request.title, "[ETHUSDT] TP_FULL");
   assert.strictEqual(request.severity, "INFO");
   assert.strictEqual(request.sections.length, 1);
-  assert.ok(request.sections[0].lines.includes("event=TP1_REACHED"));
+  assert.ok(request.sections[0].lines.includes("event=TP1_FULL_EXIT"));
 })();
 
 (async function disabledDeliveryPersistsFailedOutboxNotSilentDrop() {

@@ -737,12 +737,8 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
   // risk-free close"). Operator-reported confusion on the DOGE
   // 07:30:33 UTC dispatch (triggered_kinds=['BE','TRAIL'], fraction=1).
   //
-  // New priority: BE > TRAIL > SL > TP_P1. BE always wins because:
-  //   (a) BE-raised stop is mathematically closer to entry than the
-  //       freshly-anchored trail in the standard partial-take cycle,
-  //   (b) "EXIT_BE_100P" carries the precise operational meaning
-  //       (TP1 후 entry-회귀로 잔량 risk-free close) that the operator
-  //       needs to read at a glance.
+  // V2 simplified exit has no BE/trailing runner for new positions. These
+  // legacy labels remain only for old in-flight positions; TP1 is terminal.
   if (kinds.includes("BE")) {
     return {
       event: pctText ? `EXIT_BE_${pctText}P` : "EXIT_BE",
@@ -771,7 +767,7 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
     return {
       event: pctText ? `EXIT_TP_P1_${pctText}P` : "EXIT_TP_P1",
       stage: "TP1",
-      transitionEvent: "TP1_REACHED",
+      transitionEvent: "TP1_FULL_EXIT",
     };
   }
   return {
@@ -792,7 +788,7 @@ function resolveBrokerFlatAlertEvent({ posMeta = null } = {}) {
     return { event: "EXIT_TRAIL_100P", stage: "TRAIL", transitionEvent: "TRAIL_HIT" };
   }
   if (meta.tp_p1_done === true) {
-    return { event: "EXIT_TP_P1_100P", stage: "TP1", transitionEvent: "TP1_REACHED" };
+    return { event: "EXIT_TP_P1_100P", stage: "TP1", transitionEvent: "TP1_FULL_EXIT" };
   }
   return { event: "EXIT_SL_100P", stage: "SL", transitionEvent: "SL_HIT" };
 }

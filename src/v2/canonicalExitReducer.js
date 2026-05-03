@@ -11,7 +11,7 @@ const {
 } = require("./contracts");
 
 const EPSILON = 1e-8;
-const TERMINAL_STAGES = new Set(["EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
+const TERMINAL_STAGES = new Set(["EXITED_TP1", "EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -184,16 +184,17 @@ function reduceCanonicalExit({
         nextProjection,
       });
     }
+    const fullTpExit = nextRunnerRemainingQtyAbs <= EPSILON;
     const ledgerPatch = {
       tp1_filled_qty_abs: nextFilledQtyAbs,
       runner_remaining_qty_abs: nextRunnerRemainingQtyAbs,
-      final_exit_qty_abs: null,
+      final_exit_qty_abs: fullTpExit ? nextFilledQtyAbs : null,
     };
     const transition = buildCanonicalExitTransitionDoc({
       positionCycleId: positionCycle.position_cycle_id,
-      transitionEvent: "TP1_REACHED",
+      transitionEvent: fullTpExit ? "TP1_FULL_EXIT" : "TP1_REACHED",
       previousStage: "PRE_TP1",
-      nextStage: "TP1_DONE",
+      nextStage: fullTpExit ? "EXITED_TP1" : "TP1_DONE",
       sourceFillId: ev.sourceFillId,
       sourceOrderId: ev.sourceOrderId,
       entryEventId: positionCycle.entry_event_id,
@@ -201,12 +202,12 @@ function reduceCanonicalExit({
     });
     const nextProjection = buildProjectionFromPatch(projection, {
       ...projection,
-      stage: "TP1_DONE",
+      stage: fullTpExit ? "EXITED_TP1" : "TP1_DONE",
       tp1_done: true,
       trail_active: false,
       tp1_filled_qty_abs: nextFilledQtyAbs,
       runner_remaining_qty_abs: nextRunnerRemainingQtyAbs,
-      health_status: "HEALTHY",
+      health_status: fullTpExit ? "TERMINAL_EXITED" : "HEALTHY",
     });
     return Object.freeze({ ok: true, duplicate: false, reason: null, transition, nextProjection });
   }

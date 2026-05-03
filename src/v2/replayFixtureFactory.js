@@ -2,7 +2,6 @@
 
 const { buildV2EntryBootstrap } = require("./entryBootstrap");
 const { reduceCanonicalExit } = require("./canonicalExitReducer");
-const { evaluateTrailRefresh } = require("./tickExitWorker");
 const { prepareExitTransitionAlert, applyAlertDeliveryResult } = require("./alertWorker");
 const { evaluateActiveExitWatchdog } = require("./watchdog");
 const { buildOpenClawDecisionBundle } = require("./openclawControlPlane");
@@ -73,121 +72,44 @@ function buildReferencePassEpisode() {
     projection: base.projection,
     evidence: {
       kind: "TP1_CONFIRMED",
-      sourceFillId: "FILL__TP1__RG1",
-      sourceOrderId: "ORDER__TP1__RG1",
-      fillQtyAbs: 0.5,
-    },
-  });
-  const trail = reduceCanonicalExit({
-    positionCycle: base.positionCycle,
-    projection: tp1.nextProjection,
-    evidence: {
-      kind: "TRAIL_ACTIVATION_CONFIRMED",
-      sourceFillId: "FILL__TP1__RG1",
-      sourceOrderId: "ORDER__STOP_REFRESH__RG1",
-      nextStopPrice: 2010,
-      nativeRefreshStatus: "OK",
-    },
-  });
-  const tick = evaluateTrailRefresh({
-    positionCycle: base.positionCycle,
-    projection: trail.nextProjection,
-    marketPrice: 2050,
-    riskReferenceStopPrice: 1967,
-  });
-  const trailExit = reduceCanonicalExit({
-    positionCycle: base.positionCycle,
-    projection: tick.nextProjection,
-    evidence: {
-      kind: "STOP_EXIT_CONFIRMED",
-      sourceFillId: "FILL__TRAIL__RG1",
-      sourceOrderId: "ORDER__TRAIL__RG1",
-      fillPrice: 2030.2,
+      sourceFillId: "FILL__TP_FULL__RG1",
+      sourceOrderId: "ORDER__TP_FULL__RG1",
+      fillQtyAbs: 1,
     },
   });
   const tp1Transition = withExchangeEvidence(tp1.transition, "TP1_FILL", {
     execution_type: "TRADE",
-    quantity_abs: 0.5,
-  });
-  const trailTransition = withExchangeEvidence(trail.transition, "TRAIL_ACTIVATION", {
-    execution_type: "AMENDMENT",
-    stop_price: 2010,
-  });
-  const trailExitTransition = withExchangeEvidence(trailExit.transition, "STOP_EXIT", {
-    execution_type: "TRADE",
-    order_type: "TRAILING_STOP_MARKET",
-    fill_price: 2030.2,
-    stop_price: 2030.2,
+    order_type: "TAKE_PROFIT_MARKET",
+    quantity_abs: 1,
     full_exit: true,
     position_amt_after: "0",
   });
-
-  const prep1 = prepareExitTransitionAlert({
-    positionCycle: base.positionCycle,
+  const protectionRuntime = buildTerminalProtectionRuntime({
+    positionCycleId: base.positionCycle.position_cycle_id,
     transition: tp1Transition,
+    nativeStopPrice: null,
+    slOrderId: "STOP__RG1",
+    tp1OrderId: "TP1__RG1",
+  });
+  const outboxes = buildDeliveredOutboxes({
+    positionCycle: base.positionCycle,
+    transitions: [tp1Transition],
     projection: tp1.nextProjection,
   });
-  const prep2 = prepareExitTransitionAlert({
-    positionCycle: base.positionCycle,
-    transition: trailTransition,
-    projection: trail.nextProjection,
-  });
-  const prep3 = prepareExitTransitionAlert({
-    positionCycle: base.positionCycle,
-    transition: trailExitTransition,
-    projection: trailExit.nextProjection,
-  });
-
-  const outboxes = [
-    applyAlertDeliveryResult({ outbox: prep1.outbox, deliveryOk: true }),
-    applyAlertDeliveryResult({ outbox: prep2.outbox, deliveryOk: true }),
-    applyAlertDeliveryResult({ outbox: prep3.outbox, deliveryOk: true }),
-  ];
-
   const watchdog = evaluateActiveExitWatchdog({
     positionCycle: base.positionCycle,
-    projection: trailExit.nextProjection,
-    protectionRuntime: {
-      position_cycle_id: base.positionCycle.position_cycle_id,
-      sl_order_id: "STOP__RG1",
-      tp1_order_id: "TP1__RG1",
-      native_stop_price: 2030.2,
-      native_refresh_status: "OK",
-      health_status: "TERMINAL_EXITED",
-    },
+    projection: tp1.nextProjection,
+    protectionRuntime,
     exchangeState: {
       has_active_position: false,
     },
   });
-  const protectionRuntime = {
-    position_cycle_id: base.positionCycle.position_cycle_id,
-    sl_order_id: "STOP__RG1",
-    tp1_order_id: "TP1__RG1",
-    native_stop_price: 2030.2,
-    native_refresh_status: "OK",
-    health_status: "TERMINAL_EXITED",
-    last_exchange_evidence: {
-      evidence_kind: "STOP_EXIT",
-      observed_at: trailExitTransition.created_at,
-      source_fill_id: trailExitTransition.source_fill_id,
-      source_order_id: trailExitTransition.source_order_id,
-      raw_payload: {
-        execution_type: "TRADE",
-        order_type: "TRAILING_STOP_MARKET",
-        fill_price: 2030.2,
-        stop_price: 2030.2,
-        full_exit: true,
-        position_amt_after: "0",
-      },
-    },
-    last_evidence_observed_at: trailExitTransition.created_at,
-  };
 
   return {
-    label: "TRAIL_EXIT_PASS",
+    label: "TP_FULL_EXIT_PASS",
     positionCycle: base.positionCycle,
-    transitions: [tp1Transition, trailTransition, trailExitTransition],
-    projection: trailExit.nextProjection,
+    transitions: [tp1Transition],
+    projection: tp1.nextProjection,
     protectionRuntime,
     outboxes,
     watchdog,
@@ -330,30 +252,9 @@ function buildReferenceManualCloseEpisode() {
     entryPrice: 0.5,
     entryQtyAbs: 2000,
   });
-  const tp1 = reduceCanonicalExit({
-    positionCycle: base.positionCycle,
-    projection: base.projection,
-    evidence: {
-      kind: "TP1_CONFIRMED",
-      sourceFillId: "FILL__TP1__XRP__MAN1",
-      sourceOrderId: "ORDER__TP1__XRP__MAN1",
-      fillQtyAbs: 1000,
-    },
-  });
-  const trail = reduceCanonicalExit({
-    positionCycle: base.positionCycle,
-    projection: tp1.nextProjection,
-    evidence: {
-      kind: "TRAIL_ACTIVATION_CONFIRMED",
-      sourceFillId: "FILL__TP1__XRP__MAN1",
-      sourceOrderId: "ORDER__STOP_REFRESH__XRP__MAN1",
-      nextStopPrice: 0.505,
-      nativeRefreshStatus: "OK",
-    },
-  });
   const manual = reduceCanonicalExit({
     positionCycle: base.positionCycle,
-    projection: trail.nextProjection,
+    projection: base.projection,
     evidence: {
       kind: "MANUAL_CLOSE_CONFIRMED",
       sourceFillId: "FILL__MANUAL__XRP__1",
@@ -361,21 +262,13 @@ function buildReferenceManualCloseEpisode() {
       fillPrice: 0.512,
     },
   });
-  const tp1Transition = withExchangeEvidence(tp1.transition, "TP1_FILL", {
-    execution_type: "TRADE",
-    quantity_abs: 1000,
-  });
-  const trailTransition = withExchangeEvidence(trail.transition, "TRAIL_ACTIVATION", {
-    execution_type: "AMENDMENT",
-    stop_price: 0.505,
-  });
   const manualTransition = withExchangeEvidence(manual.transition, "MANUAL_CLOSE", {
     execution_type: "ACCOUNT_SYNC",
     fill_price: 0.512,
     full_exit: true,
     position_amt_after: "0",
   });
-  const transitions = [tp1Transition, trailTransition, manualTransition];
+  const transitions = [manualTransition];
   const outboxes = buildDeliveredOutboxes({
     positionCycle: base.positionCycle,
     transitions,
@@ -384,7 +277,7 @@ function buildReferenceManualCloseEpisode() {
   const protectionRuntime = buildTerminalProtectionRuntime({
     positionCycleId: base.positionCycle.position_cycle_id,
     transition: manualTransition,
-    nativeStopPrice: 0.505,
+    nativeStopPrice: 0.49175,
     slOrderId: "STOP__XRP__MAN1",
     tp1OrderId: "TP1__XRP__MAN1",
   });
@@ -486,7 +379,7 @@ function buildReferenceReplayFixtureSet(profile = "REFERENCE_PASS") {
         ...passEpisodes[0],
         label: "WATCHDOG_FAIL",
         watchdog: {
-          issueCodes: ["TRAIL_STOP_MISSING"],
+          issueCodes: ["NATIVE_REFRESH_UNHEALTHY"],
           repairRequests: [],
         },
       }, ...passEpisodes.slice(1)],

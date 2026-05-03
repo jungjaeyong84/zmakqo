@@ -228,6 +228,10 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
   const simplifiedStopLossPct = Number.isFinite(toNum(rules.SL)) && leverage > 0
     ? Math.abs(Number(rules.SL)) / leverage
     : null;
+  const simplifiedTp1TargetPct = Number.isFinite(toNum(rules.TP_P1)) && leverage > 0
+    ? Math.abs(Number(rules.TP_P1)) / leverage
+    : (leverage > 0 ? DEFAULT_TP1_TARGET_PCT / leverage : DEFAULT_TP1_TARGET_PCT);
+  const simplifiedTp1QtyRatio = toNum(rules.TP_P1_QTY) ?? DEFAULT_TP1_QTY_RATIO;
   const simplifiedFloorLockPct = Number.isFinite(toNum(rules.BE_PCT)) && leverage > 0
     ? Math.abs(Number(rules.BE_PCT)) / leverage
     : DEFAULT_FLOOR_LOCK_PCT;
@@ -249,8 +253,8 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
         stopLossPct: simplifiedStopLossPct,
         floorLockPct: simplifiedFloorLockPct,
         trailPct: simplifiedTrailPct,
-        tp1QtyRatio: DEFAULT_TP1_QTY_RATIO,
-        tp1TargetPct: DEFAULT_TP1_TARGET_PCT,
+        tp1QtyRatio: simplifiedTp1QtyRatio,
+        tp1TargetPct: simplifiedTp1TargetPct,
         legacyCanonicalStage: effectiveCanonicalStage,
         legacyTp0Done: false,
       })

@@ -126,7 +126,7 @@ function buildSizing(overrides = {}) {
   assert.strictEqual(result.executionPermit.decision_mode, "CANARY");
 })();
 
-(function liveRequestBlocksSizingThatCannotPlacePartialTp1() {
+(function liveRequestAllowsSizingWhenFullTpCanMeetExchangeMinNotional() {
   const result = buildV2ProductionEntryLiveRequest({
     bundle: buildBundle({
       signalLineageId: "LINEAGE__DOGE__PROD_ENTRY__LIVE_REQUEST_TP1_MIN",
@@ -145,9 +145,8 @@ function buildSizing(overrides = {}) {
     }),
     confirm: DISCOVERY_CONFIRM_PHRASE,
   });
-  assert.strictEqual(result.ok, false);
-  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_LIVE_SIZING_NOT_APPROVED");
-  assert.strictEqual(result.entrySizingDecision.reason, "PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.entrySizingDecision.ok, true);
 })();
 
 (function blockedSizingDoesNotCreateEndpointBody() {

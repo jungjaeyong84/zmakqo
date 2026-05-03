@@ -5,6 +5,7 @@ const { buildV2EntrySizingDecision } = require("./entrySizingDecision");
 const { LIVE_CONFIRM_PHRASE } = require("./productionEntryLiveEndpoint");
 const { buildOpenClawWorldState } = require("./openclawWorldState");
 const { issueOpenClawExecutionPermit } = require("./openclawExecutionPermit");
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -72,7 +73,7 @@ function buildV2ProductionEntryLiveRequest({
     maxSizeRatio: sizing.maxSizeRatio ?? sizing.max_size_ratio ?? extractMlMaxSizeRatioFromBundle(sourceBundle),
     allowMinOrderBump: sizing.allowMinOrderBump === true || sizing.allow_min_order_bump === true,
     requirePartialTp1MinNotional: sizing.requirePartialTp1MinNotional !== false && sizing.require_partial_tp1_min_notional !== false,
-    tp1QtyRatio: sizing.tp1QtyRatio ?? sizing.tp1_qty_ratio ?? 0.5,
+    tp1QtyRatio: sizing.tp1QtyRatio ?? sizing.tp1_qty_ratio ?? V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
     createdAt: trimOrNull(sizing.createdAt || sizing.created_at) || trimOrNull(now()) || new Date().toISOString(),
   });
 
@@ -122,9 +123,13 @@ function buildV2ProductionEntryLiveRequest({
       min_notional_quote: sizingDecision.min_notional_quote,
     },
     exitContract: {
-      tp1_qty_ratio: 0.5,
-      tp1_target_pct: 0.025,
-      tp0_supported: false,
+      tp1_qty_ratio: V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
+      tp1_target_pct: V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+      tp1_exit_mode: V2_SIMPLE_EXIT_CONTRACT.tp1_exit_mode,
+      tp0_supported: V2_SIMPLE_EXIT_CONTRACT.tp0_supported,
+      runner_enabled: V2_SIMPLE_EXIT_CONTRACT.runner_enabled,
+      trail_enabled: V2_SIMPLE_EXIT_CONTRACT.trail_enabled,
+      be_enabled: V2_SIMPLE_EXIT_CONTRACT.be_enabled,
     },
     approvalReason: "PRODUCTION_ENTRY_LIVE_REQUEST_APPROVED_BY_OPENCLAW",
     issuedAt: generatedAt,
@@ -153,6 +158,12 @@ function buildV2ProductionEntryLiveRequest({
         side: sizingDecision.side,
         entry_qty_abs: sizingDecision.entry_qty_abs,
         notional_quote: sizingDecision.notional_quote,
+        exit_contract_id: V2_SIMPLE_EXIT_CONTRACT.contract_id,
+        tp1_qty_ratio: V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
+        tp1_target_pct: V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+        runner_enabled: V2_SIMPLE_EXIT_CONTRACT.runner_enabled,
+        trail_enabled: V2_SIMPLE_EXIT_CONTRACT.trail_enabled,
+        be_enabled: V2_SIMPLE_EXIT_CONTRACT.be_enabled,
         world_state_hash: resolvedWorldState.world_state_hash,
         openclaw_execution_permit_id: resolvedPermit.openclaw_execution_permit_id,
       }),

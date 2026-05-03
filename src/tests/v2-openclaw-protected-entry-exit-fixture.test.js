@@ -134,71 +134,17 @@ async function buildOpenClawSizingProtectedEntryExitFixture() {
     reductionResult: tp1Reduction,
     preparedAlert: tp1Alert,
   });
-  assert.strictEqual(tp1Reduction.transition.transition_event, "TP1_REACHED");
-  assert.strictEqual(tp1Reduction.nextProjection.stage, "TP1_DONE");
+  assert.strictEqual(tp1Reduction.transition.transition_event, "TP1_FULL_EXIT");
+  assert.strictEqual(tp1Reduction.nextProjection.stage, "EXITED_TP1");
+  assert.strictEqual(tp1Reduction.nextProjection.runner_remaining_qty_abs, 0);
   assert.strictEqual(tp1Alert.ok, true);
   assert.strictEqual(tp1ChainAudit.ok, true);
-
-  const trailReduction = reduceCanonicalExit({
-    positionCycle: activeExecutedEntry.positionCycle,
-    projection: tp1Reduction.nextProjection,
-    evidence: {
-      kind: "TRAIL_ACTIVATION_CONFIRMED",
-      sourceFillId: "FILL__V2_FIXTURE__TRAIL_ACTIVATION",
-      sourceOrderId: protectionWriteResult.runtimeDoc.sl_order_id,
-      nextStopPrice: Number((activeExecutedEntry.entryContract.side === "LONG"
-        ? activeExecutedEntry.entryContract.quality_score + activeExecutedEntry.protectionPlan.sl_trigger_price
-        : activeExecutedEntry.protectionPlan.sl_trigger_price).toFixed(8)),
-      nativeRefreshStatus: "OK",
-    },
-  });
-  const trailAlert = prepareExitTransitionAlert({
-    positionCycle: activeExecutedEntry.positionCycle,
-    transition: trailReduction.transition,
-    projection: trailReduction.nextProjection,
-  });
-  assert.strictEqual(trailReduction.transition.transition_event, "TRAIL_ACTIVATED");
-  assert.strictEqual(trailReduction.nextProjection.stage, "TRAIL_ACTIVE");
-  assert.strictEqual(trailReduction.nextProjection.trail_active, true);
-  assert.strictEqual(trailAlert.ok, true);
-
-  const finalExitReduction = reduceCanonicalExit({
-    positionCycle: activeExecutedEntry.positionCycle,
-    projection: trailReduction.nextProjection,
-    evidence: {
-      kind: "STOP_EXIT_CONFIRMED",
-      sourceFillId: "FILL__V2_FIXTURE__TRAIL_FINAL",
-      sourceOrderId: protectionWriteResult.runtimeDoc.sl_order_id,
-      fillQtyAbs: trailReduction.nextProjection.runner_remaining_qty_abs,
-      fillPrice: trailReduction.nextProjection.final_effective_stop,
-    },
-  });
-  const finalExitAlert = prepareExitTransitionAlert({
-    positionCycle: activeExecutedEntry.positionCycle,
-    transition: finalExitReduction.transition,
-    projection: finalExitReduction.nextProjection,
-  });
-  const finalExitChainAudit = evaluateRuntimeExecutionChain({
-    executedEntry: activeExecutedEntry,
-    placementRequest,
-    protectionWriteResult,
-    reductionResult: finalExitReduction,
-    preparedAlert: finalExitAlert,
-  });
-  assert.strictEqual(finalExitReduction.transition.transition_event, "TRAIL_HIT");
-  assert.strictEqual(finalExitReduction.nextProjection.stage, "EXITED_TRAIL");
-  assert.strictEqual(finalExitReduction.nextProjection.runner_remaining_qty_abs, 0);
-  assert.strictEqual(finalExitAlert.ok, true);
-  assert.strictEqual(finalExitChainAudit.ok, true);
 
   return Object.freeze({
     request,
     routeResult,
     tp1Reduction,
-    trailReduction,
-    finalExitReduction,
     tp1ChainAudit,
-    finalExitChainAudit,
   });
 }
 
@@ -206,8 +152,8 @@ buildOpenClawSizingProtectedEntryExitFixture()
   .then((fixture) => {
     assert.strictEqual(fixture.request.entrySizingDecision.reason, "ML_SIZE_RATIO_CAPPED");
     assert.strictEqual(fixture.request.entrySizingDecision.entry_qty_abs, 0.5);
-    assert.strictEqual(fixture.tp1Reduction.transition.ledger_patch.tp1_filled_qty_abs, 0.25);
-    assert.strictEqual(fixture.finalExitReduction.transition.ledger_patch.final_exit_qty_abs, 0.25);
+    assert.strictEqual(fixture.tp1Reduction.transition.ledger_patch.tp1_filled_qty_abs, 0.5);
+    assert.strictEqual(fixture.tp1Reduction.transition.ledger_patch.final_exit_qty_abs, 0.5);
     console.log("V2_OPENCLAW_PROTECTED_ENTRY_EXIT_FIXTURE_TEST_OK");
   })
   .catch((error) => {

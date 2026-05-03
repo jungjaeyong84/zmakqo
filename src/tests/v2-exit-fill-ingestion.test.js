@@ -73,7 +73,7 @@ function buildBaseLong() {
       exit_kind: "TP1",
       source_fill_id: "FILL__TP1__INGESTION",
       source_order_id: "ORDER__TP1__INGESTION",
-      fill_qty_abs: 0.5,
+      fill_qty_abs: 1,
       fill_price: 2033.6,
       observed_at: "2026-04-21T06:00:00.000Z",
       raw_exchange_event: "fixture",
@@ -81,9 +81,9 @@ function buildBaseLong() {
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_EXIT_FILL_REDUCED");
-  assert.strictEqual(result.transition.transition_event, "TP1_REACHED");
-  assert.strictEqual(result.nextProjection.stage, "TP1_DONE");
-  assert.strictEqual(result.nextProjection.tp1_filled_qty_abs, 0.5);
+  assert.strictEqual(result.transition.transition_event, "TP1_FULL_EXIT");
+  assert.strictEqual(result.nextProjection.stage, "EXITED_TP1");
+  assert.strictEqual(result.nextProjection.tp1_filled_qty_abs, 1);
   assert.strictEqual(result.transition.source_exchange_evidence.evidence_kind, "TP1_FILL");
   assert.strictEqual(result.transition.source_exchange_evidence.source_fill_id, "FILL__TP1__INGESTION");
   assert.strictEqual(result.alert.ok, true);
@@ -122,16 +122,16 @@ function buildBaseLong() {
       exit_kind: "TP1",
       source_fill_id: "FILL__TP1__SPLIT_B",
       source_order_id: "ORDER__TP1__SPLIT",
-      fill_qty_abs: 0.3,
+      fill_qty_abs: 0.8,
       fill_price: 2033.6,
       observed_at: "2026-04-21T06:00:02.000Z",
     },
   });
   assert.strictEqual(second.ok, true);
   assert.strictEqual(second.partial, undefined);
-  assert.strictEqual(second.transition.transition_event, "TP1_REACHED");
-  assert.strictEqual(second.nextProjection.stage, "TP1_DONE");
-  assert.strictEqual(second.nextProjection.tp1_filled_qty_abs, 0.5);
+  assert.strictEqual(second.transition.transition_event, "TP1_FULL_EXIT");
+  assert.strictEqual(second.nextProjection.stage, "EXITED_TP1");
+  assert.strictEqual(second.nextProjection.tp1_filled_qty_abs, 1);
   assert.strictEqual(second.alert.ok, true);
 })();
 
@@ -159,7 +159,7 @@ function buildBaseLong() {
         exit_kind: "TP1",
         source_fill_id: "FILL__TP1__OVER_B",
         source_order_id: "ORDER__TP1__OVER",
-        fill_qty_abs: 0.4,
+        fill_qty_abs: 0.9,
         fill_price: 2033.6,
       },
     });
@@ -256,9 +256,14 @@ function buildBaseLong() {
 
 (function stopFillAfterTrailMapsToTrailHitByProjectionStage() {
   const base = buildBaseLong();
+  const legacyPartialProjection = Object.freeze({
+    ...base.projection,
+    tp1_target_qty_abs: 0.5,
+    runner_remaining_qty_abs: 1,
+  });
   const tp1 = reduceCanonicalExit({
     positionCycle: base.positionCycle,
-    projection: base.projection,
+    projection: legacyPartialProjection,
     protectionRuntime: base.protectionRuntime,
     requireProtectionRuntimeGate: true,
     evidence: {

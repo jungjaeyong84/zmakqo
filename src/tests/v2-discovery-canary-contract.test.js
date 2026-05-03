@@ -284,7 +284,7 @@ const env = {
         symbol: "DOGEUSDT",
         side: "LONG",
         notional_quote: 6,
-        entry_qty_abs: 60,
+        entry_qty_abs: 40,
         reference_price: 0.098,
         min_notional_quote: 5,
         step_size: 1,
@@ -292,7 +292,7 @@ const env = {
     },
   });
   assert.strictEqual(result.ok, false);
-  assert.ok(result.blockers.includes("DISCOVERY_CANARY:PARTIAL_TP1_MIN_NOTIONAL_REQUIRED"));
+  assert.ok(result.blockers.includes("DISCOVERY_CANARY:TP_FULL_MIN_NOTIONAL_REQUIRED"));
 })();
 
 (function blocksWhenEvidenceMissingOrNotCanaryOnly() {

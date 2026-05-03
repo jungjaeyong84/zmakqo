@@ -305,12 +305,12 @@ function evaluateCanaryPreflight({
     checks.push(buildCheck({
       id: "RQ_CANARY_CHK_16",
       status: (
-        operationalIssueCodes.includes("TRAIL_STOP_MISSING") &&
+        operationalIssueCodes.includes("NATIVE_REFRESH_UNHEALTHY") &&
         operationalPayload &&
-        operationalPayload.selected_issue_code === "TRAIL_STOP_MISSING" &&
+        operationalPayload.selected_issue_code === "NATIVE_REFRESH_UNHEALTHY" &&
         Number(operationalPayload.watchdog_generated_repair_request_n) >= 1
       ) ? "PASS" : "FAIL",
-      reason: "watchdog must generate a TRAIL_STOP_MISSING repair request consumed by queue",
+      reason: "watchdog must generate a NATIVE_REFRESH_UNHEALTHY repair request consumed by queue",
       field: "operational.watchdog_issue_codes,operational.selected_issue_code",
     }));
     checks.push(buildCheck({
@@ -373,12 +373,12 @@ function evaluateCanaryPreflight({
     checks.push(buildCheck({
       id: "RQ_CANARY_CHK_23",
       status: (
-        firestoreIssueCodes.includes("TRAIL_STOP_MISSING") &&
+        firestoreIssueCodes.includes("NATIVE_REFRESH_UNHEALTHY") &&
         firestorePayload &&
-        firestorePayload.selected_issue_code === "TRAIL_STOP_MISSING" &&
+        firestorePayload.selected_issue_code === "NATIVE_REFRESH_UNHEALTHY" &&
         Number(firestorePayload.watchdog_generated_repair_request_n) >= 1
       ) ? "PASS" : "FAIL",
-      reason: "firestore-backed canary must consume watchdog-generated TRAIL_STOP_MISSING request",
+      reason: "firestore-backed canary must consume watchdog-generated NATIVE_REFRESH_UNHEALTHY request",
       field: "firestore.watchdog_issue_codes,firestore.selected_issue_code",
     }));
     checks.push(buildCheck({

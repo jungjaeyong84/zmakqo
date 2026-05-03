@@ -12,6 +12,7 @@ const { listExchangePositionReadViews } = require("./positionReadModel");
 const { resolveExitRulesForPosition } = require("../engine/signalEngine");
 const { normalizePositionSide, resolveCloseSide, resolvePositionSideFromPosition } = require("../utils/positionSide");
 const { updateAlgoEndpointDegradationState } = require("../v2/algoEndpointDegradationState");
+const { isFullTpExitRatio } = require("../v2/exitPolicy");
 const {
   DEFAULT_TP1_TARGET_PCT: SIMPLIFIED_EXIT_V2_TP1_TARGET_PCT,
   isSimplifiedExitV2Active,
@@ -338,11 +339,12 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = nu
     }
 
     if (internalActive) {
+      const fullTpOnly = isFullTpExitRatio(rules && rules.TP_P1_QTY);
       if (
         !rules ||
         !Number.isFinite(Number(rules.SL)) ||
         !Number.isFinite(Number(rules.TP_P1)) ||
-        (!Number.isFinite(Number(rules.TRAIL_R_MULTIPLE)) && !Number.isFinite(Number(rules.TRAIL_PCT)))
+        (!fullTpOnly && !Number.isFinite(Number(rules.TRAIL_R_MULTIPLE)) && !Number.isFinite(Number(rules.TRAIL_PCT)))
       ) {
         marketIssues.push(makeIssue({
           symbol: sym,
@@ -352,7 +354,7 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = nu
         }));
       }
 
-      if (meta.tp_p1_done === true) {
+      if (meta.tp_p1_done === true && !fullTpOnly) {
         // 2026-04-19 PR #12: `isValidTrailReference` 는 `Number(null)===0`
         // 과 `Number.isFinite(0)===true` 조합이 trailRef=0 을 valid 로
         // 오인해 TP1_TRAIL_REF_MISSING 발화를 silently skip 하던 blind

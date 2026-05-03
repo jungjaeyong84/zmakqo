@@ -17,6 +17,7 @@ const { buildRepairRequestDoc } = require("../v2/contracts");
 const { putV2Doc } = require("../v2/storage");
 const { resolveCanonicalPositionExitStage } = require("./positionStateMachine");
 const { isSimplifiedExitV2Active, buildSimplifiedExitShadowView } = require("./simplifiedExitV2");
+const { isFullTpExitRatio } = require("../v2/exitPolicy");
 
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
@@ -290,7 +291,7 @@ function inspectExitProtection({
     exchange: upper(row.exchange) || "BINANCEFUT",
     position: row,
   });
-  const expectedTp1RemainingRatio = resolveTp1RemainingContractQtyRatio(rules, 0.5);
+  const expectedTp1RemainingRatio = resolveTp1RemainingContractQtyRatio(rules, 1);
   const expectedTp1Base = qtyBase > 0 ? Number((qtyBase * expectedTp1RemainingRatio).toFixed(8)) : null;
   const actualTpQtyBase = toNum(tpCandidate && tpCandidate.qty_base);
   const actualTpQtyRatio = Number.isFinite(actualTpQtyBase) && qtyBase > 0
@@ -413,7 +414,7 @@ function inspectExitProtection({
         ));
       }
     }
-    if (meta.tp_p1_done === true && meta.trail_active !== true) {
+    if (meta.tp_p1_done === true && meta.trail_active !== true && !isFullTpExitRatio(rules && rules.TP_P1_QTY)) {
       issues.push(buildIssue("TP1_DONE_WITHOUT_TRAIL_ACTIVE", "tp_p1_done=true 인데 trail_active=false 입니다."));
     }
     const floorTolerance = stopTolerance(floorStopPrice);

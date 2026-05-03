@@ -134,6 +134,7 @@ function mapExitEvent(rows) {
   const allActions = rows.map(normalizeAction).filter(Boolean);
   const transitions = rows.flatMap((row) => asArray(row && row.canonical_transition_events).map(upper).filter(Boolean));
   const has = (token) => allActions.some((action) => action.includes(token)) || transitions.some((event) => event.includes(token));
+  if (transitions.includes("TP1_FULL_EXIT")) return "TP1_FULL_EXIT";
   if (transitions.includes("TP1_REACHED") || has("TP_P1") || has("TP1")) return "TP1_REACHED";
   if (transitions.includes("TRAIL_HIT") || has("TRAIL")) return "TRAIL_HIT";
   if (transitions.includes("SL_HIT") || has("SL_")) return "SL_HIT";

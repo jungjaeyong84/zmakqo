@@ -33,7 +33,7 @@ function validatePreparedAlert(preparedAlert) {
 
 function resolveAlertSeverity(event) {
   const normalized = upper(event);
-  if (normalized === "TP1_REACHED" || normalized === "TRAIL_ACTIVATED") return "INFO";
+  if (normalized === "TP1_FULL_EXIT" || normalized === "TP1_REACHED" || normalized === "TRAIL_ACTIVATED") return "INFO";
   if (normalized === "SL_HIT" || normalized === "TRAIL_HIT") return "WARN";
   if (normalized === "EXTERNAL_CLOSE_SYNC" || normalized === "MANUAL_CLOSE_SYNC") return "WARN";
   return "INFO";

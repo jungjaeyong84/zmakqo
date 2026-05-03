@@ -9,6 +9,7 @@ const {
   evaluateTp1LadderStage,
   applyTp1LadderPolicy,
 } = require("./signalEngine");
+const { V2_SIMPLE_EXIT_CONTRACT } = require("../v2/exitPolicy");
 const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 
 const {
@@ -2098,27 +2099,33 @@ const FUTURES_DYNAMIC_EXIT_PROFILE_ENABLED = String(process.env.FUTURES_DYNAMIC_
 const FUTURES_EXIT_PROFILE_BASE = Object.freeze({
   key: "BASE",
   rules: {
-    SL: -0.0165,
-    TP_P1: 0.025,
-    TP_P1_QTY: 0.5,
+    SL: -V2_SIMPLE_EXIT_CONTRACT.stop_loss_pct,
+    TP_P0: 0,
+    TP_P0_QTY: 0,
+    TP_P1: V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+    TP_P1_QTY: V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
     TP_C: null,
-    BE_ENABLE: true,
-    BE_PCT: 0.0025,
-    TRAIL_PCT: 0.01,
-    RUNNER_MIN_PROFIT_PCT: 0.02,
+    BE_ENABLE: false,
+    BE_PCT: null,
+    TRAIL_PCT: null,
+    TRAIL_R_MULTIPLE: null,
+    RUNNER_MIN_PROFIT_PCT: null,
   },
 });
 const FUTURES_EXIT_PROFILE_AGGRESSIVE = Object.freeze({
   key: "AGGRESSIVE",
   rules: {
-    SL: -0.02,
-    TP_P1: 0.03,
-    TP_P1_QTY: 0.5,
+    SL: -V2_SIMPLE_EXIT_CONTRACT.stop_loss_pct,
+    TP_P0: 0,
+    TP_P0_QTY: 0,
+    TP_P1: V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+    TP_P1_QTY: V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
     TP_C: null,
-    BE_ENABLE: true,
-    BE_PCT: 0.0025,
-    TRAIL_PCT: 0.015,
-    RUNNER_MIN_PROFIT_PCT: 0.02,
+    BE_ENABLE: false,
+    BE_PCT: null,
+    TRAIL_PCT: null,
+    TRAIL_R_MULTIPLE: null,
+    RUNNER_MIN_PROFIT_PCT: null,
   },
 });
 const FUTURES_EXIT_PROFILE_REAL_CONF_MIN = Number.isFinite(Number(process.env.FUTURES_EXIT_PROFILE_REAL_CONF_MIN))
@@ -2420,7 +2427,29 @@ function applyEntryExitRuleRuntimeAdjustments({
     }
   }
 
-  if (String(exchange || "").toUpperCase().includes("BINANCE")) {
+  const tp1QtyRatio = Number(appliedExitRules.TP_P1_QTY);
+  const fullTpOnly = !Number.isFinite(tp1QtyRatio) || tp1QtyRatio >= 0.999;
+  if (fullTpOnly) {
+    appliedExitRules = {
+      ...appliedExitRules,
+      SL: -V2_SIMPLE_EXIT_CONTRACT.stop_loss_pct,
+      TP_P0: 0,
+      TP_P0_QTY: 0,
+      TP_P1: V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+      TP_P1_QTY: 1,
+      BE_ENABLE: false,
+      BE_PCT: null,
+      BE_PCT_RESCUE_COHORT: null,
+      BE_PCT_MIXED_COHORT: null,
+      TRAIL_PCT: null,
+      TRAIL_R_MULTIPLE: null,
+      TRAIL_R_MULTIPLE_RESCUE_COHORT: null,
+      TRAIL_R_MULTIPLE_MIXED_COHORT: null,
+      RUNNER_MIN_PROFIT_PCT: null,
+      RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: null,
+      RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: null,
+    };
+  } else if (String(exchange || "").toUpperCase().includes("BINANCE")) {
     const floor = 0.0165;
     const clampFloor = (value) => {
       const num = Number(value);
@@ -2482,11 +2511,18 @@ function collectCriticalExitRuleViolations({
   const bePct = Number(ruleSafe.BE_PCT);
   const trailPct = Number(ruleSafe.TRAIL_PCT);
   const trailR = Number(ruleSafe.TRAIL_R_MULTIPLE);
-  void posMeta;
-  void simplifiedExitV2Enabled;
+  const metaSafe = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const simplifiedFullTpOnly = simplifiedExitV2Enabled === true
+    || metaSafe.simplified_exit_v2_enabled === true
+    || metaSafe.exit_contract_mode === "TP_FULL_ONLY"
+    || (Number(ruleSafe.TP_P1_QTY) >= 0.999 && Number(ruleSafe.TP_P1_QTY) <= 1);
   if (!(Number.isFinite(tp1) && tp1 > 0)) violations.push("TP1_MISSING");
   if (!(Number.isFinite(tp1Qty) && tp1Qty > 0 && tp1Qty <= 1)) violations.push("TP1_QTY_INVALID");
   if (!(Number.isFinite(sl) && sl < 0)) violations.push("SL_INVALID");
+  if (simplifiedFullTpOnly) {
+    if (beEnabled) violations.push("BE_MUST_BE_DISABLED");
+    return violations;
+  }
   if (beEnabled && !(Number.isFinite(bePct) && bePct >= 0)) violations.push("BE_INVALID");
   if (!((Number.isFinite(trailPct) && trailPct > 0) || (Number.isFinite(trailR) && trailR > 0))) {
     violations.push("TRAIL_INVALID");

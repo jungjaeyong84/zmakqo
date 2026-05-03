@@ -1,5 +1,7 @@
 "use strict";
 
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
+
 const DISCOVERY_CONFIRM_PHRASE = "EXECUTE_V2_DISCOVERY_CANARY";
 const {
   resolveDiscoverySymbolNotionalQuoteMap,
@@ -164,7 +166,10 @@ function evaluateDiscoveryCanaryContract({
     symbol: resolvedSymbol,
     fallback: policy.max_notional_quote,
   });
-  const tp1QtyAbs = floorToStep(Number.isFinite(entryQtyAbs) ? entryQtyAbs * 0.5 : null, stepSize);
+  const tp1QtyAbs = floorToStep(
+    Number.isFinite(entryQtyAbs) ? entryQtyAbs * V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio : null,
+    stepSize
+  );
   const tp1NotionalQuote = Number.isFinite(tp1QtyAbs) && Number.isFinite(referencePrice)
     ? tp1QtyAbs * referencePrice
     : null;
@@ -203,14 +208,14 @@ function evaluateDiscoveryCanaryContract({
     blockers.push("DISCOVERY_CANARY:MAX_NOTIONAL_EXCEEDED");
   }
   if (!Number.isFinite(entryQtyAbs) || !Number.isFinite(referencePrice) || !Number.isFinite(minNotionalQuote) || !Number.isFinite(stepSize)) {
-    blockers.push("DISCOVERY_CANARY:PARTIAL_TP1_EVIDENCE_REQUIRED");
+    blockers.push("DISCOVERY_CANARY:TP_FULL_EVIDENCE_REQUIRED");
   }
   if (
     Number.isFinite(tp1NotionalQuote)
     && Number.isFinite(minNotionalQuote)
     && tp1NotionalQuote + 1e-9 < minNotionalQuote
   ) {
-    blockers.push("DISCOVERY_CANARY:PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
+    blockers.push("DISCOVERY_CANARY:TP_FULL_MIN_NOTIONAL_REQUIRED");
   }
 
   return buildResult({

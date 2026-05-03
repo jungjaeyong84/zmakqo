@@ -8,11 +8,11 @@ const {
   __test,
 } = require("../v2/repairQueueCanary");
 
-(function fixtureContainsSingleRepairableTrailStopGap() {
+(function fixtureContainsSingleRepairableNativeRefreshGap() {
   const fixture = buildRepairQueueCanaryFixture({
     recordedAt: "2026-04-21T07:30:00.000Z",
   });
-  assert.strictEqual(fixture.expectedStopPrice, 2445);
+  assert.strictEqual(fixture.expectedStopPrice, 2458.75);
   assert.ok(fixture.positionCycleId.startsWith("PCY__"));
   assert.strictEqual(Object.keys(fixture.docsByCollectionKey.POSITION_CYCLES).length, 1);
   assert.strictEqual(Object.keys(fixture.docsByCollectionKey.EXIT_RUNTIME_PROJECTIONS).length, 1);

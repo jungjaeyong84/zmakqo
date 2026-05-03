@@ -1,5 +1,7 @@
 "use strict";
 
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
+
 function trimOrNull(value) {
   const text = String(value || "").trim();
   return text || null;
@@ -92,12 +94,12 @@ function resolveMaxSizeRatio({
   return null;
 }
 
-function evaluatePartialTp1MinNotional({
+function evaluateTpFullMinNotional({
   entryQtyAbs = null,
   referencePrice = null,
   minNotionalQuote = null,
   stepSize = null,
-  tp1QtyRatio = 0.5,
+  tp1QtyRatio = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
 } = {}) {
   const qty = toNumberOrNull(entryQtyAbs);
   const price = toNumberOrNull(referencePrice);
@@ -128,10 +130,10 @@ function evaluatePartialTp1MinNotional({
   });
 }
 
-function assertPartialTp1MinNotionalSupported(sizingDecision, { tp1QtyRatio = 0.5 } = {}) {
+function assertTpFullMinNotionalSupported(sizingDecision, { tp1QtyRatio = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio } = {}) {
   const decision = sizingDecision && typeof sizingDecision === "object" ? sizingDecision : null;
   if (!decision) throw new Error("ENTRY_SIZING_DECISION_REQUIRED");
-  const check = evaluatePartialTp1MinNotional({
+  const check = evaluateTpFullMinNotional({
     entryQtyAbs: decision.entry_qty_abs,
     referencePrice: decision.reference_price,
     minNotionalQuote: decision.min_notional_quote,
@@ -139,13 +141,13 @@ function assertPartialTp1MinNotionalSupported(sizingDecision, { tp1QtyRatio = 0.
     tp1QtyRatio,
   });
   if (check.evidence_ok !== true) {
-    const error = new Error("ENTRY_SIZING_PARTIAL_TP1_EVIDENCE_REQUIRED");
-    error.partialTp1MinNotional = check;
+    const error = new Error("ENTRY_SIZING_TP_FULL_EVIDENCE_REQUIRED");
+    error.tpFullMinNotional = check;
     throw error;
   }
   if (check.ok !== true) {
-    const error = new Error("ENTRY_SIZING_PARTIAL_TP1_MIN_NOTIONAL_REQUIRED");
-    error.partialTp1MinNotional = check;
+    const error = new Error("ENTRY_SIZING_TP_FULL_MIN_NOTIONAL_REQUIRED");
+    error.tpFullMinNotional = check;
     throw error;
   }
   return check;
@@ -203,7 +205,7 @@ function buildV2EntrySizingDecision({
   allowMinOrderBump = false,
   requirePartialTp1MinNotional = false,
   require_partial_tp1_min_notional = false,
-  tp1QtyRatio = 0.5,
+  tp1QtyRatio = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
   tp1_qty_ratio = null,
   createdAt = null,
 } = {}) {
@@ -351,20 +353,20 @@ function buildV2EntrySizingDecision({
     });
   }
 
-  const partialTp1Required = requirePartialTp1MinNotional === true || require_partial_tp1_min_notional === true;
-  const resolvedTp1QtyRatio = toNumberOrNull(tp1_qty_ratio) ?? toNumberOrNull(tp1QtyRatio) ?? 0.5;
-  if (partialTp1Required) {
-    const partialTp1Check = evaluatePartialTp1MinNotional({
+  const tpFullRequired = requirePartialTp1MinNotional === true || require_partial_tp1_min_notional === true;
+  const resolvedTp1QtyRatio = toNumberOrNull(tp1_qty_ratio) ?? toNumberOrNull(tp1QtyRatio) ?? V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio;
+  if (tpFullRequired) {
+    const tpFullCheck = evaluateTpFullMinNotional({
       entryQtyAbs: qty,
       referencePrice: price,
       minNotionalQuote: minNotional,
       stepSize: step,
       tp1QtyRatio: resolvedTp1QtyRatio,
     });
-    if (partialTp1Check.evidence_ok !== true) {
+    if (tpFullCheck.evidence_ok !== true) {
       return buildBlockedDecision({
         entryIntent,
-        reason: "PARTIAL_TP1_EVIDENCE_REQUIRED",
+        reason: "TP_FULL_EVIDENCE_REQUIRED",
         referencePrice,
         requestedNotionalQuote,
         maxNotionalQuote,
@@ -373,13 +375,13 @@ function buildV2EntrySizingDecision({
         stepSize,
         maxSizeRatio: resolvedMaxSizeRatio,
         sizingCapNotionalQuote: sizingCapNotional,
-        detail: partialTp1Check,
+        detail: tpFullCheck,
       });
     }
-    if (partialTp1Check.ok !== true) {
+    if (tpFullCheck.ok !== true) {
       return buildBlockedDecision({
         entryIntent,
-        reason: "PARTIAL_TP1_MIN_NOTIONAL_REQUIRED",
+        reason: "TP_FULL_MIN_NOTIONAL_REQUIRED",
         referencePrice,
         requestedNotionalQuote,
         maxNotionalQuote,
@@ -388,7 +390,7 @@ function buildV2EntrySizingDecision({
         stepSize,
         maxSizeRatio: resolvedMaxSizeRatio,
         sizingCapNotionalQuote: sizingCapNotional,
-        detail: partialTp1Check,
+        detail: tpFullCheck,
       });
     }
   }
@@ -438,8 +440,10 @@ function buildEntryQuantityResolverFromSizingDecision(sizingDecision) {
 module.exports = {
   buildV2EntrySizingDecision,
   buildEntryQuantityResolverFromSizingDecision,
-  evaluatePartialTp1MinNotional,
-  assertPartialTp1MinNotionalSupported,
+  evaluateTpFullMinNotional,
+  assertTpFullMinNotionalSupported,
+  evaluatePartialTp1MinNotional: evaluateTpFullMinNotional,
+  assertPartialTp1MinNotionalSupported: assertTpFullMinNotionalSupported,
   __test: {
     trimOrNull,
     upper,
@@ -450,7 +454,8 @@ module.exports = {
     ceilToStep,
     floorToStep,
     resolveMaxSizeRatio,
-    evaluatePartialTp1MinNotional,
+    evaluateTpFullMinNotional,
+    evaluatePartialTp1MinNotional: evaluateTpFullMinNotional,
     buildBlockedDecision,
   },
 };

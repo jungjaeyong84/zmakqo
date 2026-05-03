@@ -5,7 +5,7 @@ const { buildV2EntryBootstrap } = require("../v2/entryBootstrap");
 const { buildProtectionRuntimeDoc } = require("../v2/contracts");
 const { assertTp1ProtectionGate, reduceCanonicalExit } = require("../v2/canonicalExitReducer");
 
-function buildBaseLong() {
+function buildBaseLong(options = {}) {
   return buildV2EntryBootstrap({
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
@@ -18,6 +18,8 @@ function buildBaseLong() {
     positionSide: "LONG",
     entryPrice: 2000,
     entryQtyAbs: 1,
+    tp1QtyRatio: 0.5,
+    ...options,
   });
 }
 
@@ -64,6 +66,28 @@ function buildProtectedBaseLong() {
   assert.strictEqual(reduced.nextProjection.tp1_done, true);
   assert.strictEqual(reduced.nextProjection.tp1_filled_qty_abs, 0.5);
   assert.strictEqual(reduced.nextProjection.runner_remaining_qty_abs, 0.5);
+})();
+
+(function fullTp1ConfirmedTerminatesPosition() {
+  const base = buildBaseLong({ tp1QtyRatio: 1 });
+  const reduced = reduceCanonicalExit({
+    positionCycle: base.positionCycle,
+    projection: base.projection,
+    evidence: {
+      kind: "TP1_CONFIRMED",
+      positionCycleId: base.positionCycle.position_cycle_id,
+      sourceFillId: "FILL__TP1__FULL",
+      sourceOrderId: "ORDER__TP1__FULL",
+      fillQtyAbs: 1,
+      fillPrice: 2016.66,
+    },
+  });
+  assert.strictEqual(reduced.transition.transition_event, "TP1_FULL_EXIT");
+  assert.strictEqual(reduced.nextProjection.stage, "EXITED_TP1");
+  assert.strictEqual(reduced.nextProjection.tp1_done, true);
+  assert.strictEqual(reduced.nextProjection.tp1_filled_qty_abs, 1);
+  assert.strictEqual(reduced.nextProjection.runner_remaining_qty_abs, 0);
+  assert.strictEqual(reduced.nextProjection.health_status, "TERMINAL_EXITED");
 })();
 
 (function tp1PartialFillsAccumulateUntilTargetWithoutTransition() {

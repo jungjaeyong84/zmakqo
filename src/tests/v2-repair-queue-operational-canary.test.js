@@ -10,9 +10,9 @@ const {
   const fixture = buildRepairQueueOperationalCanaryFixture({
     recordedAt: "2026-04-21T08:00:00.000Z",
   });
-  assert.ok(fixture.watchdog.issueCodes.includes("TRAIL_STOP_MISSING"));
+  assert.ok(fixture.watchdog.issueCodes.includes("NATIVE_REFRESH_UNHEALTHY"));
   assert.ok(fixture.watchdog.repairRequests.length >= 1);
-  assert.strictEqual(fixture.selectedRepairRequest.issue_code, "TRAIL_STOP_MISSING");
+  assert.strictEqual(fixture.selectedRepairRequest.issue_code, "NATIVE_REFRESH_UNHEALTHY");
   assert.strictEqual(
     fixture.docsByCollectionKey.REPAIR_REQUESTS[fixture.selectedRepairRequest.exit_repair_request_id],
     fixture.selectedRepairRequest
@@ -28,8 +28,8 @@ async function operationalCanaryCompletesWatchdogGeneratedRepair() {
   assert.strictEqual(output.canary_mode, "SHADOW_REPAIR_REQUEST_GENERATION");
   assert.strictEqual(output.exchange_write_performed, false);
   assert.strictEqual(output.service_status, "HEALTHY");
-  assert.ok(output.watchdog_issue_codes.includes("TRAIL_STOP_MISSING"));
-  assert.strictEqual(output.selected_issue_code, "TRAIL_STOP_MISSING");
+  assert.ok(output.watchdog_issue_codes.includes("NATIVE_REFRESH_UNHEALTHY"));
+  assert.strictEqual(output.selected_issue_code, "NATIVE_REFRESH_UNHEALTHY");
   assert.strictEqual(output.summary.requested_repair_n, 1);
   assert.strictEqual(output.summary.delegated_repair_n, 1);
   assert.strictEqual(output.summary.completion_success_n, 1);

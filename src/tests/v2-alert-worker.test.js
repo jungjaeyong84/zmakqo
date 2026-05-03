@@ -26,7 +26,7 @@ function buildTp1Context() {
       kind: "TP1_CONFIRMED",
       sourceFillId: "FILL__TP1__A1",
       sourceOrderId: "ORDER__TP1__A1",
-      fillQtyAbs: 0.5,
+      fillQtyAbs: 1,
     },
   });
   return {
@@ -84,8 +84,8 @@ function buildTerminalSlContext() {
   assert.strictEqual(prepared.ok, true);
   assert.strictEqual(prepared.outbox.status, "PENDING");
   assert.strictEqual(prepared.outbox.canonical_transition_id, ctx.transition.canonical_transition_id);
-  assert.ok(prepared.payload.title.includes("[ETHUSDT] TP1"));
-  assert.ok(prepared.payload.body.includes("event=TP1_REACHED"));
+  assert.ok(prepared.payload.title.includes("[ETHUSDT] TP_FULL"));
+  assert.ok(prepared.payload.body.includes("event=TP1_FULL_EXIT"));
 })();
 
 (function prepFailureIsDurableNotSilent() {

@@ -3,6 +3,7 @@
 const { resolveV2RuntimeConfig } = require("./runtime");
 const { resolveEntryIntentFromOpenClaw } = require("./signalAuthorityRouter");
 const { runV2EntryExecutionKernel } = require("./entryExecutionKernel");
+const { V2_SIMPLE_EXIT_CONTRACT } = require("./exitPolicy");
 const { evaluateOpenClawExecutionSeparation } = require("./openclawExecutionSeparationAudit");
 const { persistOpenClawExecutionAudit } = require("./openclawExecutionAuditLedger");
 const { validateOpenClawExecutionPermit } = require("./openclawExecutionPermit");
@@ -530,9 +531,9 @@ async function runV2ProductionEntryRoute({
   routeEntryIntentFromOpenClaw = resolveEntryIntentFromOpenClaw,
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
-  stopLossPct = 0.0165,
-  tp1TargetPct = 0.025,
-  tp1QtyRatio = 0.5,
+  stopLossPct = V2_SIMPLE_EXIT_CONTRACT.stop_loss_pct,
+  tp1TargetPct = V2_SIMPLE_EXIT_CONTRACT.tp1_target_pct,
+  tp1QtyRatio = V2_SIMPLE_EXIT_CONTRACT.tp1_qty_ratio,
 } = {}) {
   if (typeof runEntryKernel !== "function") throw new Error("RUN_ENTRY_KERNEL_REQUIRED");
   if (typeof persistExecutionAudit !== "function") throw new Error("PERSIST_EXECUTION_AUDIT_REQUIRED");

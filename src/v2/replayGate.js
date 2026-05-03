@@ -1,13 +1,11 @@
 "use strict";
 
-const TERMINAL_STAGES = new Set(["EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
-const TERMINAL_TRANSITION_EVENTS = new Set(["SL_HIT", "TRAIL_HIT", "EXTERNAL_CLOSE_SYNC", "MANUAL_CLOSE_SYNC"]);
+const TERMINAL_STAGES = new Set(["EXITED_TP1", "EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
+const TERMINAL_TRANSITION_EVENTS = new Set(["TP1_FULL_EXIT", "SL_HIT", "TRAIL_HIT", "EXTERNAL_CLOSE_SYNC", "MANUAL_CLOSE_SYNC"]);
 const STOP_TERMINAL_TRANSITION_EVENTS = new Set(["SL_HIT", "TRAIL_HIT"]);
 const REQUIRED_REPLAY_TRANSITION_EVENTS = Object.freeze([
-  "TP1_REACHED",
-  "TRAIL_ACTIVATED",
+  "TP1_FULL_EXIT",
   "SL_HIT",
-  "TRAIL_HIT",
   "EXTERNAL_CLOSE_SYNC",
   "MANUAL_CLOSE_SYNC",
 ]);
@@ -61,7 +59,8 @@ function collectTransitionIds(transitions) {
 function resolveLatestTp1FilledQtyAbs(transitions) {
   let latest = 0;
   for (const row of ensureArray(transitions)) {
-    if (upper(row && row.transition_event) !== "TP1_REACHED") continue;
+    const event = upper(row && row.transition_event);
+    if (event !== "TP1_REACHED" && event !== "TP1_FULL_EXIT") continue;
     const filled = toNumberOrNull(row && row.ledger_patch && row.ledger_patch.tp1_filled_qty_abs);
     if (filled != null) latest = filled;
   }
@@ -312,9 +311,13 @@ function validateEpisode(episode) {
     const lastTransition = transitions.length > 0 ? transitions[transitions.length - 1] : null;
     const entryQtyAbs = toNumberOrNull(positionCycle && positionCycle.entry_qty_abs);
     const finalExitQtyAbs = toNumberOrNull(lastTransition && lastTransition.ledger_patch && lastTransition.ledger_patch.final_exit_qty_abs);
-    const expectedFinalExitQtyAbs = entryQtyAbs == null
-      ? null
-      : Number((entryQtyAbs - resolveLatestTp1FilledQtyAbs(transitions)).toFixed(8));
+    const expectedFinalExitQtyAbs = upper(lastTransition && lastTransition.transition_event) === "TP1_FULL_EXIT"
+      ? entryQtyAbs
+      : (
+        entryQtyAbs == null
+          ? null
+          : Number((entryQtyAbs - resolveLatestTp1FilledQtyAbs(transitions)).toFixed(8))
+      );
     if (!(finalExitQtyAbs >= 0)) {
       blockers.push("TERMINAL_EXIT_QTY_MISSING");
     } else if (expectedFinalExitQtyAbs != null && Math.abs(finalExitQtyAbs - expectedFinalExitQtyAbs) > EPSILON) {

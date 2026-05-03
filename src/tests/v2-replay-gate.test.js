@@ -13,10 +13,8 @@ const {
   assert.strictEqual(report.pass, true);
   assert.strictEqual(report.failClosed, false);
   assert.strictEqual(report.block_n, 0);
-  assert.strictEqual(report.transition_event_coverage.TP1_REACHED > 0, true);
-  assert.strictEqual(report.transition_event_coverage.TRAIL_ACTIVATED > 0, true);
+  assert.strictEqual(report.transition_event_coverage.TP1_FULL_EXIT > 0, true);
   assert.strictEqual(report.transition_event_coverage.SL_HIT > 0, true);
-  assert.strictEqual(report.transition_event_coverage.TRAIL_HIT > 0, true);
   assert.strictEqual(report.transition_event_coverage.EXTERNAL_CLOSE_SYNC > 0, true);
   assert.strictEqual(report.transition_event_coverage.MANUAL_CLOSE_SYNC > 0, true);
 })();
@@ -50,7 +48,7 @@ const {
     episodes: [{
       ...episode,
       label: "MISSING_OUTBOX",
-      outboxes: episode.outboxes.slice(0, 2),
+      outboxes: [],
     }],
   });
   assert.strictEqual(report.pass, false);
@@ -60,7 +58,7 @@ const {
 (function missingTransitionExchangeEvidenceFailsClosed() {
   const episode = buildReferencePassEpisode();
   const transitions = episode.transitions.map((row, index) => (
-    index === 1
+      index === 0
       ? { ...row, source_exchange_evidence: null }
       : row
   ));
@@ -72,7 +70,7 @@ const {
     }],
   });
   assert.strictEqual(report.pass, false);
-  assert.ok(report.blockers.some((row) => row.includes("TRANSITION_EXCHANGE_EVIDENCE_MISSING:1")));
+  assert.ok(report.blockers.some((row) => row.includes("TRANSITION_EXCHANGE_EVIDENCE_MISSING:0")));
 })();
 
 (function terminalFullExitEvidenceMissingFailsClosed() {
@@ -104,11 +102,11 @@ const {
     }],
   });
   assert.strictEqual(report.pass, false);
-  assert.ok(report.blockers.some((row) => row.includes("TERMINAL_FULL_EXIT_EVIDENCE_MISSING:2")));
+  assert.ok(report.blockers.some((row) => row.includes("TERMINAL_FULL_EXIT_EVIDENCE_MISSING:0")));
 })();
 
 (function stopTerminalFillEvidenceMissingFailsClosed() {
-  const episode = buildReferencePassEpisode();
+  const episode = buildReferenceReplayFixtureSet("REFERENCE_PASS").episodes.find((row) => row.projection.stage === "EXITED_SL");
   const transitions = episode.transitions.map((row, index, arr) => {
     if (index !== arr.length - 1) return row;
     const raw = { ...row.source_exchange_evidence.raw_payload };
@@ -136,7 +134,7 @@ const {
     }],
   });
   assert.strictEqual(report.pass, false);
-  assert.ok(report.blockers.some((row) => row.includes("STOP_TERMINAL_FILL_EVIDENCE_MISSING:2")));
+  assert.ok(report.blockers.some((row) => row.includes("STOP_TERMINAL_FILL_EVIDENCE_MISSING:0")));
 })();
 
 (function finalStageMismatchFailsClosed() {
@@ -216,7 +214,7 @@ const {
   const fixtureSet = buildReferenceReplayFixtureSet("REFERENCE_PASS");
   const episode = fixtureSet.episodes[0];
   const failedOutbox = {
-    ...episode.outboxes[1],
+    ...episode.outboxes[0],
     status: "FAILED",
     last_reason: "ALERT_STAGE_MISMATCH",
   };
@@ -224,7 +222,7 @@ const {
     episodes: [{
       ...episode,
       label: "FAILED_OUTBOX",
-      outboxes: [episode.outboxes[0], failedOutbox, episode.outboxes[2]],
+      outboxes: [failedOutbox],
     }, ...fixtureSet.episodes.slice(1)],
   });
   assert.strictEqual(report.pass, true, "durable failure is allowed if link integrity is preserved");

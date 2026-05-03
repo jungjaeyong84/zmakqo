@@ -49,6 +49,7 @@ const V2_EXIT_STAGES = Object.freeze([
   "PRE_TP1",
   "TP1_DONE",
   "TRAIL_ACTIVE",
+  "EXITED_TP1",
   "EXITED_SL",
   "EXITED_TRAIL",
   "EXITED_EXTERNAL",
@@ -57,6 +58,7 @@ const V2_EXIT_STAGES = Object.freeze([
 
 const V2_TRANSITION_EVENTS = Object.freeze([
   "TP1_REACHED",
+  "TP1_FULL_EXIT",
   "TRAIL_ACTIVATED",
   "SL_HIT",
   "TRAIL_HIT",

@@ -332,7 +332,7 @@ function resolveRunnerAllowedRatioFromView(view = null) {
   if (legacyDirect != null) return legacyDirect;
   const rules = resolveExitRulesFromView(view);
   const tp0QtyRatio = clamp01(rules.TP_P0_QTY) ?? 0.25;
-  const tp1QtyRatio = clamp01(rules.TP_P1_QTY) ?? 0.5;
+  const tp1QtyRatio = clamp01(rules.TP_P1_QTY) ?? 1;
   return clamp01((1 - tp0QtyRatio) * (1 - tp1QtyRatio)) ?? RUNNER_EXPOSURE_FALLBACK;
 }
 

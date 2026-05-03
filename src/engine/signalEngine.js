@@ -16,6 +16,7 @@ const {
   resolveSimplifiedExitV2FlagFromSnapshot,
   resolveExecutionMode,
 } = require("../services/simplifiedExitV2");
+const { buildV2SimpleExitRulesPatch, isFullTpExitRatio } = require("../v2/exitPolicy");
 
 function toNum(x) {
   const n = Number(x);
@@ -487,25 +488,25 @@ const DEFAULT_RULES = (CHARTER_EXPECTATIONS && CHARTER_EXPECTATIONS.signal_engin
     TP_P0_QTY: 0.25,
     TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.06,
-    TP_P1_RESCUE_COHORT: 0.0165,
+    TP_P1_RESCUE_COHORT: 0.025,
     TP_P1_MIXED_COHORT: 0.025,
-    TP_P1_QTY: 0.5,
+    TP_P1_QTY: 1,
     TP_C: null,
-    BE_PCT_RESCUE_COHORT: 0.0015,
+    BE_PCT_RESCUE_COHORT: null,
     BE_PCT_MIXED_COHORT: 0.002,
-    TRAIL_R_MULTIPLE_RESCUE_COHORT: 0.6,
+    TRAIL_R_MULTIPLE_RESCUE_COHORT: null,
     TRAIL_R_MULTIPLE_MIXED_COHORT: 0.75,
-    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.0165,
-    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
-    BE_ENABLE: true,
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: null,
+    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: null,
+    BE_ENABLE: false,
     BE_PCT: null,
     PRE_TP1_TIME_STOP_BARS_EARLY: 4,
     PRE_TP1_TIME_STOP_BARS_CORE: 6,
     PRE_TP1_TIME_STOP_PROGRESS_FRACTION: 0.5,
     TRAIL_DELAY_BARS: 1,
     TRAIL_DELAY_MFE_PCT: 0.005,
-    TRAIL_R_MULTIPLE: 1.0,
-    TRAIL_PCT: 0.025,
+    TRAIL_R_MULTIPLE: null,
+    TRAIL_PCT: null,
     RUNNER_MIN_PROFIT_PCT: null,
   };
 
@@ -548,28 +549,27 @@ const EXCHANGE_RULES = {
     TP_P0_QTY: 0.25,
     TP_P0_ATR_MULTIPLE: 0.8,
     TP_P1: 0.025,
-    TP_P1_RESCUE_COHORT: 0.0165,
+    TP_P1_RESCUE_COHORT: 0.025,
     TP_P1_MIXED_COHORT: 0.025,
-    TP_P1_QTY: 0.5,
+    TP_P1_QTY: 1,
     TP_C: null,
-    BE_PCT_RESCUE_COHORT: 0.0015,
+    BE_PCT_RESCUE_COHORT: null,
     BE_PCT_MIXED_COHORT: 0.002,
-    TRAIL_R_MULTIPLE_RESCUE_COHORT: 0.6,
+    TRAIL_R_MULTIPLE_RESCUE_COHORT: null,
     TRAIL_R_MULTIPLE_MIXED_COHORT: 0.75,
-    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.0165,
-    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
-    BE_ENABLE: true,
-    // Keep small realized edge after TP1; prevents many short winners from reverting to losses.
-    BE_PCT: 0.0025,
+    RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: null,
+    RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: null,
+    BE_ENABLE: false,
+    BE_PCT: null,
     PRE_TP1_TIME_STOP_BARS_EARLY: 4,
     PRE_TP1_TIME_STOP_BARS_CORE: 6,
     PRE_TP1_TIME_STOP_PROGRESS_FRACTION: 0.5,
     TRAIL_DELAY_BARS: 1,
     TRAIL_DELAY_MFE_PCT: 0.005,
-    TRAIL_R_MULTIPLE: 0.9,
-    // Legacy fallback for positions without entry R metadata.
-    TRAIL_PCT: 0.01,
-    RUNNER_MIN_PROFIT_PCT: 0.02,
+    TRAIL_R_MULTIPLE: null,
+    TRAIL_PCT: null,
+    RUNNER_MIN_PROFIT_PCT: null,
+    ...buildV2SimpleExitRulesPatch(),
   },
 };
 
@@ -579,26 +579,27 @@ const BINANCE_FUTURES_AGGRESSIVE_RULES = {
   TP_P0_QTY: 0.25,
   TP_P0_ATR_MULTIPLE: 0.8,
   TP_P1: 0.03,
-  TP_P1_RESCUE_COHORT: 0.0165,
+  TP_P1_RESCUE_COHORT: 0.025,
   TP_P1_MIXED_COHORT: 0.025,
-  TP_P1_QTY: 0.5,
+  TP_P1_QTY: 1,
   TP_C: null,
-  BE_PCT_RESCUE_COHORT: 0.0015,
+  BE_PCT_RESCUE_COHORT: null,
   BE_PCT_MIXED_COHORT: 0.002,
-  TRAIL_R_MULTIPLE_RESCUE_COHORT: 0.6,
+  TRAIL_R_MULTIPLE_RESCUE_COHORT: null,
   TRAIL_R_MULTIPLE_MIXED_COHORT: 0.75,
-  RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: 0.0165,
-  RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: 0.0165,
-  BE_ENABLE: true,
-  BE_PCT: 0.0025,
+  RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: null,
+  RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: null,
+  BE_ENABLE: false,
+  BE_PCT: null,
   PRE_TP1_TIME_STOP_BARS_EARLY: 4,
   PRE_TP1_TIME_STOP_BARS_CORE: 6,
   PRE_TP1_TIME_STOP_PROGRESS_FRACTION: 0.5,
   TRAIL_DELAY_BARS: 1,
   TRAIL_DELAY_MFE_PCT: 0.005,
-  TRAIL_R_MULTIPLE: 1.0,
-  TRAIL_PCT: 0.015,
-  RUNNER_MIN_PROFIT_PCT: 0.02,
+  TRAIL_R_MULTIPLE: null,
+  TRAIL_PCT: null,
+  RUNNER_MIN_PROFIT_PCT: null,
+  ...buildV2SimpleExitRulesPatch(),
 };
 
 function normalizeExchangeKey(exchange) {
@@ -697,6 +698,18 @@ function normalizeExitRules(rules, fallbackRules) {
 function enforceMinimumRunnerProfitFloor({ rules = null, exchange = "" } = {}) {
   const ex = normalizeExchangeKey(exchange);
   if (ex !== "BINANCEFUT" || !rules || typeof rules !== "object") return rules;
+  if (isFullTpExitRatio(rules.TP_P1_QTY)) {
+    return {
+      ...rules,
+      BE_ENABLE: false,
+      BE_PCT: null,
+      TRAIL_R_MULTIPLE: null,
+      TRAIL_PCT: null,
+      RUNNER_MIN_PROFIT_PCT: null,
+      RUNNER_MIN_PROFIT_PCT_RESCUE_COHORT: null,
+      RUNNER_MIN_PROFIT_PCT_MIXED_COHORT: null,
+    };
+  }
   const clampFloor = (value) => {
     const num = toNum(value);
     return Number.isFinite(num) && num >= BINANCE_MIN_TRAIL_GUARANTEE_PCT

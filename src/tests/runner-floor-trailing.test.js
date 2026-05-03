@@ -15,7 +15,10 @@ function run() {
       },
     },
   });
-  assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, 0.0165, "binance trailing floor must guarantee at least 1.65%");
+  assert.strictEqual(rescueRules.RUNNER_MIN_PROFIT_PCT, null,
+    "current V2 full-TP contract must not re-enable runner floor");
+  assert.strictEqual(rescueRules.TRAIL_R_MULTIPLE, null,
+    "current V2 full-TP contract must not re-enable trailing");
 
   const rescueFloorSignals = generateSignals({
     exchange: "BINANCEFUT",
@@ -38,12 +41,8 @@ function run() {
       },
     },
   });
-  assert.strictEqual(rescueFloorSignals.length, 1, "rescue cohort should still emit trailing exit");
-  assert.strictEqual(rescueFloorSignals[0].event, "EXIT_TRAIL");
-  assert.strictEqual(rescueFloorSignals[0].reason, "EXIT_TRAIL_STOP_RUNNER_FLOOR");
-  assert.strictEqual(rescueFloorSignals[0].features.runner_floor_pct, 0.0165);
-  assert.strictEqual(rescueFloorSignals[0].features.runner_stop_source, "RUNNER_FLOOR");
-  assert.ok(Math.abs(rescueFloorSignals[0].features.runner_stop_px - 99.175) < 1e-9);
+  assert.strictEqual(rescueFloorSignals.length, 0,
+    "current V2 full-TP contract must not emit runner/trailing exits");
 
   const shortSignals = generateSignals({
     exchange: "BINANCEFUT",
@@ -64,12 +63,8 @@ function run() {
       },
     },
   });
-  assert.strictEqual(shortSignals.length, 1, "short runner floor should emit one trailing exit");
-  assert.strictEqual(shortSignals[0].event, "EXIT_TRAIL");
-  assert.strictEqual(shortSignals[0].reason, "EXIT_TRAIL_STOP");
-  assert.ok(Math.abs(shortSignals[0].features.runner_stop_px - 98.795) < 1e-9);
-  assert.strictEqual(shortSignals[0].features.runner_stop_source, "TRAIL");
-  assert.strictEqual(shortSignals[0].features.trail_r_multiple, 0.6);
+  assert.strictEqual(shortSignals.length, 0,
+    "current V2 full-TP contract must not emit short runner/trailing exits");
 
   const longSignals = generateSignals({
     exchange: "BINANCEFUT",
@@ -90,9 +85,8 @@ function run() {
       },
     },
   });
-  assert.strictEqual(longSignals.length, 1, "long runner floor should emit one trailing exit");
-  assert.strictEqual(longSignals[0].reason, "EXIT_TRAIL_STOP");
-  assert.ok(Math.abs(longSignals[0].features.runner_stop_px - 101.205) < 1e-9);
+  assert.strictEqual(longSignals.length, 0,
+    "current V2 full-TP contract must not emit long runner/trailing exits");
 
   const triggers = tickExitTest.computeExitTriggers({
     pos: {
@@ -139,7 +133,7 @@ function run() {
           SL: -0.0165,
           TP_P1: 0.025,
           TP_P1_QTY: 0.5,
-          TRAIL_R_MULTIPLE: 0.9,
+          TRAIL_R_MULTIPLE: 0.6,
           TRAIL_PCT: 0.01,
           RUNNER_MIN_PROFIT_PCT: 0.02,
           BE_PCT: 0.0025,
@@ -160,6 +154,17 @@ function run() {
   assert.ok(Math.abs(stage.chosen_stop_price - 98.795) < 1e-9);
   assert.deepStrictEqual(stage.stop_divergence_codes, []);
 
+  const legacyRunnerRules = {
+    SL: -0.0165,
+    TP_P1: 0.025,
+    TP_P1_QTY: 0.5,
+    TRAIL_R_MULTIPLE: 0.6,
+    TRAIL_PCT: 0.01,
+    RUNNER_MIN_PROFIT_PCT: 0.0165,
+    BE_ENABLE: true,
+    BE_PCT: 0.0025,
+  };
+
   const breachedHardExit = tickExitTest.shouldTriggerTrailHardExit({
     position: {
       avg_price: 100,
@@ -175,7 +180,7 @@ function run() {
     },
     price: 99.21,
     side: "SHORT",
-    rules: rescueRules,
+    rules: legacyRunnerRules,
   });
   assert.strictEqual(breachedHardExit.trigger, true, "runner floor breach must trigger hard exit");
   assert.ok(Math.abs(breachedHardExit.stopPrice - 99.175) < 1e-9);
@@ -195,7 +200,7 @@ function run() {
     },
     price: 99.15,
     side: "SHORT",
-    rules: rescueRules,
+    rules: legacyRunnerRules,
   });
   assert.strictEqual(safeHardExit.trigger, false, "price above floor only after breach should force exit");
 }

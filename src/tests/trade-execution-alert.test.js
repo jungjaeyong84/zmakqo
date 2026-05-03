@@ -85,6 +85,7 @@ async function run() {
     reason: "MARGIN_TYPE_SET_FAILED",
     note: "margin type change rejected",
     closeRatio: 0.5,
+    simplifiedExitV2Enabled: true,
     appliedLeverage: 2,
     leverageReason: "REGIME_NOT_TREND",
     canonicalExitEvent: "EXIT_TP_P1_2.5P",
@@ -94,14 +95,14 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(tp1Failure, "tp1 failure message should exist");
-  assert.strictEqual(tp1Failure.title, "SOLUSDT 정본재분류 TP1_1.65->TP1_2.5 주문 실패");
+  assert.strictEqual(tp1Failure.title, "SOLUSDT 정본재분류 TP1_1.65->TP_FULL_2.5 주문 실패");
   assert.ok(tp1Failure.body.includes("방향: 숏 청산"), "failure message should include exit direction");
-  assert.ok(tp1Failure.body.includes("종류: 익절(TP1) 2.5%"), "failure message should use canonical stage label");
-  assert.ok(tp1Failure.body.includes("실행계약: TP1_2.5"), "failure message should show canonical executed contract");
-  assert.ok(tp1Failure.body.includes("주문비율: 50%"), "failure message should include close ratio");
-  assert.ok(tp1Failure.body.includes("정본재분류: TP1_1.65 -> TP1_2.5"), "failure message should expose canonical reclassification");
-  assert.ok(tp1Failure.body.includes("전략계약: SL_1.65 / TP1_2.5 / TRAIL_0.9R / RUNNER_MIN_2 / BE_0.25"), "failure message should separate strategy contract from executed stage");
-  assert.ok(tp1Failure.body.includes("RUNNER_MIN_2"), "failure message should include runner floor rule");
+  assert.ok(tp1Failure.body.includes("종류: 전량익절(TP) 2.5%"), "failure message should use canonical full-TP label");
+  assert.ok(tp1Failure.body.includes("실행계약: TP_FULL_2.5"), "failure message should show canonical executed contract");
+  assert.ok(tp1Failure.body.includes("주문비율: 전량"), "failure message should include full close ratio");
+  assert.ok(tp1Failure.body.includes("정본재분류: TP1_1.65 -> TP_FULL_2.5"), "failure message should expose canonical reclassification");
+  assert.ok(tp1Failure.body.includes("전략계약: SL_1.65 / TP_FULL_2.5"), "failure message should separate strategy contract from executed stage");
+  assert.ok(!tp1Failure.body.includes("RUNNER_MIN"), "full-TP message must not include runner floor");
   assert.ok(tp1Failure.body.includes("실패사유: MARGIN_TYPE_SET_FAILED"), "failure reason should be explicit");
   assert.ok(tp1Failure.body.includes("메모: margin type change rejected"), "failure note should be explicit");
 
@@ -141,7 +142,8 @@ async function run() {
     positionSideBefore: "LONG",
     executionMode: "LIVE",
     reason: "ORDER_REJECTED",
-    closeRatio: 0.5,
+    closeRatio: 1,
+    fullExit: true,
     simplifiedExitV2Enabled: true,
     canonicalExitEvent: "EXIT_TP_P1_2.5P",
     canonicalExitStage: "TP1",
@@ -150,11 +152,11 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp0FailureReclassified, "simplified v2 tp0 failure reclassification should exist");
-  assert.strictEqual(simplifiedTp0FailureReclassified.title, "ETHUSDT 익절(TP1) 2.5% 주문 실패");
+  assert.strictEqual(simplifiedTp0FailureReclassified.title, "ETHUSDT 전량익절(TP) 2.5% 주문 실패");
   assert.ok(!simplifiedTp0FailureReclassified.title.includes("TP0"), "v2 failure title must not expose TP0");
-  assert.ok(simplifiedTp0FailureReclassified.body.includes("종류: 익절(TP1) 2.5%"), "v2 failure must show TP1 label");
-  assert.ok(simplifiedTp0FailureReclassified.body.includes("실행계약: TP1_2.5"), "v2 failure must show TP1 executed contract");
-  assert.ok(simplifiedTp0FailureReclassified.body.includes("정본재분류: RAW_EVIDENCE -> TP1_2.5"), "v2 failure must keep reclassification while hiding legacy TP0 contract namespace");
+  assert.ok(simplifiedTp0FailureReclassified.body.includes("종류: 전량익절(TP) 2.5%"), "v2 failure must show full TP label");
+  assert.ok(simplifiedTp0FailureReclassified.body.includes("실행계약: TP_FULL_2.5"), "v2 failure must show full TP executed contract");
+  assert.ok(simplifiedTp0FailureReclassified.body.includes("정본재분류: RAW_EVIDENCE -> TP_FULL_2.5"), "v2 failure must keep reclassification while hiding legacy TP0 contract namespace");
   assert.ok(simplifiedTp0FailureReclassified.body.includes("이벤트: EXIT_TP_P0_0.8P"), "raw TP0 evidence should remain visible in v2 failure alert");
 
   const externalSync = __test.buildMessage({
@@ -288,11 +290,11 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp0EvidenceReclassified, "simplified v2 tp evidence message should exist");
-  assert.strictEqual(simplifiedTp0EvidenceReclassified.title, "ETHUSDT TP1_2.5 50% 청산");
+  assert.strictEqual(simplifiedTp0EvidenceReclassified.title, "ETHUSDT TP_FULL_2.5 전량 청산");
   assert.ok(!simplifiedTp0EvidenceReclassified.title.includes("TP0"), "v2 alert title must not expose TP0");
-  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("종류: 익절(TP1) 2.5%"), "v2 alert should show TP1 label");
-  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("실행계약: TP1_2.5"), "v2 alert should show TP1 executed contract");
-  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("정본재분류: RAW_EVIDENCE -> TP1_2.5"), "v2 raw tp0 evidence should be normalized without exposing legacy TP0 contract namespace");
+  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("종류: 전량익절(TP) 2.5%"), "v2 alert should show full TP label");
+  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("실행계약: TP_FULL_2.5"), "v2 alert should show full TP executed contract");
+  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("정본재분류: RAW_EVIDENCE -> TP_FULL_2.5"), "v2 raw tp0 evidence should be normalized without exposing legacy TP0 contract namespace");
   assert.ok(simplifiedTp0EvidenceReclassified.body.includes("이벤트: EXIT_TP_P0_0.8P"), "raw evidence event should remain visible");
 
   const simplifiedExternalSyncAfterTp0 = __test.buildMessage({
@@ -324,19 +326,20 @@ async function run() {
     executionMode: "LIVE",
     notional: 200,
     execPrice: 70000,
-    closeRatio: 0.5,
-    fullExit: false,
+    closeRatio: 1,
+    fullExit: true,
     realizedPnl: 4.2,
+    simplifiedExitV2Enabled: true,
     canonicalExitEvent: "EXIT_TP_P1_3P",
     canonicalExitStage: "TP1",
-    canonicalTransitionEvent: "TP1_REACHED",
-    canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVE"],
-    exitRules: { SL: -0.0165, TP_P1: 0.03, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
+    canonicalTransitionEvent: "TP1_FULL_EXIT",
+    canonicalTransitionEvents: ["TP1_FULL_EXIT"],
+    exitRules: { SL: -0.0165, TP_P1: 0.03, TP_P1_QTY: 1, TRAIL_R_MULTIPLE: null, RUNNER_MIN_PROFIT_PCT: null, BE_ENABLE: false, BE_PCT: null },
   });
   assert.ok(canonicalTp1Event, "canonical tp1 event message should exist");
-  assert.strictEqual(canonicalTp1Event.title, "BTCUSDT 정본재분류 TP1_5->TP1_3 50% 청산");
-  assert.ok(canonicalTp1Event.body.includes("종류: 익절(TP1) 3%"), "canonical exit event should control displayed label");
-  assert.ok(canonicalTp1Event.body.includes("실행계약: TP1_3"), "canonical exit event should control executed contract");
+  assert.strictEqual(canonicalTp1Event.title, "BTCUSDT 정본재분류 TP1_5->TP_FULL_3 전량 청산");
+  assert.ok(canonicalTp1Event.body.includes("종류: 전량익절(TP) 3%"), "canonical exit event should control displayed label");
+  assert.ok(canonicalTp1Event.body.includes("실행계약: TP_FULL_3"), "canonical exit event should control executed contract");
 
   const canonicalTrailWithRawEvidence = __test.buildMessage({
     exchange: "BINANCEFUT",
@@ -386,16 +389,16 @@ async function run() {
     simplifiedExitV2Enabled: true,
     canonicalExitEvent: "EXIT_TP_P1_2.5P",
     canonicalExitStage: "TP1",
-    canonicalTransitionEvent: "TP1_REACHED",
-    canonicalTransitionEvents: ["TP1_REACHED"],
+    canonicalTransitionEvent: "TP1_FULL_EXIT",
+    canonicalTransitionEvents: ["TP1_FULL_EXIT"],
     exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp1, "simplified v2 tp1 message should exist");
-  assert.strictEqual(simplifiedTp1.title, "ETHUSDT 정본재분류 TP1_1.65->TP1_2.5 50% 청산");
-  assert.ok(simplifiedTp1.body.includes("종류: 익절(TP1) 2.5%"), "v2 projection should prefer canonical tp1 contract");
-  assert.ok(simplifiedTp1.body.includes("실행계약: TP1_2.5"), "v2 projection should prefer canonical executed contract");
-  assert.ok(simplifiedTp1.body.includes("정본전이: TP1_REACHED"), "v2 projection should expose canonical transition only");
-  assert.ok(simplifiedTp1.body.includes("이벤트: EXIT_TP_P1_2.5P"), "v2 tp1 alert event must match the canonical 2.5 contract");
+  assert.strictEqual(simplifiedTp1.title, "ETHUSDT 정본재분류 TP1_1.65->TP_FULL_2.5 전량 청산");
+  assert.ok(simplifiedTp1.body.includes("종류: 전량익절(TP) 2.5%"), "v2 projection should prefer canonical full tp contract");
+  assert.ok(simplifiedTp1.body.includes("실행계약: TP_FULL_2.5"), "v2 projection should prefer canonical executed contract");
+  assert.ok(simplifiedTp1.body.includes("정본전이: TP1_FULL_EXIT"), "v2 projection should expose canonical transition only");
+  assert.ok(simplifiedTp1.body.includes("이벤트: EXIT_TP_FULL_2.5P"), "v2 tp1 alert event must match the canonical full 2.5 contract");
   assert.ok(simplifiedTp1.body.includes("원본이벤트: EXIT_TP_P1_1.65P"), "v2 tp1 alert should retain raw legacy evidence separately");
 
   const simplifiedTp1LegacyRescueLabel = __test.buildMessage({
@@ -408,23 +411,23 @@ async function run() {
     executionMode: "LIVE",
     notional: 58.11,
     execPrice: 2233.06,
-    closeRatio: 0.5,
-    fullExit: false,
+    closeRatio: 1,
+    fullExit: true,
     realizedPnl: 0.493,
     appliedLeverage: 3,
     simplifiedExitV2Enabled: true,
     canonicalExitEvent: "EXIT_TP_P1_1.65P",
     canonicalExitStage: "TP1",
-    canonicalTransitionEvent: "TP1_REACHED",
-    canonicalTransitionEvents: ["TP1_REACHED"],
+    canonicalTransitionEvent: "TP1_FULL_EXIT",
+    canonicalTransitionEvents: ["TP1_FULL_EXIT"],
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp1LegacyRescueLabel, "simplified v2 tp1 message with legacy rescue label should exist");
-  assert.strictEqual(simplifiedTp1LegacyRescueLabel.title, "ETHUSDT 정본재분류 TP1_1.65->TP1_2.5 50% 청산");
-  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("종류: 익절(TP1) 2.5%"), "v2 tp1 alert must not display legacy rescue 1.65% as the executed TP1 target");
-  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("실행계약: TP1_2.5"), "v2 tp1 executed contract must remain the protected-entry 2.5% PnL target");
-  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("전략계약: SL_1.65 / TP1_2.5 / TRAIL_0.6R / RUNNER_MIN_1.65 / BE_0.15"), "v2 tp1 strategy line must display the actual TP1 protection target");
-  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("이벤트: EXIT_TP_P1_2.5P"), "legacy rescue label must not leak into the displayed event");
+  assert.strictEqual(simplifiedTp1LegacyRescueLabel.title, "ETHUSDT 정본재분류 TP1_1.65->TP_FULL_2.5 전량 청산");
+  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("종류: 전량익절(TP) 2.5%"), "v2 tp1 alert must not display legacy rescue 1.65% as the executed TP1 target");
+  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("실행계약: TP_FULL_2.5"), "v2 tp1 executed contract must remain the protected-entry 2.5% PnL target");
+  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("전략계약: SL_1.65 / TP_FULL_2.5"), "v2 tp1 strategy line must display the actual full TP protection target");
+  assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("이벤트: EXIT_TP_FULL_2.5P"), "legacy rescue label must not leak into the displayed event");
   assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("원본이벤트: EXIT_TP_P1_1.65P"), "legacy rescue evidence must remain auditable as raw evidence");
 
   const simplifiedTp1WithTrailActivation = __test.buildMessage({
@@ -437,22 +440,22 @@ async function run() {
     executionMode: "LIVE",
     notional: 59.51088,
     execPrice: 0.1224,
-    closeRatio: 0.5,
-    fullExit: false,
+    closeRatio: 1,
+    fullExit: true,
     realizedPnl: 0.486,
     simplifiedExitV2Enabled: true,
     canonicalExitEvent: "EXIT_TP_P1_1.65P",
     canonicalExitStage: "TP1",
-    canonicalTransitionEvent: "TRAIL_ACTIVATED",
-    canonicalTransitionEvents: ["TP1_REACHED", "TRAIL_ACTIVATED"],
+    canonicalTransitionEvent: "TP1_FULL_EXIT",
+    canonicalTransitionEvents: ["TP1_FULL_EXIT"],
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp1WithTrailActivation, "tp1 plus trail activation message should exist");
-  assert.strictEqual(simplifiedTp1WithTrailActivation.title, "ARBUSDT 정본재분류 TP1_1.65->TP1_2.5 50% 청산");
-  assert.ok(simplifiedTp1WithTrailActivation.body.includes("종류: 익절(TP1) 2.5%"), "tp1 fill must remain TP1 even when TRAIL_ACTIVATED is in the same canonical batch");
-  assert.ok(simplifiedTp1WithTrailActivation.body.includes("실행계약: TP1_2.5"), "executed contract must be TP1_2.5, not TRAIL");
-  assert.ok(simplifiedTp1WithTrailActivation.body.includes("정본전이: TP1_REACHED -> TRAIL_ACTIVATED"), "transition order should show TP1 before runner trail activation");
-  assert.ok(simplifiedTp1WithTrailActivation.body.includes("이벤트: EXIT_TP_P1_2.5P"), "displayed event should be the V2 TP1 event");
+  assert.strictEqual(simplifiedTp1WithTrailActivation.title, "ARBUSDT 정본재분류 TP1_1.65->TP_FULL_2.5 전량 청산");
+  assert.ok(simplifiedTp1WithTrailActivation.body.includes("종류: 전량익절(TP) 2.5%"), "tp1 fill must remain full TP under simplified V2");
+  assert.ok(simplifiedTp1WithTrailActivation.body.includes("실행계약: TP_FULL_2.5"), "executed contract must be full TP, not TRAIL");
+  assert.ok(simplifiedTp1WithTrailActivation.body.includes("정본전이: TP1_FULL_EXIT"), "transition order should show terminal full TP");
+  assert.ok(simplifiedTp1WithTrailActivation.body.includes("이벤트: EXIT_TP_FULL_2.5P"), "displayed event should be the V2 full TP event");
   assert.ok(simplifiedTp1WithTrailActivation.body.includes("원본이벤트: EXIT_TP_P1_1.65P"), "raw legacy event should be kept for audit only");
   assert.ok(!simplifiedTp1WithTrailActivation.body.includes("실행계약: TRAIL"), "tp1 fill must not be mislabeled as trail execution");
 
@@ -522,7 +525,7 @@ async function run() {
   assert.ok(simplifiedSlWithLegacyTp1Rule, "simplified v2 sl message should exist");
   assert.strictEqual(simplifiedSlWithLegacyTp1Rule.title, "TAOUSDT SL_1.65 전량 청산");
   assert.ok(simplifiedSlWithLegacyTp1Rule.body.includes("실행계약: SL_1.65"), "SL alert should keep executed stop contract");
-  assert.ok(simplifiedSlWithLegacyTp1Rule.body.includes("전략계약: SL_1.65 / TP1_2.5 / TRAIL_0.6R / RUNNER_MIN_1.65 / BE_0.15"), "non-TP1 V2 alerts must display protected-entry TP1 target, not legacy 1.65");
+  assert.ok(simplifiedSlWithLegacyTp1Rule.body.includes("전략계약: SL_1.65 / TP_FULL_2.5"), "non-TP1 V2 alerts must display protected-entry full TP target, not legacy 1.65");
   assert.ok(!simplifiedSlWithLegacyTp1Rule.body.includes("TP1_1.65"), "V2 SL alert must not leak legacy TP1_1.65 label");
   assert.ok(!simplifiedSlWithLegacyTp1Rule.body.includes("stop근거:"), "zero-only stop authority fields should be suppressed");
 
@@ -541,7 +544,7 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedEntryWithLegacyTp1Rule, "simplified v2 entry message should exist");
-  assert.ok(simplifiedEntryWithLegacyTp1Rule.body.includes("청산규칙: SL_1.65 / TP1_2.5 / TRAIL_0.6R / RUNNER_MIN_1.65 / BE_0.15"), "entry alert should use the same V2 protected-entry contract display");
+  assert.ok(simplifiedEntryWithLegacyTp1Rule.body.includes("청산규칙: SL_1.65 / TP_FULL_2.5"), "entry alert should use the same V2 protected-entry contract display");
   assert.ok(!simplifiedEntryWithLegacyTp1Rule.body.includes("TP1_1.65"), "V2 entry alert must not leak legacy TP1_1.65 label");
 
   const simplifiedExternalCloseRequirement = __test.resolveCanonicalExitAlertRequirement({

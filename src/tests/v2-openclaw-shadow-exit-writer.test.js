@@ -171,7 +171,7 @@ function seedPendingBaseWithoutProtection(store) {
     positionSide: "LONG",
     sourceFillId: "FILL__TP1__1",
     sourceOrderId: "ORDER__TP1__1",
-    fillQtyAbs: 0.5,
+    fillQtyAbs: 1,
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, false);
@@ -191,7 +191,7 @@ function seedPendingBaseWithoutProtection(store) {
     positionSide: "LONG",
     sourceFillId: "FILL__TP1__1",
     sourceOrderId: "ORDER__TP1__1",
-    fillQtyAbs: 0.5,
+    fillQtyAbs: 1,
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, false);
@@ -212,7 +212,7 @@ function seedPendingBaseWithoutProtection(store) {
     positionSide: "LONG",
     sourceFillId: "FILL__TP1__NO_PROTECTION",
     sourceOrderId: "ORDER__TP1__NO_PROTECTION",
-    fillQtyAbs: 0.5,
+    fillQtyAbs: 1,
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, false);
@@ -241,7 +241,7 @@ function seedPendingBaseWithoutProtection(store) {
     positionSide: "LONG",
     sourceFillId: "FILL__TP1__DEGRADED",
     sourceOrderId: "ORDER__TP1__DEGRADED",
-    fillQtyAbs: 0.5,
+    fillQtyAbs: 1,
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, false);
@@ -263,7 +263,7 @@ function seedPendingBaseWithoutProtection(store) {
     positionSide: "LONG",
     sourceFillId: "FILL__TP1__1",
     sourceOrderId: "ORDER__TP1__1",
-    fillQtyAbs: 0.5,
+    fillQtyAbs: 1,
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, true);
@@ -279,13 +279,13 @@ function seedPendingBaseWithoutProtection(store) {
   assert.ok(outbox.prepared_payload);
   assert.ok(outbox.delivery_request);
   assertCanonicalOutboxBatchEvidence({ result, transition, outbox });
-  assert.strictEqual(transition.transition_event, "TP1_REACHED");
+  assert.strictEqual(transition.transition_event, "TP1_FULL_EXIT");
   assert.strictEqual(transition.source_exchange_evidence.evidence_kind, "TP1_FILL");
   assert.strictEqual(transition.source_exchange_evidence.source_fill_id, "FILL__TP1__1");
-  assert.strictEqual(projection.stage, "TP1_DONE");
+  assert.strictEqual(projection.stage, "EXITED_TP1");
   assert.strictEqual(projection.tp1_done, true);
-  assert.strictEqual(projection.tp1_filled_qty_abs, 0.5);
-  assert.strictEqual(projection.runner_remaining_qty_abs, 0.5);
+  assert.strictEqual(projection.tp1_filled_qty_abs, 1);
+  assert.strictEqual(projection.runner_remaining_qty_abs, 0);
   assert.strictEqual(result.alert_prepare_ok, true);
   assert.strictEqual(outbox.status, "FAILED");
   assert.strictEqual(result.alert_delivery.updatedOutbox.status, "FAILED");
@@ -305,14 +305,14 @@ function seedPendingBaseWithoutProtection(store) {
     sourceOrderId: "ORDER__TP1__1",
     fillQtyAbs: 0.2,
     positionMeta: {
-      native_protection_consumed_tp_qty_base: 0.5,
+      native_protection_consumed_tp_qty_base: 1,
     },
   });
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.written, true);
   const projection = store["dbjv2__exit_runtime_projection_v2"][`ERPv2__${base.positionCycle.position_cycle_id}`];
-  assert.strictEqual(projection.stage, "TP1_DONE");
-  assert.strictEqual(projection.tp1_filled_qty_abs, 0.5);
+  assert.strictEqual(projection.stage, "EXITED_TP1");
+  assert.strictEqual(projection.tp1_filled_qty_abs, 1);
 })();
 
 (async function incompleteAggregateSkipsAndWritesNothing() {
