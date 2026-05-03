@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const { callClaude } = require("../src/services/claudeClient");
+const { anthropicApiAllowed, retiredReason } = require("../src/utils/paidAiProviderGuard");
 const { callGemini } = require("../src/services/geminiClient");
 const {
   runOpenAICodexFallback,
@@ -325,6 +326,11 @@ async function runProviderAsync({ providerName, providerCfg, prompt, cwd, output
   }
 
   if (type === "claude_api") {
+    if (!anthropicApiAllowed()) {
+      const res = { provider: providerName, ok: false, skipped: true, reason: retiredReason("ANTHROPIC_API") };
+      writeText(outputPath, JSON.stringify(res, null, 2));
+      return res;
+    }
     const apiKey = resolveEnvValue(providerCfg.api_key_env || ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"]);
     if (!apiKey) {
       const res = { provider: providerName, ok: false, skipped: true, reason: "NO_API_KEY" };

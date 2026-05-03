@@ -26,6 +26,7 @@ const { getEnvExchangeOverride, getExchangeSettingsForProvider } = require("../u
 const { normalizeProviderId, pickProviderEntry } = require("../utils/providerUtils");
 const { fetchBinanceFuturesAccount, fetchFuturesPositionMode } = require("../exchanges/binanceFuturesPrivate");
 const { getBinanceFuturesAccountSummary } = require("../services/binanceFuturesAccountSummary");
+const { paidAiApiDisabled } = require("../utils/paidAiProviderGuard");
 
 function allowLocal() {
   return String(process.env.ALLOW_LOCAL_NO_OAUTH || "0") === "1";
@@ -392,22 +393,23 @@ function normalizeAiAllocation(req, body = {}) {
   clean.min_bars = clampInt(body.min_bars, 5, 500) || AI_ALLOCATION_DEFAULTS.min_bars;
   clean.bars_limit = clampInt(body.bars_limit, 100, 5000) || AI_ALLOCATION_DEFAULTS.bars_limit;
 
-  clean.gpt_enabled = normalizeBool(body.gpt_enabled);
+  const paidAiDisabled = paidAiApiDisabled();
+  clean.gpt_enabled = paidAiDisabled ? false : normalizeBool(body.gpt_enabled);
   clean.gpt_model = String(body.gpt_model || AI_ALLOCATION_DEFAULTS.gpt_model);
   clean.gpt_model_router = String(body.gpt_model_router || AI_ALLOCATION_DEFAULTS.gpt_model_router || clean.gpt_model);
   clean.gpt_model_pro = String(body.gpt_model_pro || AI_ALLOCATION_DEFAULTS.gpt_model_pro || clean.gpt_model);
   if (body.claude_enabled === undefined || body.claude_enabled === null || body.claude_enabled === "") {
-    clean.claude_enabled = AI_ALLOCATION_DEFAULTS.claude_enabled;
+    clean.claude_enabled = paidAiDisabled ? false : AI_ALLOCATION_DEFAULTS.claude_enabled;
   } else {
-    clean.claude_enabled = normalizeBool(body.claude_enabled);
+    clean.claude_enabled = paidAiDisabled ? false : normalizeBool(body.claude_enabled);
   }
   clean.claude_model = String(body.claude_model || AI_ALLOCATION_DEFAULTS.claude_model || "claude-opus-4-5-20251101").trim();
   const claudeTimeoutMs = clampInt(body.claude_timeout_ms, 1000, 30000);
   clean.claude_timeout_ms = claudeTimeoutMs == null ? (AI_ALLOCATION_DEFAULTS.claude_timeout_ms || 8000) : claudeTimeoutMs;
   if (body.ensemble_enabled === undefined || body.ensemble_enabled === null || body.ensemble_enabled === "") {
-    clean.ensemble_enabled = AI_ALLOCATION_DEFAULTS.ensemble_enabled;
+    clean.ensemble_enabled = paidAiDisabled ? false : AI_ALLOCATION_DEFAULTS.ensemble_enabled;
   } else {
-    clean.ensemble_enabled = normalizeBool(body.ensemble_enabled);
+    clean.ensemble_enabled = paidAiDisabled ? false : normalizeBool(body.ensemble_enabled);
   }
   const ensembleWGpt = clampNumber(body.ensemble_w_gpt, 0, 1);
   const ensembleWClaude = clampNumber(body.ensemble_w_claude, 0, 1);
@@ -1130,12 +1132,12 @@ function normalizeAiGuard(req, body, current) {
   const cur = current && typeof current === "object" ? current : {};
   const clean = {};
   const clearKey = normalizeBool(body.clear_key || body.clear);
-  let claudeApiKey = cur.claude_api_key || null;
+  let claudeApiKey = paidAiApiDisabled() ? null : (cur.claude_api_key || null);
   if (clearKey) {
     claudeApiKey = null;
   } else {
     const k = String(body.claude_api_key || body.claude_key || "").trim();
-    if (k) claudeApiKey = k;
+    if (!paidAiApiDisabled() && k) claudeApiKey = k;
   }
   clean.claude_api_key = claudeApiKey;
 

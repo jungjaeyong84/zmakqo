@@ -1,3 +1,5 @@
+const { anthropicApiAllowed, retiredReason } = require("../utils/paidAiProviderGuard");
+
 function safeJsonParse(raw) {
   if (!raw) return null;
   try {
@@ -30,6 +32,9 @@ function extractClaudeError(raw) {
  * @param {boolean} [opts.cacheSystem] - true이면 system prompt에 cache_control 적용
  */
 async function callClaude({ apiKey, model, system, prompt, temperature, maxTokens, jsonMode, cacheSystem } = {}) {
+  if (!anthropicApiAllowed()) {
+    return { ok: false, reason: retiredReason("ANTHROPIC_API") };
+  }
   if (!apiKey) return { ok: false, reason: "NO_API_KEY" };
   const endpoint = "https://api.anthropic.com/v1/messages";
 

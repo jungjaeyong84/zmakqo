@@ -320,6 +320,12 @@ function buildExpectedEnv(env = process.env) {
       "OPENCLAW_NARRATIVE_PROVIDER_MODE",
       "CODEX_CLI_ONLY",
     ),
+    DONBEOLJA_PAID_AI_API_DISABLED: expectedValue(
+      env,
+      "DONBEOLJA_V2_EXPECTED_PAID_AI_API_DISABLED",
+      "DONBEOLJA_PAID_AI_API_DISABLED",
+      "1",
+    ),
     OPENAI_CODEX_FALLBACK_ENABLED: expectedValue(
       env,
       "DONBEOLJA_V2_EXPECTED_OPENAI_CODEX_FALLBACK_ENABLED",

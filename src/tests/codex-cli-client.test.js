@@ -175,7 +175,8 @@ const cli = require("../services/codexCliClient");
   }
 
   // ---- Narrative reasoner wiring ----------------------------------------
-  // The reasoner must default to Codex CLI only; Claude fallback is explicit.
+  // The reasoner must stay Codex CLI only; Claude/OpenAI fallback aliases are
+  // retired in V2 so local automation cannot create paid API spend.
   const narrative = require("../services/openclawNarrativeReasoner");
   const prevMode = process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
   try {
@@ -189,21 +190,18 @@ const cli = require("../services/codexCliClient");
     assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"],
       "explicit CODEX_CLI_ONLY must skip Claude fallback");
 
-    // Explicit fallback alias.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_CLAUDE";
-    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST",
-      "CODEX_CLAUDE alias must resolve to CODEX_CLI_FIRST");
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_ONLY",
+      "CODEX_CLAUDE alias must no longer enable Claude fallback");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"]);
 
-    // Legacy CODEX_FIRST must still be reachable for operators running
-    // the OpenAI HTTP codex backend.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_FIRST";
-    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["OPENAI_CODEX", "CLI"],
-      "explicit CODEX_FIRST must keep the old OpenAI HTTP + Claude CLI sequence");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"],
+      "explicit CODEX_FIRST must no longer use OpenAI HTTP or Claude CLI");
 
-    // Explicit CLI-only mode for operators who need to disable Codex.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CLI";
-    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CLI"],
-      "explicit CLI mode must skip Codex entirely");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"],
+      "explicit CLI mode must be normalized to Codex CLI only");
   } finally {
     if (prevMode === undefined) delete process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE;
     else process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = prevMode;

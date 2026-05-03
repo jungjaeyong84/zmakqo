@@ -13,6 +13,7 @@
 
 const BASE_URL = "https://api.anthropic.com/v1/messages/batches";
 const API_VERSION = "2023-06-01";
+const { anthropicApiAllowed, retiredReason } = require("../utils/paidAiProviderGuard");
 
 function safeJsonParse(raw) {
   if (!raw) return null;
@@ -84,6 +85,7 @@ function buildBatchRequest(customId, { model, system, prompt, maxTokens, tempera
  * @returns {{ ok: boolean, batch_id?: string, status?: string, error?: string, raw?: object }}
  */
 async function createBatch(apiKey, requests) {
+  if (!anthropicApiAllowed()) return { ok: false, error: retiredReason("ANTHROPIC_BATCH_API") };
   if (!apiKey) return { ok: false, error: "NO_API_KEY" };
   if (!Array.isArray(requests) || requests.length === 0) {
     return { ok: false, error: "NO_REQUESTS" };
@@ -127,6 +129,7 @@ async function createBatch(apiKey, requests) {
  * @returns {{ ok: boolean, status?: string, ended?: boolean, request_counts?: object, error?: string }}
  */
 async function getBatchStatus(apiKey, batchId) {
+  if (!anthropicApiAllowed()) return { ok: false, error: retiredReason("ANTHROPIC_BATCH_API") };
   if (!apiKey) return { ok: false, error: "NO_API_KEY" };
   if (!batchId) return { ok: false, error: "NO_BATCH_ID" };
 
@@ -178,6 +181,7 @@ async function getBatchStatus(apiKey, batchId) {
  * }
  */
 async function getBatchResults(apiKey, batchId) {
+  if (!anthropicApiAllowed()) return { ok: false, error: retiredReason("ANTHROPIC_BATCH_API") };
   if (!apiKey) return { ok: false, error: "NO_API_KEY" };
   if (!batchId) return { ok: false, error: "NO_BATCH_ID" };
 
@@ -213,6 +217,7 @@ async function getBatchResults(apiKey, batchId) {
  * @param {string} batchId
  */
 async function cancelBatch(apiKey, batchId) {
+  if (!anthropicApiAllowed()) return { ok: false, error: retiredReason("ANTHROPIC_BATCH_API") };
   if (!apiKey) return { ok: false, error: "NO_API_KEY" };
   if (!batchId) return { ok: false, error: "NO_BATCH_ID" };
 

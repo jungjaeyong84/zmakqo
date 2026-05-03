@@ -1,3 +1,5 @@
+const { geminiApiAllowed, retiredReason } = require("../utils/paidAiProviderGuard");
+
 function safeJsonParse(raw) {
   if (!raw) return null;
   try {
@@ -26,6 +28,7 @@ function resolveRetryDelayMs({ attempt, retryBaseMs, retryAfterHeader }) {
 }
 
 async function callGemini({ apiKey, model, system, prompt, temperature, maxTokens, retryMax, retryBaseMs } = {}) {
+  if (!geminiApiAllowed()) return { ok: false, reason: retiredReason("GEMINI_API") };
   if (!apiKey) return { ok: false, reason: "NO_API_KEY" };
   const targetModel = String(model || "gemini-2.5-pro").trim();
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(targetModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;

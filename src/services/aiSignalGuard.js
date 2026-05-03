@@ -1,6 +1,7 @@
 const { fetchNews } = require("./newsFetch");
 const { callOpenAI, safeJsonParse } = require("./openaiClient");
 const { callClaude } = require("./claudeClient");
+const { anthropicApiAllowed } = require("../utils/paidAiProviderGuard");
 const { getBinanceFuturesAccountSummary } = require("./binanceFuturesAccountSummary");
 const { fetchCandles } = require("../exchanges");
 const { getAiGuardSettingsCached } = require("../storage/settings");
@@ -900,7 +901,7 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
   ).trim();
   const newsProvider = String(process.env.SIGNAL_AI_NEWS_PROVIDER || process.env.NEWS_PROVIDER || "openai_web");
   const newsModel = String(process.env.SIGNAL_AI_NEWS_MODEL || process.env.NEWS_WEB_MODEL || "");
-  let apiKey = String(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || "");
+  let apiKey = anthropicApiAllowed() ? String(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || "") : "";
   const gptApiKey = String(process.env.OPENAI_API_KEY || "");
   const timeoutMs = Number(process.env.SIGNAL_AI_TIMEOUT_MS || 8000);
   const canBlock = boolEnv("SIGNAL_AI_CAN_BLOCK", false);
@@ -930,7 +931,7 @@ async function evaluateSignalWithAi({ exchange, symbol, tf, event, side, qtyPct,
 
   // Firestore에 별도 API키가 있으면 우선 사용
   const guardKey = guardData && guardData.claude_api_key ? String(guardData.claude_api_key) : "";
-  if (!apiKey && guardKey) apiKey = guardKey;
+  if (anthropicApiAllowed() && !apiKey && guardKey) apiKey = guardKey;
   const guardEnsembleEnabled = (guardData && typeof guardData.ensemble_enabled === "boolean")
     ? guardData.ensemble_enabled
     : null;

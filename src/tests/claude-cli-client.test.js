@@ -73,11 +73,15 @@ const cli = require("../services/claudeCliClient");
   // ---- Empty prompt refused ---------------------------------------------
   const emptyResult = await cli.callClaudeCli({ prompt: "" });
   assert.strictEqual(emptyResult.ok, false);
-  assert.strictEqual(emptyResult.reason, "EMPTY_PROMPT");
+  assert.strictEqual(emptyResult.reason, "CLAUDE_CLI_RETIRED_BY_DONBEOLJA_V2");
 
   // ---- Unknown binary: fails cleanly with SPAWN_FAIL or CHILD_ERROR ------
   const bogusBin = process.env.OPENCLAW_CLAUDE_CLI_BIN;
+  const prevPaidAiDisabled = process.env.DONBEOLJA_PAID_AI_API_DISABLED;
+  const prevAllowClaudeCli = process.env.DONBEOLJA_ALLOW_CLAUDE_CLI;
   try {
+    process.env.DONBEOLJA_PAID_AI_API_DISABLED = "0";
+    process.env.DONBEOLJA_ALLOW_CLAUDE_CLI = "1";
     process.env.OPENCLAW_CLAUDE_CLI_BIN = "/this/binary/does/not/exist";
     const bogusResult = await cli.callClaudeCli({
       prompt: "hi",
@@ -91,6 +95,10 @@ const cli = require("../services/claudeCliClient");
   } finally {
     if (bogusBin === undefined) delete process.env.OPENCLAW_CLAUDE_CLI_BIN;
     else process.env.OPENCLAW_CLAUDE_CLI_BIN = bogusBin;
+    if (prevPaidAiDisabled === undefined) delete process.env.DONBEOLJA_PAID_AI_API_DISABLED;
+    else process.env.DONBEOLJA_PAID_AI_API_DISABLED = prevPaidAiDisabled;
+    if (prevAllowClaudeCli === undefined) delete process.env.DONBEOLJA_ALLOW_CLAUDE_CLI;
+    else process.env.DONBEOLJA_ALLOW_CLAUDE_CLI = prevAllowClaudeCli;
   }
 
   // ---- Provider mode wiring (narrative reasoner) ------------------------
@@ -103,20 +111,20 @@ const cli = require("../services/claudeCliClient");
     assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"],
       "default sequence runs Codex CLI only");
 
-    // Explicit Claude-only mode for operators who need to avoid Codex.
+    // V2 is Codex CLI only. Legacy Claude/OpenAI aliases are normalized away
+    // unless the code is intentionally changed in a separate audited commit.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CLI";
-    assert.strictEqual(narrative.providerMode(), "CLI");
-    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CLI"]);
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_ONLY");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"]);
 
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_CLI_FIRST";
-    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_FIRST");
-    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI", "CLI"],
-      "explicit fallback mode may still run Claude CLI");
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_ONLY");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"],
+      "explicit fallback aliases must still run Codex CLI only");
 
-    // Legacy OpenAI-HTTP Codex path still reachable only when explicit.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "CODEX_FIRST";
-    assert.strictEqual(narrative.providerMode(), "CODEX_FIRST");
-    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["OPENAI_CODEX", "CLI"]);
+    assert.strictEqual(narrative.providerMode(), "CODEX_CLI_ONLY");
+    assert.deepStrictEqual(narrative.resolveProviderSequence(), ["CODEX_CLI"]);
 
     // AUTO → CODEX_CLI_ONLY so auto-tune operators get no Claude fallback.
     process.env.OPENCLAW_NARRATIVE_PROVIDER_MODE = "AUTO";

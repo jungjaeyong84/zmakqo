@@ -22,6 +22,7 @@
 //     parser level.
 
 const crypto = require("crypto");
+const { anthropicApiAllowed, openaiApiAllowed } = require("../utils/paidAiProviderGuard");
 
 // Phase C: live LLM backend. Defaults to the Codex CLI subprocess adapter
 // (user's already-authenticated `codex` binary; no plaintext API keys and no
@@ -84,10 +85,10 @@ function providerMode() {
   if (mode === "AUTO" || mode === "CODEX" || mode === "CODEX_CLI" || mode === "CODEX_ONLY" || mode === "CODEX_CLI_ONLY") {
     return "CODEX_CLI_ONLY";
   }
-  if (mode === "CODEX_CLI_FIRST" || mode === "CODEX_CLAUDE") return "CODEX_CLI_FIRST";
-  if (mode === "OPENAI" || mode === "CODEX_FIRST") return "CODEX_FIRST";
-  if (mode === "API" || mode === "HTTP") return "API";
-  if (mode === "CLI" || mode === "CLAUDE_CLI" || mode === "CLAUDE") return "CLI";
+  if (mode === "CODEX_CLI_FIRST" || mode === "CODEX_CLAUDE") return "CODEX_CLI_ONLY";
+  if (mode === "OPENAI" || mode === "CODEX_FIRST") return "CODEX_CLI_ONLY";
+  if (mode === "API" || mode === "HTTP") return "CODEX_CLI_ONLY";
+  if (mode === "CLI" || mode === "CLAUDE_CLI" || mode === "CLAUDE") return "CODEX_CLI_ONLY";
   return "CODEX_CLI_ONLY";
 }
 
@@ -114,6 +115,7 @@ function narrativeCodexReasoningEffort() {
 }
 
 function narrativeApiKey() {
+  if (!anthropicApiAllowed()) return null;
   return String(
     process.env.OPENCLAW_NARRATIVE_CLAUDE_API_KEY
     || process.env.CLAUDE_API_KEY
@@ -382,6 +384,9 @@ async function runLiveLlm(body, { timeoutMs } = {}) {
 
   async function runOpenAiCodexProvider() {
     const callOpenAI = resolveOpenAiClient();
+    if (!openaiApiAllowed()) {
+      return { ok: false, reason: "OPENAI_CODEX_RETIRED_BY_DONBEOLJA_V2", provider: "OPENAI_CODEX" };
+    }
     const apiKey = String(process.env.OPENAI_API_KEY || "").trim();
     if (!callOpenAI || !apiKey) {
       return { ok: false, reason: "OPENAI_CODEX_CLIENT_UNAVAILABLE", provider: "OPENAI_CODEX" };

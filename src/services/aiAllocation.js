@@ -2,6 +2,7 @@ const { getFirestore } = require("../storage/firestore");
 const admin = require("firebase-admin");
 const { getSystemSettingsForProvider, getAiAllocationSettingsForProvider, getAiGuardSettingsCached } = require("../storage/settings");
 const { AI_ALLOCATION_DEFAULTS } = require("../config/aiAllocationDefaults");
+const { anthropicApiAllowed } = require("../utils/paidAiProviderGuard");
 const { fetchNews } = require("./newsFetch");
 const { callOpenAI, safeJsonParse } = require("./openaiClient");
 const { callClaude } = require("./claudeClient");
@@ -1412,18 +1413,18 @@ async function runAiAllocation({ apply = false, provider: providerRaw = null, fo
     const guardRes = await getAiGuardSettingsCached(5000);
     guardData = guardRes && guardRes.data ? guardRes.data : null;
   } catch (_) {}
-  let claudeKey = String(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || "");
-  if (!claudeKey && guardData && guardData.claude_api_key) {
+  let claudeKey = anthropicApiAllowed() ? String(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || "") : "";
+  if (anthropicApiAllowed() && !claudeKey && guardData && guardData.claude_api_key) {
     claudeKey = String(guardData.claude_api_key);
   }
-  if (!claudeKey && aiCfg.claude_api_key) {
+  if (anthropicApiAllowed() && !claudeKey && aiCfg.claude_api_key) {
     claudeKey = String(aiCfg.claude_api_key);
   }
   const guardClaudeEnabled = (guardData && typeof guardData.claude_enabled === "boolean")
     ? guardData.claude_enabled
     : null;
   const aiClaudeEnabled = (typeof aiCfg.claude_enabled === "boolean") ? aiCfg.claude_enabled : null;
-  const claudeEnabled = boolEnv(
+  const claudeEnabled = anthropicApiAllowed() && boolEnv(
     "AI_ALLOC_CLAUDE_ENABLED",
     aiClaudeEnabled != null
       ? aiClaudeEnabled

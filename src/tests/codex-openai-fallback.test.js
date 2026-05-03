@@ -5,12 +5,21 @@ const {
   __test,
 } = require("../../scripts/lib/codex-openai-fallback");
 
+function restoreEnv(name, value) {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
+
 (() => {
   const prevKey = process.env.OPENAI_API_KEY;
   const prevEnabled = process.env.OPENAI_CODEX_FALLBACK_ENABLED;
+  const prevPaidAiDisabled = process.env.DONBEOLJA_PAID_AI_API_DISABLED;
+  const prevOpenAiAllowed = process.env.DONBEOLJA_ALLOW_OPENAI_API;
 
   process.env.OPENAI_API_KEY = "test-key";
   delete process.env.OPENAI_CODEX_FALLBACK_ENABLED;
+  delete process.env.DONBEOLJA_PAID_AI_API_DISABLED;
+  delete process.env.DONBEOLJA_ALLOW_OPENAI_API;
 
   assert.strictEqual(
     __test.shouldUseOpenAICodexFallback({
@@ -45,6 +54,16 @@ const {
       cliMissing: true,
       cliResult: null,
     }),
+    false
+  );
+
+  process.env.DONBEOLJA_PAID_AI_API_DISABLED = "0";
+  process.env.DONBEOLJA_ALLOW_OPENAI_API = "1";
+  assert.strictEqual(
+    __test.shouldUseOpenAICodexFallback({
+      cliMissing: true,
+      cliResult: null,
+    }),
     true
   );
   assert.strictEqual(
@@ -55,7 +74,9 @@ const {
     false
   );
 
-  process.env.OPENAI_API_KEY = prevKey;
-  process.env.OPENAI_CODEX_FALLBACK_ENABLED = prevEnabled;
+  restoreEnv("OPENAI_API_KEY", prevKey);
+  restoreEnv("OPENAI_CODEX_FALLBACK_ENABLED", prevEnabled);
+  restoreEnv("DONBEOLJA_PAID_AI_API_DISABLED", prevPaidAiDisabled);
+  restoreEnv("DONBEOLJA_ALLOW_OPENAI_API", prevOpenAiAllowed);
   console.log("CODEX_OPENAI_FALLBACK_TEST_OK");
 })();

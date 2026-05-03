@@ -1,3 +1,5 @@
+const { openaiApiAllowed, retiredReason } = require("../utils/paidAiProviderGuard");
+
 function shouldUseResponses(model) {
   const m = String(model || "");
   if (process.env.OPENAI_USE_RESPONSES === "1") return true;
@@ -39,6 +41,10 @@ async function callOpenAI({
   reasoningEffort = null,
 } = {}) {
   const out = { ok: false, reason: null, text: null, raw: null };
+  if (!openaiApiAllowed()) {
+    out.reason = retiredReason("OPENAI_API");
+    return out;
+  }
   if (!apiKey) {
     out.reason = "NO_API_KEY";
     return out;

@@ -108,6 +108,7 @@ const {
   assert.strictEqual(result.main_service_env.OPENCLAW_AGENT_APPLY_ENABLED, "0");
   assert.strictEqual(result.main_service_env.ML_LIVE_SERVING_ARMED, "$_ML_LIVE_SERVING_ARMED");
   assert.strictEqual(result.main_service_env.OPENCLAW_NARRATIVE_SHADOW_ONLY, "1");
+  assert.strictEqual(result.main_service_env.DONBEOLJA_PAID_AI_API_DISABLED, "1");
   assert.strictEqual(result.main_service_env.SCHEDULER_AUTOSTART, "0");
   assert.strictEqual(result.main_service_labels["commit-sha"], "$_COMMIT_SHA");
   assert.strictEqual(result.main_service_labels["image-tag"], "$_TAG");
@@ -157,6 +158,7 @@ const {
   assert.strictEqual(result.exit_service_env.OPENCLAW_AGENT_APPLY_ENABLED, "0");
   assert.strictEqual(result.exit_service_env.ML_LIVE_SERVING_ARMED, "$_ML_LIVE_SERVING_ARMED");
   assert.strictEqual(result.exit_service_env.OPENCLAW_NARRATIVE_SHADOW_ONLY, "1");
+  assert.strictEqual(result.exit_service_env.DONBEOLJA_PAID_AI_API_DISABLED, "1");
   assert.strictEqual(result.exit_service_env.SCHEDULER_AUTOSTART, "0");
   assert.strictEqual(result.exit_service_labels["commit-sha"], "$_COMMIT_SHA");
   assert.strictEqual(result.exit_service_labels["image-tag"], "$_TAG");

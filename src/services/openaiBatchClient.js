@@ -6,6 +6,7 @@
  */
 
 const BASE_URL = "https://api.openai.com/v1";
+const { openaiApiAllowed, retiredReason } = require("../utils/paidAiProviderGuard");
 
 function safeJsonParse(raw) {
   if (!raw) return null;
@@ -60,6 +61,7 @@ function buildResponsesBatchRequest(customId, { model, prompt, temperature, maxT
 }
 
 async function uploadBatchInputFile(apiKey, requests) {
+  if (!openaiApiAllowed()) return { ok: false, error: retiredReason("OPENAI_BATCH_API") };
   if (!apiKey) return { ok: false, error: "NO_API_KEY" };
   if (!Array.isArray(requests) || !requests.length) return { ok: false, error: "NO_REQUESTS" };
 
@@ -87,6 +89,7 @@ async function uploadBatchInputFile(apiKey, requests) {
 }
 
 async function createBatch(apiKey, inputFileId, { endpoint = "/v1/responses", completionWindow = "24h" } = {}) {
+  if (!openaiApiAllowed()) return { ok: false, error: retiredReason("OPENAI_BATCH_API") };
   if (!apiKey) return { ok: false, error: "NO_API_KEY" };
   if (!inputFileId) return { ok: false, error: "NO_INPUT_FILE_ID" };
   try {
@@ -115,6 +118,7 @@ async function createBatch(apiKey, inputFileId, { endpoint = "/v1/responses", co
 }
 
 async function getBatchStatus(apiKey, batchId) {
+  if (!openaiApiAllowed()) return { ok: false, error: retiredReason("OPENAI_BATCH_API") };
   if (!apiKey) return { ok: false, error: "NO_API_KEY" };
   if (!batchId) return { ok: false, error: "NO_BATCH_ID" };
   try {
@@ -134,6 +138,7 @@ async function getBatchStatus(apiKey, batchId) {
 }
 
 async function cancelBatch(apiKey, batchId) {
+  if (!openaiApiAllowed()) return { ok: false, error: retiredReason("OPENAI_BATCH_API") };
   if (!apiKey || !batchId) return { ok: false, error: "NO_PARAM" };
   try {
     const res = await fetch(`${BASE_URL}/batches/${batchId}/cancel`, {
@@ -162,6 +167,7 @@ async function pollBatchUntilDone(apiKey, batchId, { pollIntervalMs = 15_000, ti
 }
 
 async function readFileContent(apiKey, fileId) {
+  if (!openaiApiAllowed()) return { ok: false, error: retiredReason("OPENAI_BATCH_API") };
   if (!apiKey || !fileId) return { ok: false, error: "NO_PARAM" };
   try {
     const res = await fetch(`${BASE_URL}/files/${fileId}/content`, {
@@ -233,4 +239,3 @@ module.exports = {
   submitAndCollectResponses,
   parseResponsesBatchResults,
 };
-

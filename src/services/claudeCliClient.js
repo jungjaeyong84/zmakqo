@@ -33,6 +33,7 @@
 //   OPENCLAW_CLAUDE_CLI_TIMEOUT_MS  default timeout (default 15000)
 
 const { spawn } = require("child_process");
+const { claudeCliAllowed, retiredReason } = require("../utils/paidAiProviderGuard");
 
 const DEFAULT_BIN = "claude";
 const DEFAULT_MODEL = "sonnet";
@@ -99,6 +100,9 @@ async function callClaudeCli({
   timeoutMs = null,
   cwd = null,
 } = {}) {
+  if (!claudeCliAllowed()) {
+    return { ok: false, reason: retiredReason("CLAUDE_CLI") };
+  }
   const resolvedPrompt = String(prompt == null ? "" : prompt);
   if (!resolvedPrompt) {
     return { ok: false, reason: "EMPTY_PROMPT" };

@@ -166,7 +166,7 @@ async function run() {
     } finally { envRestore(prev); }
   }
 
-  // ================ Phase C — codex first then Claude CLI ==
+  // ================ Phase C — legacy aliases stay Codex-only =
   {
     const prev = envSnapshot();
     try {
@@ -183,8 +183,9 @@ async function run() {
       });
       assert.strictEqual(out.disabled, false);
       assert.strictEqual(out.live_failed, true);
-      assert.ok(String(out.live_reason || "").includes("OPENAI_CODEX_CLIENT_UNAVAILABLE"));
-      assert.ok(String(out.live_reason || "").includes("CLI"));
+      assert.ok(String(out.live_reason || "").includes("CODEX_CLI"));
+      assert.ok(!String(out.live_reason || "").includes("OPENAI_CODEX"));
+      assert.ok(!String(out.live_reason || "").includes("CLAUDE"));
       assert.ok(out.response.scale == null || out.response.scale <= 1);
     } finally { envRestore(prev); }
   }

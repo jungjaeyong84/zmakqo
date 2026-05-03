@@ -1,6 +1,7 @@
 "use strict";
 
 const { callOpenAI, safeJsonParse } = require("../../src/services/openaiClient");
+const { openaiApiAllowed } = require("../../src/utils/paidAiProviderGuard");
 
 const DEFAULT_OPENAI_CODEX_MODEL = "gpt-5.2-codex";
 
@@ -30,6 +31,7 @@ function summarizeCliFailure({ cliResult = null, cliMissing = false } = {}) {
 }
 
 function shouldUseOpenAICodexFallback({ cliResult = null, cliMissing = false } = {}) {
+  if (!openaiApiAllowed()) return false;
   if (String(process.env.OPENAI_CODEX_FALLBACK_ENABLED || "0").trim() !== "1") return false;
   if (!String(process.env.OPENAI_API_KEY || "").trim()) return false;
   if (cliMissing) return true;

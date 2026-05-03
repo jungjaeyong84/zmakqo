@@ -72,6 +72,7 @@ function serviceJson({
                 Object.freeze({ name: "ML_LIVE_SERVING_ARMED", value: "0" }),
                 Object.freeze({ name: "OPENCLAW_AGENT_APPLY_ENABLED", value: "0" }),
                 Object.freeze({ name: "OPENCLAW_NARRATIVE_PROVIDER_MODE", value: "CODEX_CLI_ONLY" }),
+                Object.freeze({ name: "DONBEOLJA_PAID_AI_API_DISABLED", value: "1" }),
                 Object.freeze({ name: "OPENAI_CODEX_FALLBACK_ENABLED", value: "0" }),
                 Object.freeze({ name: "SIGNAL_AI_ENABLED", value: "0" }),
                 Object.freeze({ name: "AI_ALLOC_CLAUDE_ENABLED", value: "0" }),
