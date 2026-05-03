@@ -1,7 +1,23 @@
 const assert = require("assert");
 const { callGemini } = require("../services/geminiClient");
 
+function withGeminiApiAllowed() {
+  const prev = {
+    disabled: process.env.DONBEOLJA_PAID_AI_API_DISABLED,
+    gemini: process.env.DONBEOLJA_ALLOW_GEMINI_API,
+  };
+  process.env.DONBEOLJA_PAID_AI_API_DISABLED = "0";
+  process.env.DONBEOLJA_ALLOW_GEMINI_API = "1";
+  return () => {
+    if (prev.disabled === undefined) delete process.env.DONBEOLJA_PAID_AI_API_DISABLED;
+    else process.env.DONBEOLJA_PAID_AI_API_DISABLED = prev.disabled;
+    if (prev.gemini === undefined) delete process.env.DONBEOLJA_ALLOW_GEMINI_API;
+    else process.env.DONBEOLJA_ALLOW_GEMINI_API = prev.gemini;
+  };
+}
+
 async function testRetries429ThenSuccess() {
+  const restoreEnv = withGeminiApiAllowed();
   const originalFetch = global.fetch;
   let calls = 0;
   global.fetch = async () => {
@@ -42,10 +58,12 @@ async function testRetries429ThenSuccess() {
     assert.strictEqual(calls, 3);
   } finally {
     global.fetch = originalFetch;
+    restoreEnv();
   }
 }
 
 async function testStopsWithoutRetryBudget() {
+  const restoreEnv = withGeminiApiAllowed();
   const originalFetch = global.fetch;
   let calls = 0;
   global.fetch = async () => {
@@ -70,6 +88,7 @@ async function testStopsWithoutRetryBudget() {
     assert.strictEqual(calls, 1);
   } finally {
     global.fetch = originalFetch;
+    restoreEnv();
   }
 }
 
