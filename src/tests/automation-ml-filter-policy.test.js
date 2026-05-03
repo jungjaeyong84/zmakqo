@@ -4,6 +4,7 @@ const assert = require("assert");
 const { __test } = require("../../scripts/automation-ml-filter-policy");
 
 function run() {
+  const legacyMonthlyTarget = 150000 * 10;
   const executed = { source: "EXECUTED", eventMs: 1000, label: 1 };
   const qualityDrop = { source: "DROP_COUNTERFACTUAL", dropStageKey: "QUALITY", eventMs: 2000, label: 0 };
   const aiDrop = { source: "DROP_COUNTERFACTUAL", dropStageKey: "AI", eventMs: 3000, label: 0 };
@@ -76,7 +77,7 @@ function run() {
     ev_gate_qty_scale_low: 0.40,
     ev_gate_qty_scale_mid: 0.70,
   }, {
-    objectiveConfig: { min_monthly_net_krw: 1500000 },
+    objectiveConfig: { min_monthly_net_krw: 150000 },
     currentObjective: { monthly_pass: false, net_pass: true, ev_pass: true, win_pass: true },
   });
   assert.strictEqual(guarded.QUALITY[0].action, "HOLD");
@@ -125,6 +126,29 @@ function run() {
       ev_gate_qty_scale_mid: 0.65,
     },
   }), true);
+  const normalizedObjective = __test.normalizeObjectiveAgainstMonthlyTarget({
+    verdict: "FAIL",
+    pass: false,
+    monthly_pass: false,
+    monthly_run_rate_krw: 120000,
+    min_monthly_net_krw: legacyMonthlyTarget,
+    failed_checks: ["MONTHLY_TARGET_NOT_MET"],
+  }, 150000);
+  assert.strictEqual(normalizedObjective.min_monthly_net_krw, 150000);
+  assert.strictEqual(normalizedObjective.monthly_pass, false);
+  assert.strictEqual(normalizedObjective.failed_checks.includes("MONTHLY_TARGET_NOT_MET"), true);
+  const normalizedPass = __test.normalizeObjectiveAgainstMonthlyTarget({
+    verdict: "FAIL",
+    pass: false,
+    monthly_pass: false,
+    monthly_run_rate_krw: 160000,
+    min_monthly_net_krw: legacyMonthlyTarget,
+    failed_checks: ["MONTHLY_TARGET_NOT_MET", "WIN_RATE_BELOW_TARGET"],
+  }, 150000);
+  assert.strictEqual(normalizedPass.min_monthly_net_krw, 150000);
+  assert.strictEqual(normalizedPass.monthly_pass, true);
+  assert.strictEqual(normalizedPass.failed_checks.includes("MONTHLY_TARGET_NOT_MET"), false);
+  assert.strictEqual(normalizedPass.failed_checks.includes("WIN_RATE_BELOW_TARGET"), true);
 
   const telegramPayload = __test.buildV2MlFilterTelegramSummary({
     provider: "BINANCEFUT",
@@ -136,7 +160,7 @@ function run() {
     metrics: { ok: true, accuracy: 0.66, brier: 0.23, logloss: 0.65 },
     selfValidation: { ok: false, result: "WARN", checks: ["holdout validation available"] },
     sharedObjective: {
-      objectiveConfig: { min_monthly_net_krw: 1500000 },
+      objectiveConfig: { min_monthly_net_krw: 150000 },
       currentObjective: { verdict: "FAIL", monthly_run_rate_krw: -1234 },
     },
     bestFebtContract: { mode: "NORMAL", projected_replacement_ratio: null, projected_count_ratio_global: 1 },
@@ -159,6 +183,8 @@ function run() {
   assert(telegramText.includes("V2 OpenClaw 학습 상태"));
   assert(telegramText.includes("V2 Discovery 계약"));
   assert(telegramText.includes("V2 신호 기준/서버 정본"));
+  assert(telegramText.includes("150,000 KRW"));
+  assert(!telegramText.includes(["1", "500", "000 KRW"].join(",")));
   for (const legacyTerm of [
     "학습 기반 필터 점검",
     "BEST/FEBT",

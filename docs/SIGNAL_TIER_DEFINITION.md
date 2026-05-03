@@ -52,7 +52,7 @@ band 관련 변경도 아래 목표 함수를 공통으로 따른다.
 2. 수익:
    - 순수익(`net`) `양수`
    - 기대값(`expectancy / EV`) `양수`
-   - 월간 순수익 `1,500,000 KRW 이상`
+   - 월간 순수익 `150,000 KRW 이상`
 
 ## 활성 라이브 band
 
@@ -80,4 +80,4 @@ band 관련 변경도 아래 목표 함수를 공통으로 따른다.
 2. 현재 라이브 quantity profile은 항상 `FIXED`다.
 3. Pine와 서버가 같은 band 의미를 유지해야 한다.
 4. band 관련 수정 전에는 반드시 이 문서와 `/Users/jeongjaeyong/Projects/donbeolja/docs/PINE_AND_FILTER_STAGE_ROLES.md`를 먼저 읽는다.
-5. band 조정은 항상 `승률 60% 이상 + 순수익 양수 + 기대값 양수 + 월간 순수익 1,500,000 KRW 이상` 목표와 함께 검토한다.
+5. band 조정은 항상 `승률 60% 이상 + 순수익 양수 + 기대값 양수 + 월간 순수익 150,000 KRW 이상` 목표와 함께 검토한다.

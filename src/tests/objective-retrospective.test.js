@@ -34,7 +34,7 @@ function run() {
     realized_trades: { net_pnl_quote: -40000 },
   };
   const monthly = {
-    objective: { period_target_krw: 1500000 },
+    objective: { period_target_krw: 150000 },
     realized_trades: { net_pnl_quote: -180000 },
   };
 

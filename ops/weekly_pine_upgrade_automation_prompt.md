@@ -10,7 +10,7 @@ Role:
   - win rate `>= 60%`
   - net `positive`
   - EV/expectancy `positive`
-  - monthly net profit `>= 1,500,000 KRW`
+  - monthly net profit `>= 150,000 KRW`
   - reject any proposal that improves only one of these while materially harming the others.
 
 Inputs and scope:
@@ -57,7 +57,7 @@ Execution steps:
      - latest ML filter policy findings
      - same-day server config changes
      - Telegram/report/dashboard wording
-     - common objective function (`win rate >= 60%`, `net > 0`, `EV > 0`, `monthly net profit >= 1,500,000 KRW`)
+     - common objective function (`win rate >= 60%`, `net > 0`, `EV > 0`, `monthly net profit >= 150,000 KRW`)
    - Do not recommend a patch if it improves one stage but creates interpretive or execution conflict in the rest of the chain.
    - Do not recommend a weekly patch unless the latest weekly governance report includes and you have checked:
      - sample sufficiency for `7d / 14d / 28d / 56d`
@@ -222,7 +222,7 @@ Required outputs:
    - created file path
    - rollback condition summary
    - objective-function verdict:
-     - whether the recommendation is expected to help or hurt `win rate >= 60%`, `net > 0`, `EV > 0`, and `monthly net profit >= 1,500,000 KRW`
+     - whether the recommendation is expected to help or hurt `win rate >= 60%`, `net > 0`, `EV > 0`, and `monthly net profit >= 150,000 KRW`
 7. Send a Telegram summary after the run using the repo's existing alert utilities or Telegram channel env.
    - If a new versioned Pine file is created, send a message that clearly states:
      - new file created
@@ -253,4 +253,4 @@ Decision rules:
 - Prefer slow, evidence-based improvement over large weekly swings.
 - Avoid reusing a patch idea that already degraded outcomes unless the new evidence clearly contradicts the old result.
 - Do not use asymmetric optimization even if one direction looks temporarily better in a weekly or monthly pack.
-- If a recommendation cannot defend `win rate >= 60%`, `net > 0`, `EV > 0`, and `monthly net profit >= 1,500,000 KRW` together, prefer `hold`.
+- If a recommendation cannot defend `win rate >= 60%`, `net > 0`, `EV > 0`, and `monthly net profit >= 150,000 KRW` together, prefer `hold`.

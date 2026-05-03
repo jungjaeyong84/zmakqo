@@ -325,7 +325,7 @@ function deriveOpenClawAutonomyContract({
 
   const objectivePolicy = {
     min_objective_score: envNum("OPENCLAW_AUTONOMY_MIN_OBJECTIVE_SCORE", 0),
-    min_monthly_run_rate_krw: envNum("OPENCLAW_AUTONOMY_MIN_MONTHLY_RUN_RATE_KRW", 1500000),
+    min_monthly_run_rate_krw: envNum("OPENCLAW_AUTONOMY_MIN_MONTHLY_RUN_RATE_KRW", 150000),
     primary_performance_metrics: [
       "TP0_HIT_RATE",
       "TP1_HIT_RATE",

@@ -8,13 +8,13 @@ const {
 } = require("../../scripts/lib/objective-policy");
 
 (() => {
-  assert.strictEqual(periodTargetKrw("DAILY", { minMonthlyNetKrw: 1500000, monthDays: 30 }), 50000);
-  assert.strictEqual(periodTargetKrw("WEEKLY", { minMonthlyNetKrw: 1500000, monthDays: 30 }), 350000);
-  assert.strictEqual(periodTargetKrw("MONTHLY", { minMonthlyNetKrw: 1500000, monthDays: 30 }), 1500000);
+  assert.strictEqual(periodTargetKrw("DAILY", { minMonthlyNetKrw: 150000, monthDays: 30 }), 5000);
+  assert.strictEqual(periodTargetKrw("WEEKLY", { minMonthlyNetKrw: 150000, monthDays: 30 }), 35000);
+  assert.strictEqual(periodTargetKrw("MONTHLY", { minMonthlyNetKrw: 150000, monthDays: 30 }), 150000);
 
   const idle = buildObjectiveVerdict(
     { executed_n: 0, realized_n: 0, win_rate: null, avg_ret_net: null, net_pnl_quote: 0 },
-    { realizedMinSample: 8, minWinRate: 0.6, minMonthlyNetKrw: 1500000, monthlyNetPnlKrw: 0, monthlyObservedDays: 30 }
+    { realizedMinSample: 8, minWinRate: 0.6, minMonthlyNetKrw: 150000, monthlyNetPnlKrw: 0, monthlyObservedDays: 30 }
   );
   assert.strictEqual(idle.activity_pass, false);
   assert.strictEqual(idle.pass, false);
@@ -29,8 +29,8 @@ const {
     net_pnl_quote: 0,
   }, {
     observedDays: 1,
-    targetNetKrw: 50000,
-    minMonthlyNetKrw: 1500000,
+    targetNetKrw: 5000,
+    minMonthlyNetKrw: 150000,
     tradeCount: 0,
     realizedMinSample: 1,
   });
@@ -43,11 +43,11 @@ const {
     realized_n: 2,
     win_rate: 1,
     avg_ret_net: 0.02,
-    net_pnl_quote: 60000,
+    net_pnl_quote: 6000,
   }, {
     observedDays: 1,
-    targetNetKrw: 50000,
-    minMonthlyNetKrw: 1500000,
+    targetNetKrw: 5000,
+    minMonthlyNetKrw: 150000,
     tradeCount: 2,
     realizedMinSample: 1,
   });

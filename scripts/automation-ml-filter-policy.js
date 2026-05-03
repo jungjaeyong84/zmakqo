@@ -517,6 +517,29 @@ function splitExamplesChronologically(examples = [], {
   };
 }
 
+function normalizeObjectiveAgainstMonthlyTarget(objective, targetMonthlyKrw = OBJECTIVE_TARGET_MONTHLY_KRW) {
+  if (!objective || typeof objective !== "object") return null;
+  const target = Math.max(0, Number(targetMonthlyKrw || 0));
+  const monthlyRunRate = Number(objective.monthly_run_rate_krw);
+  const monthlyPass = Number.isFinite(monthlyRunRate)
+    ? monthlyRunRate >= target
+    : objective.monthly_pass;
+  const failedChecks = Array.isArray(objective.failed_checks)
+    ? objective.failed_checks.filter((row) => String(row || "") !== "MONTHLY_TARGET_NOT_MET")
+    : [];
+  if (monthlyPass === false && !failedChecks.includes("MONTHLY_TARGET_NOT_MET")) {
+    failedChecks.push("MONTHLY_TARGET_NOT_MET");
+  }
+  return {
+    ...objective,
+    min_monthly_net_krw: target,
+    monthly_pass: monthlyPass,
+    failed_checks: failedChecks,
+    pass: objective.pass === true && monthlyPass === true,
+    verdict: objective.verdict === "PASS" && monthlyPass === false ? "FAIL" : objective.verdict,
+  };
+}
+
 function readFreshWeeklyGovernance(nowMs) {
   const filePath = path.join(OPS_DAILY_DIR, "weekly_filter_governance_latest.json");
   const data = readJsonRawSafe(filePath, null);
@@ -536,16 +559,18 @@ function readFreshWeeklyGovernance(nowMs) {
   const mtimeMs = stat ? Number(stat.mtimeMs) : null;
   const ageMs = Number.isFinite(mtimeMs) ? Math.max(0, nowMs - mtimeMs) : null;
   const fresh = Number.isFinite(ageMs) ? ageMs <= (WEEKLY_GOVERNANCE_MAX_AGE_HOURS * 60 * 60 * 1000) : false;
+  const objectiveConfig = {
+    ...(data.objective && typeof data.objective === "object" ? data.objective : {}),
+    min_monthly_net_krw: OBJECTIVE_TARGET_MONTHLY_KRW,
+  };
   return {
     filePath,
     data,
     age_ms: ageMs,
     fresh,
-    objectiveConfig: data.objective && typeof data.objective === "object"
-      ? data.objective
-      : { min_monthly_net_krw: OBJECTIVE_TARGET_MONTHLY_KRW },
-    currentObjective: data.current && data.current.objective && typeof data.current.objective === "object" ? data.current.objective : null,
-    previousObjective: data.previous && data.previous.objective && typeof data.previous.objective === "object" ? data.previous.objective : null,
+    objectiveConfig,
+    currentObjective: normalizeObjectiveAgainstMonthlyTarget(data.current && data.current.objective),
+    previousObjective: normalizeObjectiveAgainstMonthlyTarget(data.previous && data.previous.objective),
   };
 }
 
@@ -1233,5 +1258,6 @@ module.exports = {
     describeV2StageForUser,
     describeQualityRecommendationKeyForUser,
     rewriteQualityRecommendationReasonForUser,
+    normalizeObjectiveAgainstMonthlyTarget,
   },
 };

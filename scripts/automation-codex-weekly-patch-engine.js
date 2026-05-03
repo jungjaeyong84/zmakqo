@@ -450,7 +450,7 @@ function buildPrompt(context = {}) {
     "- PROMOTE only when existing change-control already indicates a ready promotion candidate, or the current BEST self-evolution candidate set is replay/canary-ready for recovery promotion.",
     "- ROLLBACK only when existing change-control already indicates a ready rollback target, or the current BEST self-evolution canary marks rollback ready.",
     "- If the recovery target is already ACTIVE_BY_PROBE, matches the applied origin, the governor says RECOVERY_PROMOTION_READY, and the remaining blockers are only external-authority pending/blocking, approve PROMOTE to close pending authority instead of repeating HOLD.",
-    "- Optimize for: 1) expectancy positive, 2) win rate >= 60%, 3) monthly net >= 1,500,000 KRW, 4) lower drawdown.",
+    "- Optimize for: 1) expectancy positive, 2) win rate >= 60%, 3) monthly net >= 150,000 KRW, 4) lower drawdown.",
     "Required JSON keys:",
     JSON.stringify({
       verdict: "HOLD",

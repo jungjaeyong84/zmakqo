@@ -57,7 +57,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
         },
       },
       objective: {
-        min_monthly_net_krw: 1500000,
+        min_monthly_net_krw: 150000,
       },
     },
     changeControl: {
@@ -1255,7 +1255,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
         },
       },
       objective: {
-        min_monthly_net_krw: 1500000,
+        min_monthly_net_krw: 150000,
         realized_min_sample: 8,
       },
     },
@@ -1289,7 +1289,7 @@ const { __test } = require("../../scripts/automation-objective-supervisor");
       realized_n: 24,
       executed_n: 32,
       monthly_run_rate_krw: 1800000,
-      min_monthly_net_krw: 1500000,
+      min_monthly_net_krw: 150000,
     },
     retrospective: {
       daily: { verdict: "PASS", executed_n: 3, realized_n: 2, net_pnl_quote: 12000 },

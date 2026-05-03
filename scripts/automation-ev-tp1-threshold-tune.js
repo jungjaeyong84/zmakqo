@@ -37,7 +37,7 @@ const TARGET_HIT_RATE = Number(process.env.EV_TUNE_TARGET_TP1_HIT_RATE || 0.60);
 const TARGET_MONTHLY_NET_KRW = Math.max(0, Number(
   process.env.EV_TUNE_MIN_MONTHLY_NET_KRW
   || process.env.OBJECTIVE_MIN_MONTHLY_NET_KRW
-  || 1_500_000
+  || 150_000
 ));
 const LOOKBACK_DAYS = Math.max(3, Number(process.env.EV_TUNE_LOOKBACK_DAYS || 9));
 const MATURITY_HOURS = Math.max(3, Number(process.env.EV_TUNE_MATURITY_HOURS || 12));

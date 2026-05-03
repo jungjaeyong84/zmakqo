@@ -94,7 +94,7 @@ function run() {
       },
     },
     objective: {
-      min_monthly_net_krw: 1500000,
+      min_monthly_net_krw: 150000,
     },
   };
   const phase0 = {

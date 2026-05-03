@@ -76,7 +76,7 @@ function deriveConstraintFlags({
 
 function deriveObjectiveScore({
   monthlyRunRateKrw = null,
-  minMonthlyNetKrw = 1500000,
+  minMonthlyNetKrw = 150000,
   avgRetNet = null,
   winRate = null,
   projectedCountRatioGlobal = null,
@@ -95,7 +95,7 @@ function deriveObjectiveScore({
   const monthlyRun = toNum(monthlyRunRateKrw);
   const monthlyTarget = Number.isFinite(Number(minMonthlyNetKrw)) && Number(minMonthlyNetKrw) > 0
     ? Number(minMonthlyNetKrw)
-    : 1500000;
+    : 150000;
   const avgRet = toNum(avgRetNet);
   const win = toNum(winRate);
   const countRatio = toNum(projectedCountRatioGlobal);
@@ -205,7 +205,7 @@ function deriveDatasetObjectiveScore({
   const fallbackRate = ratio(tuningContract && tuningContract.fallback_legacy_n, cohortExecutedN);
   const score = deriveObjectiveScore({
     monthlyRunRateKrw: toNum(objective.monthly_run_rate_krw),
-    minMonthlyNetKrw: toNum(objectiveCfg.min_monthly_net_krw) || 1500000,
+    minMonthlyNetKrw: toNum(objectiveCfg.min_monthly_net_krw) || 150000,
     avgRetNet: datasetAvgRet ?? toNum(summary.avg_realized_ret_net) ?? toNum(overall.avg_ret_net),
     winRate: datasetWinRate ?? toNum(overall.win_rate),
     projectedCountRatioGlobal: toNum(tuningContract && tuningContract.projected_count_ratio_global),
@@ -256,7 +256,7 @@ function deriveMarketObjectiveScores({
   const phase0Latency = phase0 && phase0.bridge_latency && typeof phase0.bridge_latency === "object"
     ? phase0.bridge_latency
     : {};
-  const monthlyTarget = toNum(governance && governance.objective && governance.objective.min_monthly_net_krw) || 1500000;
+  const monthlyTarget = toNum(governance && governance.objective && governance.objective.min_monthly_net_krw) || 150000;
   const byMarket = new Map();
   for (const row of rows) {
     const market = normalizeMarket(row);
