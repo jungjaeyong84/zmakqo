@@ -29,6 +29,29 @@ async function run() {
   assert.strictEqual(docs[0].status, "PENDING");
   assert.strictEqual(docs[0].detail.expected_tp_qty_base, 0.085);
 
+  const qtyMismatchDocs = __test.buildWatchdogV2RepairRequests({
+    symbol: "DOGEUSDT",
+    position_cycle_id: "PCY__DOGE__01",
+    stage: "PRE_TP1",
+    position_side: "LONG",
+    qty_base: 1070,
+    avg_price: 0.11233,
+    expected_tp_qty_base: 1070,
+    expected_tp1_remaining_ratio: 1,
+    actual_tp_qty_base: 107,
+    actual_tp_qty_ratio: 0.1,
+    tp_order_id: "TP1__BAD_QTY",
+    stop_order_id: "SL1",
+    native_refresh_status: "OK",
+    actionable_issue_codes: ["TP1_ORDER_QTY_MISMATCH"],
+  });
+  assert.strictEqual(qtyMismatchDocs.length, 1);
+  assert.ok(qtyMismatchDocs[0].exit_repair_request_id.startsWith("RQRV2__TP1_ORDER_QTY_MISMATCH__"));
+  assert.strictEqual(qtyMismatchDocs[0].issue_code, "TP1_ORDER_QTY_MISMATCH");
+  assert.strictEqual(qtyMismatchDocs[0].requested_action, "ENSURE_TP1_ORDER");
+  assert.strictEqual(qtyMismatchDocs[0].detail.expected_tp_qty_base, 1070);
+  assert.strictEqual(qtyMismatchDocs[0].detail.actual_tp_qty_base, 107);
+
   const unsupported = __test.buildWatchdogV2RepairRequests({
     symbol: "SOLUSDT",
     position_cycle_id: "PCY__SOL__01",

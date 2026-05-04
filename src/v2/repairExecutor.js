@@ -74,7 +74,7 @@ function buildProtectionRepairCommand({
   const requestedAction = upper(repairRequest.requested_action);
   const runtime = protectionRuntime && typeof protectionRuntime === "object" ? protectionRuntime : {};
 
-  if (issueCode === "TP1_ORDER_MISSING" && requestedAction === "ENSURE_TP1_ORDER") {
+  if ((issueCode === "TP1_ORDER_MISSING" || issueCode === "TP1_ORDER_QTY_MISMATCH") && requestedAction === "ENSURE_TP1_ORDER") {
     const targetPrice = resolveTp1RepairTargetPrice({
       repairRequest,
       projection,

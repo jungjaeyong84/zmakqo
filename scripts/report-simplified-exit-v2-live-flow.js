@@ -302,10 +302,16 @@ function collectSymbolFlow({
       actionable: false,
     });
   }
-  if (hasTrailSeen && hasTp1Seen !== true) {
+  if (hasTrailSeen && hasTp1Seen !== true && currentActive) {
     issues.push({
       code: "V2_TRAIL_WITHOUT_TP1_TRANSITION",
       detail: "trail transition/fill exists without TP1 transition/fill evidence",
+    });
+  } else if (hasTrailSeen && hasTp1Seen !== true) {
+    observations.push({
+      code: "V2_CLOSED_HISTORICAL_TRAIL_WITHOUT_TP1_TRANSITION",
+      detail: "closed/flat position has historical trail evidence without TP1 transition; retained for incident audit but not an active deploy blocker",
+      actionable: false,
     });
   }
   if (forbiddenTrailPartialTransition) {

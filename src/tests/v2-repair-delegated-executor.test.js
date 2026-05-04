@@ -83,6 +83,45 @@ function buildTp1DelegatedRepair() {
   };
 }
 
+function buildTp1QtyMismatchDelegatedRepair() {
+  const envelope = buildRepairDelegationEnvelope({
+    repairRequest: {
+      exit_repair_request_id: "RQRV2__TP1_QTY__EXEC",
+      position_cycle_id: "PCY__EXEC__TP1_QTY",
+      stage: "PRE_TP1",
+      issue_code: "TP1_ORDER_QTY_MISMATCH",
+      requested_action: "ENSURE_TP1_ORDER",
+    },
+    projection: {
+      exit_runtime_projection_id: "ERPv2__PCY__EXEC__TP1_QTY",
+      position_cycle_id: "PCY__EXEC__TP1_QTY",
+      stage: "PRE_TP1",
+      tp1_target_price: 0.11513825,
+      tp1_target_qty_abs: 1070,
+    },
+    protectionRuntime: {
+      protection_runtime_id: "PRTV2__PCY__EXEC__TP1_QTY",
+      position_cycle_id: "PCY__EXEC__TP1_QTY",
+      sl_order_id: "STOP__OK",
+      sl_order_status: "PLACED",
+      tp1_order_id: "TP1__BAD_QTY",
+      tp1_order_status: "PLACED",
+    },
+    positionCycle: {
+      position_cycle_id: "PCY__EXEC__TP1_QTY",
+      symbol: "DOGEUSDT",
+      position_side: "LONG",
+    },
+  });
+  return {
+    exit_repair_request_id: "RQRV2__TP1_QTY__EXEC",
+    position_cycle_id: "PCY__EXEC__TP1_QTY",
+    issue_code: "TP1_ORDER_QTY_MISMATCH",
+    requested_action: "ENSURE_TP1_ORDER",
+    envelope,
+  };
+}
+
 function buildFullProtectionDelegatedRepair() {
   const envelope = buildRepairDelegationEnvelope({
     repairRequest: {
@@ -339,6 +378,35 @@ function buildFullProtectionDelegatedRepair() {
   assert.strictEqual(result.writeDecision.runtime_write_reason, "TP1_REPAIRED");
   assert.strictEqual(result.runtimeDoc.tp1_order_id, "TP1__REPAIRED");
   assert.strictEqual(result.runtimeDoc.native_tp1_price, 101.68);
+})();
+
+(async function tp1QtyMismatchRepairUsesSameTp1ReplacementPath() {
+  const delegatedRepair = buildTp1QtyMismatchDelegatedRepair();
+  assert.strictEqual(delegatedRepair.envelope.repair_command.command_type, "PLACE_OR_REPLACE_TP1");
+  assert.strictEqual(delegatedRepair.envelope.repair_command.quantity_abs, 1070);
+  const executor = buildDelegatedRepairExecutor({
+    writerLeaseRegistry: new Set(),
+    recordedAt: "2026-04-21T05:25:02.000Z",
+    transports: {
+      placeOrReplaceTp1: async ({ command }) => {
+        assert.strictEqual(command.command_type, "PLACE_OR_REPLACE_TP1");
+        assert.strictEqual(command.trigger_price, 0.11513825);
+        assert.strictEqual(command.quantity_abs, 1070);
+        return {
+          status: "PLACED",
+          order_id: "TP1__REPAIRED_FULL_QTY",
+          trigger_price: command.trigger_price,
+          ack_at: "2026-04-21T05:25:01.000Z",
+        };
+      },
+    },
+  });
+  const result = await executor({ delegatedRepair });
+  assert.strictEqual(result.writeDecision.ok, true);
+  assert.strictEqual(result.writeDecision.runtime_write_reason, "TP1_REPAIRED");
+  assert.strictEqual(result.runtimeDoc.tp1_order_id, "TP1__REPAIRED_FULL_QTY");
+  assert.strictEqual(result.runtimeDoc.native_tp1_price, 0.11513825);
+  assert.deepStrictEqual(result.writeDecision.placement_issue_codes, []);
 })();
 
 (async function missingTp1TransportReturnsFailedWriteResult() {

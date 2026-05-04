@@ -578,7 +578,7 @@ function shouldRepairIssue(row = {}) {
 
 function resolveV2RepairAction(issueCode) {
   const code = upper(issueCode);
-  if (code === "TP1_ORDER_MISSING") return "ENSURE_TP1_ORDER";
+  if (code === "TP1_ORDER_MISSING" || code === "TP1_ORDER_QTY_MISMATCH") return "ENSURE_TP1_ORDER";
   if (code === "TRAIL_STOP_MISSING" || code === "NATIVE_REFRESH_UNHEALTHY") return "REFRESH_NATIVE_STOP";
   return null;
 }

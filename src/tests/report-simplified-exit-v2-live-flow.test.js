@@ -107,6 +107,35 @@ const { __test } = require("../../scripts/report-simplified-exit-v2-live-flow");
   assert.ok(trailWithoutTp1.issues.some((issue) => issue.code === "V2_TRAIL_WITHOUT_TP1_TRANSITION"));
   assert.ok(trailWithoutTp1.issues.some((issue) => issue.code === "V2_TP0_NATIVE_META_LEAK"));
 
+  const closedTrailWithoutTp1 = __test.collectSymbolFlow({
+    symbol: "LINKUSDT",
+    position: {
+      symbol: "LINKUSDT",
+      state: "FLAT",
+      tp_p1_done: false,
+      trail_active: false,
+      native_tp_order_id: null,
+      native_tp_status: null,
+      native_tp_price: null,
+      native_tp_qty_ratio: null,
+      tp0_meta_leak: false,
+    },
+    fills: [
+      {
+        symbol: "LINKUSDT",
+        event: "EXIT_TRAIL",
+        created_at: "2026-05-04T02:30:10.000Z",
+        canonical_transition_events: ["TRAIL_FINAL_EXIT"],
+      },
+    ],
+    alertAuditRows: [],
+  });
+  assert.deepStrictEqual(closedTrailWithoutTp1.issues, []);
+  assert.ok(closedTrailWithoutTp1.observations.some((row) => (
+    row.code === "V2_CLOSED_HISTORICAL_TRAIL_WITHOUT_TP1_TRANSITION"
+    && row.actionable === false
+  )));
+
   const forbiddenTrailPartial = __test.collectSymbolFlow({
     symbol: "ETHUSDT",
     position: {

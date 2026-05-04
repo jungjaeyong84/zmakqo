@@ -104,7 +104,10 @@ function filterRefreshResolvedIssueCodes(issueCodes) {
 }
 
 function filterTp1ResolvedIssueCodes(issueCodes) {
-  return normalizePlacementIssueCodes(issueCodes).filter((code) => code !== "TP1_ORDER_MISSING");
+  return normalizePlacementIssueCodes(issueCodes).filter((code) => (
+    code !== "TP1_ORDER_MISSING" &&
+    code !== "TP1_ORDER_QTY_MISMATCH"
+  ));
 }
 
 function filterFullProtectionBaseResolvedIssueCodes(issueCodes) {
