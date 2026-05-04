@@ -161,9 +161,9 @@ async function loadFills({ inputPath, env = process.env, db = null } = {}) {
 }
 
 async function loadDecisionEvidence({ inputPath, env = process.env, db = null } = {}) {
-  const source = upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_DECISION_EVIDENCE_SOURCE)
-    || upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE)
-    || "AUTO";
+  const explicitSource = upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_DECISION_EVIDENCE_SOURCE);
+  const inheritedSource = upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE);
+  const source = explicitSource || inheritedSource || "AUTO";
   if (source === "NONE" || source === "DISABLED") {
     return { source: "DISABLED", decisionEvidenceRows: [] };
   }
@@ -173,6 +173,13 @@ async function loadDecisionEvidence({ inputPath, env = process.env, db = null } 
       source: "CACHE_FILE",
       input_file: inputPath,
       decisionEvidenceRows: loadDecisionEvidenceFromFile(inputPath),
+    };
+  }
+  if (!explicitSource && (source === "CACHE" || source === "CACHE_FILE" || source === "FILE")) {
+    return {
+      source: "DISABLED",
+      decisionEvidenceRows: [],
+      disabled_reason: "IMPLICIT_CACHE_DECISION_EVIDENCE_FILE_MISSING",
     };
   }
   if (source === "CACHE" || source === "CACHE_FILE" || source === "FILE") {

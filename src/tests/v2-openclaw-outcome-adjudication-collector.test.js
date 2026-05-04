@@ -69,6 +69,44 @@ const entry = {
   assert.strictEqual(report.summary.win_n, 1);
 })();
 
+(async function implicitCacheDecisionEvidenceIsOptional() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dbj-v2-outcome-collector-cache-"));
+  const inputFile = path.join(dir, "fills.json");
+  const outputFile = path.join(dir, "collector.json");
+  try {
+    fs.writeFileSync(inputFile, JSON.stringify({
+      docs: [
+        entry,
+        {
+          id: "EXT__BINANCEFUT__SOLUSDT__EXIT_CACHE",
+          action: "EXIT_TP_P1_2.5P",
+          symbol: "SOLUSDT",
+          side: "SELL",
+          created_at: "2026-05-01T01:00:00.000Z",
+          external_order_id: "EXIT_ORDER_CACHE",
+          external_realized_pnl: 1.25,
+          canonical_transition_events: ["TP1_REACHED"],
+        },
+      ],
+    }), "utf8");
+    const report = await collectorScript.main({
+      env: {
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: "CACHE",
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_INPUT_FILE: inputFile,
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_OUTPUT_FILE: outputFile,
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE: "0",
+        V2_OPENCLAW_OUTCOME_ADJUDICATION_NOW: "2026-05-01T03:00:00.000Z",
+      },
+      setProcessExitCode: false,
+    });
+    assert.strictEqual(report.ok, true);
+    assert.strictEqual(report.decision_evidence_source, "DISABLED");
+    assert.strictEqual(report.summary.adjudication_n, 1);
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) {}
+  }
+})();
+
 (function createsLossFromProtectedEntryAndSlExit() {
   const result = collectOpenClawOutcomeAdjudicationsFromFills({
     now: "2026-05-01T03:00:00.000Z",
