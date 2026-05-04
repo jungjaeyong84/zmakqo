@@ -108,6 +108,27 @@ function stateRow({ projectionDoc = projection(), runtimeDoc = runtime(), transi
   assert.strictEqual(artifact.alert_outbox_integrity_gap_n, 0);
 })();
 
+(function canaryChecksResolvePositionCycleIdFromMeta() {
+  const artifact = evaluateExitRuntimeCanaryState({
+    rows: [{
+      positionCycle: {
+        symbol: "ETHUSDT",
+        status: "ACTIVE_PROTECTED",
+        meta: { position_cycle_id: "PCY__BINANCEFUT__ETHUSDT__LONG__ABC" },
+      },
+      projection: projection(),
+      protectionRuntime: runtime(),
+      transitions: [],
+      outboxes: [],
+      load_issue_codes: [],
+    }],
+    config: resolveExitRuntimeCanaryConfig({}),
+    generatedAt: "2026-04-22T00:00:00.000Z",
+  });
+  assert.strictEqual(artifact.ok, true);
+  assert.strictEqual(artifact.position_summaries[0].position_cycle_id, "PCY__BINANCEFUT__ETHUSDT__LONG__ABC");
+})();
+
 (function preTp1MissingTp1OrderFailsClosed() {
   const artifact = evaluateExitRuntimeCanaryState({
     rows: [stateRow({ runtimeDoc: runtime({ tp1_order_id: null }) })],
@@ -444,8 +465,51 @@ async function loaderUsesLatestReadModelInsteadOfStaleRawActiveCycles() {
   assert.strictEqual(loaded.rows[0].positionCycle.position_cycle_id, positionCycle.position_cycle_id);
 }
 
+async function loaderDefaultsToOperationalV2CollectionPrefix() {
+  const positionCycle = cycle();
+  const projectionDoc = projection();
+  const runtimeDoc = runtime();
+  const db = buildFakeDb({
+    position_read_model_latest: [
+      {
+        read_model_id: "POSITION_READ_MODEL_LATEST__BINANCEFUT__ETHUSDT",
+        exchange: "BINANCEFUT",
+        symbol: "ETHUSDT",
+        ts_ms: Date.parse("2026-04-22T00:00:00.000Z"),
+        after_snapshot: {
+          exchange: "BINANCEFUT",
+          symbol: "ETHUSDT",
+          state: "ACTIVE",
+          qty_base: 1,
+          meta: { position_cycle_id: positionCycle.position_cycle_id },
+        },
+      },
+    ],
+    v2__position_cycles_v2: [positionCycle],
+    v2__exit_runtime_projection_v2: [projectionDoc],
+    v2__protection_runtime_v2: [runtimeDoc],
+    v2__canonical_exit_transitions_v2: [],
+    v2__trade_alert_outbox_v2: [],
+  });
+  const loaded = await loadExitRuntimeCanaryStateRows({
+    db,
+    env: {},
+    config: resolveExitRuntimeCanaryConfig({
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ACTIVE_POSITION_LIMIT: "5",
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_READ_MODEL_LATEST_LIMIT: "50",
+    }),
+  });
+  assert.strictEqual(loaded.ok, true);
+  assert.strictEqual(loaded.query_budget.collection_prefix, "v2__");
+  assert.strictEqual(loaded.rows.length, 1);
+  assert.strictEqual(loaded.rows[0].positionCycle.position_cycle_id, positionCycle.position_cycle_id);
+  assert.strictEqual(loaded.rows[0].projection.exit_runtime_projection_id, projectionDoc.exit_runtime_projection_id);
+  assert.strictEqual(loaded.rows[0].protectionRuntime.protection_runtime_id, runtimeDoc.protection_runtime_id);
+}
+
 loaderUsesBoundedActiveCyclesAndLinkedDocs()
   .then(loaderUsesLatestReadModelInsteadOfStaleRawActiveCycles)
+  .then(loaderDefaultsToOperationalV2CollectionPrefix)
   .then(() => {
     console.log("V2_EXIT_RUNTIME_CANARY_TEST_OK");
   })

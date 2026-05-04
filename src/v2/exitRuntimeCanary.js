@@ -8,6 +8,7 @@ const DEFAULT_ACTIVE_POSITION_LIMIT = 25;
 const DEFAULT_LINKED_DOC_LIMIT = 20;
 const DEFAULT_MAX_UNPROTECTED_WINDOW_MS = 0;
 const DEFAULT_ALERT_RETRY_GRACE_MS = 60 * 60 * 1000;
+const DEFAULT_OPERATIONAL_COLLECTION_PREFIX = "v2__";
 const TERMINAL_STAGES = new Set(["EXITED_TP1", "EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
 const TERMINAL_POSITION_STATES = new Set(["FLAT", "CLOSED", "EXITED", "EXITED_TP1", "EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
 const ACTIVE_POSITION_STATES = new Set(["ACTIVE", "COMMIT", "PROBE", "SCALE_OUT"]);
@@ -90,6 +91,13 @@ function resolveExitRuntimeCanaryConfig(env = process.env) {
       { min: 50, max: 2000 }
     ),
     exchange: upper(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_EXCHANGE || "BINANCEFUT"),
+  });
+}
+
+function resolveExitRuntimeCanaryStorageEnv(env = process.env) {
+  return Object.freeze({
+    ...env,
+    DONBEOLJA_V2_COLLECTION_PREFIX: trimOrNull(env.DONBEOLJA_V2_COLLECTION_PREFIX) || DEFAULT_OPERATIONAL_COLLECTION_PREFIX,
   });
 }
 
@@ -177,6 +185,7 @@ async function queryLatestReadModels({ db = null, config = resolveExitRuntimeCan
 }
 
 async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, config = resolveExitRuntimeCanaryConfig(env) } = {}) {
+  const storageEnv = resolveExitRuntimeCanaryStorageEnv(env);
   const readModelLoad = config.useReadModelLatest === true
     ? await queryLatestReadModels({ db, config }).catch((error) => Object.freeze({
       ok: false,
@@ -197,7 +206,7 @@ async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, co
     ? activeReadModelViews
     : await queryRows({
       db,
-      env,
+      env: storageEnv,
       collectionKey: "POSITION_CYCLES",
       field: "status",
       value: "ACTIVE_PROTECTED",
@@ -221,12 +230,12 @@ async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, co
     }
     const [canonicalPositionCycle, projection, protectionRuntime, transitions, outboxes] = await Promise.all([
       shouldUseReadModel
-        ? getOptionalDoc({ db, env, collectionKey: "POSITION_CYCLES", docId: positionCycleId })
+        ? getOptionalDoc({ db, env: storageEnv, collectionKey: "POSITION_CYCLES", docId: positionCycleId })
         : Promise.resolve(positionCycle),
-      getOptionalDoc({ db, env, collectionKey: "EXIT_RUNTIME_PROJECTIONS", docId: buildExitRuntimeProjectionId({ positionCycleId }) }),
-      getOptionalDoc({ db, env, collectionKey: "PROTECTION_RUNTIME", docId: buildProtectionRuntimeId({ positionCycleId }) }),
-      queryRows({ db, env, collectionKey: "CANONICAL_EXIT_TRANSITIONS", field: "position_cycle_id", value: positionCycleId, limit: config.transitionLimit }),
-      queryRows({ db, env, collectionKey: "TRADE_ALERT_OUTBOX", field: "position_cycle_id", value: positionCycleId, limit: config.outboxLimit }),
+      getOptionalDoc({ db, env: storageEnv, collectionKey: "EXIT_RUNTIME_PROJECTIONS", docId: buildExitRuntimeProjectionId({ positionCycleId }) }),
+      getOptionalDoc({ db, env: storageEnv, collectionKey: "PROTECTION_RUNTIME", docId: buildProtectionRuntimeId({ positionCycleId }) }),
+      queryRows({ db, env: storageEnv, collectionKey: "CANONICAL_EXIT_TRANSITIONS", field: "position_cycle_id", value: positionCycleId, limit: config.transitionLimit }),
+      queryRows({ db, env: storageEnv, collectionKey: "TRADE_ALERT_OUTBOX", field: "position_cycle_id", value: positionCycleId, limit: config.outboxLimit }),
     ]);
     const loadIssues = [];
     if (!canonicalPositionCycle) loadIssues.push("POSITION_CYCLE_MISSING");
@@ -262,6 +271,7 @@ async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, co
       read_model_latest_query_limit_reached: readModelLoad.query_limit_reached === true,
       read_model_latest_row_n: readModelViews.length,
       read_model_latest_active_candidate_n: activeReadModelViews.length,
+      collection_prefix: storageEnv.DONBEOLJA_V2_COLLECTION_PREFIX,
       transition_limit_per_position: config.transitionLimit,
       outbox_limit_per_position: config.outboxLimit,
       max_unprotected_window_ms: config.maxUnprotectedWindowMs,
@@ -407,7 +417,10 @@ function buildPositionCanaryChecks({ row, config, generatedAt }) {
   const runtime = row && row.protectionRuntime && typeof row.protectionRuntime === "object" ? row.protectionRuntime : null;
   const transitions = asArray(row && row.transitions);
   const outboxes = asArray(row && row.outboxes);
-  const positionCycleId = trimOrNull(positionCycle && positionCycle.position_cycle_id);
+  const positionCycleId = resolveReadModelPositionCycleId(positionCycle);
+  const canonicalPositionCycle = positionCycle && positionCycleId
+    ? Object.freeze({ ...positionCycle, position_cycle_id: positionCycleId })
+    : positionCycle;
   const stage = upper(projection && projection.stage);
   const loadIssues = asArray(row && row.load_issue_codes).map(upper).filter(Boolean);
   const generatedAtMs = toMs(generatedAt) || Date.now();
@@ -437,7 +450,7 @@ function buildPositionCanaryChecks({ row, config, generatedAt }) {
   if (!positionCycle || !projection || !runtime || !positionCycleId || !stage) return Object.freeze(checks);
 
   const watchdog = evaluateActiveExitWatchdog({
-    positionCycle,
+    positionCycle: canonicalPositionCycle,
     projection,
     protectionRuntime: runtime,
     exchangeState: { has_active_position: !TERMINAL_STAGES.has(stage) },
@@ -652,8 +665,9 @@ function evaluateExitRuntimeCanaryState({
       const positionCycle = row && row.positionCycle ? row.positionCycle : {};
       const projection = row && row.projection ? row.projection : {};
       const runtime = row && row.protectionRuntime ? row.protectionRuntime : {};
+      const positionCycleId = resolveReadModelPositionCycleId(positionCycle);
       return Object.freeze({
-        position_cycle_id: trimOrNull(positionCycle.position_cycle_id),
+        position_cycle_id: positionCycleId,
         symbol: upper(positionCycle.symbol),
         status: upper(positionCycle.status),
         stage: upper(projection.stage),
@@ -663,7 +677,7 @@ function evaluateExitRuntimeCanaryState({
         tp1_order_present: hasPlacedOrder(runtime, "tp1_order_id", "tp1_order_status"),
         native_stop_price: Number(runtime.native_stop_price) || null,
         alert_outbox_integrity_gap_n: buildAlertOutboxIntegrityChecks({
-          positionCycleId: trimOrNull(positionCycle.position_cycle_id),
+          positionCycleId,
           transitions: asArray(row && row.transitions),
           outboxes: asArray(row && row.outboxes),
         }).filter((check) => check.ok !== true).length,
@@ -707,6 +721,7 @@ module.exports = {
     parseNonNegativeNumber,
     parseBool,
     hasPlacedOrder,
+    resolveExitRuntimeCanaryStorageEnv,
     resolveLatestReadModelSnapshot,
     resolveReadModelPositionCycleId,
     isReadModelActiveProtectedCandidate,
