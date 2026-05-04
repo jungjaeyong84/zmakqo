@@ -29,6 +29,14 @@ ensureDir(OPS_DAILY_DIR);
 
 const FALLBACK_USD_KRW = Number(process.env.USD_KRW_FALLBACK || 1480);
 
+function envBool(value, fallback = false) {
+  const normalized = String(value == null ? "" : value).trim().toLowerCase();
+  if (!normalized) return fallback;
+  if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
 function roundAmount(value) {
   const n = Number(value || 0);
   return Math.round(n);
@@ -168,6 +176,67 @@ function buildSystemOpsPrereportCommands() {
       errorCode: "TP1_FAIL_CLOSED_REPORT_FAILED",
     },
   ];
+}
+
+function shouldRunPrereportCommands(env = process.env) {
+  return envBool(env.DONBEOLJA_HOURLY_ACCOUNT_REPORT_RUN_PREREPORTS, false);
+}
+
+function shouldRunSystemOpsCheck(env = process.env) {
+  return envBool(env.DONBEOLJA_HOURLY_ACCOUNT_REPORT_RUN_SYSTEM_OPS_CHECK, false);
+}
+
+function runSystemOpsPrereports({ env = process.env } = {}) {
+  if (!shouldRunPrereportCommands(env)) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "HOURLY_ACCOUNT_REPORT_PREREPORTS_SKIPPED",
+      command_n: buildSystemOpsPrereportCommands().length,
+    };
+  }
+  const results = [];
+  for (const step of buildSystemOpsPrereportCommands()) {
+    const result = execJson(step.command, { cwd: REPO_ROOT });
+    results.push({
+      command: step.command,
+      ok: result.ok === true,
+      error_code: step.errorCode,
+      error: result.ok === true ? null : result.error || JSON.stringify(result.data || {}),
+    });
+    if (!result.ok) {
+      throw new Error(`${step.errorCode}:${result.error || JSON.stringify(result.data || {})}`);
+    }
+  }
+  return {
+    ok: true,
+    skipped: false,
+    reason: "HOURLY_ACCOUNT_REPORT_PREREPORTS_COMPLETE",
+    command_n: results.length,
+    results,
+  };
+}
+
+function runSystemOpsCheckIfEnabled({ snapshotPath, reportPath, env = process.env } = {}) {
+  if (!shouldRunSystemOpsCheck(env)) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "HOURLY_ACCOUNT_REPORT_SYSTEM_OPS_CHECK_SKIPPED",
+    };
+  }
+  const opsRun = execJson(
+    `node scripts/daily-system-ops-check.js ${JSON.stringify(snapshotPath)} ${JSON.stringify(reportPath)}`,
+    { cwd: REPO_ROOT }
+  );
+  if (!opsRun.ok || !opsRun.data || opsRun.data.ok !== true) {
+    throw new Error(`SYSTEM_OPS_CHECK_FAILED:${opsRun.error || JSON.stringify(opsRun.data || {})}`);
+  }
+  return {
+    ok: true,
+    skipped: false,
+    reason: "HOURLY_ACCOUNT_REPORT_SYSTEM_OPS_CHECK_COMPLETE",
+  };
 }
 
 function buildTp1FailClosedQuarantineLines(ops = {}) {
@@ -455,20 +524,8 @@ async function main() {
     throw new Error("NOYE_REFRESH_OUTPUT_MISSING");
   }
 
-  for (const step of buildSystemOpsPrereportCommands()) {
-    const result = execJson(step.command, { cwd: REPO_ROOT });
-    if (!result.ok) {
-      throw new Error(`${step.errorCode}:${result.error || JSON.stringify(result.data || {})}`);
-    }
-  }
-
-  const opsRun = execJson(
-    `node scripts/daily-system-ops-check.js ${JSON.stringify(snapshotPath)} ${JSON.stringify(reportPath)}`,
-    { cwd: REPO_ROOT }
-  );
-  if (!opsRun.ok || !opsRun.data || opsRun.data.ok !== true) {
-    throw new Error(`SYSTEM_OPS_CHECK_FAILED:${opsRun.error || JSON.stringify(opsRun.data || {})}`);
-  }
+  const prereportStatus = runSystemOpsPrereports();
+  const systemOpsCheckStatus = runSystemOpsCheckIfEnabled({ snapshotPath, reportPath });
 
   const snapshot = readJsonSafe(snapshotPath, {});
   const ops = loadSystemOpsLatestSync({ fallbackPath: path.join(REPO_ROOT, "ops", "daily", "system_ops_check_latest.json") });
@@ -544,6 +601,8 @@ async function main() {
       error_source_stale: ops.derived && ops.derived.error_source_stale === true,
       day_over_day: "기준 데이터 없음",
       ev_gate_impact_available: evGateSummary.available,
+      prereport_status: prereportStatus,
+      system_ops_check_status: systemOpsCheckStatus,
     },
     execution_engine: summarizeExecutionEngine(systemSettings, "BINANCEFUT"),
     integrity: {
@@ -751,10 +810,15 @@ if (require.main === module) {
       resolveComparisonLabel,
       buildComparison,
       buildSystemOpsPrereportCommands,
+      shouldRunPrereportCommands,
+      shouldRunSystemOpsCheck,
+      runSystemOpsPrereports,
+      runSystemOpsCheckIfEnabled,
       buildTp1FailClosedQuarantineLines,
       formatSignedPercent,
       summarizeExecutionEngine,
       positionStatusLabel,
+      envBool,
     },
   };
 }

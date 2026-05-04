@@ -8,6 +8,10 @@ function run() {
   assert.strictEqual(typeof __test.formatSignedPercent, "function", "formatSignedPercent export missing");
   assert.strictEqual(typeof __test.positionStatusLabel, "function", "positionStatusLabel export missing");
   assert.strictEqual(typeof __test.buildSystemOpsPrereportCommands, "function", "buildSystemOpsPrereportCommands export missing");
+  assert.strictEqual(typeof __test.shouldRunPrereportCommands, "function", "shouldRunPrereportCommands export missing");
+  assert.strictEqual(typeof __test.shouldRunSystemOpsCheck, "function", "shouldRunSystemOpsCheck export missing");
+  assert.strictEqual(typeof __test.runSystemOpsPrereports, "function", "runSystemOpsPrereports export missing");
+  assert.strictEqual(typeof __test.runSystemOpsCheckIfEnabled, "function", "runSystemOpsCheckIfEnabled export missing");
   assert.strictEqual(typeof __test.buildTp1FailClosedQuarantineLines, "function", "buildTp1FailClosedQuarantineLines export missing");
 
   assert.strictEqual(
@@ -44,6 +48,27 @@ function run() {
   const prereports = __test.buildSystemOpsPrereportCommands();
   assert.ok(prereports.some((step) => step.command === "node scripts/report-tp1-fail-closed-events.js"));
   assert.strictEqual(prereports[prereports.length - 1].errorCode, "TP1_FAIL_CLOSED_REPORT_FAILED");
+  assert.strictEqual(__test.shouldRunPrereportCommands({}), false);
+  assert.strictEqual(__test.shouldRunPrereportCommands({ DONBEOLJA_HOURLY_ACCOUNT_REPORT_RUN_PREREPORTS: "1" }), true);
+  assert.strictEqual(__test.shouldRunSystemOpsCheck({}), false);
+  assert.strictEqual(__test.shouldRunSystemOpsCheck({ DONBEOLJA_HOURLY_ACCOUNT_REPORT_RUN_SYSTEM_OPS_CHECK: "true" }), true);
+  assert.deepStrictEqual(
+    __test.runSystemOpsPrereports({ env: {} }),
+    {
+      ok: true,
+      skipped: true,
+      reason: "HOURLY_ACCOUNT_REPORT_PREREPORTS_SKIPPED",
+      command_n: prereports.length,
+    }
+  );
+  assert.deepStrictEqual(
+    __test.runSystemOpsCheckIfEnabled({ env: {}, snapshotPath: "/tmp/snapshot.json", reportPath: "/tmp/report.md" }),
+    {
+      ok: true,
+      skipped: true,
+      reason: "HOURLY_ACCOUNT_REPORT_SYSTEM_OPS_CHECK_SKIPPED",
+    }
+  );
   assert.deepStrictEqual(
     __test.buildTp1FailClosedQuarantineLines({
       tp1_fail_closed: {
