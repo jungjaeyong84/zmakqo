@@ -83,5 +83,76 @@ const { buildBinanceFillProjectionAudit, __test } = require("../services/binance
   assert.strictEqual(audit.native_protection_not_ok_n, 1);
   assert.strictEqual(audit.issue_by_code.TP0_FILL_PROJECTION_MISSING, 1);
   assert.strictEqual(audit.issue_by_code.TP1_FILL_TRAIL_INACTIVE, 1);
+
+  const freshFullTpAudit = buildBinanceFillProjectionAudit({
+    positions: [{
+      exchange: "BINANCEFUT",
+      symbol: "SOLUSDT",
+      state: "ACTIVE",
+      qty_base: 1.42,
+      meta: {
+        entry_event_id: "SOL_CURR",
+        tp_p1_done: false,
+        trail_active: false,
+        native_protection_refresh_status: "MISSING",
+      },
+    }],
+    fills: [{
+      exchange: "BINANCEFUT",
+      symbol: "SOLUSDT",
+      event: "EXIT_TP_P1_2.5P",
+      created_at: "2026-04-10T02:59:30.000Z",
+      entry_event_id: "SOL_CURR",
+      canonical_transition_events: ["TP1_FULL_EXIT"],
+    }],
+    nowMs,
+    tp1TrailGraceMs: 60 * 1000,
+  });
+  assert.strictEqual(freshFullTpAudit.issue_n, 0);
+  assert.strictEqual(freshFullTpAudit.native_protection_not_ok_n, 0);
+  assert.strictEqual(freshFullTpAudit.tp1_fill_projection_missing_n, 0);
+  assert.strictEqual(freshFullTpAudit.tp1_fill_trail_inactive_n, 0);
+  assert.strictEqual(
+    freshFullTpAudit.tp_full_fill_projection_still_active_n,
+    0,
+    "fresh TP_FULL terminal fill must not be treated as stale projection before grace expires"
+  );
+
+  const staleFullTpAudit = buildBinanceFillProjectionAudit({
+    positions: [{
+      exchange: "BINANCEFUT",
+      symbol: "SOLUSDT",
+      state: "ACTIVE",
+      qty_base: 1.42,
+      meta: {
+        entry_event_id: "SOL_CURR",
+        tp_p1_done: false,
+        trail_active: false,
+        native_protection_refresh_status: "OK",
+      },
+    }],
+    fills: [{
+      exchange: "BINANCEFUT",
+      symbol: "SOLUSDT",
+      event: "EXIT_TP_P1_2.5P",
+      created_at: "2026-04-10T02:50:00.000Z",
+      entry_event_id: "SOL_CURR",
+      extra: {
+        canonical_transition_events: ["TP1_FULL_EXIT"],
+      },
+    }],
+    nowMs,
+    tp1TrailGraceMs: 60 * 1000,
+  });
+  assert.strictEqual(staleFullTpAudit.tp1_fill_projection_missing_n, 0);
+  assert.strictEqual(staleFullTpAudit.tp1_fill_trail_inactive_n, 0);
+  assert.strictEqual(staleFullTpAudit.tp_full_fill_projection_still_active_n, 1);
+  assert.strictEqual(
+    __test.isTerminalFullTpFill({
+      event: "EXIT_TP_P1_2.5P",
+      extra: { canonical_transition_events: ["TP1_FULL_EXIT"] },
+    }),
+    true
+  );
   console.log("BINANCE_FILL_PROJECTION_AUDIT_TEST_OK");
 })();

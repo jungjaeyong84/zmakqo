@@ -362,6 +362,49 @@ function shouldAuditProjectionImmediately(event = "") {
   return ev.startsWith("EXIT_TP_P0") || ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TRAIL") || ev.startsWith("EXIT_SL");
 }
 
+function normalizeProjectionTransitionEvents({
+  canonicalTransitionEvents = null,
+  canonicalPrimaryTransitionEvent = null,
+  eventRow = null,
+} = {}) {
+  const items = [];
+  if (Array.isArray(canonicalTransitionEvents)) items.push(...canonicalTransitionEvents);
+  if (canonicalPrimaryTransitionEvent) items.push(canonicalPrimaryTransitionEvent);
+  const row = eventRow && typeof eventRow === "object" ? eventRow : {};
+  if (Array.isArray(row.canonicalTransitionEvents)) items.push(...row.canonicalTransitionEvents);
+  if (Array.isArray(row.canonical_transition_events)) items.push(...row.canonical_transition_events);
+  if (row.canonicalPrimaryTransitionEvent) items.push(row.canonicalPrimaryTransitionEvent);
+  if (row.canonical_primary_transition_event) items.push(row.canonical_primary_transition_event);
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const normalized = String(item || "").trim().toUpperCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function isTerminalFullTpProjectionEvent({
+  event = "",
+  canonicalTransitionEvents = null,
+  canonicalPrimaryTransitionEvent = null,
+  fullExit = false,
+  eventRow = null,
+} = {}) {
+  const ev = String(event || "").trim().toUpperCase();
+  const transitions = normalizeProjectionTransitionEvents({
+    canonicalTransitionEvents,
+    canonicalPrimaryTransitionEvent,
+    eventRow,
+  });
+  if (ev.startsWith("EXIT_TP_FULL")) return true;
+  if (transitions.includes("TP1_FULL_EXIT")) return true;
+  if (fullExit === true && ev.startsWith("EXIT_TP_P1")) return true;
+  return false;
+}
+
 function isSettledFlatProjection(position = null) {
   const pos = position && typeof position === "object" ? position : {};
   const state = String(pos.state || pos.position_state || "").trim().toUpperCase();
@@ -371,10 +414,29 @@ function isSettledFlatProjection(position = null) {
   return false;
 }
 
-function buildImmediateProjectionIssues({ event = "", position = null } = {}) {
+function buildImmediateProjectionIssues({
+  event = "",
+  position = null,
+  canonicalTransitionEvents = null,
+  canonicalPrimaryTransitionEvent = null,
+  fullExit = false,
+  eventRow = null,
+} = {}) {
   const ev = String(event || "").trim().toUpperCase();
   const pos = position && typeof position === "object" ? position : {};
   if (isSettledFlatProjection(pos)) return [];
+  if (isTerminalFullTpProjectionEvent({
+    event: ev,
+    canonicalTransitionEvents,
+    canonicalPrimaryTransitionEvent,
+    fullExit,
+    eventRow,
+  })) {
+    // TP_FULL_2.5 closes the position. The position projection can still be
+    // ACTIVE for a few milliseconds until the canonical transition commits, so
+    // do not emit the old TP1-partial/native-protection warning for this fill.
+    return [];
+  }
   const meta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
   const issues = [];
   if (ev.startsWith("EXIT_TP_P0") && meta.tp_p0_done !== true) issues.push("TP0_FILL_PROJECTION_MISSING");
@@ -465,6 +527,10 @@ async function auditImmediateProjectionEvents({
     const issues = buildImmediateProjectionIssues({
       event: eventRow && eventRow.event,
       position,
+      canonicalTransitionEvents: eventRow && (eventRow.canonicalTransitionEvents || eventRow.canonical_transition_events),
+      canonicalPrimaryTransitionEvent: eventRow && (eventRow.canonicalPrimaryTransitionEvent || eventRow.canonical_primary_transition_event),
+      fullExit: eventRow && eventRow.fullExit === true,
+      eventRow,
     });
     if (!issues.length) {
       results.push({
@@ -2122,7 +2188,7 @@ function buildRecentExitHintFromCanonicalTransition(row = null) {
   const canonicalEvent = String(data.canonical_event || data.event || "").trim().toUpperCase();
   const tsMs = Number(data.ts_ms || data.trade_ms || data.created_at_ms || parseSortableTimeMs(data.created_at));
   const event = canonicalEvent
-    || (transitionEvent === "TP1_FULL_EXIT" ? "EXIT_TP_P1_RECOVERED" : null)
+    || (transitionEvent === "TP1_FULL_EXIT" ? "EXIT_TP_FULL_RECOVERED" : null)
     || (transitionEvent === "TP1_REACHED" ? "EXIT_TP_P1_RECOVERED" : null)
     || (transitionEvent === "TRAIL_ACTIVATED" || transitionEvent === "TRAIL_FINAL_EXIT" || transitionEvent === "TRAIL_HIT" ? "EXIT_TRAIL_RECOVERED" : null)
     || transitionEvent;
@@ -5236,7 +5302,15 @@ async function syncMarketTrades({
           await auditProjectionEventImmediately({
             exchange: "BINANCEFUT",
             symbol: sym,
-            eventRow: { fillId, event, tradeMs, symbol: sym },
+            eventRow: {
+              fillId,
+              event,
+              tradeMs,
+              symbol: sym,
+              canonicalTransitionEvents: canonicalTransitionDecision.transitionEvents,
+              canonicalPrimaryTransitionEvent: canonicalTransitionDecision.primaryTransitionEvent,
+              fullExit,
+            },
           });
         } catch (e) {
           console.warn("[BINANCEFUT_FILL_SYNC_IMMEDIATE_AUDIT_FAIL]", e && e.message ? e.message : String(e));
@@ -5626,6 +5700,8 @@ module.exports = {
     buildFillSyncNativeProtectionRefreshArgs,
     buildStageHintedMeta,
     mergeRecentExitHintsIntoMeta,
+    normalizeProjectionTransitionEvents,
+    isTerminalFullTpProjectionEvent,
     buildImmediateProjectionIssues,
     auditImmediateProjectionEvents,
     auditProjectionEventImmediately,

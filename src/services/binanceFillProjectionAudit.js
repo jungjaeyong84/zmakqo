@@ -27,6 +27,52 @@ function eventMatches(fill = {}, prefix = "") {
   return toUpper(fill.event).startsWith(String(prefix || "").toUpperCase());
 }
 
+function normalizeTransitionEvents(fill = {}) {
+  const source = fill && typeof fill === "object" ? fill : {};
+  const extra = source.extra && typeof source.extra === "object" ? source.extra : {};
+  const items = [];
+  if (Array.isArray(source.canonical_transition_events)) items.push(...source.canonical_transition_events);
+  if (Array.isArray(source.canonicalTransitionEvents)) items.push(...source.canonicalTransitionEvents);
+  if (Array.isArray(extra.canonical_transition_events)) items.push(...extra.canonical_transition_events);
+  if (Array.isArray(extra.canonicalTransitionEvents)) items.push(...extra.canonicalTransitionEvents);
+  items.push(
+    source.canonical_transition_event,
+    source.canonicalTransitionEvent,
+    source.canonical_primary_transition_event,
+    source.canonicalPrimaryTransitionEvent,
+    extra.canonical_transition_event,
+    extra.canonicalTransitionEvent,
+    extra.canonical_primary_transition_event,
+    extra.canonicalPrimaryTransitionEvent,
+  );
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const normalized = toUpper(item);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function isTerminalFullTpFill(fill = {}) {
+  const event = toUpper(fill && fill.event);
+  if (event.startsWith("EXIT_TP_FULL")) return true;
+  const transitions = normalizeTransitionEvents(fill);
+  if (transitions.includes("TP1_FULL_EXIT")) return true;
+  const closeRatio = toNum(
+    fill && (
+      fill.close_ratio
+      ?? fill.closeRatio
+      ?? fill.qty_pct
+      ?? fill.qtyPct
+      ?? (fill.extra && (fill.extra.authoritative_qty_pct_accepted ?? fill.extra.qty_pct))
+    )
+  );
+  return eventMatches(fill, "EXIT_TP_P1") && Number.isFinite(closeRatio) && closeRatio >= 0.999;
+}
+
 function pickLatestFill(rows = [], predicate = () => false) {
   let best = null;
   let bestMs = -Infinity;
@@ -102,6 +148,9 @@ function buildBinanceFillProjectionAudit({
     const latestTp1Fill = pickLatestFill(marketFills, (row) => {
       return eventMatches(row, "EXIT_TP_P1") && fillMatchesCurrentEntry(row, meta);
     });
+    const latestFullTpFill = pickLatestFill(marketFills, (row) => {
+      return isTerminalFullTpFill(row) && fillMatchesCurrentEntry(row, meta);
+    });
 
     if (latestTp0Fill && meta.tp_p0_done !== true) {
       issues.push(makeIssue({
@@ -111,7 +160,18 @@ function buildBinanceFillProjectionAudit({
         fill: latestTp0Fill,
       }));
     }
-    if (latestTp1Fill && meta.tp_p1_done !== true) {
+    if (latestFullTpFill) {
+      const fullTpAtMs = parseMs(latestFullTpFill.exec_bar_close_time_utc_ms || latestFullTpFill.exec_ms || latestFullTpFill.created_at);
+      if (Number.isFinite(fullTpAtMs) && fullTpAtMs <= (Number(nowMs) - Number(tp1TrailGraceMs))) {
+        issues.push(makeIssue({
+          symbol,
+          code: "TP_FULL_FILL_PROJECTION_STILL_ACTIVE",
+          detail: "최근 TP_FULL fill 이후 유예시간이 지났는데 포지션 projection이 아직 ACTIVE",
+          fill: latestFullTpFill,
+        }));
+      }
+    }
+    if (latestTp1Fill && !isTerminalFullTpFill(latestTp1Fill) && meta.tp_p1_done !== true) {
       issues.push(makeIssue({
         symbol,
         code: "TP1_FILL_PROJECTION_MISSING",
@@ -119,7 +179,7 @@ function buildBinanceFillProjectionAudit({
         fill: latestTp1Fill,
       }));
     }
-    if (latestTp1Fill) {
+    if (latestTp1Fill && !isTerminalFullTpFill(latestTp1Fill)) {
       const tp1AtMs = parseMs(latestTp1Fill.exec_bar_close_time_utc_ms || latestTp1Fill.exec_ms || latestTp1Fill.created_at);
       if (
         Number.isFinite(tp1AtMs)
@@ -142,7 +202,7 @@ function buildBinanceFillProjectionAudit({
         detail: "포지션 메타가 exchange projection out-of-sync 상태",
       }));
     }
-    if (meta.native_protection_refresh_status && toUpper(meta.native_protection_refresh_status) !== "OK") {
+    if (!latestFullTpFill && meta.native_protection_refresh_status && toUpper(meta.native_protection_refresh_status) !== "OK") {
       issues.push(makeIssue({
         symbol,
         code: "NATIVE_PROTECTION_NOT_OK",
@@ -160,6 +220,7 @@ function buildBinanceFillProjectionAudit({
     tp0_fill_projection_missing_n: byCode.TP0_FILL_PROJECTION_MISSING || 0,
     tp1_fill_projection_missing_n: byCode.TP1_FILL_PROJECTION_MISSING || 0,
     tp1_fill_trail_inactive_n: byCode.TP1_FILL_TRAIL_INACTIVE || 0,
+    tp_full_fill_projection_still_active_n: byCode.TP_FULL_FILL_PROJECTION_STILL_ACTIVE || 0,
     projection_out_of_sync_n: byCode.PROJECTION_OUT_OF_SYNC || 0,
     native_protection_not_ok_n: byCode.NATIVE_PROTECTION_NOT_OK || 0,
     issues,
@@ -173,5 +234,7 @@ module.exports = {
     pickLatestFill,
     countIssuesByCode,
     fillMatchesCurrentEntry,
+    normalizeTransitionEvents,
+    isTerminalFullTpFill,
   },
 };

@@ -160,6 +160,50 @@ async function run() {
   });
   assert.deepStrictEqual(flatTrailIssues, [], "settled flat position must not raise trail projection mismatch");
 
+  const fullTpProjectionIssues = __test.buildImmediateProjectionIssues({
+    event: "EXIT_TP_P1_2.5P",
+    canonicalTransitionEvents: ["TP1_FULL_EXIT"],
+    position: {
+      state: "ACTIVE",
+      qty_base: 1.42,
+      meta: {
+        tp_p1_done: false,
+        trail_active: false,
+        native_protection_refresh_status: "MISSING",
+      },
+    },
+  });
+  assert.deepStrictEqual(
+    fullTpProjectionIssues,
+    [],
+    "TP_FULL terminal transition must not emit stale TP1/native-protection projection warning before projection commit"
+  );
+  assert.strictEqual(
+    __test.isTerminalFullTpProjectionEvent({
+      event: "EXIT_TP_P1_2.5P",
+      canonicalTransitionEvents: ["TP1_FULL_EXIT"],
+    }),
+    true,
+    "canonical TP1_FULL_EXIT transition must identify terminal full TP even when raw event is legacy TP1"
+  );
+  const missingTp1ProjectionIssues = __test.buildImmediateProjectionIssues({
+    event: "EXIT_TP_P1_2.5P",
+    canonicalTransitionEvents: ["TP1_REACHED"],
+    position: {
+      state: "ACTIVE",
+      qty_base: 1.42,
+      meta: {
+        tp_p1_done: false,
+        native_protection_refresh_status: "MISSING",
+      },
+    },
+  });
+  assert.deepStrictEqual(
+    missingTp1ProjectionIssues,
+    ["TP1_FILL_PROJECTION_MISSING", "NATIVE_PROTECTION_MISSING"],
+    "non-terminal TP1 projection still needs the original mismatch warning"
+  );
+
   const immediateAlertGate = __test && __test.shouldSendImmediateProjectionMismatchAlert;
   assert.strictEqual(typeof immediateAlertGate, "function", "shouldSendImmediateProjectionMismatchAlert export missing");
   const reconcileExternalFillPositionSync = __test && __test.reconcileExternalFillPositionSync;
