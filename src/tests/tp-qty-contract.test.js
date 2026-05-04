@@ -115,6 +115,22 @@ const simplifiedV2Tp1ContractPayload = runnerTest.buildExitOrderContractRecordPa
 assert.strictEqual(simplifiedV2Tp1ContractPayload.stage, "TP1");
 assert.strictEqual(simplifiedV2Tp1ContractPayload.event, "EXIT_TP_P1_2.5P");
 
+const fullTpOnlyContractPayload = runnerTest.buildExitOrderContractRecordPayload({
+  kind: "TP1",
+  rules: {
+    TP_P1: 0.025,
+    TP_P1_QTY: 1,
+    exit_contract_mode: "TP_FULL_ONLY",
+  },
+  posMeta: {
+    simplified_exit_v2_enabled: true,
+    exit_contract_mode: "TP_FULL_ONLY",
+  },
+  symbol: "ETHUSDT",
+});
+assert.strictEqual(fullTpOnlyContractPayload.stage, "TP1");
+assert.strictEqual(fullTpOnlyContractPayload.event, "EXIT_TP_FULL_2.5P");
+
 if (prevSimplifiedExitV2Env == null) delete process.env.SIMPLIFIED_EXIT_V2_ENABLED;
 else process.env.SIMPLIFIED_EXIT_V2_ENABLED = prevSimplifiedExitV2Env;
 

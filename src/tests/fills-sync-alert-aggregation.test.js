@@ -23,8 +23,8 @@ async function run() {
   assert.strictEqual(rescueExitRules.BE_PCT, null, "V2 full-TP contract must not re-enable BE");
   assert.strictEqual(
     fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P1_2.5P", rescueExitRules),
-    "EXIT_TP_P1_2.5P",
-    "V2 TP1 event labels must not be downgraded to the legacy rescue 1.65 contract"
+    "EXIT_TP_FULL_2.5P",
+    "V2 full-TP contract must classify TP1 fills as full TP at source"
   );
 
   const firstCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({
@@ -364,8 +364,8 @@ async function run() {
 
   assert.strictEqual(
     fillsSyncTest.normalizeExitEventForRules("EXIT_TP_P0_0.8P", rescueExitRules),
-    "EXIT_TP_P1_2.5P",
-    "legacy TP0 raw evidence must normalize to canonical V2 TP1 under current rules"
+    "EXIT_TP_FULL_2.5P",
+    "legacy TP0 raw evidence must normalize to V2 full TP under current rules"
   );
 
   const nativeTpCloseRatio = fillsSyncTest.resolveFillSyncAlertCloseRatio({

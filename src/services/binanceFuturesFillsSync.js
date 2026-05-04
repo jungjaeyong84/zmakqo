@@ -50,6 +50,7 @@ const {
   writeOpenClawShadowStopExit,
   writeOpenClawShadowExternalClose,
 } = require("../v2/openclawShadowExitWriter");
+const { isFullTpExitRatio } = require("../v2/exitPolicy");
 const { normalizeV2ExitFillEvidence } = require("../v2/exitFillIngestion");
 const { getV2Doc, queryV2DocsByField } = require("../v2/storage");
 const {
@@ -359,7 +360,11 @@ async function runDistributedFillsSync({
 
 function shouldAuditProjectionImmediately(event = "") {
   const ev = String(event || "").trim().toUpperCase();
-  return ev.startsWith("EXIT_TP_P0") || ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TRAIL") || ev.startsWith("EXIT_SL");
+  return ev.startsWith("EXIT_TP_P0")
+    || ev.startsWith("EXIT_TP_P1")
+    || ev.startsWith("EXIT_TP_FULL")
+    || ev.startsWith("EXIT_TRAIL")
+    || ev.startsWith("EXIT_SL");
 }
 
 function normalizeProjectionTransitionEvents({
@@ -857,7 +862,10 @@ function computeSyncedQtyPct({ intent, tradeNotional, execQtyBase } = {}) {
 
 function isTpP1Event(ev) {
   const e = String(ev || "").toUpperCase();
-  return e === "EXIT_TP_P1" || e.startsWith("EXIT_TP_P1_");
+  return e === "EXIT_TP_P1"
+    || e.startsWith("EXIT_TP_P1_")
+    || e === "EXIT_TP_FULL"
+    || e.startsWith("EXIT_TP_FULL_");
 }
 
 function isSameOrderAsRecentTp1(orderMeta, recentTp1) {
@@ -900,6 +908,47 @@ function isSimplifiedExitV2Enabled(positionCtx = null) {
     ...ctx,
     meta: (position.meta && typeof position.meta === "object") ? position.meta : {},
   });
+}
+
+function isFullTpOnlyExitContract({ rules = null, positionCtx = null } = {}) {
+  const r = (rules && typeof rules === "object") ? rules : {};
+  const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  const position = (ctx.position && typeof ctx.position === "object") ? ctx.position : {};
+  const meta = (position.meta && typeof position.meta === "object")
+    ? position.meta
+    : ((ctx.meta && typeof ctx.meta === "object") ? ctx.meta : {});
+  const overrideRules = (meta.exit_rules_override && typeof meta.exit_rules_override === "object")
+    ? meta.exit_rules_override
+    : {};
+  const mode = String(
+    r.exit_contract_mode
+    || r.exitContractMode
+    || ctx.exit_contract_mode
+    || ctx.exitContractMode
+    || position.exit_contract_mode
+    || position.exitContractMode
+    || meta.exit_contract_mode
+    || meta.exitContractMode
+    || overrideRules.exit_contract_mode
+    || overrideRules.exitContractMode
+    || ""
+  ).trim().toUpperCase();
+  if (mode === "TP_FULL_ONLY") return true;
+  if (ctx.tp_full_only === true || ctx.tpFullOnly === true) return true;
+  if (position.tp_full_only === true || position.tpFullOnly === true) return true;
+  if (meta.tp_full_only === true || meta.tpFullOnly === true) return true;
+  return isFullTpExitRatio(
+    r.TP_P1_QTY
+    ?? r.tp1_qty_ratio
+    ?? ctx.TP_P1_QTY
+    ?? ctx.tp1_qty_ratio
+    ?? ctx.tpP1QtyRatio
+    ?? meta.TP_P1_QTY
+    ?? meta.tp1_qty_ratio
+    ?? meta.native_protection_tp_qty_ratio
+    ?? overrideRules.TP_P1_QTY
+    ?? overrideRules.tp1_qty_ratio
+  );
 }
 
 function resolveExecutionModeFromPositionCtx(positionCtx = null) {
@@ -1522,8 +1571,12 @@ function resolvePreferredFillSyncStageEvent(stage, currentEvent, nextEvent, curr
     return resolvePreferredFillSyncStageEvent("TP1", currentEvent, nextEvent, currentPayload, nextPayload);
   }
   if (stage === "TP1") {
-    if (isTpP1Event(nextEvent)) return nextEvent;
-    if (isTpP1Event(currentEvent)) return currentEvent;
+    if (isTpP1Event(nextEvent)) {
+      return normalizeExitEventForRules(nextEvent, nextPayload.exitRules || currentPayload.exitRules, nextPayload);
+    }
+    if (isTpP1Event(currentEvent)) {
+      return normalizeExitEventForRules(currentEvent, nextPayload.exitRules || currentPayload.exitRules, currentPayload);
+    }
     return buildExitEventByKind("TP1", nextPayload.exitRules || currentPayload.exitRules, nextPayload);
   }
   if (stage === "TRAIL") {
@@ -2083,11 +2136,11 @@ function inferExitEventFromDecisionReason(decisionReason, { intent = null, rules
   if (isSyntheticExternalFillSyncIntent(intent)) return null;
   const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
   if (reason === "EXIT_TAKE_PROFIT_P1") {
-    if (intentEvent.startsWith("EXIT_TP_P1")) return intentEvent;
+    if (isTpP1Event(intentEvent)) return normalizeExitEventForRules(intentEvent, rules, positionCtx);
     return normalizeExitEventForRules("EXIT_TP_P1", rules, positionCtx);
   }
   if (reason === "EXIT_TAKE_PROFIT_P0") {
-    if (intentEvent.startsWith("EXIT_TP_P0") || intentEvent.startsWith("EXIT_TP_P1")) return intentEvent;
+    if (intentEvent.startsWith("EXIT_TP_P0") || isTpP1Event(intentEvent)) return normalizeExitEventForRules(intentEvent, rules, positionCtx);
     return normalizeExitEventForRules("EXIT_TP_P0", rules, positionCtx);
   }
   if (reason === "EXIT_STOP_LOSS") {
@@ -2099,7 +2152,7 @@ function inferExitEventFromDecisionReason(decisionReason, { intent = null, rules
     return normalizeExitEventForRules("EXIT_TRAIL", rules, positionCtx);
   }
   if (reason === "EXTERNAL_FILL_RECONCILED" && intentEvent) {
-    return intentEvent;
+    return normalizeExitEventForRules(intentEvent, rules, positionCtx);
   }
   return null;
 }
@@ -2113,11 +2166,11 @@ function resolvePersistedExternalExitEvent({
   positionCtx = null,
 } = {}) {
   const currentEvent = String(event || "").trim().toUpperCase();
-  if (currentEvent) return currentEvent;
+  if (currentEvent) return normalizeExitEventForRules(currentEvent, rules, positionCtx);
   const canonicalEvent = String(canonicalStageDecision && canonicalStageDecision.event || "").trim().toUpperCase();
-  if (canonicalEvent) return canonicalEvent;
+  if (canonicalEvent) return normalizeExitEventForRules(canonicalEvent, rules, positionCtx);
   const intentEvent = String(intent && intent.event || "").trim().toUpperCase();
-  if (intentEvent) return intentEvent;
+  if (intentEvent) return normalizeExitEventForRules(intentEvent, rules, positionCtx);
   return inferExitEventFromDecisionReason(decisionReason, {
     intent,
     rules,
@@ -2983,7 +3036,12 @@ function buildExitEventByKind(kind, rules, positionCtx = null) {
   const trailLabel = pctLabel(rules && rules.TRAIL_PCT);
   if (k === "SL") return slLabel ? `EXIT_SL_${slLabel}P` : "EXIT_SL";
   if (k === "TP0") return buildExitEventByKind("TP1", rules, positionCtx);
-  if (k === "TP1") return tpLabel ? `EXIT_TP_P1_${tpLabel}P` : "EXIT_TP_P1";
+  if (k === "TP1") {
+    if (isFullTpOnlyExitContract({ rules, positionCtx })) {
+      return tpLabel ? `EXIT_TP_FULL_${tpLabel}P` : "EXIT_TP_FULL";
+    }
+    return tpLabel ? `EXIT_TP_P1_${tpLabel}P` : "EXIT_TP_P1";
+  }
   if (k === "TRAIL") {
     const trailR = Number(rules && rules.TRAIL_R_MULTIPLE);
     if (Number.isFinite(trailR) && trailR > 0) return "EXIT_TRAIL";
@@ -3010,7 +3068,7 @@ function normalizeExitEventForRules(event, rules, positionCtx = null) {
   const ev = String(event || "").trim().toUpperCase();
   if (!ev) return ev;
   if (ev.startsWith("EXIT_TP_P0")) return buildExitEventByKind("TP0", rules, positionCtx);
-  if (ev.startsWith("EXIT_TP_P1")) return buildExitEventByKind("TP1", rules, positionCtx);
+  if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_FULL")) return buildExitEventByKind("TP1", rules, positionCtx);
   if (ev.startsWith("EXIT_TRAIL")) return buildExitEventByKind("TRAIL", rules, positionCtx);
   if (ev.startsWith("EXIT_SL")) return buildExitEventByKind("SL", rules, positionCtx);
   return ev;
@@ -3098,7 +3156,7 @@ function classifyExitAuthorityStage(event, positionCtx = null) {
   void positionCtx;
   if (!ev) return "OTHER";
   if (ev.startsWith("EXIT_TP_P0")) return "TP1";
-  if (ev.startsWith("EXIT_TP_P1")) return "TP1";
+  if (isTpP1Event(ev)) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
   if (ev === "FORCE_EXIT_ALL" || ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL") return "FORCE_EXIT_ALL";
@@ -3245,7 +3303,7 @@ function resolveCanonicalExternalExitEvent({
   observedQtyRatio = null,
   fullExit = false,
 } = {}) {
-  const currentEvent = String(event || "").trim().toUpperCase();
+  const currentEvent = normalizeExitEventForRules(event, rules, positionCtx);
   const { chainKey, confidence: chainKeyConfidence } = resolveExitAuthorityChainKey({
     exchange,
     symbol,

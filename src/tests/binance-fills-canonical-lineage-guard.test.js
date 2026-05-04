@@ -101,14 +101,49 @@ async function run() {
   assert.deepStrictEqual(simplifiedV2Tp1.transitionEvents, ["TP1_FULL_EXIT"]);
   assert.strictEqual(simplifiedV2Tp1.primaryTransitionEvent, "TP1_FULL_EXIT");
 
+  const fullTpRules = { TP_P1: 0.025, TP_P1_QTY: 1, exit_contract_mode: "TP_FULL_ONLY" };
+  const fullTpOnlyV2 = __test.resolveCanonicalExternalExitEvent({
+    authorityMap,
+    exchange: "BINANCEFUT",
+    symbol: "ARBUSDT",
+    event: "EXIT_TP_P1_2.5P",
+    entryEventId: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+    signalDocId: "SIG__ARB__TP_FULL",
+    orderMeta: { orderId: 15531075054, clientOrderId: "TP1__PRATTV2__1368b04bf2" },
+    positionCtx: {
+      executionMode: "LIVE",
+      state: "ACTIVE",
+      qty_base: 972.4,
+      entry_qty_base: 972.4,
+      simplifiedExitV2Enabled: true,
+      exit_contract_mode: "TP_FULL_ONLY",
+      meta: {
+        entry_event_id: "ENTRYV2__ARBUSDT__SHORT__15530666104",
+        execution_mode: "LIVE",
+        simplified_exit_v2_enabled: true,
+        exit_contract_mode: "TP_FULL_ONLY",
+        tp_p1_done: false,
+        trail_active: false,
+      },
+    },
+    rules: fullTpRules,
+    observedQtyRatio: 1,
+    fullExit: true,
+  });
+  assert.strictEqual(fullTpOnlyV2.stage, "TP1");
+  assert.strictEqual(fullTpOnlyV2.event, "EXIT_TP_FULL_2.5P");
+  assert.deepStrictEqual(fullTpOnlyV2.transitionEvents, ["TP1_FULL_EXIT"]);
+  assert.strictEqual(fullTpOnlyV2.primaryTransitionEvent, "TP1_FULL_EXIT");
+
   assert.strictEqual(
-    __test.normalizeExitEventForRules("EXIT_TP_P1_1.65P", rules, {
+    __test.normalizeExitEventForRules("EXIT_TP_P1_1.65P", fullTpRules, {
       executionMode: "LIVE",
       simplifiedExitV2Enabled: true,
-      meta: { simplified_exit_v2_enabled: true },
+      exit_contract_mode: "TP_FULL_ONLY",
+      meta: { simplified_exit_v2_enabled: true, exit_contract_mode: "TP_FULL_ONLY" },
     }),
-    "EXIT_TP_P1_2.5P",
-    "V2 simplified TP1 persistence must normalize legacy 1.65 labels at the source",
+    "EXIT_TP_FULL_2.5P",
+    "TP_FULL_ONLY persistence must normalize legacy TP1 labels to full TP at the source",
   );
 
   const externalFullClose = __test.resolveCanonicalExternalExitEvent({

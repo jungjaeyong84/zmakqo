@@ -9,7 +9,7 @@ const {
   evaluateTp1LadderStage,
   applyTp1LadderPolicy,
 } = require("./signalEngine");
-const { V2_SIMPLE_EXIT_CONTRACT } = require("../v2/exitPolicy");
+const { V2_SIMPLE_EXIT_CONTRACT, isFullTpExitRatio } = require("../v2/exitPolicy");
 const { computeFillPrice, computeFeeValue } = require("./paperExecution");
 
 const {
@@ -653,11 +653,42 @@ async function recordInternalCanonicalExitTransitions({
   });
 }
 
-function buildExitOrderContractEvent(kind, rules) {
+function isFullTpOnlyExitOrderContract({ rules = null, posMeta = null } = {}) {
+  const r = (rules && typeof rules === "object") ? rules : {};
+  const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const overrideRules = (meta.exit_rules_override && typeof meta.exit_rules_override === "object")
+    ? meta.exit_rules_override
+    : {};
+  const mode = String(
+    r.exit_contract_mode
+    || r.exitContractMode
+    || meta.exit_contract_mode
+    || meta.exitContractMode
+    || overrideRules.exit_contract_mode
+    || overrideRules.exitContractMode
+    || ""
+  ).trim().toUpperCase();
+  if (mode === "TP_FULL_ONLY") return true;
+  if (meta.tp_full_only === true || meta.tpFullOnly === true) return true;
+  return isFullTpExitRatio(
+    r.TP_P1_QTY
+    ?? r.tp1_qty_ratio
+    ?? meta.TP_P1_QTY
+    ?? meta.tp1_qty_ratio
+    ?? meta.native_protection_tp_qty_ratio
+    ?? overrideRules.TP_P1_QTY
+    ?? overrideRules.tp1_qty_ratio
+  );
+}
+
+function buildExitOrderContractEvent(kind, rules, posMeta = null) {
   const stage = String(kind || "").trim().toUpperCase();
   if (stage === "TP0") return null;
   if (stage === "TP1") {
     const token = ratioToPctTokenLocal(rules && rules.TP_P1);
+    if (isFullTpOnlyExitOrderContract({ rules, posMeta })) {
+      return token ? `EXIT_TP_FULL_${token}P` : "EXIT_TP_FULL";
+    }
     return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
   }
   if (stage === "SL") {
@@ -678,7 +709,7 @@ function buildExitOrderContractRecordPayload({
 } = {}) {
   const stage = String(kind || "").trim().toUpperCase();
   if (stage === "TP0") return null;
-  const event = buildExitOrderContractEvent(stage, rules);
+  const event = buildExitOrderContractEvent(stage, rules, posMeta);
   if (!event) return null;
   return {
     ...payload,

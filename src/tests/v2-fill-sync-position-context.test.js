@@ -109,6 +109,45 @@ async function run() {
   });
   assert.strictEqual(backstoppedEvent, "EXIT_TP_P1_2.5P",
     "V2 pre-TP1 half-size fills must not remain classified as TRAIL due stale symbol-level hints");
+
+  const fullTpCtx = {
+    ...ctx,
+    exit_contract_mode: "TP_FULL_ONLY",
+    meta: {
+      ...ctx.meta,
+      exit_contract_mode: "TP_FULL_ONLY",
+      exit_rules_override: {
+        TP_P1: 0.025,
+        TP_P1_QTY: 1,
+        exit_contract_mode: "TP_FULL_ONLY",
+      },
+    },
+    position: {
+      ...ctx.position,
+      meta: {
+        ...(ctx.position && ctx.position.meta ? ctx.position.meta : {}),
+        exit_contract_mode: "TP_FULL_ONLY",
+        exit_rules_override: {
+          TP_P1: 0.025,
+          TP_P1_QTY: 1,
+          exit_contract_mode: "TP_FULL_ONLY",
+        },
+      },
+    },
+  };
+  const fullTpBackstoppedEvent = __test.applyActiveExitStageBackstopOverride({
+    event: "EXIT_TP_P1_2.5P",
+    trade: {
+      symbol: "ETHUSDT",
+      qty: "0.053",
+    },
+    orderMeta: {},
+    positionCtx: fullTpCtx,
+    rules: { TP_P1: 0.025, TP_P1_QTY: 1, exit_contract_mode: "TP_FULL_ONLY" },
+    qtyPct: null,
+  });
+  assert.strictEqual(fullTpBackstoppedEvent, "EXIT_TP_FULL_2.5P",
+    "TP_FULL_ONLY fills must be classified as full TP at source, not later reclassified from TP1");
   assert.strictEqual(__test.filterRecentExitHintForEntry({
     event: "EXIT_TP_P1_2.5P",
     entryEventId: "ENTRYV2__OTHER",

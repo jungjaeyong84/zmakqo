@@ -161,6 +161,43 @@ function resolveSimplifiedExitV2Decision({
   });
 }
 
+function resolveFullTpOnlyDecision({
+  positionSnapshot = null,
+  rules = null,
+} = {}) {
+  const r = rules && typeof rules === "object" ? rules : {};
+  const snapshot = positionSnapshot && typeof positionSnapshot === "object" ? positionSnapshot : {};
+  const meta = snapshot.meta && typeof snapshot.meta === "object" ? snapshot.meta : {};
+  const overrideRules = meta.exit_rules_override && typeof meta.exit_rules_override === "object"
+    ? meta.exit_rules_override
+    : {};
+  const mode = toUpper(
+    r.exit_contract_mode
+    || r.exitContractMode
+    || snapshot.exit_contract_mode
+    || snapshot.exitContractMode
+    || meta.exit_contract_mode
+    || meta.exitContractMode
+    || overrideRules.exit_contract_mode
+    || overrideRules.exitContractMode,
+    null
+  );
+  if (mode === "TP_FULL_ONLY") return true;
+  const qtyRatio = toNum(
+    r.TP_P1_QTY
+    ?? r.tp1_qty_ratio
+    ?? snapshot.TP_P1_QTY
+    ?? snapshot.tp1_qty_ratio
+    ?? snapshot.tpP1QtyRatio
+    ?? meta.TP_P1_QTY
+    ?? meta.tp1_qty_ratio
+    ?? meta.native_protection_tp_qty_ratio
+    ?? overrideRules.TP_P1_QTY
+    ?? overrideRules.tp1_qty_ratio
+  );
+  return Number.isFinite(qtyRatio) && qtyRatio >= 0.999999;
+}
+
 function trimPctToken(raw) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
@@ -232,7 +269,7 @@ function classifyExitEventStage(event) {
   const ev = toUpper(event, null);
   if (!ev) return null;
   if (ev.startsWith("EXIT_TP_P0")) return "TP1";
-  if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_C")) return "TP1";
+  if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_FULL") || ev.startsWith("EXIT_TP_C")) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
   if (ev === "FORCE_EXIT_ALL" || ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL") return "FORCE_EXIT_ALL";
@@ -255,7 +292,7 @@ function classifyExitEventStageLiveNamespace(event, { observe = true, symbol = n
     if (observe) recordLegacyTp0LiveNamespaceObservation({ event: ev, symbol });
     return "TP0";
   }
-  if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_C")) return "TP1";
+  if (ev.startsWith("EXIT_TP_P1") || ev.startsWith("EXIT_TP_FULL") || ev.startsWith("EXIT_TP_C")) return "TP1";
   if (ev.startsWith("EXIT_TRAIL")) return "TRAIL";
   if (ev.startsWith("EXIT_SL")) return "SL";
   if (ev === "FORCE_EXIT_ALL" || ev === "EXIT_ALL" || ev === "EXIT_FORCE_ALL") return "FORCE_EXIT_ALL";
@@ -307,6 +344,7 @@ function buildCanonicalExitEvent({
     const rawTp1 = toNum(rules && rules.TP_P1);
     const fallbackIsLegacyV2Tp1 = simplifiedV2 === true && /^EXIT_TP_P1_1\.65P$/.test(fallback || "");
     const fallbackIsRetiredTp0 = simplifiedV2 === true && /^EXIT_TP_P0_/.test(fallback || "");
+    const fullTpOnly = resolveFullTpOnlyDecision({ positionSnapshot, rules });
     const effectiveTp1 = (
       simplifiedV2 === true &&
       (
@@ -317,6 +355,8 @@ function buildCanonicalExitEvent({
       ? DEFAULT_TP1_TARGET_PCT
       : rawTp1;
     const token = nonZeroPctToken(effectiveTp1);
+    if (fallback && fallback.startsWith("EXIT_TP_FULL")) return fallback;
+    if (fullTpOnly) return token ? `EXIT_TP_FULL_${token}P` : "EXIT_TP_FULL";
     if (fallback && !fallbackIsLegacyV2Tp1 && (fallback.startsWith("EXIT_TP_P1") || fallback.startsWith("EXIT_TP_C"))) return fallback;
     return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
   }

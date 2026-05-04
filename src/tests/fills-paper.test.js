@@ -327,7 +327,7 @@ function run() {
       intent: { event: "EXIT_TP_P1_1.65P" },
       rules: { TP_P1: 0.0165 },
     }),
-    "EXIT_TP_P1_1.65P"
+    "EXIT_TP_P1_2.5P"
   );
   assert.strictEqual(
     resolvePersistedExternalExitEvent({
@@ -337,7 +337,7 @@ function run() {
       canonicalStageDecision: { event: null },
       rules: { TP_P1: 0.0165 },
     }),
-    "EXIT_TP_P1_1.65P"
+    "EXIT_TP_P1_2.5P"
   );
   assert.strictEqual(
     shouldSuppressMatchedExternalFillAlert({
