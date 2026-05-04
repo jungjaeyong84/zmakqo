@@ -19,8 +19,15 @@ const outcomes = [
         setup_gate: { setup_type: "PULLBACK_RECLAIM" },
         trigger_gate: { trigger_confirmed: true, volume_zscore: 2.2 },
         regime_profile: { structural_regime: "TREND", regime_cohort: "TREND__NORMAL_VOL__ADEQUATE" },
+        expected_edge_gate: { funding_penalty_bps: 1 },
         expected_edge_model: { edge_cohort: "STRONG_EDGE", net_r_multiple: 0.53 },
       },
+      market_quality_score: 0.9,
+      spread_bps: 2.4,
+      funding_rate: 0.0002,
+      open_interest_delta_pct: 1.2,
+      liquidation_notional_5m_quote: 1500000,
+      btc_1h_trend: "LONG",
     },
     adjudicated_at: "2026-04-23T00:00:00.000Z",
   },
@@ -87,11 +94,19 @@ const outcomes = [
   assert.strictEqual(report.outcomes.length, 3);
   assert.strictEqual(report.summary.label_counts.MODEL_WIN, 2);
   assert.strictEqual(report.outcomes[0].context.setup_type, "PULLBACK_RECLAIM");
+  assert.strictEqual(report.outcomes[0].context.market_quality_bucket, "HIGH");
+  assert.strictEqual(report.outcomes[0].context.spread_bucket, "TIGHT_LT3");
+  assert.strictEqual(report.outcomes[0].context.funding_rate_bucket, "POS");
+  assert.strictEqual(report.outcomes[0].context.open_interest_delta_bucket, "UP_1_3");
+  assert.strictEqual(report.outcomes[0].context.liquidation_notional_5m_bucket, "HIGH_1M_5M");
+  assert.strictEqual(report.outcomes[0].context.btc_1h_alignment, "SELF");
   assert.strictEqual(report.outcomes[0].performance_eligible, true);
   assert.strictEqual(report.outcomes[0].performance_exclusion_reason, null);
   assert.strictEqual(report.cohort_summary.by_setup_type[0].key, "PULLBACK_RECLAIM");
   assert.strictEqual(report.cohort_summary.by_regime_cohort[0].key, "TREND__NORMAL_VOL__ADEQUATE");
   assert.strictEqual(report.cohort_summary.by_edge_cohort[0].key, "STRONG_EDGE");
+  assert.strictEqual(report.cohort_summary.by_market_quality_bucket[0].key, "HIGH");
+  assert.strictEqual(report.cohort_summary.by_btc_1h_alignment[0].key, "SELF");
   assert.strictEqual(report.cohort_summary.top_positive_setup_regime.key, "PULLBACK_RECLAIM__TREND");
 }
 

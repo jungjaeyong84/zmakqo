@@ -561,12 +561,43 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
     )),
     entry_grade: upper(firstValue(features && features.entry_grade, criteria && criteria.entry_grade, canonical && canonical.entry_grade)),
     timing_bucket: upper(firstValue(features && features.timing_bucket, criteria && criteria.timing_bucket, canonical && canonical.timing_bucket)),
+    btc_1h_trend: upper(firstValue(
+      features && (features.btc_1h_trend || features.btc_1h_direction || features.btc_htf_trend),
+      canonical && (canonical.btc_1h_trend || canonical.btc_1h_direction || canonical.btc_htf_trend),
+    )),
+    mtf_1h_direction: upper(firstValue(
+      features && (features.mtf_1h_direction || features.htf_1h_direction || features.one_hour_direction),
+      canonical && (canonical.mtf_1h_direction || canonical.htf_1h_direction || canonical.one_hour_direction),
+    )),
     funding_penalty_bps: toNumberOrNull(firstValue(features && features.funding_penalty_bps, expectedEdgeGate.funding_penalty_bps)),
+    funding_rate: toNumberOrNull(firstValue(
+      features && (features.funding_rate ?? features.funding_rate_current),
+      getPath(marketDataQuality, ["metrics", "funding_rate"]),
+      getPath(marketDataQuality, ["metrics", "fundingRate"]),
+    )),
+    market_quality_score: toNumberOrNull(firstValue(
+      features && features.market_quality_score,
+      getPath(marketDataQuality, ["metrics", "market_quality_score"]),
+      getPath(marketDataQuality, ["metrics", "quality_score"]),
+      marketDataQuality && marketDataQuality.quality_score,
+    )),
     spread_bps: toNumberOrNull(firstValue(features && features.spread_bps, expectedEdgeGate.spread_bps, getPath(marketDataQuality, ["metrics", "spread_bps"]))),
     mark_index_gap_bps: toNumberOrNull(firstValue(features && features.mark_index_gap_bps, expectedEdgeGate.mark_index_gap_bps, getPath(marketDataQuality, ["metrics", "mark_index_gap_bps"]))),
-    orderbook_imbalance_top5: toNumberOrNull(firstValue(features && features.orderbook_imbalance_top5, getPath(marketDataQuality, ["metrics", "orderbook_imbalance_top5"]))),
-    open_interest_delta_pct: toNumberOrNull(firstValue(features && features.open_interest_delta_pct, getPath(marketDataQuality, ["metrics", "open_interest_delta_pct"]))),
-    liquidation_notional_5m_quote: toNumberOrNull(firstValue(features && features.liquidation_notional_5m_quote, getPath(marketDataQuality, ["metrics", "liquidation_notional_5m_quote"]))),
+    orderbook_imbalance_top5: toNumberOrNull(firstValue(
+      features && (features.orderbook_imbalance_top5 ?? features.order_book_imbalance_top5),
+      getPath(marketDataQuality, ["metrics", "orderbook_imbalance_top5"]),
+      getPath(marketDataQuality, ["metrics", "order_book_imbalance_top5"]),
+    )),
+    open_interest_delta_pct: toNumberOrNull(firstValue(
+      features && (features.open_interest_delta_pct ?? features.open_interest_change_pct),
+      getPath(marketDataQuality, ["metrics", "open_interest_delta_pct"]),
+      getPath(marketDataQuality, ["metrics", "open_interest_change_pct"]),
+    )),
+    liquidation_notional_5m_quote: toNumberOrNull(firstValue(
+      features && (features.liquidation_notional_5m_quote ?? features.liquidation_notional_5m),
+      getPath(marketDataQuality, ["metrics", "liquidation_notional_5m_quote"]),
+      getPath(marketDataQuality, ["metrics", "liquidation_notional_5m"]),
+    )),
   };
   return Object.freeze({
     ...topLevel,

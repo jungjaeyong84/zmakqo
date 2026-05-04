@@ -56,6 +56,67 @@ function bucketTriggerQuality({ triggerConfirmed = null, volumeZScore = null } =
   return "CONFIRMED_LOW_POWER";
 }
 
+function bucketMarketQuality(score) {
+  const n = toNumberOrNull(score);
+  if (n === null) return "UNKNOWN";
+  if (n >= 0.85) return "HIGH";
+  if (n >= 0.75) return "ADEQUATE";
+  if (n >= 0.65) return "THIN";
+  return "POOR";
+}
+
+function bucketSpreadBps(spreadBps) {
+  const n = toNumberOrNull(spreadBps);
+  if (n === null) return "UNKNOWN";
+  if (n < 3) return "TIGHT_LT3";
+  if (n < 5) return "NORMAL_3_5";
+  if (n < 8) return "WIDE_5_8";
+  return "TOO_WIDE_GTE8";
+}
+
+function bucketFundingRate(rate) {
+  const n = toNumberOrNull(rate);
+  if (n === null) return "UNKNOWN";
+  if (n < -0.0005) return "NEG_EXTREME";
+  if (n < -0.0001) return "NEG";
+  if (n <= 0.0001) return "NEUTRAL";
+  if (n <= 0.0005) return "POS";
+  return "POS_EXTREME";
+}
+
+function bucketSignedPct(value) {
+  const n = toNumberOrNull(value);
+  if (n === null) return "UNKNOWN";
+  if (n < -3) return "DOWN_GT3";
+  if (n < -1) return "DOWN_1_3";
+  if (n < 0) return "DOWN_LT1";
+  if (n <= 1) return "UP_LT1";
+  if (n <= 3) return "UP_1_3";
+  return "UP_GT3";
+}
+
+function bucketLiquidationNotional(notionalQuote) {
+  const n = toNumberOrNull(notionalQuote);
+  if (n === null) return "UNKNOWN";
+  if (n < 100000) return "LOW_LT100K";
+  if (n < 1000000) return "MED_100K_1M";
+  if (n < 5000000) return "HIGH_1M_5M";
+  if (n < 10000000) return "EXTREME_5M_10M";
+  return "CHAOS_GTE10M";
+}
+
+function resolveBtcAlignment({ symbol, side, btcTrend }) {
+  const normalizedSymbol = upper(symbol);
+  const normalizedSide = upper(side);
+  const normalizedTrend = upper(btcTrend);
+  if (!normalizedTrend || normalizedTrend === "UNKNOWN" || normalizedTrend === "NONE") return "UNKNOWN";
+  if (normalizedSymbol === "BTCUSDT") return "SELF";
+  if (normalizedSide !== "LONG" && normalizedSide !== "SHORT") return "UNKNOWN";
+  if (normalizedTrend === normalizedSide) return "ALIGNED";
+  if (normalizedTrend === "NEUTRAL") return "NEUTRAL";
+  return "OPPOSED";
+}
+
 function extractOutcomeContext(row) {
   const evidence = asObject(row && row.evidence) || {};
   const criteria = asObject(firstValue(
@@ -108,6 +169,17 @@ function extractOutcomeContext(row) {
   const entryGrade = upper(firstValue(evidence.entry_grade, entryFeatures.entry_grade, criteria.entry_grade, timingMeasurement.entry_grade)) || "UNKNOWN";
   const triggerType = upper(firstValue(evidence.trigger_type, entryFeatures.trigger_type, criteria.trigger_type, triggerGate.trigger_type, timingMeasurement.trigger_type)) || "UNKNOWN";
   const timingBucket = upper(firstValue(evidence.timing_bucket, entryFeatures.timing_bucket, timingMeasurement.timing_bucket, evidence.febt_phase)) || "UNKNOWN";
+  const marketDataQuality = asObject(evidence.market_data_quality) || {};
+  const marketMetrics = asObject(marketDataQuality.metrics) || {};
+  const marketQualityScore = toNumberOrNull(firstValue(evidence.market_quality_score, entryFeatures.market_quality_score, marketMetrics.market_quality_score, marketMetrics.quality_score, marketDataQuality.quality_score));
+  const spreadBps = toNumberOrNull(firstValue(evidence.spread_bps, entryFeatures.spread_bps, marketMetrics.spread_bps));
+  const fundingRate = toNumberOrNull(firstValue(evidence.funding_rate, entryFeatures.funding_rate, entryFeatures.funding_rate_current, marketMetrics.funding_rate, marketMetrics.fundingRate));
+  const fundingPenaltyBps = toNumberOrNull(firstValue(evidence.funding_penalty_bps, entryFeatures.funding_penalty_bps, getPath(criteria, ["expected_edge_gate", "funding_penalty_bps"])));
+  const openInterestDeltaPct = toNumberOrNull(firstValue(evidence.open_interest_delta_pct, entryFeatures.open_interest_delta_pct, entryFeatures.open_interest_change_pct, marketMetrics.open_interest_delta_pct, marketMetrics.open_interest_change_pct));
+  const liquidationNotional5mQuote = toNumberOrNull(firstValue(evidence.liquidation_notional_5m_quote, entryFeatures.liquidation_notional_5m_quote, entryFeatures.liquidation_notional_5m, marketMetrics.liquidation_notional_5m_quote, marketMetrics.liquidation_notional_5m));
+  const orderbookImbalanceTop5 = toNumberOrNull(firstValue(evidence.orderbook_imbalance_top5, entryFeatures.orderbook_imbalance_top5, entryFeatures.order_book_imbalance_top5, marketMetrics.orderbook_imbalance_top5, marketMetrics.order_book_imbalance_top5));
+  const btcOneHourTrend = upper(firstValue(evidence.btc_1h_trend, entryFeatures.btc_1h_trend, entryFeatures.btc_1h_direction, entryFeatures.btc_htf_trend)) || "UNKNOWN";
+  const mtfOneHourDirection = upper(firstValue(evidence.mtf_1h_direction, entryFeatures.mtf_1h_direction, entryFeatures.htf_1h_direction, entryFeatures.one_hour_direction)) || "UNKNOWN";
 
   return Object.freeze({
     symbol,
@@ -124,6 +196,22 @@ function extractOutcomeContext(row) {
     expected_edge_bucket: edgeCohort,
     setup_regime_key: `${setupType}__${structuralRegime}`,
     expected_net_r_after_cost: expectedNetRAfterCost,
+    market_quality_score: marketQualityScore,
+    market_quality_bucket: bucketMarketQuality(marketQualityScore),
+    spread_bps: spreadBps,
+    spread_bucket: bucketSpreadBps(spreadBps),
+    funding_rate: fundingRate,
+    funding_rate_bucket: bucketFundingRate(fundingRate),
+    funding_penalty_bps: fundingPenaltyBps,
+    open_interest_delta_pct: openInterestDeltaPct,
+    open_interest_delta_bucket: bucketSignedPct(openInterestDeltaPct),
+    liquidation_notional_5m_quote: liquidationNotional5mQuote,
+    liquidation_notional_5m_bucket: bucketLiquidationNotional(liquidationNotional5mQuote),
+    orderbook_imbalance_top5: orderbookImbalanceTop5,
+    btc_1h_trend: btcOneHourTrend,
+    btc_1h_alignment: resolveBtcAlignment({ symbol, side, btcTrend: btcOneHourTrend }),
+    mtf_1h_direction: mtfOneHourDirection,
+    mtf_1h_alignment: resolveBtcAlignment({ symbol, side, btcTrend: mtfOneHourDirection }),
   });
 }
 
@@ -141,6 +229,13 @@ function createBucketRow(key, context) {
     entry_grade: context.entry_grade,
     trigger_type: context.trigger_type,
     timing_bucket: context.timing_bucket,
+    market_quality_bucket: context.market_quality_bucket,
+    spread_bucket: context.spread_bucket,
+    funding_rate_bucket: context.funding_rate_bucket,
+    open_interest_delta_bucket: context.open_interest_delta_bucket,
+    liquidation_notional_5m_bucket: context.liquidation_notional_5m_bucket,
+    btc_1h_alignment: context.btc_1h_alignment,
+    mtf_1h_alignment: context.mtf_1h_alignment,
     outcome_n: 0,
     trade_n: 0,
     win_n: 0,
@@ -175,6 +270,13 @@ function summarizeOutcomeCohorts(outcomes = []) {
   const byTriggerQualityBucket = new Map();
   const byEntryGrade = new Map();
   const byTimingBucket = new Map();
+  const byMarketQualityBucket = new Map();
+  const bySpreadBucket = new Map();
+  const byFundingRateBucket = new Map();
+  const byOpenInterestDeltaBucket = new Map();
+  const byLiquidationNotional5mBucket = new Map();
+  const byBtc1hAlignment = new Map();
+  const byMtf1hAlignment = new Map();
 
   function record(map, key, row, context) {
     if (!map.has(key)) map.set(key, createBucketRow(key, context));
@@ -208,6 +310,13 @@ function summarizeOutcomeCohorts(outcomes = []) {
     record(byTriggerQualityBucket, context.trigger_quality_bucket, row, context);
     record(byEntryGrade, context.entry_grade, row, context);
     record(byTimingBucket, context.timing_bucket, row, context);
+    record(byMarketQualityBucket, context.market_quality_bucket, row, context);
+    record(bySpreadBucket, context.spread_bucket, row, context);
+    record(byFundingRateBucket, context.funding_rate_bucket, row, context);
+    record(byOpenInterestDeltaBucket, context.open_interest_delta_bucket, row, context);
+    record(byLiquidationNotional5mBucket, context.liquidation_notional_5m_bucket, row, context);
+    record(byBtc1hAlignment, context.btc_1h_alignment, row, context);
+    record(byMtf1hAlignment, context.mtf_1h_alignment, row, context);
   }
 
   const setupRegimeRows = finalizeBucketRows(bySetupRegime);
@@ -225,6 +334,13 @@ function summarizeOutcomeCohorts(outcomes = []) {
     by_trigger_quality_bucket: finalizeBucketRows(byTriggerQualityBucket),
     by_entry_grade: finalizeBucketRows(byEntryGrade),
     by_timing_bucket: finalizeBucketRows(byTimingBucket),
+    by_market_quality_bucket: finalizeBucketRows(byMarketQualityBucket),
+    by_spread_bucket: finalizeBucketRows(bySpreadBucket),
+    by_funding_rate_bucket: finalizeBucketRows(byFundingRateBucket),
+    by_open_interest_delta_bucket: finalizeBucketRows(byOpenInterestDeltaBucket),
+    by_liquidation_notional_5m_bucket: finalizeBucketRows(byLiquidationNotional5mBucket),
+    by_btc_1h_alignment: finalizeBucketRows(byBtc1hAlignment),
+    by_mtf_1h_alignment: finalizeBucketRows(byMtf1hAlignment),
     top_positive_setup_regime: topPositiveSetupRegime,
     top_negative_setup_regime: topNegativeSetupRegime,
   });
@@ -236,5 +352,11 @@ module.exports = {
   __test: {
     bucketSignalScore,
     bucketTriggerQuality,
+    bucketMarketQuality,
+    bucketSpreadBps,
+    bucketFundingRate,
+    bucketSignedPct,
+    bucketLiquidationNotional,
+    resolveBtcAlignment,
   },
 };

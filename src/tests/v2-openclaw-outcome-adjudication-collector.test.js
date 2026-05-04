@@ -319,6 +319,8 @@ const entry = {
           ok: true,
           metrics: {
             mark_index_gap_bps: 0.8,
+            market_quality_score: 0.91,
+            funding_rate: 0.0002,
             orderbook_imbalance_top5: 0.17,
             open_interest_delta_pct: 0.04,
             liquidation_notional_5m_quote: 120000,
@@ -356,15 +358,22 @@ const entry = {
   assert.strictEqual(doc.evidence.signal_score, 88);
   assert.strictEqual(doc.evidence.expected_net_r_after_cost, 0.42);
   assert.strictEqual(doc.evidence.funding_penalty_bps, 1.2);
+  assert.strictEqual(doc.evidence.market_quality_score, 0.91);
+  assert.strictEqual(doc.evidence.funding_rate, 0.0002);
   assert.strictEqual(doc.evidence.orderbook_imbalance_top5, 0.17);
   const context = extractOutcomeContext(doc);
   assert.strictEqual(context.setup_type, "BREAKOUT_RETEST");
   assert.strictEqual(context.edge_cohort, "BUILDABLE_EDGE");
   assert.strictEqual(context.signal_score_bucket, "QUALIFIED");
   assert.strictEqual(context.expected_net_r_after_cost, 0.42);
+  assert.strictEqual(context.market_quality_bucket, "HIGH");
+  assert.strictEqual(context.funding_rate_bucket, "POS");
+  assert.strictEqual(context.open_interest_delta_bucket, "UP_LT1");
+  assert.strictEqual(context.liquidation_notional_5m_bucket, "MED_100K_1M");
   const report = buildOpenClawDailyPerformanceReport({ outcomes: result.adjudications });
   assert.notStrictEqual(report.cohort_summary.by_setup_type[0].key, "UNKNOWN");
   assert.strictEqual(report.cohort_summary.by_setup_type[0].expected_edge_sample_n, 1);
+  assert.strictEqual(report.cohort_summary.by_market_quality_bucket[0].key, "HIGH");
 })();
 
 (function positionCycleLineageLinksBrokerSyncFillToDecisionEvidence() {
