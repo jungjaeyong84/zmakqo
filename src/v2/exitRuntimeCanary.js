@@ -9,6 +9,8 @@ const DEFAULT_LINKED_DOC_LIMIT = 20;
 const DEFAULT_MAX_UNPROTECTED_WINDOW_MS = 0;
 const DEFAULT_ALERT_RETRY_GRACE_MS = 60 * 60 * 1000;
 const TERMINAL_STAGES = new Set(["EXITED_TP1", "EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
+const TERMINAL_POSITION_STATES = new Set(["FLAT", "CLOSED", "EXITED", "EXITED_TP1", "EXITED_SL", "EXITED_TRAIL", "EXITED_EXTERNAL", "EXITED_MANUAL"]);
+const ACTIVE_POSITION_STATES = new Set(["ACTIVE", "COMMIT", "PROBE", "SCALE_OUT"]);
 const TRANSITION_ALERT_REQUIREMENTS = Object.freeze({
   TP1_DONE: Object.freeze(["TP1_REACHED"]),
   TRAIL_ACTIVE: Object.freeze(["TP1_REACHED", "TRAIL_ACTIVATED"]),
@@ -54,6 +56,14 @@ function parseNonNegativeNumber(value, fallback) {
   return num;
 }
 
+function parseBool(value, fallback = false) {
+  const text = String(value == null ? "" : value).trim().toLowerCase();
+  if (!text) return fallback;
+  if (["1", "true", "yes", "on"].includes(text)) return true;
+  if (["0", "false", "no", "off"].includes(text)) return false;
+  return fallback;
+}
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -72,6 +82,14 @@ function resolveExitRuntimeCanaryConfig(env = process.env) {
     outboxLimit: parsePositiveInt(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_OUTBOX_LIMIT, DEFAULT_LINKED_DOC_LIMIT, { max: 100 }),
     maxUnprotectedWindowMs: parseNonNegativeNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_MAX_UNPROTECTED_WINDOW_MS, DEFAULT_MAX_UNPROTECTED_WINDOW_MS),
     alertRetryGraceMs: parseNonNegativeNumber(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ALERT_RETRY_GRACE_MS, DEFAULT_ALERT_RETRY_GRACE_MS),
+    useReadModelLatest: parseBool(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_USE_READ_MODEL_LATEST, true),
+    readModelStrictLatestOnly: parseBool(env.POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY, false),
+    readModelLatestLimit: parsePositiveInt(
+      env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_READ_MODEL_LATEST_LIMIT,
+      Math.max(100, parsePositiveInt(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ACTIVE_POSITION_LIMIT, DEFAULT_ACTIVE_POSITION_LIMIT, { max: 100 })),
+      { min: 50, max: 2000 }
+    ),
+    exchange: upper(env.DONBEOLJA_V2_EXIT_RUNTIME_CANARY_EXCHANGE || "BINANCEFUT"),
   });
 }
 
@@ -91,18 +109,105 @@ function countQueryLimitHits({ rows, limit }) {
   return asArray(rows).length >= Number(limit);
 }
 
-async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, config = resolveExitRuntimeCanaryConfig(env) } = {}) {
-  const activeCycles = await queryRows({
-    db,
-    env,
-    collectionKey: "POSITION_CYCLES",
-    field: "status",
-    value: "ACTIVE_PROTECTED",
-    limit: config.activePositionLimit,
+function safeClone(value) {
+  if (value == null) return null;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveLatestReadModelSnapshot(doc) {
+  const row = doc && typeof doc === "object" ? doc : {};
+  const snapshot = row.after_snapshot && typeof row.after_snapshot === "object" ? safeClone(row.after_snapshot) : null;
+  const summary = row.after_summary && typeof row.after_summary === "object" ? safeClone(row.after_summary) : null;
+  return Object.freeze({
+    ...(summary || {}),
+    ...(snapshot || {}),
+    read_model_id: trimOrNull(row.read_model_id),
+    read_model_ts_ms: toNumber(row.ts_ms),
+    read_model_created_at: trimOrNull(row.created_at),
+    read_model_source: "POSITION_READ_MODEL_LATEST",
+    exchange: upper((snapshot && snapshot.exchange) || (summary && summary.exchange) || row.exchange),
+    symbol: upper((snapshot && (snapshot.symbol || snapshot.symbol_or_pair_id)) || (summary && (summary.symbol || summary.symbol_or_pair_id)) || row.symbol),
   });
+}
+
+function resolveReadModelPositionCycleId(view) {
+  const row = view && typeof view === "object" ? view : {};
+  const meta = row.meta && typeof row.meta === "object" ? row.meta : {};
+  return trimOrNull(row.position_cycle_id)
+    || trimOrNull(row.positionCycleId)
+    || trimOrNull(row.cycle_id)
+    || trimOrNull(meta.position_cycle_id)
+    || trimOrNull(meta.positionCycleId)
+    || null;
+}
+
+function isReadModelActiveProtectedCandidate(view) {
+  const row = view && typeof view === "object" ? view : {};
+  const status = upper(row.status || row.position_cycle_status);
+  const state = upper(row.state || row.position_state);
+  const qty = toNumber(row.qty_base ?? row.position_amt ?? row.size_base);
+  if (status === "ACTIVE_PROTECTED") return !!resolveReadModelPositionCycleId(row);
+  if (status && status !== "ACTIVE_PROTECTED") return false;
+  if (TERMINAL_POSITION_STATES.has(state)) return false;
+  if (!ACTIVE_POSITION_STATES.has(state)) return false;
+  if (qty != null && Math.abs(qty) <= 0) return false;
+  return !!resolveReadModelPositionCycleId(row);
+}
+
+async function queryLatestReadModels({ db = null, config = resolveExitRuntimeCanaryConfig({}) } = {}) {
+  const firestore = db || require("../storage/firestore").getFirestore();
+  const exchange = upper(config.exchange || "BINANCEFUT");
+  const limit = Number(config.readModelLatestLimit) || 100;
+  const snap = await firestore.collection("position_read_model_latest")
+    .where("exchange", "==", exchange)
+    .limit(limit)
+    .get();
+  const rows = snap.docs.map((doc) => ({ ...(doc.data() || {}) }));
+  return Object.freeze({
+    ok: true,
+    rows: Object.freeze(rows),
+    query_limit_reached: countQueryLimitHits({ rows, limit }),
+    query_limit: limit,
+    exchange,
+  });
+}
+
+async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, config = resolveExitRuntimeCanaryConfig(env) } = {}) {
+  const readModelLoad = config.useReadModelLatest === true
+    ? await queryLatestReadModels({ db, config }).catch((error) => Object.freeze({
+      ok: false,
+      rows: Object.freeze([]),
+      query_limit_reached: false,
+      query_limit: config.readModelLatestLimit,
+      error: error && error.message ? error.message : String(error),
+    }))
+    : Object.freeze({ ok: false, rows: Object.freeze([]), query_limit_reached: false, query_limit: 0, skipped: true });
+  const readModelViews = readModelLoad.ok === true
+    ? asArray(readModelLoad.rows).map(resolveLatestReadModelSnapshot)
+    : [];
+  const activeReadModelViews = readModelViews.filter(isReadModelActiveProtectedCandidate);
+  const shouldUseReadModel = config.useReadModelLatest === true
+    && (readModelLoad.ok === true || config.readModelStrictLatestOnly === true)
+    && (readModelViews.length > 0 || config.readModelStrictLatestOnly === true);
+  const activeCycles = shouldUseReadModel
+    ? activeReadModelViews
+    : await queryRows({
+      db,
+      env,
+      collectionKey: "POSITION_CYCLES",
+      field: "status",
+      value: "ACTIVE_PROTECTED",
+      limit: config.activePositionLimit,
+    });
   const rows = [];
   for (const positionCycle of activeCycles) {
-    const positionCycleId = trimOrNull(positionCycle && positionCycle.position_cycle_id);
+    const positionCycleId = shouldUseReadModel
+      ? resolveReadModelPositionCycleId(positionCycle)
+      : trimOrNull(positionCycle && positionCycle.position_cycle_id);
     if (!positionCycleId) {
       rows.push(Object.freeze({
         positionCycle,
@@ -114,19 +219,24 @@ async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, co
       }));
       continue;
     }
-    const [projection, protectionRuntime, transitions, outboxes] = await Promise.all([
+    const [canonicalPositionCycle, projection, protectionRuntime, transitions, outboxes] = await Promise.all([
+      shouldUseReadModel
+        ? getOptionalDoc({ db, env, collectionKey: "POSITION_CYCLES", docId: positionCycleId })
+        : Promise.resolve(positionCycle),
       getOptionalDoc({ db, env, collectionKey: "EXIT_RUNTIME_PROJECTIONS", docId: buildExitRuntimeProjectionId({ positionCycleId }) }),
       getOptionalDoc({ db, env, collectionKey: "PROTECTION_RUNTIME", docId: buildProtectionRuntimeId({ positionCycleId }) }),
       queryRows({ db, env, collectionKey: "CANONICAL_EXIT_TRANSITIONS", field: "position_cycle_id", value: positionCycleId, limit: config.transitionLimit }),
       queryRows({ db, env, collectionKey: "TRADE_ALERT_OUTBOX", field: "position_cycle_id", value: positionCycleId, limit: config.outboxLimit }),
     ]);
     const loadIssues = [];
+    if (!canonicalPositionCycle) loadIssues.push("POSITION_CYCLE_MISSING");
     if (!projection) loadIssues.push("PROJECTION_MISSING");
     if (!protectionRuntime) loadIssues.push("PROTECTION_RUNTIME_MISSING");
     if (countQueryLimitHits({ rows: transitions, limit: config.transitionLimit })) loadIssues.push("TRANSITION_QUERY_LIMIT_REACHED");
     if (countQueryLimitHits({ rows: outboxes, limit: config.outboxLimit })) loadIssues.push("OUTBOX_QUERY_LIMIT_REACHED");
     rows.push(Object.freeze({
-      positionCycle,
+      positionCycle: canonicalPositionCycle || positionCycle,
+      readModelPosition: shouldUseReadModel ? positionCycle : null,
       projection,
       protectionRuntime,
       transitions: Object.freeze(transitions),
@@ -137,9 +247,21 @@ async function loadExitRuntimeCanaryStateRows({ db = null, env = process.env, co
   return Object.freeze({
     ok: true,
     rows: Object.freeze(rows),
-    active_query_limit_reached: countQueryLimitHits({ rows: activeCycles, limit: config.activePositionLimit }),
+    active_query_limit_reached: shouldUseReadModel
+      ? false
+      : countQueryLimitHits({ rows: activeCycles, limit: config.activePositionLimit }),
+    read_model_latest_used: shouldUseReadModel,
+    read_model_latest_query_ok: readModelLoad.ok === true,
+    read_model_latest_query_limit_reached: readModelLoad.query_limit_reached === true,
+    read_model_latest_row_n: readModelViews.length,
+    read_model_latest_active_candidate_n: activeReadModelViews.length,
     query_budget: Object.freeze({
       active_position_limit: config.activePositionLimit,
+      read_model_latest_limit: config.readModelLatestLimit,
+      read_model_latest_used: shouldUseReadModel,
+      read_model_latest_query_limit_reached: readModelLoad.query_limit_reached === true,
+      read_model_latest_row_n: readModelViews.length,
+      read_model_latest_active_candidate_n: activeReadModelViews.length,
       transition_limit_per_position: config.transitionLimit,
       outbox_limit_per_position: config.outboxLimit,
       max_unprotected_window_ms: config.maxUnprotectedWindowMs,
@@ -426,7 +548,7 @@ function buildPositionCanaryChecks({ row, config, generatedAt }) {
   return Object.freeze(checks);
 }
 
-function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
+function summarizeFailures({ rows, checks, activeQueryLimitReached, readModelLatestQueryLimitReached }) {
   const failed = checks.filter((check) => check.ok !== true);
   const failedIds = failed.map((check) => check.id);
   const idSet = new Set(failedIds);
@@ -447,6 +569,7 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
   ].includes(check.id)).length;
   const blockers = [];
   if (activeQueryLimitReached) blockers.push("EXIT_RUNTIME_CANARY_ACTIVE_QUERY_LIMIT_REACHED");
+  if (readModelLatestQueryLimitReached) blockers.push("EXIT_RUNTIME_CANARY_READ_MODEL_LATEST_QUERY_LIMIT_REACHED");
   if (idSet.has("EXIT_RUNTIME_CANARY_PROJECTION_MISSING")) blockers.push("EXIT_RUNTIME_CANARY_PROJECTION_MISSING");
   if (idSet.has("EXIT_RUNTIME_CANARY_PROTECTION_RUNTIME_MISSING")) blockers.push("EXIT_RUNTIME_CANARY_PROTECTION_RUNTIME_MISSING");
   if (tp1Missing > 0) blockers.push("EXIT_RUNTIME_CANARY_TP1_ORDER_MISSING");
@@ -472,14 +595,29 @@ function summarizeFailures({ rows, checks, activeQueryLimitReached }) {
   });
 }
 
-function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false, queryBudget = null, config = resolveExitRuntimeCanaryConfig({}), generatedAt = new Date().toISOString() } = {}) {
+function evaluateExitRuntimeCanaryState({
+  rows,
+  activeQueryLimitReached = false,
+  readModelLatestQueryLimitReached = false,
+  queryBudget = null,
+  config = resolveExitRuntimeCanaryConfig({}),
+  generatedAt = new Date().toISOString(),
+} = {}) {
   const normalizedRows = asArray(rows);
   const checks = normalizedRows.flatMap((row) => buildPositionCanaryChecks({ row, config, generatedAt }));
   if (activeQueryLimitReached) {
     checks.push(Object.freeze({ id: "EXIT_RUNTIME_CANARY_ACTIVE_QUERY_LIMIT_REACHED", ok: false }));
   }
+  if (readModelLatestQueryLimitReached) {
+    checks.push(Object.freeze({ id: "EXIT_RUNTIME_CANARY_READ_MODEL_LATEST_QUERY_LIMIT_REACHED", ok: false }));
+  }
   const failedChecks = checks.filter((check) => check.ok !== true);
-  const summary = summarizeFailures({ rows: normalizedRows, checks, activeQueryLimitReached });
+  const summary = summarizeFailures({
+    rows: normalizedRows,
+    checks,
+    activeQueryLimitReached,
+    readModelLatestQueryLimitReached,
+  });
   return Object.freeze({
     ok: failedChecks.length === 0,
     reason: failedChecks.length === 0 ? "V2_EXIT_RUNTIME_CANARY_PASS" : "V2_EXIT_RUNTIME_CANARY_BLOCKED",
@@ -505,6 +643,8 @@ function evaluateExitRuntimeCanaryState({ rows, activeQueryLimitReached = false,
       active_position_limit: config.activePositionLimit,
       transition_limit_per_position: config.transitionLimit,
       outbox_limit_per_position: config.outboxLimit,
+      read_model_latest_limit: config.readModelLatestLimit,
+      read_model_latest_used: config.useReadModelLatest,
       max_unprotected_window_ms: config.maxUnprotectedWindowMs,
       alert_retry_grace_ms: config.alertRetryGraceMs,
     }),
@@ -546,6 +686,7 @@ async function runExitRuntimeCanary({ db = null, env = process.env, now = () => 
   return evaluateExitRuntimeCanaryState({
     rows: loaded.rows,
     activeQueryLimitReached: loaded.active_query_limit_reached,
+    readModelLatestQueryLimitReached: loaded.read_model_latest_query_limit_reached,
     queryBudget: loaded.query_budget,
     config,
     generatedAt,
@@ -564,7 +705,11 @@ module.exports = {
     numbersMatch,
     parsePositiveInt,
     parseNonNegativeNumber,
+    parseBool,
     hasPlacedOrder,
+    resolveLatestReadModelSnapshot,
+    resolveReadModelPositionCycleId,
+    isReadModelActiveProtectedCandidate,
     buildPositionCanaryChecks,
     buildAlertOutboxIntegrityChecks,
     resolveAlertOutboxForTransition,

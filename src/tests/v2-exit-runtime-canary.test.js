@@ -318,6 +318,7 @@ function buildFakeDb(seed) {
         || row.protection_runtime_id
         || row.canonical_transition_id
         || row.alert_outbox_id
+        || row.read_model_id
         || row.position_cycle_id;
       docs.set(key(collection, id), { ...row });
     }
@@ -378,7 +379,73 @@ async function loaderUsesBoundedActiveCyclesAndLinkedDocs() {
   assert.strictEqual(loaded.query_budget.active_position_limit, 5);
 }
 
+async function loaderUsesLatestReadModelInsteadOfStaleRawActiveCycles() {
+  const positionCycle = cycle();
+  const projectionDoc = projection();
+  const runtimeDoc = runtime();
+  const staleRawCycles = Array.from({ length: 100 }, (_, index) => cycle({
+    position_cycle_id: `PCY__STALE__${index}`,
+    symbol: `STALE${index}`,
+    status: "ACTIVE_PROTECTED",
+  }));
+  const db = buildFakeDb({
+    position_read_model_latest: [
+      {
+        read_model_id: "POSITION_READ_MODEL_LATEST__BINANCEFUT__ETHUSDT",
+        exchange: "BINANCEFUT",
+        symbol: "ETHUSDT",
+        ts_ms: Date.parse("2026-04-22T00:00:00.000Z"),
+        after_snapshot: {
+          exchange: "BINANCEFUT",
+          symbol: "ETHUSDT",
+          state: "ACTIVE",
+          qty_base: 1,
+          meta: { position_cycle_id: positionCycle.position_cycle_id },
+        },
+      },
+      {
+        read_model_id: "POSITION_READ_MODEL_LATEST__BINANCEFUT__XRPUSDT",
+        exchange: "BINANCEFUT",
+        symbol: "XRPUSDT",
+        ts_ms: Date.parse("2026-04-22T00:00:00.000Z"),
+        after_snapshot: {
+          exchange: "BINANCEFUT",
+          symbol: "XRPUSDT",
+          state: "FLAT",
+          qty_base: 0,
+          meta: { position_cycle_id: "PCY__STALE_FLAT" },
+        },
+      },
+    ],
+    dbjv2__position_cycles_v2: [positionCycle, ...staleRawCycles],
+    dbjv2__exit_runtime_projection_v2: [projectionDoc],
+    dbjv2__protection_runtime_v2: [runtimeDoc],
+    dbjv2__canonical_exit_transitions_v2: [],
+    dbjv2__trade_alert_outbox_v2: [],
+  });
+  const loaded = await loadExitRuntimeCanaryStateRows({
+    db,
+    env: {
+      DONBEOLJA_V2_COLLECTION_PREFIX: "dbjv2__",
+      POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY: "1",
+    },
+    config: resolveExitRuntimeCanaryConfig({
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_ACTIVE_POSITION_LIMIT: "5",
+      DONBEOLJA_V2_EXIT_RUNTIME_CANARY_READ_MODEL_LATEST_LIMIT: "50",
+      POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY: "1",
+    }),
+  });
+  assert.strictEqual(loaded.ok, true);
+  assert.strictEqual(loaded.read_model_latest_used, true);
+  assert.strictEqual(loaded.read_model_latest_row_n, 2);
+  assert.strictEqual(loaded.read_model_latest_active_candidate_n, 1);
+  assert.strictEqual(loaded.active_query_limit_reached, false);
+  assert.strictEqual(loaded.rows.length, 1);
+  assert.strictEqual(loaded.rows[0].positionCycle.position_cycle_id, positionCycle.position_cycle_id);
+}
+
 loaderUsesBoundedActiveCyclesAndLinkedDocs()
+  .then(loaderUsesLatestReadModelInsteadOfStaleRawActiveCycles)
   .then(() => {
     console.log("V2_EXIT_RUNTIME_CANARY_TEST_OK");
   })
