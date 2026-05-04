@@ -22,14 +22,14 @@ const {
 })();
 
 (function testCloseFraction() {
-  assert.deepStrictEqual(__test.resolveCloseFraction(["SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
-  assert.deepStrictEqual(__test.resolveCloseFraction(["TRAIL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["TRAIL"]), { fraction: 0, reason: "TRAIL_DISABLED_TP_FULL_ONLY" });
   assert.deepStrictEqual(__test.resolveCloseFraction(["BE"]), { fraction: 0, reason: "BE_NATIVE_STOP_MANAGEMENT_ONLY" });
   assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1"]), { fraction: 1.0, reason: "FULL_CLOSE_TP1" });
   assert.deepStrictEqual(__test.resolveCloseFraction(["TP_C"]), { fraction: 1.0, reason: "FULL_CLOSE_TP1" });
   // Both fire — full close (safer)
-  assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1", "SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
-  assert.deepStrictEqual(__test.resolveCloseFraction(["BE", "TRAIL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["TP_P1", "SL"]), { fraction: 1.0, reason: "FULL_CLOSE_SL" });
+  assert.deepStrictEqual(__test.resolveCloseFraction(["BE", "TRAIL"]), { fraction: 0, reason: "TRAIL_DISABLED_TP_FULL_ONLY" });
   assert.deepStrictEqual(__test.resolveCloseFraction([]), { fraction: 0, reason: "NO_ACTIONABLE_TRIGGER" });
 })();
 

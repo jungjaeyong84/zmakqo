@@ -151,7 +151,7 @@ const { __test: fillsSyncTest } = require("../services/binanceFuturesFillsSync")
     event: "EXIT_TP_P0_0.8P",
     position: { meta: { tp_p0_done: false, native_protection_refresh_status: "OK" } },
   });
-  assert.deepStrictEqual(issues, ["TP0_FILL_PROJECTION_MISSING"]);
+  assert.deepStrictEqual(issues, ["LEGACY_PARTIAL_TP_FILL_PROJECTION_MISSING"]);
 
   console.log("BINANCE_USER_DATA_STREAM_TEST_OK");
 })().catch((err) => {

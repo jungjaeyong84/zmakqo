@@ -57,8 +57,9 @@ function roundQtyToStep(qty, stepSize) {
 }
 
 // Decide which fraction of the position to close given the triggered
-// kinds. V2 simplified exit is full TP only: SL/TRAIL/TP_P1/TP_C all close
-// the full remaining position.
+// kinds. V2 simplified exit is full TP only: SL and TP_P1 close the full
+// remaining position. TRAIL/BE are intentionally non-actionable because the
+// current V2 contract has no runner, no trailing, and no BE layer.
 // BE is intentionally NOT actionable here. BE is a native STOP management
 // layer after TP1, not a direct reduceOnly MARKET close signal. Keeping BE
 // non-actionable prevents "TP1 reached -> BE direct dispatch -> full runner
@@ -70,10 +71,11 @@ function resolveCloseFraction(triggeredKinds = []) {
       ? triggeredKinds.map((k) => upper(k)).filter(Boolean)
       : []
   );
-  const isFullCloseTrigger = set.has("SL") || set.has("TRAIL");
+  const isFullCloseTrigger = set.has("SL");
   const isPartialCloseTrigger = set.has("TP_P1") || set.has("TP_C");
-  if (isFullCloseTrigger) return { fraction: 1.0, reason: "FULL_CLOSE_SL_OR_TRAIL" };
+  if (isFullCloseTrigger) return { fraction: 1.0, reason: "FULL_CLOSE_SL" };
   if (isPartialCloseTrigger) return { fraction: 1.0, reason: "FULL_CLOSE_TP1" };
+  if (set.has("TRAIL")) return { fraction: 0, reason: "TRAIL_DISABLED_TP_FULL_ONLY" };
   if (set.has("BE")) return { fraction: 0, reason: "BE_NATIVE_STOP_MANAGEMENT_ONLY" };
   return { fraction: 0, reason: "NO_ACTIONABLE_TRIGGER" };
 }

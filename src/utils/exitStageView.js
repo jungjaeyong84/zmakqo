@@ -121,7 +121,9 @@ function buildExitStageView({ exchange, position, closePrice, leverageFallback =
     leverageEff: leverage,
     rules,
   });
-  const trailActive = trailDelay.trailActive;
+  const trailActive = simplifiedExitV2Enabled === true
+    ? false
+    : trailDelay.trailActive;
   const canonicalPositionStage = resolveCanonicalPositionExitStage({
     positionSnapshot: {
       ...position,

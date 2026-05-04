@@ -77,11 +77,12 @@ const { buildBinanceFillProjectionAudit, __test } = require("../services/binance
   assert.strictEqual(audit.active_position_n, 2);
   assert.strictEqual(audit.recent_fill_n, 3);
   assert.strictEqual(audit.tp0_fill_projection_missing_n, 1);
+  assert.strictEqual(audit.legacy_partial_tp_fill_projection_missing_n, 1);
   assert.strictEqual(audit.tp1_fill_projection_missing_n, 0);
   assert.strictEqual(audit.tp1_fill_trail_inactive_n, 1);
   assert.strictEqual(audit.projection_out_of_sync_n, 1);
   assert.strictEqual(audit.native_protection_not_ok_n, 1);
-  assert.strictEqual(audit.issue_by_code.TP0_FILL_PROJECTION_MISSING, 1);
+  assert.strictEqual(audit.issue_by_code.LEGACY_PARTIAL_TP_FILL_PROJECTION_MISSING, 1);
   assert.strictEqual(audit.issue_by_code.TP1_FILL_TRAIL_INACTIVE, 1);
 
   const freshFullTpAudit = buildBinanceFillProjectionAudit({

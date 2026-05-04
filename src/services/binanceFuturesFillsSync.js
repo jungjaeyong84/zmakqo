@@ -439,7 +439,7 @@ function buildImmediateProjectionIssues({
   }
   const meta = (pos.meta && typeof pos.meta === "object") ? pos.meta : {};
   const issues = [];
-  if (ev.startsWith("EXIT_TP_P0") && meta.tp_p0_done !== true) issues.push("TP0_FILL_PROJECTION_MISSING");
+  if (ev.startsWith("EXIT_TP_P0") && meta.tp_p0_done !== true) issues.push("LEGACY_PARTIAL_TP_FILL_PROJECTION_MISSING");
   if (ev.startsWith("EXIT_TP_P1") && meta.tp_p1_done !== true) issues.push("TP1_FILL_PROJECTION_MISSING");
   if (ev.startsWith("EXIT_TRAIL") && meta.trail_active !== true) issues.push("TRAIL_FILL_PROJECTION_INACTIVE");
   const nativeStatus = String(meta.native_protection_refresh_status || "").trim().toUpperCase();

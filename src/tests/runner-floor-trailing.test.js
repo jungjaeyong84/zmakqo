@@ -125,6 +125,7 @@ function run() {
       avg_price: 100,
       position_side: "SHORT",
       meta: {
+        simplified_exit_v2_enabled: false,
         leverage: 2,
         tp_p1_done: true,
         trail_active: true,

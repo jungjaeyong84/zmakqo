@@ -71,11 +71,16 @@ function isExplicitLegacyTp0Enabled(snapshot = {}) {
 function stripTp0RulesForSimplifiedExitV2(rules = {}, snapshot = null) {
   const source = rules && typeof rules === "object" ? rules : {};
   if (!isTp0RetiredRuntime(snapshot)) return source;
-  return {
+  const tp0Retired = {
     ...source,
     TP_P0: 0,
     TP_P0_QTY: 0,
     TP_P0_ATR_MULTIPLE: 0,
+  };
+  if (!isSimplifiedExitV2Enabled(snapshot)) return tp0Retired;
+  return {
+    ...tp0Retired,
+    ...buildV2SimpleExitRulesPatch(),
   };
 }
 

@@ -737,25 +737,6 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
   // risk-free close"). Operator-reported confusion on the DOGE
   // 07:30:33 UTC dispatch (triggered_kinds=['BE','TRAIL'], fraction=1).
   //
-  // V2 simplified exit has no BE/trailing runner for new positions. These
-  // legacy labels remain only for old in-flight positions; TP1 is terminal.
-  if (kinds.includes("BE")) {
-    return {
-      event: pctText ? `EXIT_BE_${pctText}P` : "EXIT_BE",
-      // BE is an operator-facing label for the raised native stop after TP1.
-      // Canonical V2 reducers do not have a BE_FIRED transition; terminal
-      // stop fills on the runner are represented as TRAIL_HIT.
-      stage: "TRAIL",
-      transitionEvent: "TRAIL_HIT",
-    };
-  }
-  if (kinds.includes("TRAIL")) {
-    return {
-      event: pctText ? `EXIT_TRAIL_${pctText}P` : "EXIT_TRAIL",
-      stage: "TRAIL",
-      transitionEvent: "TRAIL_HIT",
-    };
-  }
   if (kinds.includes("SL") || kinds.includes("STOP_LOSS")) {
     return {
       event: pctText ? `EXIT_SL_${pctText}P` : "EXIT_SL",
@@ -765,9 +746,18 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
   }
   if (kinds.includes("TP_P1") || kinds.includes("TP1")) {
     return {
-      event: pctText ? `EXIT_TP_P1_${pctText}P` : "EXIT_TP_P1",
+      event: "EXIT_TP_FULL_2.5P",
       stage: "TP1",
       transitionEvent: "TP1_FULL_EXIT",
+    };
+  }
+  // V2 TP_FULL_ONLY has no trailing/BE runner. If a stale trigger leaks here
+  // it is non-canonical and must not be written as a TRAIL contract.
+  if (kinds.includes("TRAIL") || kinds.includes("BE")) {
+    return {
+      event: "EXIT_EXTERNAL_SYNC",
+      stage: "EXTERNAL_SYNC",
+      transitionEvent: "EXTERNAL_CLOSE_SYNC",
     };
   }
   return {
@@ -784,11 +774,15 @@ function resolveV2DirectDispatchAlertEvent({ triggeredKinds, fraction }) {
 // classification later — this is just for the immediate alert.
 function resolveBrokerFlatAlertEvent({ posMeta = null } = {}) {
   const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
-  if (meta.trail_active === true) {
+  const fullTpOnly = String(meta.exit_contract_mode || "").trim().toUpperCase() === "TP_FULL_ONLY"
+    || meta.TP_FULL_ONLY === true
+    || meta.tp_full_only === true
+    || Number(meta.tp_p1_qty_ratio ?? meta.TP_P1_QTY) >= 0.999999;
+  if (meta.trail_active === true && fullTpOnly !== true) {
     return { event: "EXIT_TRAIL_100P", stage: "TRAIL", transitionEvent: "TRAIL_HIT" };
   }
   if (meta.tp_p1_done === true) {
-    return { event: "EXIT_TP_P1_100P", stage: "TP1", transitionEvent: "TP1_FULL_EXIT" };
+    return { event: "EXIT_TP_FULL_2.5P", stage: "TP1", transitionEvent: "TP1_FULL_EXIT" };
   }
   return { event: "EXIT_SL_100P", stage: "SL", transitionEvent: "SL_HIT" };
 }
@@ -4177,8 +4171,8 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                     symbol: v2DirectDispatch.symbol,
                     orderId: v2DispatchOrderId,
                     clientOrderId: v2DispatchClientOrderId || v2DirectDispatch.idempotencyKey,
-                    event: v2DirectDispatch.fraction >= 1 ? "EXIT_TRAIL" : "EXIT_TP_P1_2.5P",
-                    stage: v2DirectDispatch.fraction >= 1 ? "TRAIL" : "TP1",
+                    event: alertMap.event,
+                    stage: alertMap.stage === "EXTERNAL_SYNC" ? "OTHER_EXIT" : alertMap.stage,
                     intentId: null,
                     signalId: null,
                     signalDocId: null,
@@ -4196,6 +4190,7 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                     extra: {
                       v2_direct_dispatch: true,
                       triggered_kinds: v2DirectDispatch.triggeredKinds,
+                      canonical_transition_event: alertMap.transitionEvent || null,
                       run_id: dispatchRunId,
                       idempotency_key: v2DirectDispatch.idempotencyKey,
                     },

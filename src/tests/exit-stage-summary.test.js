@@ -84,15 +84,15 @@ const { buildExitStageView } = require("../utils/exitStageView");
   assert.equal(stage.compact_headline.left_price, 98.35);
   assert.equal(stage.compact_headline.right_price, 103.25);
   assert.equal(stage.native_protection_active, true);
-  assert.equal(stage.tp1_qty_pct, 0.5);
+  assert.equal(stage.tp1_qty_pct, 1);
   assert.equal(stage.canonical_exit_stage, null);
   assert.equal(stage.canonical_exit_stage_source, null);
   assert.equal(stage.simplified_exit_v2_available, true);
   assert.equal(stage.simplified_exit_v2_state, "FULL");
   assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, []);
   assert(stage.simplified_exit_v2_shadow, "shadow view must exist");
-  assert.equal(stage.simplified_exit_v2_shadow.tp1_target_qty_abs, 0.075);
-  assert.equal(stage.simplified_exit_v2_shadow.runner_qty_abs, 0.075);
+  assert.equal(stage.simplified_exit_v2_shadow.tp1_target_qty_abs, 0.15);
+  assert.equal(stage.simplified_exit_v2_shadow.runner_qty_abs, 0);
   assert.ok(Math.abs(stage.simplified_exit_v2_shadow.tp1_target_price - 101.25) < 1e-9);
 })();
 
@@ -166,27 +166,32 @@ const { buildExitStageView } = require("../utils/exitStageView");
       },
     },
   });
-  assert(stage, "stage must exist for trailing position");
-  assert.equal(stage.trail_r_multiple, 0.9);
-  assert.equal(stage.compact_headline.left_label, "Trail");
-  assert.equal(stage.compact_headline.left_price, 109.2575);
-  assert.equal(stage.compact_headline.right_label, "SL");
-  assert.equal(stage.compact_headline.right_price, 98.35);
-  assert.equal(stage.canonical_exit_stage, "TRAIL");
-  assert.equal(stage.canonical_exit_stage_source, "POSITION_STATE_MACHINE_TRAIL_ACTIVE");
+  assert(stage, "stage must exist for stale trail metadata under TP_FULL_ONLY");
+  assert.equal(stage.trail_r_multiple, null);
+  assert.equal(stage.compact_headline.left_label, "SL");
+  assert.equal(stage.compact_headline.left_price, 98.35);
+  assert.equal(stage.compact_headline.right_label, "TP1");
+  assert.equal(stage.compact_headline.right_price, 101.25);
+  assert.equal(stage.canonical_exit_stage, "TP1");
+  assert.equal(stage.canonical_exit_stage_source, "POSITION_STATE_MACHINE_TP_FULL_ONLY_TRAIL_SUPPRESSED");
   assert.equal(stage.canonical_runner_remaining_abs, 0.125);
   assert.equal(stage.canonical_runner_remaining_source, "META");
-  assert.equal(stage.trail_stop_by_r, 109.2575);
-  assert.equal(stage.r_based_trail_stop, 109.2575);
-  assert.equal(stage.chosen_stop_source, "TRAIL");
-  assert.equal(stage.chosen_stop_price, 109.2575);
-  assert.equal(stage.final_effective_stop, 109.2575);
-  assert.deepStrictEqual(stage.stop_divergence_codes, ["NATIVE_STOP_MISMATCH"]);
+  assert.equal(stage.trail_active, false);
+  assert.equal(stage.trail_stop_by_r, null);
+  assert.equal(stage.r_based_trail_stop, null);
+  assert.equal(stage.chosen_stop_source, null);
+  assert.equal(stage.chosen_stop_price, null);
+  assert.equal(stage.final_effective_stop, null);
+  assert.deepStrictEqual(stage.stop_divergence_codes, []);
   assert.equal(stage.simplified_exit_v2_available, true);
-  assert.equal(stage.simplified_exit_v2_state, "RUNNER");
-  assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, []);
-  assert.ok(Math.abs(stage.simplified_exit_v2_shadow.final_effective_stop - 108.9) < 1e-9);
-  assert.equal(stage.simplified_exit_v2_shadow.chosen_stop_source, "TRAIL");
+  assert.equal(stage.simplified_exit_v2_state, "FULL");
+  assert.deepStrictEqual(stage.simplified_exit_v2_divergence_codes, [
+    "LEGACY_STAGE_MISMATCH",
+    "PRE_TP1_QTY_REDUCED",
+    "TP1_DONE_FLAG_WITHOUT_TARGET_FILL",
+  ]);
+  assert.equal(stage.simplified_exit_v2_shadow.final_effective_stop, null);
+  assert.equal(stage.simplified_exit_v2_shadow.chosen_stop_source, null);
 })();
 
 (() => {
@@ -217,13 +222,13 @@ const { buildExitStageView } = require("../utils/exitStageView");
       },
     },
   });
-  assert(stage, "runner qty inferred stage must exist");
-  assert.equal(stage.label, "트레일링");
-  assert.equal(stage.canonical_exit_stage, "TRAIL");
-  assert.equal(stage.canonical_exit_stage_source, "POSITION_STATE_MACHINE_V2_RUNNER_QTY");
-  assert.equal(stage.simplified_exit_v2_state, "RUNNER");
-  assert.equal(stage.compact_headline.left_label, "Trail");
-  assert.ok(stage.compact_headline.left_price > 0);
+  assert(stage, "stale runner qty under TP_FULL_ONLY must still render");
+  assert.equal(stage.label, "TP1 근접");
+  assert.equal(stage.canonical_exit_stage, null);
+  assert.equal(stage.canonical_exit_stage_source, null);
+  assert.equal(stage.simplified_exit_v2_state, "FULL");
+  assert.equal(stage.compact_headline.left_label, "SL");
+  assert.equal(stage.compact_headline.right_label, "TP1");
 })();
 
 console.log("EXIT_STAGE_SUMMARY_TEST_OK");

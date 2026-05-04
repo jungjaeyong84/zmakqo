@@ -155,8 +155,8 @@ function buildBinanceFillProjectionAudit({
     if (latestTp0Fill && meta.tp_p0_done !== true) {
       issues.push(makeIssue({
         symbol,
-        code: "TP0_FILL_PROJECTION_MISSING",
-        detail: "최근 TP0 fill은 있는데 포지션 메타 tp_p0_done이 아직 true가 아님",
+        code: "LEGACY_PARTIAL_TP_FILL_PROJECTION_MISSING",
+        detail: "최근 legacy partial-TP fill은 있는데 포지션 projection이 아직 반영되지 않음",
         fill: latestTp0Fill,
       }));
     }
@@ -217,7 +217,8 @@ function buildBinanceFillProjectionAudit({
     recent_fill_n: recentFills.length,
     issue_n: issues.length,
     issue_by_code: byCode,
-    tp0_fill_projection_missing_n: byCode.TP0_FILL_PROJECTION_MISSING || 0,
+    legacy_partial_tp_fill_projection_missing_n: byCode.LEGACY_PARTIAL_TP_FILL_PROJECTION_MISSING || 0,
+    tp0_fill_projection_missing_n: byCode.LEGACY_PARTIAL_TP_FILL_PROJECTION_MISSING || byCode.TP0_FILL_PROJECTION_MISSING || 0,
     tp1_fill_projection_missing_n: byCode.TP1_FILL_PROJECTION_MISSING || 0,
     tp1_fill_trail_inactive_n: byCode.TP1_FILL_TRAIL_INACTIVE || 0,
     tp_full_fill_projection_still_active_n: byCode.TP_FULL_FILL_PROJECTION_STILL_ACTIVE || 0,

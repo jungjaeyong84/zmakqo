@@ -426,6 +426,33 @@ function run() {
   assert.strictEqual(ladderAppliedRules.TP_P1, 0.025);
   assert.strictEqual(ladderAppliedRules.BE_PCT, null);
   assert.strictEqual(ladderAppliedRules.TRAIL_R_MULTIPLE, null);
+
+  const staleOverrideRules = resolveExitRulesForPosition({
+    exchange: "BINANCEFUT",
+    position: {
+      execution_mode: "LIVE",
+      meta: {
+        simplified_exit_v2_enabled: true,
+        exit_contract_mode: "TP_FULL_ONLY",
+        exit_rules_override: {
+          SL: -0.0165,
+          TP_P1: 0.0165,
+          TP_P1_QTY: 0.5,
+          TRAIL_R_MULTIPLE: 0.6,
+          RUNNER_MIN_PROFIT_PCT: 0.0165,
+          BE_ENABLE: true,
+          BE_PCT: 0.0015,
+        },
+      },
+    },
+  });
+  assert.strictEqual(staleOverrideRules.TP_P1, 0.025);
+  assert.strictEqual(staleOverrideRules.TP_P1_QTY, 1);
+  assert.strictEqual(staleOverrideRules.exit_contract_mode, "TP_FULL_ONLY");
+  assert.strictEqual(staleOverrideRules.TRAIL_R_MULTIPLE, null);
+  assert.strictEqual(staleOverrideRules.TRAIL_PCT, null);
+  assert.strictEqual(staleOverrideRules.RUNNER_MIN_PROFIT_PCT, null);
+  assert.strictEqual(staleOverrideRules.BE_ENABLE, false);
 }
 
 try {

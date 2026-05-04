@@ -226,6 +226,7 @@ function deriveServerSignalRuntime({
         ? liveHealth.invariant_counts
         : {},
       binance_fill_projection_audit_issue_n: Math.max(0, toNum(liveHealth.fill_projection_audit_issue_n) || 0),
+      binance_fill_projection_legacy_partial_tp_missing_n: Math.max(0, toNum(liveHealth.fill_projection_legacy_partial_tp_missing_n ?? liveHealth.fill_projection_tp0_missing_n) || 0),
       binance_fill_projection_tp0_missing_n: Math.max(0, toNum(liveHealth.fill_projection_tp0_missing_n) || 0),
       binance_fill_projection_tp1_missing_n: Math.max(0, toNum(liveHealth.fill_projection_tp1_missing_n) || 0),
       binance_fill_projection_tp1_trail_inactive_n: Math.max(0, toNum(liveHealth.fill_projection_tp1_trail_inactive_n) || 0),
@@ -316,6 +317,7 @@ function deriveServerSignalRuntime({
         ? liveHealth.invariant_counts
         : {},
       binance_fill_projection_audit_issue_n: Math.max(0, toNum(liveHealth.fill_projection_audit_issue_n) || 0),
+      binance_fill_projection_legacy_partial_tp_missing_n: Math.max(0, toNum(liveHealth.fill_projection_legacy_partial_tp_missing_n ?? liveHealth.fill_projection_tp0_missing_n) || 0),
       binance_fill_projection_tp0_missing_n: Math.max(0, toNum(liveHealth.fill_projection_tp0_missing_n) || 0),
       binance_fill_projection_tp1_missing_n: Math.max(0, toNum(liveHealth.fill_projection_tp1_missing_n) || 0),
       binance_fill_projection_tp1_trail_inactive_n: Math.max(0, toNum(liveHealth.fill_projection_tp1_trail_inactive_n) || 0),

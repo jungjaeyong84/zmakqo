@@ -309,6 +309,7 @@ function run() {
     ledger,
     observedQtyRatio: 0.19,
     fullExit: false,
+    simplifiedExitV2Enabled: false,
   });
   assert.ok(trailTransition.transitionEvents.includes("TRAIL_FINAL_EXIT"));
 
@@ -345,8 +346,34 @@ function run() {
     fullExit: false,
     simplifiedExitV2Enabled: true,
   });
-  assert.deepStrictEqual(simplifiedTrailTransition.transitionEvents, ["TRAIL_FINAL_EXIT"]);
-  assert.strictEqual(simplifiedTrailTransition.primaryTransitionEvent, "TRAIL_FINAL_EXIT");
+  assert.deepStrictEqual(simplifiedTrailTransition.transitionEvents, []);
+  assert.strictEqual(simplifiedTrailTransition.primaryTransitionEvent, null);
+
+  const simplifiedFullTpPostLockDecision = resolveCanonicalExitAuthorityDecision({
+    exchange: "BINANCEFUT",
+    symbol: "LINKUSDT",
+    currentStage: "TP1",
+    entryEventId: "ENTRY__LINK_V2",
+    positionSnapshot: {
+      qty_base: 5.21,
+      entry_qty_base: 13.06,
+      execution_mode: "LIVE",
+      meta: {
+        tp_p0_done: false,
+        tp_p1_done: true,
+        trail_active: true,
+        simplified_exit_v2_enabled: true,
+        exit_contract_mode: "TP_FULL_ONLY",
+      },
+    },
+    rules: { TP_P1_QTY: 1 },
+    observedQtyRatio: 1,
+    fullExit: true,
+  });
+  assert.strictEqual(simplifiedFullTpPostLockDecision.stage, "TP1");
+  assert.strictEqual(simplifiedFullTpPostLockDecision.reason, "TP_FULL_ONLY_POST_TP1_LOCK");
+  assert.deepStrictEqual(simplifiedFullTpPostLockDecision.transitionEvents, ["TP1_FULL_EXIT"]);
+  assert.strictEqual(simplifiedFullTpPostLockDecision.primaryTransitionEvent, "TP1_FULL_EXIT");
 
   const alertStage = resolveCanonicalAlertExitStage({
     transitionEvents: ["TP1_REACHED", "TRAIL_ACTIVATED"],
@@ -359,6 +386,7 @@ function run() {
       qty_base: 0.167,
       meta: { tp_p0_done: true, tp_p1_done: true, trail_active: true, canonical_exit_stage: "TP1" },
     },
+    simplifiedExitV2Enabled: false,
   });
   assert.deepStrictEqual(canonicalPositionStage, {
     stage: "TRAIL",
@@ -387,11 +415,8 @@ function run() {
     },
     simplifiedExitV2Enabled: true,
   });
-  assert.strictEqual(inferredRunnerStage.stage, "TRAIL");
-  assert.strictEqual(inferredRunnerStage.source, "POSITION_STATE_MACHINE_V2_RUNNER_QTY");
-  assert.strictEqual(inferredRunnerStage.entry_qty_abs, 1);
-  assert.strictEqual(inferredRunnerStage.current_qty_abs, 0.5);
-  assert.strictEqual(inferredRunnerStage.expected_runner_qty_abs, 0.5);
+  assert.strictEqual(inferredRunnerStage.stage, null);
+  assert.strictEqual(inferredRunnerStage.source, null);
 
   process.env.SIMPLIFIED_EXIT_V2_ENABLED = "0";
   const cycleStage = resolveCanonicalExitStageFromCycleEvidence({

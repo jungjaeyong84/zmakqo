@@ -125,12 +125,12 @@ const tickExitSrc = fs.readFileSync(
   const f = __test.resolveV2DirectDispatchAlertEvent;
 
   const trail = f({ triggeredKinds: ["TRAIL"], fraction: 1 });
-  assert.strictEqual(trail.event, "EXIT_TRAIL_100P", "(D1) TRAIL fraction=1 → EXIT_TRAIL_100P");
-  assert.strictEqual(trail.stage, "TRAIL");
-  assert.strictEqual(trail.transitionEvent, "TRAIL_HIT");
+  assert.strictEqual(trail.event, "EXIT_EXTERNAL_SYNC", "(D1) TRAIL is non-canonical under TP_FULL_ONLY");
+  assert.strictEqual(trail.stage, "EXTERNAL_SYNC");
+  assert.strictEqual(trail.transitionEvent, "EXTERNAL_CLOSE_SYNC");
 
   const tp1 = f({ triggeredKinds: ["TP_P1"], fraction: 0.5 });
-  assert.strictEqual(tp1.event, "EXIT_TP_P1_50P", "(D2) TP_P1 fraction=0.5 keeps raw event label for audit");
+  assert.strictEqual(tp1.event, "EXIT_TP_FULL_2.5P", "(D2) TP_P1 maps to the V2 full-TP contract");
   assert.strictEqual(tp1.stage, "TP1");
   assert.strictEqual(tp1.transitionEvent, "TP1_FULL_EXIT");
 
@@ -139,17 +139,16 @@ const tickExitSrc = fs.readFileSync(
   assert.strictEqual(sl.stage, "SL");
   assert.strictEqual(sl.transitionEvent, "SL_HIT");
 
-  // 2026-04-29 — classification priority correction. BE now dedicated.
+  // 2026-05-04 — TP_FULL_ONLY has no BE/TRAIL runner. Stale triggers must not
+  // be persisted as a canonical TRAIL contract.
   const beAlone = f({ triggeredKinds: ["BE"], fraction: 1 });
-  assert.strictEqual(beAlone.event, "EXIT_BE_100P", "(D4) BE alone → EXIT_BE_100P (not TP_P1)");
-  assert.strictEqual(beAlone.stage, "TRAIL");
-  assert.strictEqual(beAlone.transitionEvent, "TRAIL_HIT");
+  assert.strictEqual(beAlone.event, "EXIT_EXTERNAL_SYNC", "(D4) BE alone is non-canonical under TP_FULL_ONLY");
+  assert.strictEqual(beAlone.stage, "EXTERNAL_SYNC");
+  assert.strictEqual(beAlone.transitionEvent, "EXTERNAL_CLOSE_SYNC");
 
-  // BE+TRAIL simultaneous (DOGE 07:30:33 case): BE wins, the operator
-  // sees the precise stop that fired instead of the upstream trail level.
   const beAndTrail = f({ triggeredKinds: ["BE", "TRAIL"], fraction: 1 });
-  assert.strictEqual(beAndTrail.event, "EXIT_BE_100P", "(D5) BE+TRAIL together → EXIT_BE_100P (BE priority)");
-  assert.strictEqual(beAndTrail.stage, "TRAIL");
+  assert.strictEqual(beAndTrail.event, "EXIT_EXTERNAL_SYNC", "(D5) stale BE+TRAIL stays non-canonical");
+  assert.strictEqual(beAndTrail.stage, "EXTERNAL_SYNC");
 
   const generic = f({ triggeredKinds: [], fraction: 1 });
   assert.ok(generic.event && generic.event.startsWith("EXIT_GENERIC"), "(D6) unknown trigger → EXIT_GENERIC");
@@ -207,8 +206,13 @@ const tickExitSrc = fs.readFileSync(
   );
   assert.strictEqual(
     f({ posMeta: { tp_p1_done: true, trail_active: false } }).event,
-    "EXIT_TP_P1_100P",
-    "(E2) tp_p1_done=true, no trail → EXIT_TP_P1_100P"
+    "EXIT_TP_FULL_2.5P",
+    "(E2) tp_p1_done=true, no trail → EXIT_TP_FULL_2.5P"
+  );
+  assert.strictEqual(
+    f({ posMeta: { tp_p1_done: true, trail_active: true, exit_contract_mode: "TP_FULL_ONLY" } }).event,
+    "EXIT_TP_FULL_2.5P",
+    "(E2b) stale trail flag must not override TP_FULL_ONLY"
   );
   assert.strictEqual(
     f({ posMeta: {} }).event,

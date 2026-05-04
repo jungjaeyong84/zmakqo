@@ -73,4 +73,4 @@ const {
     "recentEvents must dedup so ops see the unique set");
 })();
 
-console.log("LEGACY_TP0_LIVE_NAMESPACE_TEST_OK");
+console.log("LEGACY_PARTIAL_TP_LIVE_NAMESPACE_TEST_OK");
