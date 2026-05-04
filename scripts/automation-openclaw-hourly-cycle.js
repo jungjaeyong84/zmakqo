@@ -261,6 +261,48 @@ function buildStepRegistry() {
       },
     },
     {
+      id: "v2_openclaw_root_cause_analysis",
+      kind: "script",
+      script: "analyze-v2-openclaw-root-cause.js",
+      criticality: "HIGH",
+      depends_on: ["v2_outcome_adjudication_collector"],
+      produces_artifact: "v2_openclaw_root_cause_analysis_latest.json",
+      run() {
+        const res = runScript(this.script, {
+          DONBEOLJA_V2_COLLECTION_PREFIX: process.env.DONBEOLJA_V2_COLLECTION_PREFIX || "v2__",
+          V2_OPENCLAW_DAILY_PERFORMANCE_LIMIT: process.env.V2_OPENCLAW_DAILY_PERFORMANCE_LIMIT || "500",
+        });
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed
+            ? `sample_n=${res.parsed.sample_n ?? "N/A"} pf=${res.parsed.profit_factor ?? "N/A"} finding_n=${res.parsed.finding_n ?? "N/A"}`
+            : "N/A",
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
+        };
+      },
+    },
+    {
+      id: "v2_openclaw_policy_candidate_from_root_cause",
+      kind: "script",
+      script: "generate-v2-openclaw-policy-candidate-from-root-cause.js",
+      criticality: "HIGH",
+      depends_on: ["v2_openclaw_root_cause_analysis"],
+      produces_artifact: "v2_openclaw_policy_candidate_from_root_cause_latest.json",
+      run() {
+        const res = runScript(this.script, {
+          V2_OPENCLAW_POLICY_CANDIDATE_SOFT: "1",
+          DONBEOLJA_V2_OPENCLAW_POLICY_AUTO_APPLY_ENABLED: process.env.DONBEOLJA_V2_OPENCLAW_POLICY_AUTO_APPLY_ENABLED || "0",
+        });
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed
+            ? `decision=${res.parsed.decision || "N/A"} actions=${res.parsed.action_n ?? "N/A"} blockers=${Array.isArray(res.parsed.blockers) ? res.parsed.blockers.length : "N/A"}`
+            : "N/A",
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
+        };
+      },
+    },
+    {
       id: "execution_watch_markets",
       kind: "script",
       script: "report-best-self-evolution-execution-watch-markets.js",
