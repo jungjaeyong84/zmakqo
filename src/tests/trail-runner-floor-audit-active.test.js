@@ -20,7 +20,9 @@ function run() {
     position_side: "LONG",
     qty_base: 8182,
     avg_price: 0.09206,
+    simplified_exit_v2_enabled: false,
     meta: {
+      simplified_exit_v2_enabled: false,
       tp_p0_done: true,
       tp_p1_done: true,
       trail_active: true,

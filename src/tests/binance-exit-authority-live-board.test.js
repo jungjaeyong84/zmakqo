@@ -35,8 +35,10 @@ function run() {
         position_side: "LONG",
         qty_base: 0.9,
         avg_price: 2200,
+        simplified_exit_v2_enabled: false,
         updated_at: "2026-04-13T08:15:43.685Z",
         meta: {
+          simplified_exit_v2_enabled: false,
           tp_p0_done: false,
           tp_p1_done: true,
           trail_active: true,
@@ -133,7 +135,9 @@ function run() {
         qty_base: 0.334,
         avg_price: 2258.08,
         leverage: 2,
+        simplified_exit_v2_enabled: false,
         meta: {
+          simplified_exit_v2_enabled: false,
           tp_p0_done: true,
           tp_p1_done: true,
           trail_active: true,
@@ -176,8 +180,10 @@ function run() {
         position_side: "LONG",
         qty_base: 1.57,
         avg_price: 632.53,
+        simplified_exit_v2_enabled: false,
         leverage: 2,
         meta: {
+          simplified_exit_v2_enabled: false,
           tp_p0_done: false,
           tp_p1_done: true,
           trail_active: true,

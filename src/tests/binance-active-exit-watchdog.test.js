@@ -111,8 +111,8 @@ function run() {
     openOrders: [],
     algoOrders: [],
   });
-  assert.strictEqual(simplifiedRunnerMetaGap.stage, "TRAIL");
-  assert.strictEqual(simplifiedRunnerMetaGap.canonical_stage, "TRAIL");
+  assert.strictEqual(simplifiedRunnerMetaGap.stage, "TP1");
+  assert.strictEqual(simplifiedRunnerMetaGap.canonical_stage, "TP1");
   assert.ok(simplifiedRunnerMetaGap.actionable_issue_codes.includes("TP1_META_SYNC_GAP"));
   assert.ok(!simplifiedRunnerMetaGap.actionable_issue_codes.includes("TP1_ORDER_MISSING"));
 
@@ -161,7 +161,7 @@ function run() {
         trail_active: false,
         native_protection_refresh_status: "OK",
         exit_rules_override: {
-          TP_P1_QTY: 0.5,
+          TP_P1_QTY: 1,
           TP_P1: 0.025,
           RUNNER_MIN_PROFIT_PCT: 0.025,
           TRAIL_R_MULTIPLE: 0.6,
@@ -173,8 +173,8 @@ function run() {
     openOrders: [],
     algoOrders: [],
   });
-  assert.strictEqual(simplifiedRunner.stage, "RUNNER");
-  assert.ok(simplifiedRunner.actionable_issue_codes.includes("TRAIL_STOP_MISSING"));
+  assert.strictEqual(simplifiedRunner.stage, "TP1");
+  assert.ok(!simplifiedRunner.actionable_issue_codes.includes("TRAIL_STOP_MISSING"));
   const trailing = __test.inspectExitProtection({
     symbol: "DOGEUSDT",
     internalPosition: {
@@ -184,7 +184,9 @@ function run() {
       position_side: "LONG",
       qty_base: 8182,
       avg_price: 0.09206,
+      simplified_exit_v2_enabled: false,
       meta: {
+        simplified_exit_v2_enabled: false,
         tp_p0_done: true,
         tp_p1_done: true,
         trail_active: true,
@@ -229,7 +231,9 @@ function run() {
       qty_base: 0.334,
       avg_price: 2258.08,
       leverage: 2,
+      simplified_exit_v2_enabled: false,
       meta: {
+        simplified_exit_v2_enabled: false,
         tp_p0_done: true,
         tp_p1_done: true,
         trail_active: true,
@@ -295,7 +299,9 @@ function run() {
       position_side: "LONG",
       qty_base: 0.167,
       avg_price: 2258.08,
+      simplified_exit_v2_enabled: false,
       meta: {
+        simplified_exit_v2_enabled: false,
         tp_p0_done: true,
         tp_p1_done: true,
         trail_active: true,
@@ -350,7 +356,9 @@ function run() {
       qty_base: 0.167,
       avg_price: 2258.08,
       leverage: 2,
+      simplified_exit_v2_enabled: false,
       meta: {
+        simplified_exit_v2_enabled: false,
         tp_p0_done: true,
         tp_p1_done: true,
         trail_active: true,
@@ -408,7 +416,9 @@ function run() {
       qty_base: 0.167,
       avg_price: 2258.08,
       leverage: 2,
+      simplified_exit_v2_enabled: false,
       meta: {
+        simplified_exit_v2_enabled: false,
         tp_p0_done: true,
         tp_p1_done: true,
         trail_active: true,
@@ -464,7 +474,9 @@ function run() {
       qty_base: 0.167,
       avg_price: 2258.08,
       leverage: 2,
+      simplified_exit_v2_enabled: false,
       meta: {
+        simplified_exit_v2_enabled: false,
         tp_p0_done: true,
         tp_p1_done: true,
         trail_active: true,
@@ -527,7 +539,9 @@ function run() {
       qty_base: 0.167,
       avg_price: 600,
       leverage: 2,
+      simplified_exit_v2_enabled: false,
       meta: {
+        simplified_exit_v2_enabled: false,
         tp_p0_done: true,
         tp_p1_done: true,
         trail_active: true,
@@ -582,7 +596,9 @@ function run() {
       qty_base: 0.167,
       avg_price: 150,
       leverage: 2,
+      simplified_exit_v2_enabled: false,
       meta: {
+        simplified_exit_v2_enabled: false,
         tp_p0_done: true,
         tp_p1_done: true,
         trail_active: true,
@@ -681,7 +697,7 @@ function run() {
       },
     ],
   });
-  assert.strictEqual(simplifiedTrail.stage, "TRAIL");
+  assert.strictEqual(simplifiedTrail.stage, "TP1");
   assert.ok(!simplifiedTrail.actionable_issue_codes.includes("TP1_DONE_WITHOUT_TP0_DONE"));
 
   console.log("BINANCE_ACTIVE_EXIT_WATCHDOG_TEST_OK");

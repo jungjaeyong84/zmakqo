@@ -142,7 +142,13 @@ function resolveStage(row = {}) {
     simplifiedExitV2Enabled,
   });
   if (canonical.stage === "TRAIL") return { canonical_stage: "TRAIL", stage: "TRAIL", source: canonical.source };
-  if (canonical.stage === "TP1") return { canonical_stage: "TP1", stage: "RUNNER", source: canonical.source };
+  if (canonical.stage === "TP1") {
+    return {
+      canonical_stage: "TP1",
+      stage: simplifiedExitV2Enabled ? "TP1" : "RUNNER",
+      source: canonical.source,
+    };
+  }
   if (canonical.stage === "TP0") return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
   if (simplifiedExitV2Enabled) return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
   return { canonical_stage: canonical.stage, stage: "PRE_TP1", source: canonical.source };
@@ -277,11 +283,11 @@ function inspectExitProtection({
   const positionSide = resolvePositionSideFromPosition(row, meta, null);
   const stageInfo = resolveStage(row);
   const simplifiedQtyShadow = resolveSimplifiedV2QtyShadow(row);
-  const inferredRunnerMetaGap = simplifiedExitV2Enabled
+  const inferredTpFullMetaGap = simplifiedExitV2Enabled
     && (stageInfo.stage === "PRE_TP1" || stageInfo.source === "POSITION_STATE_MACHINE_V2_RUNNER_QTY")
     && simplifiedQtyShadow
     && simplifiedQtyShadow.economic_state === "RUNNER";
-  const stage = inferredRunnerMetaGap ? "TRAIL" : stageInfo.stage;
+  const stage = inferredTpFullMetaGap ? "TP1" : stageInfo.stage;
   const qtyBase = toNum(row.qty_base, 0);
   const issues = [];
   const refreshStatus = upper(trailSnapshot.native_refresh_status || meta.native_protection_refresh_status);
@@ -351,13 +357,13 @@ function inspectExitProtection({
     && (refreshStatus === "FAILED" || refreshStatus === "MISSING")) {
     issues.push(buildIssue("NATIVE_REFRESH_UNHEALTHY", `native_protection_refresh_status=${refreshStatus}`));
   }
-  if (inferredRunnerMetaGap) {
+  if (inferredTpFullMetaGap) {
     issues.push(buildIssue(
       "TP1_META_SYNC_GAP",
-      `qty=${qtyBase} runner=${simplifiedQtyShadow.runner_qty_abs} meta still pre-TP1`,
+      `qty=${qtyBase} tp_full_shadow=${simplifiedQtyShadow.runner_qty_abs} meta still pre-TP1`,
       {
         current_qty_base: qtyBase,
-        expected_runner_qty_abs: simplifiedQtyShadow.runner_qty_abs,
+        expected_tp_full_exit_qty_abs: simplifiedQtyShadow.runner_qty_abs,
         shadow_canonical_stage: simplifiedQtyShadow.canonical_stage,
       }
     ));
@@ -513,8 +519,8 @@ function inspectExitProtection({
   return {
     symbol: upper(symbol || row.symbol_or_pair_id || row.symbol),
     stage,
-    canonical_stage: inferredRunnerMetaGap ? "TRAIL" : stageInfo.canonical_stage,
-    canonical_stage_source: inferredRunnerMetaGap ? "SIMPLIFIED_V2_QTY_SHADOW" : stageInfo.source,
+    canonical_stage: inferredTpFullMetaGap ? "TP1" : stageInfo.canonical_stage,
+    canonical_stage_source: inferredTpFullMetaGap ? "SIMPLIFIED_V2_TP_FULL_QTY_SHADOW" : stageInfo.source,
     simplified_exit_v2_enabled: simplifiedExitV2Enabled,
     position_side: positionSide,
     qty_base: qtyBase,

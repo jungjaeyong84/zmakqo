@@ -27,7 +27,9 @@ function buildPosition() {
     symbol: "AXSUSDT",
     state: "ACTIVE",
     qty_base: 699,
+    simplified_exit_v2_enabled: false,
     meta: {
+      simplified_exit_v2_enabled: false,
       entry_event_id: "ENTRY_EVT_AXS",
       entry_exec_bar_ms: 1776052840793,
       tp_p0_done: true,
@@ -81,7 +83,9 @@ async function main() {
     state: "ACTIVE",
     position_side: "LONG",
     qty_base: 0.011,
+    simplified_exit_v2_enabled: false,
     meta: {
+      simplified_exit_v2_enabled: false,
       entry_event_id: "ENTRY_EVT_BTC",
       entry_exec_bar_ms: 1776075627000,
       tp_p0_done: false,
@@ -144,8 +148,8 @@ async function main() {
   const simplifiedV2Position = {
     exchange: "BINANCEFUT",
     symbol: "ETHUSDT",
-    state: "ACTIVE",
-    qty_base: 0.5,
+    state: "CLOSED",
+    qty_base: 0,
     simplified_exit_v2_enabled: true,
     meta: {
       simplified_exit_v2_enabled: true,
@@ -155,7 +159,7 @@ async function main() {
       tp_p1_done: true,
       trail_active: false,
       exit_rules_override: {
-        TP_P1_QTY: 0.5,
+        TP_P1_QTY: 1,
         TP_P1: 0.025,
       },
     },
@@ -167,7 +171,7 @@ async function main() {
       exchange: "BINANCEFUT",
       symbol: "ETHUSDT",
       event: "EXIT_TP_P0_0.8P",
-      exec_qty_base: 0.5,
+      exec_qty_base: 1,
       external_order_id: "eth-v2-order",
       created_at: "2026-04-13T13:49:25.045Z",
       entry_event_id: "ENTRY_EVT_ETH",
@@ -191,7 +195,7 @@ async function main() {
   assert.strictEqual(simplifiedV2RepairedMeta.tp_p1_done, true);
   assert.strictEqual(simplifiedV2RepairedMeta.trail_active, false);
   assert.strictEqual(simplifiedV2RepairedMeta.canonical_exit_stage, "TP1");
-  assert.strictEqual(simplifiedV2RepairedMeta.canonical_runner_remaining_abs, 0.5);
+  assert.strictEqual(simplifiedV2RepairedMeta.canonical_runner_remaining_abs, null);
 
   console.log("BACKFILL_BINANCE_ACTIVE_EXIT_STAGE_TEST_OK");
 }
