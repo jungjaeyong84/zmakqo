@@ -14,6 +14,14 @@ const { buildMemoryDb } = require("../v2/repairQueueCanary");
   assert.strictEqual(env.DONBEOLJA_V2_REPAIR_QUEUE_SCAN_LIMIT, "10");
 })();
 
+(function ignoresProductionV2CollectionPrefixUnlessCanaryPrefixIsExplicit() {
+  const env = resolveFirestoreCanaryEnv(
+    { DONBEOLJA_V2_COLLECTION_PREFIX: "v2__" },
+    { recordedAt: "2026-05-04T04:30:00.000Z" }
+  );
+  assert.strictEqual(env.DONBEOLJA_V2_COLLECTION_PREFIX, "paperopcanaryv2_20260504043000__");
+})();
+
 async function disabledCanaryFailsClosedBeforeFirestoreWrite() {
   const db = buildMemoryDb();
   const output = await runRepairQueueFirestoreCanary({

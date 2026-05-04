@@ -28,7 +28,7 @@ function appendJsonl(filePath, payload) {
 function resolveArtifactDir(env = process.env) {
   return trimOrNull(env.DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_ARTIFACT_DIR)
     || trimOrNull(env.DONBEOLJA_V2_REPAIR_CANARY_ARTIFACT_DIR)
-    || path.join(process.cwd(), "artifacts", "v2-repair-canary");
+    || path.join(process.cwd(), "ops", "daily");
 }
 
 function resolveOutputFilename(env = process.env) {

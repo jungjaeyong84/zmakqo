@@ -16,7 +16,7 @@ function buildHealthyPayload(generatedAt) {
     firestore_write_performed: true,
     exchange_write_performed: false,
     service_status: "HEALTHY",
-    selected_issue_code: "TRAIL_STOP_MISSING",
+    selected_issue_code: "NATIVE_REFRESH_UNHEALTHY",
     summary: {
       requested_repair_n: 1,
       delegated_repair_n: 1,
@@ -84,6 +84,27 @@ function buildHistory(rows) {
   assert.strictEqual(report.healthy_run_n, 13);
   assert.strictEqual(report.firestore_evidence_missing_n, 0);
   assert.strictEqual(report.blockers.length, 0);
+})();
+
+(function streakAlsoAcceptsLegacyTrailStopCanaryRows() {
+  const nowMs = Date.parse("2026-04-21T12:00:00.000Z");
+  const rows = [];
+  for (let hour = 24; hour >= 0; hour -= 2) {
+    rows.push({
+      ...buildHealthyPayload(new Date(nowMs - hour * 60 * 60000).toISOString()),
+      selected_issue_code: "TRAIL_STOP_MISSING",
+    });
+  }
+  const report = checker.evaluateFirestoreCanaryStreak({
+    history: buildHistory(rows),
+    config: {
+      lookbackHours: 24,
+      minRunCount: 12,
+      maxGapMinutes: 180,
+    },
+    nowMs,
+  });
+  assert.strictEqual(report.ok, true);
 })();
 
 (function streakFailsWhenFirestoreBackedExecutionEvidenceIsMissing() {

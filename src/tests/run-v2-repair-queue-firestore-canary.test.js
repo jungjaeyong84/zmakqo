@@ -44,7 +44,7 @@ async function scriptWritesFirestoreCanaryArtifact() {
     runner.__test.resolveOutputFilename({ DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_ARTIFACT_FILE: "custom.json" }),
     "custom.json"
   );
-  assert.ok(runner.__test.resolveArtifactDir({}).endsWith(path.join("artifacts", "v2-repair-canary")));
+  assert.ok(runner.__test.resolveArtifactDir({}).endsWith(path.join("ops", "daily")));
   assert.ok(runner.__test.resolveHistoryFile({}).endsWith("v2_repair_queue_firestore_canary_history.jsonl"));
 })();
 

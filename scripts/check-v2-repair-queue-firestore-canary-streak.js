@@ -6,6 +6,10 @@ const path = require("path");
 
 const OUTPUT_FILENAME = "v2_repair_queue_firestore_canary_streak_latest.json";
 const HISTORY_FILENAME = "v2_repair_queue_firestore_canary_history.jsonl";
+const HEALTHY_REPAIR_ISSUE_CODES = new Set([
+  "NATIVE_REFRESH_UNHEALTHY",
+  "TRAIL_STOP_MISSING",
+]);
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -124,6 +128,10 @@ function hasFirestoreBackedRepairEvidence(payload) {
   );
 }
 
+function isHealthyRepairIssueCode(value) {
+  return HEALTHY_REPAIR_ISSUE_CODES.has(String(value || "").trim().toUpperCase());
+}
+
 function isHealthyFirestoreCanaryRow(row) {
   const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
   const summary = payload.summary && typeof payload.summary === "object" ? payload.summary : {};
@@ -135,7 +143,7 @@ function isHealthyFirestoreCanaryRow(row) {
     payload.firestore_write_performed === true &&
     payload.exchange_write_performed === false &&
     payload.service_status === "HEALTHY" &&
-    payload.selected_issue_code === "TRAIL_STOP_MISSING" &&
+    isHealthyRepairIssueCode(payload.selected_issue_code) &&
     Number(summary.requested_repair_n) === 1 &&
     Number(summary.delegated_repair_n) === 1 &&
     Number(summary.completion_success_n) === 1 &&

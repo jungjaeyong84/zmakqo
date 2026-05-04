@@ -21,10 +21,20 @@ function parseBool(value, fallback = false) {
   return fallback;
 }
 
-function resolveFirestoreCanaryEnv(env = process.env) {
+function formatPrefixTimestamp(value) {
+  const date = new Date(String(value || ""));
+  if (!Number.isFinite(date.getTime())) return null;
+  return date.toISOString().replace(/[-:T.Z]/g, "").slice(0, 14);
+}
+
+function buildDefaultFirestoreCanaryPrefix(recordedAt = null) {
+  const suffix = formatPrefixTimestamp(recordedAt);
+  return suffix ? `paperopcanaryv2_${suffix}__` : "paperopcanaryv2__";
+}
+
+function resolveFirestoreCanaryEnv(env = process.env, { recordedAt = null } = {}) {
   const prefix = trimOrNull(env.DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_COLLECTION_PREFIX)
-    || trimOrNull(env.DONBEOLJA_V2_COLLECTION_PREFIX)
-    || "paperopcanaryv2__";
+    || buildDefaultFirestoreCanaryPrefix(recordedAt);
   return Object.freeze({
     ...env,
     DONBEOLJA_V2_COLLECTION_PREFIX: prefix,
@@ -71,7 +81,7 @@ async function runRepairQueueFirestoreCanary({
   const enabled = writeEnabled == null
     ? parseBool(env.DONBEOLJA_V2_REPAIR_FIRESTORE_CANARY_WRITE_ENABLED, false)
     : writeEnabled === true;
-  const canaryEnv = resolveFirestoreCanaryEnv(env);
+  const canaryEnv = resolveFirestoreCanaryEnv(env, { recordedAt: at });
   if (enabled !== true) {
     return Object.freeze({
       ok: false,

@@ -9,6 +9,7 @@ const exitStreak = require("./check-v2-exit-runtime-canary-streak");
 const repairStreak = require("./check-v2-repair-queue-firestore-canary-streak");
 const runtimeManifest = require("./check-v2-runtime-discovery-canary-manifest");
 const cloudbuildSubmitBudget = require("./lib/cloudbuild-submit-budget");
+const { runExitRuntimeCanary } = require("../src/v2/exitRuntimeCanary");
 const { evaluateV2PerformanceStageMatrix } = require("../src/v2/performanceGate");
 const {
   DEFAULT_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP_TEXT,
@@ -199,6 +200,74 @@ function isActivePositionBootstrapOnly(report) {
   return blockers.length === 1 && blockers[0] === "EXIT_RUNTIME_CANARY_STREAK:ACTIVE_POSITION_EVIDENCE_REQUIRED";
 }
 
+function isCorrectiveDeployArmed(env = process.env) {
+  return parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_CORRECTIVE_DEPLOY, false) === true &&
+    trimOrNull(env.DONBEOLJA_V2_DISCOVERY_CANARY_CORRECTIVE_DEPLOY_CONFIRM) === "CORRECTIVE_DEPLOY_V2_DISCOVERY_CANARY";
+}
+
+function isCorrectiveExitStreakOnly(report) {
+  const blockers = Array.isArray(report && report.blockers) ? report.blockers : [];
+  const allowedBlockers = new Set([
+    "EXIT_RUNTIME_CANARY_STREAK:MIN_RUN_COUNT",
+    "EXIT_RUNTIME_CANARY_STREAK:UNHEALTHY_ROW_IN_WINDOW",
+    "EXIT_RUNTIME_CANARY_STREAK:GAP_EXCEEDED",
+  ]);
+  return (
+    blockers.length > 0 &&
+    blockers.every((blocker) => allowedBlockers.has(blocker)) &&
+    Number(report && report.tp1_missing_n) === 0 &&
+    Number(report && report.native_refresh_unhealthy_n) === 0 &&
+    Number(report && report.unprotected_window_violation_n) === 0 &&
+    Number(report && report.alert_silent_drop_n) === 0 &&
+    Number(report && report.alert_retry_unresolved_n) === 0 &&
+    Number(report && report.alert_outbox_integrity_gap_n) === 0 &&
+    Number(report && report.trail_activation_evidence_gap_n) === 0
+  );
+}
+
+function isHealthyLatestExitCanary(report) {
+  return (
+    report &&
+    report.ok === true &&
+    report.reason === "V2_EXIT_RUNTIME_CANARY_PASS" &&
+    report.exchange_write_performed === false &&
+    Number(report.fail_n) === 0 &&
+    Number(report.tp1_missing_n) === 0 &&
+    Number(report.native_refresh_unhealthy_n) === 0 &&
+    Number(report.unprotected_window_violation_n) === 0 &&
+    Number(report.alert_silent_drop_n) === 0 &&
+    Number(report.alert_retry_unresolved_n) === 0 &&
+    Number(report.alert_outbox_integrity_gap_n) === 0 &&
+    Number(report.trail_activation_evidence_gap_n) === 0 &&
+    (!Array.isArray(report.blockers) || report.blockers.length === 0)
+  );
+}
+
+async function collectCorrectiveExitRuntimeEvidence({
+  env = process.env,
+  exit,
+  runExitRuntimeCanaryFn = runExitRuntimeCanary,
+} = {}) {
+  const armed = isCorrectiveDeployArmed(env);
+  if (!armed || !isCorrectiveExitStreakOnly(exit)) {
+    return Object.freeze({
+      allowed: false,
+      armed,
+      reason: "CORRECTIVE_EXIT_STREAK_DEPLOY_NOT_APPLICABLE",
+      latest_exit_canary: null,
+    });
+  }
+  const latest = await runExitRuntimeCanaryFn({ env });
+  return Object.freeze({
+    allowed: isHealthyLatestExitCanary(latest),
+    armed,
+    reason: isHealthyLatestExitCanary(latest)
+      ? "CORRECTIVE_EXIT_STREAK_DEPLOY_ALLOWED"
+      : "CORRECTIVE_EXIT_STREAK_LATEST_CANARY_BLOCKED",
+    latest_exit_canary: latest,
+  });
+}
+
 function buildPreflightBlockers({ entry, exit, repair } = {}) {
   const blockers = [];
   for (const report of [entry, exit, repair]) {
@@ -212,7 +281,7 @@ function buildPreflightBlockers({ entry, exit, repair } = {}) {
   return Object.freeze(blockers);
 }
 
-async function collectPreflight(env = process.env) {
+async function collectPreflight(env = process.env, options = {}) {
   const streakEnv = Object.freeze({
     ...env,
     DONBEOLJA_V2_COLLECTION_PREFIX: trimOrNull(env.DONBEOLJA_V2_COLLECTION_PREFIX) || "v2__",
@@ -231,17 +300,33 @@ async function collectPreflight(env = process.env) {
   const repair = repairStreak.runCheck(streakEnv);
   const performance = collectPerformanceStageMatrix(env);
   const activePositionBootstrapAllowed = isActivePositionBootstrapOnly(exit);
-  const blockers = buildPreflightBlockers({ entry, exit, repair });
-  return Object.freeze({
-    ok: entry.ok === true && (exit.ok === true || activePositionBootstrapAllowed) && repair.ok === true && blockers.length === 0,
-    entry,
+  const correctiveExitRuntime = await collectCorrectiveExitRuntimeEvidence({
+    env: streakEnv,
     exit,
+    runExitRuntimeCanaryFn: options.runExitRuntimeCanaryFn,
+  });
+  const effectiveExit = correctiveExitRuntime.allowed === true
+    ? Object.freeze({
+      ...exit,
+      ok: true,
+      reason: "V2_EXIT_RUNTIME_CANARY_STREAK_CORRECTIVE_DEPLOY_ALLOWED",
+      blockers: Object.freeze([]),
+    })
+    : exit;
+  const blockers = buildPreflightBlockers({ entry, exit: effectiveExit, repair });
+  return Object.freeze({
+    ok: entry.ok === true && (effectiveExit.ok === true || activePositionBootstrapAllowed) && repair.ok === true && blockers.length === 0,
+    entry,
+    exit: effectiveExit,
+    original_exit: exit,
     repair,
     performance,
+    corrective_exit_runtime: correctiveExitRuntime,
     active_position_bootstrap_allowed: activePositionBootstrapAllowed,
-    warnings: activePositionBootstrapAllowed
-      ? Object.freeze(["DISCOVERY_CANARY_BOOTSTRAP:EXIT_ACTIVE_POSITION_EVIDENCE_PENDING"])
-      : Object.freeze([]),
+    warnings: Object.freeze([
+      ...(activePositionBootstrapAllowed ? ["DISCOVERY_CANARY_BOOTSTRAP:EXIT_ACTIVE_POSITION_EVIDENCE_PENDING"] : []),
+      ...(correctiveExitRuntime.allowed === true ? ["DISCOVERY_CANARY_CORRECTIVE_DEPLOY:EXIT_STREAK_REBUILD_REQUIRED"] : []),
+    ]),
     blockers,
   });
 }
@@ -258,7 +343,7 @@ function buildDeployArgs(env = process.env) {
 }
 
 async function main(env = process.env, options = {}) {
-  const preflight = await collectPreflight(env);
+  const preflight = await collectPreflight(env, options);
   const skipDeploy = options.skipDeploy === true || parseBool(env.DONBEOLJA_V2_DISCOVERY_CANARY_SKIP_DEPLOY, false);
   const stateFile = resolveStateFile(env);
 
@@ -282,6 +367,7 @@ async function main(env = process.env, options = {}) {
         reason: preflight.repair.reason,
         blockers: preflight.repair.blockers || [],
       }),
+      corrective_exit_runtime: preflight.corrective_exit_runtime,
       performance: preflight.performance,
     });
     writeJson(stateFile, payload);
@@ -305,6 +391,7 @@ async function main(env = process.env, options = {}) {
       performance: preflight.performance,
       warnings: preflight.warnings,
       active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
+      corrective_exit_runtime: preflight.corrective_exit_runtime,
       state_file: stateFile,
     });
     writeJson(stateFile, payload);
@@ -321,6 +408,7 @@ async function main(env = process.env, options = {}) {
       performance: preflight.performance,
       warnings: preflight.warnings,
       active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
+      corrective_exit_runtime: preflight.corrective_exit_runtime,
       deploy_intent: deployIntent,
       state_file: stateFile,
     });
@@ -337,6 +425,7 @@ async function main(env = process.env, options = {}) {
       command_preview: commandPreview,
       substitutions,
       performance: preflight.performance,
+      corrective_exit_runtime: preflight.corrective_exit_runtime,
       deploy_intent: deployIntent,
       state_file: stateFile,
     });
@@ -383,6 +472,7 @@ async function main(env = process.env, options = {}) {
       performance: preflight.performance,
       warnings: preflight.warnings,
       active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
+      corrective_exit_runtime: preflight.corrective_exit_runtime,
       deploy_intent: deployIntent,
       cloudbuild_submit_budget: cloudbuildBudget,
       state_file: stateFile,
@@ -406,6 +496,7 @@ async function main(env = process.env, options = {}) {
       performance: preflight.performance,
       warnings: preflight.warnings,
       active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
+      corrective_exit_runtime: preflight.corrective_exit_runtime,
       deploy_intent: deployIntent,
       cloudbuild_submit_budget: cloudbuildBudget,
       state_file: stateFile,
@@ -424,6 +515,7 @@ async function main(env = process.env, options = {}) {
     performance: preflight.performance,
     warnings: preflight.warnings,
     active_position_bootstrap_allowed: preflight.active_position_bootstrap_allowed,
+    corrective_exit_runtime: preflight.corrective_exit_runtime,
     deploy_intent: deployIntent,
     cloudbuild_submit_budget: cloudbuildBudget,
     state_file: stateFile,
@@ -451,6 +543,10 @@ if (require.main === module) {
     evaluateCloudBuildSubmitBudget: cloudbuildSubmitBudget.evaluateCloudBuildSubmitBudget,
     collectRecentCloudBuilds: cloudbuildSubmitBudget.collectRecentCloudBuilds,
     isActivePositionBootstrapOnly,
+    isCorrectiveDeployArmed,
+    isCorrectiveExitStreakOnly,
+    isHealthyLatestExitCanary,
+    collectCorrectiveExitRuntimeEvidence,
     buildPreflightBlockers,
     __test: {
       trimOrNull,

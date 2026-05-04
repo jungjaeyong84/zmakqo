@@ -13,6 +13,42 @@ function makeReport(ok, reason, blockers = []) {
   return Object.freeze({ ok, reason, blockers: Object.freeze(blockers.slice()) });
 }
 
+function makeCorrectiveExitReport(blockers = [
+  "EXIT_RUNTIME_CANARY_STREAK:MIN_RUN_COUNT",
+  "EXIT_RUNTIME_CANARY_STREAK:UNHEALTHY_ROW_IN_WINDOW",
+  "EXIT_RUNTIME_CANARY_STREAK:GAP_EXCEEDED",
+]) {
+  return Object.freeze({
+    ok: false,
+    reason: "V2_EXIT_RUNTIME_CANARY_STREAK_BLOCKED",
+    blockers: Object.freeze(blockers.slice()),
+    tp1_missing_n: 0,
+    native_refresh_unhealthy_n: 0,
+    unprotected_window_violation_n: 0,
+    alert_silent_drop_n: 0,
+    alert_retry_unresolved_n: 0,
+    alert_outbox_integrity_gap_n: 0,
+    trail_activation_evidence_gap_n: 0,
+  });
+}
+
+function makeLatestExitCanaryPass() {
+  return Object.freeze({
+    ok: true,
+    reason: "V2_EXIT_RUNTIME_CANARY_PASS",
+    exchange_write_performed: false,
+    fail_n: 0,
+    tp1_missing_n: 0,
+    native_refresh_unhealthy_n: 0,
+    unprotected_window_violation_n: 0,
+    alert_silent_drop_n: 0,
+    alert_retry_unresolved_n: 0,
+    alert_outbox_integrity_gap_n: 0,
+    trail_activation_evidence_gap_n: 0,
+    blockers: Object.freeze([]),
+  });
+}
+
 function writePerfMetrics(payload) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v2-discovery-perf-"));
   const file = path.join(dir, "perf.json");
@@ -352,6 +388,73 @@ async function activePositionEvidenceDoesNotMaskRealExitDefects() {
   });
 }
 
+async function correctiveDeployAllowsOnlyExitStreakRebuildWhenLatestCanaryPasses() {
+  await withPatchedRunChecks({
+    entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
+    exit: async () => makeCorrectiveExitReport(),
+    repair: () => makeReport(true, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"),
+  }, async () => {
+    const perfFile = writePerfMetrics({
+      sample_n: 0,
+      win_rate_pct: 0,
+      profit_factor: 0,
+      expectancy: 0,
+      net_pnl_pct: 0,
+      mdd_pct: -1,
+    });
+    const result = await runner.main({
+      TAG: "v2-fixture",
+      COMMIT_SHA: "0123456789abcdef0123456789abcdef01234567",
+      DONBEOLJA_V2_DISCOVERY_CANARY_CORRECTIVE_DEPLOY: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_CORRECTIVE_DEPLOY_CONFIRM: "CORRECTIVE_DEPLOY_V2_DISCOVERY_CANARY",
+      V2_PERFORMANCE_GATE_INPUT_FILE: perfFile,
+    }, {
+      skipDeploy: true,
+      softFail: true,
+      runExitRuntimeCanaryFn: async () => makeLatestExitCanaryPass(),
+    });
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.corrective_exit_runtime.allowed, true);
+    assert.strictEqual(result.corrective_exit_runtime.reason, "CORRECTIVE_EXIT_STREAK_DEPLOY_ALLOWED");
+    assert(result.warnings.includes("DISCOVERY_CANARY_CORRECTIVE_DEPLOY:EXIT_STREAK_REBUILD_REQUIRED"));
+  });
+}
+
+async function correctiveDeployDoesNotMaskLatestExitCanaryFailure() {
+  await withPatchedRunChecks({
+    entry: async () => makeReport(true, "V2_PRODUCTION_ENTRY_ROUTE_CANARY_STREAK_PASS"),
+    exit: async () => makeCorrectiveExitReport(),
+    repair: () => makeReport(true, "V2_REPAIR_QUEUE_FIRESTORE_CANARY_STREAK_PASS"),
+  }, async () => {
+    const perfFile = writePerfMetrics({
+      sample_n: 0,
+      win_rate_pct: 0,
+      profit_factor: 0,
+      expectancy: 0,
+      net_pnl_pct: 0,
+      mdd_pct: -1,
+    });
+    const result = await runner.main({
+      TAG: "v2-fixture",
+      DONBEOLJA_V2_DISCOVERY_CANARY_CORRECTIVE_DEPLOY: "1",
+      DONBEOLJA_V2_DISCOVERY_CANARY_CORRECTIVE_DEPLOY_CONFIRM: "CORRECTIVE_DEPLOY_V2_DISCOVERY_CANARY",
+      V2_PERFORMANCE_GATE_INPUT_FILE: perfFile,
+    }, {
+      skipDeploy: true,
+      softFail: true,
+      runExitRuntimeCanaryFn: async () => Object.freeze({
+        ...makeLatestExitCanaryPass(),
+        ok: false,
+        fail_n: 1,
+        blockers: Object.freeze(["EXIT_RUNTIME_CANARY_PROTECTION_RUNTIME_MISSING"]),
+      }),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.corrective_exit_runtime.allowed, false);
+    assert(result.blockers.includes("EXIT_RUNTIME_CANARY_STREAK:MIN_RUN_COUNT"));
+  });
+}
+
 async function run() {
   await blockedPreflightReturnsStructuredFailure();
   await passingPreflightBuildsDiscoveryDeployCommand();
@@ -364,6 +467,8 @@ async function run() {
   await passingPreflightCanBuildFullUniverseMinimumNotionalCommand();
   await activePositionEvidencePendingAllowsDiscoveryBootstrapOnly();
   await activePositionEvidenceDoesNotMaskRealExitDefects();
+  await correctiveDeployAllowsOnlyExitStreakRebuildWhenLatestCanaryPasses();
+  await correctiveDeployDoesNotMaskLatestExitCanaryFailure();
   console.log("run-v2-discovery-canary-preflight-deploy.test.js: OK");
 }
 
