@@ -12,6 +12,9 @@ function baseFeatures(overrides = {}) {
     mtf_1h_direction: "LONG",
     btc_1h_trend: "LONG",
     setup_type: "PULLBACK_RECLAIM",
+    reclaim_confirmed: true,
+    hold_after_reclaim: true,
+    stop_distance_sane: true,
     setup_quality_score: 0.8,
     trigger_confirmed: true,
     volume_zscore: 1.4,
@@ -76,7 +79,7 @@ function baseFeatures(overrides = {}) {
   assert.ok(decision.blockers.some((row) => row.includes("COST_ADJUSTED_EDGE")));
 })();
 
-(function shadowFilterDoesNotChangeHardSignalCriteriaVerdict() {
+(function btcOpposedNowHardBlocksSignalCriteriaViaAdverseSelection() {
   const criteria = buildSignalCriteria({
     symbol: "SOLUSDT",
     signalSide: "LONG",
@@ -92,7 +95,10 @@ function baseFeatures(overrides = {}) {
       },
     },
   });
-  assert.strictEqual(criteria.verdict, "PASS");
+  assert.strictEqual(criteria.verdict, "BLOCK");
+  assert.ok(criteria.blockers.includes("EXPECTED_EDGE:NET_R_REQUIRED"));
+  assert.ok(criteria.expected_edge_gate.adverse_selection_reasons.includes("BTC_1H_OPPOSED"));
+  assert.ok(criteria.expected_edge_gate.adverse_selection_penalty_r > 0);
   assert.strictEqual(criteria.shadow_filter_decision.would_block, true);
   assert.strictEqual(criteria.shadow_filter_decision.hard_block_enabled, false);
 })();

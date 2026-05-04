@@ -133,7 +133,7 @@ function normalizeSetupType(value) {
   if (token === "BREAKOUT" || token === "BREAKDOWN") return "BREAKOUT_RETEST";
   if (token === "RECLAIM" || token === "LOSS") return "PULLBACK_RECLAIM";
   if (token === "CONTINUATION") return "MOMENTUM_CONTINUATION";
-  if (token === "PULLBACK_RECLAIM" || token === "BREAKOUT_RETEST" || token === "MOMENTUM_CONTINUATION" || token === "NONE") {
+  if (token === "PULLBACK_RECLAIM" || token === "PULLBACK_PROBE" || token === "BREAKOUT_RETEST" || token === "MOMENTUM_CONTINUATION" || token === "NONE") {
     return token;
   }
   return "NONE";
@@ -184,6 +184,135 @@ function resolveMarketMetric(marketDataQuality = null, ...keys) {
     }
   }
   return null;
+}
+
+function resolveMetricOrFeature({ features, marketDataQuality }, ...keys) {
+  const fromFeatures = resolveFeatureValue(features, ...keys);
+  const featureNumber = toNumberOrNull(fromFeatures);
+  if (featureNumber !== null) return featureNumber;
+  const fromMarket = resolveMarketMetric(marketDataQuality, ...keys);
+  if (fromMarket !== null) return fromMarket;
+  return null;
+}
+
+function resolveTextMetricOrFeature({ features, marketDataQuality }, ...keys) {
+  const metrics = resolveMarketMetrics(marketDataQuality);
+  for (const source of [features, metrics, asObject(marketDataQuality)]) {
+    const obj = asObject(source);
+    if (!obj) continue;
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        const value = upper(obj[key]);
+        if (value) return value;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveDirectionalAlignment({ symbol, side, direction }) {
+  const normalizedSymbol = upper(symbol);
+  const normalizedSide = upper(side);
+  const normalizedDirection = upper(direction);
+  if (!normalizedDirection || normalizedDirection === "UNKNOWN" || normalizedDirection === "NONE") return "UNKNOWN";
+  if (normalizedSymbol === "BTCUSDT") return "SELF";
+  if (normalizedDirection === "NEUTRAL") return "NEUTRAL";
+  if (normalizedSide !== "LONG" && normalizedSide !== "SHORT") return "UNKNOWN";
+  return normalizedDirection === normalizedSide ? "ALIGNED" : "OPPOSED";
+}
+
+function isBooleanTrue(value) {
+  return asBooleanOrNull(value) === true;
+}
+
+function evaluatePullbackReclaimContract({
+  setupType,
+  features,
+  side,
+  triggerConfirmed,
+  htfAlignmentScore,
+  setupQualityScore,
+  volumeZScore,
+  btcAlignment,
+  mtfAlignment,
+} = {}) {
+  if (setupType !== "PULLBACK_RECLAIM") {
+    return Object.freeze({ setup_type: setupType, downgraded: false, blockers: Object.freeze([]) });
+  }
+  const reclaimConfirmed = isBooleanTrue(resolveFeatureValue(features, "reclaim_confirmed", "pullback_reclaim_confirmed", "trigger_confirmed"))
+    || triggerConfirmed === true;
+  const holdConfirmed = isBooleanTrue(resolveFeatureValue(features, "hold_after_reclaim", "reclaim_hold_confirmed", "reclaim_level_held"));
+  const stopDistanceSane = asBooleanOrNull(resolveFeatureValue(features, "stop_distance_sane", "sl_distance_sane", "trigger_stop_distance_sane"));
+  const explicitStopDistance = stopDistanceSane === true;
+  const implicitStopDistance = stopDistanceSane === null && (toNumberOrNull(setupQualityScore) ?? 0) >= 0.75;
+  const volumeConfirmed = (toNumberOrNull(volumeZScore) ?? -Infinity) >= 1;
+  const alignmentNotOpposed = btcAlignment !== "OPPOSED" && mtfAlignment !== "OPPOSED";
+  const htfStrong = (toNumberOrNull(htfAlignmentScore) ?? 0) >= 0.75;
+  const setupStrong = (toNumberOrNull(setupQualityScore) ?? 0) >= 0.75;
+  const blockers = [];
+  if (!reclaimConfirmed) blockers.push("PULLBACK_RECLAIM:RECLAIM_NOT_CONFIRMED");
+  if (!holdConfirmed && !(htfStrong && setupStrong && volumeConfirmed)) blockers.push("PULLBACK_RECLAIM:HOLD_NOT_CONFIRMED");
+  if (!(explicitStopDistance || implicitStopDistance)) blockers.push("PULLBACK_RECLAIM:STOP_DISTANCE_NOT_SANE");
+  if (!volumeConfirmed) blockers.push("PULLBACK_RECLAIM:VOLUME_NOT_CONFIRMED");
+  if (!alignmentNotOpposed) blockers.push("PULLBACK_RECLAIM:BTC_OR_MTF_OPPOSED");
+  return Object.freeze({
+    setup_type: blockers.length ? "PULLBACK_PROBE" : "PULLBACK_RECLAIM",
+    downgraded: blockers.length > 0,
+    blockers: Object.freeze(blockers),
+    side: upper(side),
+  });
+}
+
+function computeAdverseSelectionPenaltyR({
+  side,
+  btcAlignment,
+  mtfAlignment,
+  openInterestDeltaPct,
+  liquidationNotional5mQuote,
+  orderbookImbalanceTop5,
+  spreadBps,
+} = {}) {
+  const normalizedSide = upper(side);
+  let penalty = 0;
+  const reasons = [];
+  if (btcAlignment === "OPPOSED") {
+    penalty += 0.25;
+    reasons.push("BTC_1H_OPPOSED");
+  }
+  if (mtfAlignment === "OPPOSED") {
+    penalty += 0.2;
+    reasons.push("MTF_1H_OPPOSED");
+  }
+  const oi = toNumberOrNull(openInterestDeltaPct);
+  if (oi !== null && Math.abs(oi) >= 3) {
+    penalty += 0.15;
+    reasons.push("OPEN_INTEREST_SPIKE");
+  }
+  const liq = toNumberOrNull(liquidationNotional5mQuote);
+  if (liq !== null && liq >= 10000000) {
+    penalty += 0.15;
+    reasons.push("LIQUIDATION_CHAOS_GTE10M");
+  } else if (liq !== null && liq >= 5000000) {
+    penalty += 0.1;
+    reasons.push("LIQUIDATION_EXTREME_5M_10M");
+  }
+  const imbalance = toNumberOrNull(orderbookImbalanceTop5);
+  if (imbalance !== null) {
+    const opposed = (normalizedSide === "LONG" && imbalance < -0.15) || (normalizedSide === "SHORT" && imbalance > 0.15);
+    if (opposed) {
+      penalty += 0.1;
+      reasons.push("ORDERBOOK_IMBALANCE_OPPOSED");
+    }
+  }
+  const spread = toNumberOrNull(spreadBps);
+  if (spread !== null && spread >= 8) {
+    penalty += 0.1;
+    reasons.push("SPREAD_TOO_WIDE_FOR_EDGE");
+  }
+  return Object.freeze({
+    penalty_r: Number(Math.min(1, penalty).toFixed(4)),
+    reasons: Object.freeze(reasons),
+  });
 }
 
 function buildSignalCriteria({
@@ -248,7 +377,7 @@ function buildSignalCriteria({
     ?? resolveFeatureValue(features, "htf_alignment_score", "htf_confidence", "structure_alignment", "canonical_engine_field_alignment")
     ?? qualityScore
   );
-  const resolvedSetupType = normalizeSetupType(
+  const rawResolvedSetupType = normalizeSetupType(
     (seed.setup_gate && seed.setup_gate.setup_type)
     ?? seed.setup_type
     ?? setupType
@@ -348,6 +477,66 @@ function buildSignalCriteria({
     ?? fundingPenaltyBps
     ?? resolveFeatureValue(features, "funding_penalty_bps")
   );
+  const resolvedBtc1hTrend = resolveTextMetricOrFeature(
+    { features, marketDataQuality },
+    "btc_1h_trend",
+    "btc_1h_direction",
+    "btc_htf_trend"
+  );
+  const resolvedMtf1hDirection = resolveTextMetricOrFeature(
+    { features, marketDataQuality },
+    "mtf_1h_direction",
+    "htf_1h_direction",
+    "one_hour_direction"
+  );
+  const resolvedBtc1hAlignment = resolveDirectionalAlignment({ symbol, side, direction: resolvedBtc1hTrend });
+  const resolvedMtf1hAlignment = resolveDirectionalAlignment({ symbol, side, direction: resolvedMtf1hDirection });
+  const resolvedOpenInterestDeltaPct = resolveMetricOrFeature(
+    { features, marketDataQuality },
+    "open_interest_delta_pct",
+    "open_interest_change_pct"
+  );
+  const resolvedLiquidationNotional5mQuote = resolveMetricOrFeature(
+    { features, marketDataQuality },
+    "liquidation_notional_5m_quote",
+    "liquidation_notional_5m"
+  );
+  const resolvedOrderbookImbalanceTop5 = resolveMetricOrFeature(
+    { features, marketDataQuality },
+    "orderbook_imbalance_top5",
+    "order_book_imbalance_top5"
+  );
+  const pullbackContract = evaluatePullbackReclaimContract({
+    setupType: rawResolvedSetupType,
+    features,
+    side,
+    triggerConfirmed: resolvedTriggerConfirmedRaw === true,
+    htfAlignmentScore: resolvedHtfAlignmentScore,
+    setupQualityScore: resolvedSetupQualityScore,
+    volumeZScore: resolvedVolumeZScore,
+    btcAlignment: resolvedBtc1hAlignment,
+    mtfAlignment: resolvedMtf1hAlignment,
+  });
+  const resolvedSetupType = pullbackContract.setup_type;
+  const adverseSelection = computeAdverseSelectionPenaltyR({
+    side,
+    btcAlignment: resolvedBtc1hAlignment,
+    mtfAlignment: resolvedMtf1hAlignment,
+    openInterestDeltaPct: resolvedOpenInterestDeltaPct,
+    liquidationNotional5mQuote: resolvedLiquidationNotional5mQuote,
+    orderbookImbalanceTop5: resolvedOrderbookImbalanceTop5,
+    spreadBps: resolvedSpreadBps,
+  });
+  const effectiveExpectedNetRAfterCost = resolvedExpectedNetRAfterCost !== null
+    ? Number(Math.max(0, resolvedExpectedNetRAfterCost - adverseSelection.penalty_r).toFixed(4))
+    : null;
+  const edgeCohortRollingExpectancy = toNumberOrNull(resolveFeatureValue(
+    features,
+    "edge_cohort_rolling_expectancy",
+    "edge_cohort_rolling_expectancy_r",
+    "rolling_edge_expectancy_r",
+    "rolling_expectancy_r"
+  ));
 
   const regimeProfile = buildSignalRegimeProfile({
     signalSide: side,
@@ -379,7 +568,10 @@ function buildSignalCriteria({
   const setupBlockers = [];
   pushMissingEvidence(setupBlockers, "SETUP_TYPE", resolvedSetupType === "NONE" ? null : resolvedSetupType);
   pushMissingEvidence(setupBlockers, "SETUP_QUALITY_SCORE", toNumberOrNull(resolvedSetupQualityScore));
-  const setupPass = resolvedSetupType !== "NONE" && resolvedSetupQualityScore >= resolvedThresholds.min_setup_quality_score;
+  if (pullbackContract.downgraded) setupBlockers.push(...pullbackContract.blockers);
+  const setupPass = resolvedSetupType !== "NONE"
+    && resolvedSetupType !== "PULLBACK_PROBE"
+    && resolvedSetupQualityScore >= resolvedThresholds.min_setup_quality_score;
   const rsiPass = side === "LONG"
     ? resolvedRsiEntryTf >= resolvedThresholds.min_rsi_long
     : resolvedRsiEntryTf <= resolvedThresholds.max_rsi_short;
@@ -405,7 +597,7 @@ function buildSignalCriteria({
   const accountingConsistent = accountingDelta !== null && accountingDelta <= 0.05;
   if (accountingDelta !== null && !accountingConsistent) edgeBlockers.push("ACCOUNTING_INCONSISTENT");
   const edgePass = resolvedExpectedGrossR >= resolvedThresholds.min_expected_gross_r
-    && resolvedExpectedNetRAfterCost >= resolvedThresholds.min_expected_net_r_after_cost;
+    && effectiveExpectedNetRAfterCost >= resolvedThresholds.min_expected_net_r_after_cost;
   const fullyConsistentEdgePass = edgePass && accountingConsistent;
   const expectedEdgeModel = buildExpectedEdgeModel({
     signalSide: side,
@@ -418,8 +610,11 @@ function buildSignalCriteria({
     fundingPenaltyBps: resolvedFundingPenaltyBps,
     expectedGrossR: resolvedExpectedGrossR,
     expectedNetRAfterCost: resolvedExpectedNetRAfterCost,
+    effectiveExpectedNetRAfterCost,
     costEstimateBps: resolvedCostEstimateBps,
     costREquivalent: resolvedCostREquivalent,
+    adverseSelectionPenaltyR: adverseSelection.penalty_r,
+    edgeCohortRollingExpectancy,
     regimeProfile,
   });
   const shadowFilterDecision = buildSignalShadowFilters({
@@ -433,7 +628,7 @@ function buildSignalCriteria({
         alignment_score: resolvedHtfAlignmentScore,
       },
       expected_edge_gate: {
-        expected_net_r_after_cost: resolvedExpectedNetRAfterCost,
+        expected_net_r_after_cost: effectiveExpectedNetRAfterCost,
         cost_estimate_bps: resolvedCostEstimateBps,
       },
     },
@@ -510,10 +705,15 @@ function buildSignalCriteria({
     expected_edge_gate: Object.freeze({
       expected_gross_r: resolvedExpectedGrossR,
       expected_net_r_after_cost: resolvedExpectedNetRAfterCost,
+      effective_expected_net_r_after_cost: effectiveExpectedNetRAfterCost,
       cost_estimate_bps: resolvedCostEstimateBps,
       cost_r_equivalent: resolvedCostREquivalent,
       accounting_delta_r: accountingDelta,
+      adverse_selection_penalty_r: adverseSelection.penalty_r,
+      adverse_selection_reasons: adverseSelection.reasons,
       edge_cohort: expectedEdgeModel.edge_cohort,
+      raw_edge_cohort: expectedEdgeModel.raw_edge_cohort,
+      edge_cohort_downgraded_by_realized_expectancy: expectedEdgeModel.edge_cohort_downgraded_by_realized_expectancy,
       tp1_reach_probability: expectedEdgeModel.tp1_reach_probability,
       continuation_probability: expectedEdgeModel.continuation_probability,
       stop_hit_probability: expectedEdgeModel.stop_hit_probability,
@@ -521,6 +721,19 @@ function buildSignalCriteria({
     }),
     regime_profile: regimeProfile,
     expected_edge_model: expectedEdgeModel,
+    feature_snapshot_contract: Object.freeze({
+      btc_1h_trend: resolvedBtc1hTrend,
+      btc_1h_alignment: resolvedBtc1hAlignment,
+      mtf_1h_direction: resolvedMtf1hDirection,
+      mtf_1h_alignment: resolvedMtf1hAlignment,
+      open_interest_delta_pct: resolvedOpenInterestDeltaPct,
+      liquidation_notional_5m_quote: resolvedLiquidationNotional5mQuote,
+      orderbook_imbalance_top5: resolvedOrderbookImbalanceTop5,
+      raw_setup_type: rawResolvedSetupType,
+      effective_setup_type: resolvedSetupType,
+      pullback_reclaim_downgraded: pullbackContract.downgraded,
+      pullback_reclaim_downgrade_reasons: pullbackContract.blockers,
+    }),
     shadow_filter_decision: shadowFilterDecision,
   });
 }
@@ -533,4 +746,9 @@ module.exports = {
   normalizeSignalCriteriaProfile,
   resolveSignalCriteriaThresholds,
   normalizeTriggerType,
+  __test: {
+    evaluatePullbackReclaimContract,
+    computeAdverseSelectionPenaltyR,
+    resolveDirectionalAlignment,
+  },
 };

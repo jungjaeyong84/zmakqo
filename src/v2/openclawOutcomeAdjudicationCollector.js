@@ -528,6 +528,7 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
   const triggerGate = extractGateObject(criteria, "trigger_gate");
   const noTradeGate = extractGateObject(criteria, "no_trade_gate");
   const expectedEdgeGate = extractGateObject(criteria, "expected_edge_gate");
+  const featureSnapshotContract = extractGateObject(criteria, "feature_snapshot_contract");
   const regimeProfile = firstObject(
     criteria && criteria.regime_profile,
     canonical && canonical.signal_regime_profile,
@@ -555,7 +556,9 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
     volume_zscore: toNumberOrNull(firstValue(features && (features.volume_zscore ?? features.volume_ratio), triggerGate.volume_zscore)),
     expected_net_r_after_cost: toNumberOrNull(firstValue(
       features && features.expected_net_r_after_cost,
+      expectedEdgeGate.effective_expected_net_r_after_cost,
       expectedEdgeGate.expected_net_r_after_cost,
+      expectedEdgeModel.effective_net_r_multiple,
       expectedEdgeModel.net_r_multiple,
       criteria && criteria.expected_net_r_after_cost,
       canonical && canonical.expected_net_r_after_cost,
@@ -564,12 +567,14 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
     timing_bucket: upper(firstValue(features && features.timing_bucket, criteria && criteria.timing_bucket, canonical && canonical.timing_bucket)),
     btc_1h_trend: upper(firstValue(
       features && (features.btc_1h_trend || features.btc_1h_direction || features.btc_htf_trend),
+      featureSnapshotContract.btc_1h_trend,
       canonical && (canonical.btc_1h_trend || canonical.btc_1h_direction || canonical.btc_htf_trend),
       getPath(marketDataQuality, ["metrics", "btc_1h_trend"]),
       getPath(marketDataQuality, ["metrics", "btc_1h_direction"]),
     )),
     mtf_1h_direction: upper(firstValue(
       features && (features.mtf_1h_direction || features.htf_1h_direction || features.one_hour_direction),
+      featureSnapshotContract.mtf_1h_direction,
       canonical && (canonical.mtf_1h_direction || canonical.htf_1h_direction || canonical.one_hour_direction),
       getPath(marketDataQuality, ["metrics", "mtf_1h_direction"]),
       getPath(marketDataQuality, ["metrics", "htf_1h_direction"]),
@@ -606,18 +611,27 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
     )),
     orderbook_imbalance_top5: toNumberOrNull(firstValue(
       features && (features.orderbook_imbalance_top5 ?? features.order_book_imbalance_top5),
+      featureSnapshotContract.orderbook_imbalance_top5,
       getPath(marketDataQuality, ["metrics", "orderbook_imbalance_top5"]),
       getPath(marketDataQuality, ["metrics", "order_book_imbalance_top5"]),
     )),
     open_interest_delta_pct: toNumberOrNull(firstValue(
       features && (features.open_interest_delta_pct ?? features.open_interest_change_pct),
+      featureSnapshotContract.open_interest_delta_pct,
       getPath(marketDataQuality, ["metrics", "open_interest_delta_pct"]),
       getPath(marketDataQuality, ["metrics", "open_interest_change_pct"]),
     )),
     liquidation_notional_5m_quote: toNumberOrNull(firstValue(
       features && (features.liquidation_notional_5m_quote ?? features.liquidation_notional_5m),
+      featureSnapshotContract.liquidation_notional_5m_quote,
       getPath(marketDataQuality, ["metrics", "liquidation_notional_5m_quote"]),
       getPath(marketDataQuality, ["metrics", "liquidation_notional_5m"]),
+    )),
+    effective_setup_type: upper(firstValue(featureSnapshotContract.effective_setup_type, setupGate.setup_type)),
+    raw_setup_type: upper(featureSnapshotContract.raw_setup_type),
+    adverse_selection_penalty_r: toNumberOrNull(firstValue(
+      expectedEdgeGate.adverse_selection_penalty_r,
+      expectedEdgeModel.adverse_selection_penalty_r,
     )),
   };
   return Object.freeze({

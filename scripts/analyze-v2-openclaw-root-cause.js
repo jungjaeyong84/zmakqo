@@ -177,6 +177,7 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_liquidation_notional_5m_bucket: groupRows(enriched, (row) => row.context.liquidation_notional_5m_bucket),
     by_setup_edge_side: groupRows(enriched, (row) => `${row.context.setup_type}|${row.context.edge_cohort}|${row.context.side}`, { minN: 3 }),
     by_symbol_setup: groupRows(enriched, (row) => `${row.context.symbol}|${row.context.setup_type}`, { minN: 3 }),
+    by_evidence_completeness: groupRows(enriched, (row) => row.context.evidence_completeness),
   };
   return Object.freeze({
     ok: true,

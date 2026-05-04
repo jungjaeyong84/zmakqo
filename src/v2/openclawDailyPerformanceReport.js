@@ -72,6 +72,8 @@ function summarizeOpenClawOutcomes(outcomes = []) {
   let pnlN = 0;
   let eligibleN = 0;
   let excludedN = 0;
+  let fullEvidenceSampleN = 0;
+  let unknownEvidenceSampleN = 0;
   const labelCounts = {};
   const familyCounts = {};
   const exclusionReasonCounts = {};
@@ -93,6 +95,12 @@ function summarizeOpenClawOutcomes(outcomes = []) {
       continue;
     }
     eligibleN += 1;
+    const context = extractOutcomeContext(row);
+    if (context.full_evidence === true) {
+      fullEvidenceSampleN += 1;
+    } else {
+      unknownEvidenceSampleN += 1;
+    }
     if (pnl != null) {
       pnlN += 1;
       netPnl += pnl;
@@ -117,6 +125,8 @@ function summarizeOpenClawOutcomes(outcomes = []) {
     outcome_n: rows.length,
     performance_eligible_outcome_n: eligibleN,
     performance_excluded_outcome_n: excludedN,
+    full_evidence_sample_n: fullEvidenceSampleN,
+    unknown_evidence_sample_n: unknownEvidenceSampleN,
     trade_n: tradeN,
     pnl_sample_n: pnlN,
     win_n: winN,
@@ -138,7 +148,11 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
   const generated = trimOrNull(generatedAt) || new Date().toISOString();
   const summary = summarizeOpenClawOutcomes(outcomes);
   const performanceEligibleOutcomes = asArray(outcomes).filter(isPerformanceEligibleOutcome);
+  const fullEvidenceOutcomes = performanceEligibleOutcomes.filter((row) => extractOutcomeContext(row).full_evidence === true);
+  const unknownEvidenceOutcomes = performanceEligibleOutcomes.filter((row) => extractOutcomeContext(row).full_evidence !== true);
   const cohortSummary = summarizeOutcomeCohorts(performanceEligibleOutcomes);
+  const fullEvidenceSummary = summarizeOpenClawOutcomes(fullEvidenceOutcomes);
+  const unknownEvidenceSummary = summarizeOpenClawOutcomes(unknownEvidenceOutcomes);
   return Object.freeze({
     ok: true,
     reason: "V2_OPENCLAW_DAILY_PERFORMANCE_REPORT_GENERATED",
@@ -147,11 +161,15 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
     source: trimOrNull(source) || "OPENCLAW_OUTCOME_ADJUDICATIONS",
     lookback_hours: Number(lookbackHours),
     sample_n: summary.trade_n,
+    full_evidence_sample_n: summary.full_evidence_sample_n,
+    unknown_evidence_sample_n: summary.unknown_evidence_sample_n,
     win_rate_pct: summary.win_rate_pct,
     profit_factor: summary.profit_factor,
     expectancy: summary.expectancy,
     net_pnl_usdt: summary.net_pnl_usdt,
     summary,
+    full_evidence_summary: fullEvidenceSummary,
+    unknown_evidence_summary: unknownEvidenceSummary,
     cohort_summary: cohortSummary,
     timing_summary: Object.freeze({
       by_timing_bucket: cohortSummary.by_timing_bucket || Object.freeze([]),

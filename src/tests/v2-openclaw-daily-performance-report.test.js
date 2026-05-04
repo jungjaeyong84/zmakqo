@@ -27,7 +27,9 @@ const outcomes = [
       funding_rate: 0.0002,
       open_interest_delta_pct: 1.2,
       liquidation_notional_5m_quote: 1500000,
+      orderbook_imbalance_top5: 0.12,
       btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     },
     adjudicated_at: "2026-04-23T00:00:00.000Z",
   },
@@ -78,6 +80,8 @@ const outcomes = [
   assert.strictEqual(summary.outcome_n, 3);
   assert.strictEqual(summary.performance_eligible_outcome_n, 3);
   assert.strictEqual(summary.performance_excluded_outcome_n, 0);
+  assert.strictEqual(summary.full_evidence_sample_n, 1);
+  assert.strictEqual(summary.unknown_evidence_sample_n, 2);
   assert.strictEqual(summary.trade_n, 3);
   assert.strictEqual(summary.win_n, 2);
   assert.strictEqual(summary.loss_n, 1);
@@ -91,6 +95,8 @@ const outcomes = [
   assert.strictEqual(report.ok, true);
   assert.strictEqual(report.reason, "V2_OPENCLAW_DAILY_PERFORMANCE_REPORT_GENERATED");
   assert.strictEqual(report.sample_n, 3);
+  assert.strictEqual(report.full_evidence_sample_n, 1);
+  assert.strictEqual(report.unknown_evidence_sample_n, 2);
   assert.strictEqual(report.outcomes.length, 3);
   assert.strictEqual(report.summary.label_counts.MODEL_WIN, 2);
   assert.strictEqual(report.outcomes[0].context.setup_type, "PULLBACK_RECLAIM");
@@ -100,6 +106,12 @@ const outcomes = [
   assert.strictEqual(report.outcomes[0].context.open_interest_delta_bucket, "UP_1_3");
   assert.strictEqual(report.outcomes[0].context.liquidation_notional_5m_bucket, "HIGH_1M_5M");
   assert.strictEqual(report.outcomes[0].context.btc_1h_alignment, "SELF");
+  assert.strictEqual(report.outcomes[0].context.full_evidence, true);
+  assert.deepStrictEqual(report.outcomes[0].context.missing_feature_fields, []);
+  assert.strictEqual(report.outcomes[1].context.full_evidence, false);
+  assert.ok(report.outcomes[1].context.missing_feature_fields.includes("btc_1h_trend"));
+  assert.strictEqual(report.full_evidence_summary.sample_n, undefined);
+  assert.strictEqual(report.full_evidence_summary.trade_n, 1);
   assert.strictEqual(report.outcomes[0].performance_eligible, true);
   assert.strictEqual(report.outcomes[0].performance_exclusion_reason, null);
   assert.strictEqual(report.cohort_summary.by_setup_type[0].key, "PULLBACK_RECLAIM");
@@ -107,6 +119,7 @@ const outcomes = [
   assert.strictEqual(report.cohort_summary.by_edge_cohort[0].key, "STRONG_EDGE");
   assert.strictEqual(report.cohort_summary.by_market_quality_bucket[0].key, "HIGH");
   assert.strictEqual(report.cohort_summary.by_btc_1h_alignment[0].key, "SELF");
+  assert.strictEqual(report.cohort_summary.by_evidence_completeness.some((row) => row.key === "FULL_EVIDENCE"), true);
   assert.strictEqual(report.cohort_summary.top_positive_setup_regime.key, "PULLBACK_RECLAIM__TREND");
 }
 

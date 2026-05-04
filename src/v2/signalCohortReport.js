@@ -117,6 +117,32 @@ function resolveBtcAlignment({ symbol, side, btcTrend }) {
   return "OPPOSED";
 }
 
+const FULL_EVIDENCE_REQUIRED_FIELDS = Object.freeze([
+  "setup_type",
+  "edge_cohort",
+  "market_quality_score",
+  "spread_bps",
+  "funding_rate",
+  "open_interest_delta_pct",
+  "liquidation_notional_5m_quote",
+  "orderbook_imbalance_top5",
+  "btc_1h_trend",
+  "btc_1h_alignment",
+  "mtf_1h_direction",
+  "mtf_1h_alignment",
+]);
+
+function missingFullEvidenceFields(context = {}) {
+  const missing = [];
+  for (const field of FULL_EVIDENCE_REQUIRED_FIELDS) {
+    const value = context[field];
+    if (value === null || value === undefined || value === "" || value === "UNKNOWN" || value === "NONE") {
+      missing.push(field);
+    }
+  }
+  return Object.freeze(missing);
+}
+
 function extractOutcomeContext(row) {
   const evidence = asObject(row && row.evidence) || {};
   const criteria = asObject(firstValue(
@@ -135,6 +161,10 @@ function extractOutcomeContext(row) {
     criteria.expected_edge_model,
     getPath(evidence, ["bundle", "signalCriteria", "expected_edge_model"])
   )) || {};
+  const featureSnapshotContract = asObject(firstValue(
+    criteria.feature_snapshot_contract,
+    getPath(evidence, ["bundle", "signalCriteria", "feature_snapshot_contract"])
+  )) || {};
   const triggerGate = asObject(firstValue(
     criteria.trigger_gate,
     getPath(evidence, ["bundle", "signalCriteria", "trigger_gate"])
@@ -146,7 +176,7 @@ function extractOutcomeContext(row) {
 
   const symbol = upper(firstValue(row && row.symbol, evidence.symbol, getPath(evidence, ["bundle", "signalIntent", "symbol"]))) || "UNKNOWN";
   const side = upper(firstValue(row && row.side, evidence.side, getPath(evidence, ["bundle", "signalIntent", "side"]))) || "UNKNOWN";
-  const setupType = upper(firstValue(evidence.setup_type, entryFeatures.setup_type, setupGate.setup_type)) || "UNKNOWN";
+  const setupType = upper(firstValue(evidence.setup_type, entryFeatures.effective_setup_type, entryFeatures.setup_type, featureSnapshotContract.effective_setup_type, setupGate.setup_type)) || "UNKNOWN";
   const structuralRegime = upper(firstValue(
     evidence.structural_regime,
     entryFeatures.structural_regime,
@@ -162,7 +192,9 @@ function extractOutcomeContext(row) {
   const expectedNetRAfterCost = toNumberOrNull(firstValue(
     evidence.expected_net_r_after_cost,
     entryFeatures.expected_net_r_after_cost,
+    getPath(criteria, ["expected_edge_gate", "effective_expected_net_r_after_cost"]),
     getPath(criteria, ["expected_edge_gate", "expected_net_r_after_cost"]),
+    expectedEdgeModel.effective_net_r_multiple,
     expectedEdgeModel.net_r_multiple
   ));
   const timingMeasurement = asObject(evidence.timing_measurement) || {};
@@ -175,14 +207,15 @@ function extractOutcomeContext(row) {
   const spreadBps = toNumberOrNull(firstValue(evidence.spread_bps, entryFeatures.spread_bps, marketMetrics.spread_bps));
   const fundingRate = toNumberOrNull(firstValue(evidence.funding_rate, entryFeatures.funding_rate, entryFeatures.funding_rate_current, marketMetrics.funding_rate, marketMetrics.fundingRate));
   const fundingPenaltyBps = toNumberOrNull(firstValue(evidence.funding_penalty_bps, entryFeatures.funding_penalty_bps, getPath(criteria, ["expected_edge_gate", "funding_penalty_bps"])));
-  const openInterestDeltaPct = toNumberOrNull(firstValue(evidence.open_interest_delta_pct, entryFeatures.open_interest_delta_pct, entryFeatures.open_interest_change_pct, marketMetrics.open_interest_delta_pct, marketMetrics.open_interest_change_pct));
-  const liquidationNotional5mQuote = toNumberOrNull(firstValue(evidence.liquidation_notional_5m_quote, entryFeatures.liquidation_notional_5m_quote, entryFeatures.liquidation_notional_5m, marketMetrics.liquidation_notional_5m_quote, marketMetrics.liquidation_notional_5m));
-  const orderbookImbalanceTop5 = toNumberOrNull(firstValue(evidence.orderbook_imbalance_top5, entryFeatures.orderbook_imbalance_top5, entryFeatures.order_book_imbalance_top5, marketMetrics.orderbook_imbalance_top5, marketMetrics.order_book_imbalance_top5));
+  const openInterestDeltaPct = toNumberOrNull(firstValue(evidence.open_interest_delta_pct, entryFeatures.open_interest_delta_pct, entryFeatures.open_interest_change_pct, featureSnapshotContract.open_interest_delta_pct, marketMetrics.open_interest_delta_pct, marketMetrics.open_interest_change_pct));
+  const liquidationNotional5mQuote = toNumberOrNull(firstValue(evidence.liquidation_notional_5m_quote, entryFeatures.liquidation_notional_5m_quote, entryFeatures.liquidation_notional_5m, featureSnapshotContract.liquidation_notional_5m_quote, marketMetrics.liquidation_notional_5m_quote, marketMetrics.liquidation_notional_5m));
+  const orderbookImbalanceTop5 = toNumberOrNull(firstValue(evidence.orderbook_imbalance_top5, entryFeatures.orderbook_imbalance_top5, entryFeatures.order_book_imbalance_top5, featureSnapshotContract.orderbook_imbalance_top5, marketMetrics.orderbook_imbalance_top5, marketMetrics.order_book_imbalance_top5));
   const btcOneHourTrend = upper(firstValue(
     evidence.btc_1h_trend,
     entryFeatures.btc_1h_trend,
     entryFeatures.btc_1h_direction,
     entryFeatures.btc_htf_trend,
+    featureSnapshotContract.btc_1h_trend,
     marketMetrics.btc_1h_trend,
     marketMetrics.btc_1h_direction,
   )) || "UNKNOWN";
@@ -191,17 +224,19 @@ function extractOutcomeContext(row) {
     entryFeatures.mtf_1h_direction,
     entryFeatures.htf_1h_direction,
     entryFeatures.one_hour_direction,
+    featureSnapshotContract.mtf_1h_direction,
     marketMetrics.mtf_1h_direction,
     marketMetrics.htf_1h_direction,
   )) || "UNKNOWN";
 
-  return Object.freeze({
+  const baseContext = {
     symbol,
     side,
     entry_grade: entryGrade,
     trigger_type: triggerType,
     timing_bucket: timingBucket,
     setup_type: setupType,
+    raw_setup_type: upper(firstValue(evidence.raw_setup_type, entryFeatures.raw_setup_type, featureSnapshotContract.raw_setup_type)) || setupType,
     structural_regime: structuralRegime,
     regime_cohort: regimeCohort,
     edge_cohort: edgeCohort,
@@ -210,6 +245,12 @@ function extractOutcomeContext(row) {
     expected_edge_bucket: edgeCohort,
     setup_regime_key: `${setupType}__${structuralRegime}`,
     expected_net_r_after_cost: expectedNetRAfterCost,
+    adverse_selection_penalty_r: toNumberOrNull(firstValue(
+      evidence.adverse_selection_penalty_r,
+      entryFeatures.adverse_selection_penalty_r,
+      getPath(criteria, ["expected_edge_gate", "adverse_selection_penalty_r"]),
+      expectedEdgeModel.adverse_selection_penalty_r,
+    )),
     market_quality_score: marketQualityScore,
     market_quality_bucket: bucketMarketQuality(marketQualityScore),
     spread_bps: spreadBps,
@@ -226,6 +267,13 @@ function extractOutcomeContext(row) {
     btc_1h_alignment: resolveBtcAlignment({ symbol, side, btcTrend: btcOneHourTrend }),
     mtf_1h_direction: mtfOneHourDirection,
     mtf_1h_alignment: resolveBtcAlignment({ symbol, side, btcTrend: mtfOneHourDirection }),
+  };
+  const missing = missingFullEvidenceFields(baseContext);
+  return Object.freeze({
+    ...baseContext,
+    full_evidence: missing.length === 0,
+    evidence_completeness: missing.length === 0 ? "FULL_EVIDENCE" : "PARTIAL_OR_UNKNOWN_EVIDENCE",
+    missing_feature_fields: missing,
   });
 }
 
@@ -250,6 +298,7 @@ function createBucketRow(key, context) {
     liquidation_notional_5m_bucket: context.liquidation_notional_5m_bucket,
     btc_1h_alignment: context.btc_1h_alignment,
     mtf_1h_alignment: context.mtf_1h_alignment,
+    evidence_completeness: context.evidence_completeness,
     outcome_n: 0,
     trade_n: 0,
     win_n: 0,
@@ -291,6 +340,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
   const byLiquidationNotional5mBucket = new Map();
   const byBtc1hAlignment = new Map();
   const byMtf1hAlignment = new Map();
+  const byEvidenceCompleteness = new Map();
 
   function record(map, key, row, context) {
     if (!map.has(key)) map.set(key, createBucketRow(key, context));
@@ -331,6 +381,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
     record(byLiquidationNotional5mBucket, context.liquidation_notional_5m_bucket, row, context);
     record(byBtc1hAlignment, context.btc_1h_alignment, row, context);
     record(byMtf1hAlignment, context.mtf_1h_alignment, row, context);
+    record(byEvidenceCompleteness, context.evidence_completeness, row, context);
   }
 
   const setupRegimeRows = finalizeBucketRows(bySetupRegime);
@@ -355,6 +406,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
     by_liquidation_notional_5m_bucket: finalizeBucketRows(byLiquidationNotional5mBucket),
     by_btc_1h_alignment: finalizeBucketRows(byBtc1hAlignment),
     by_mtf_1h_alignment: finalizeBucketRows(byMtf1hAlignment),
+    by_evidence_completeness: finalizeBucketRows(byEvidenceCompleteness),
     top_positive_setup_regime: topPositiveSetupRegime,
     top_negative_setup_regime: topNegativeSetupRegime,
   });
@@ -363,6 +415,8 @@ function summarizeOutcomeCohorts(outcomes = []) {
 module.exports = {
   extractOutcomeContext,
   summarizeOutcomeCohorts,
+  missingFullEvidenceFields,
+  FULL_EVIDENCE_REQUIRED_FIELDS,
   __test: {
     bucketSignalScore,
     bucketTriggerQuality,

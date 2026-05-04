@@ -47,6 +47,17 @@ function bucketEdgeCohort(score, expectedNetRAfterCost = null) {
   return "MARGINAL_EDGE";
 }
 
+function normalizeRollingExpectancy(value) {
+  return toNumberOrNull(value);
+}
+
+function maybeDowngradeEdgeCohortForRealizedExpectancy(cohort, rollingExpectancy) {
+  const expectancy = normalizeRollingExpectancy(rollingExpectancy);
+  if (expectancy === null || expectancy > 0) return cohort;
+  if (cohort === "STRONG_EDGE" || cohort === "BUILDABLE_EDGE") return "MARGINAL_EDGE";
+  return cohort;
+}
+
 function buildExpectedEdgeModel({
   signalSide,
   htfAlignmentScore = null,
@@ -58,8 +69,11 @@ function buildExpectedEdgeModel({
   fundingPenaltyBps = null,
   expectedGrossR = null,
   expectedNetRAfterCost = null,
+  effectiveExpectedNetRAfterCost = null,
   costEstimateBps = null,
   costREquivalent = null,
+  adverseSelectionPenaltyR = null,
+  edgeCohortRollingExpectancy = null,
   regimeProfile = null,
 } = {}) {
   const side = upper(signalSide);
@@ -69,7 +83,8 @@ function buildExpectedEdgeModel({
   const setup = clamp01(setupQualityScore, 0);
   const market = clamp01(marketQualityScore, 0);
   const gross = Math.max(0, toNumberOrNull(expectedGrossR) ?? 0);
-  const net = Math.max(0, toNumberOrNull(expectedNetRAfterCost) ?? 0);
+  const rawNet = Math.max(0, toNumberOrNull(expectedNetRAfterCost) ?? 0);
+  const effectiveNet = Math.max(0, toNumberOrNull(effectiveExpectedNetRAfterCost) ?? rawNet);
   const triggerStrength = normalizeTriggerStrength({ signalSide: side, volumeZScore, rsiEntryTf });
   const frictionPenalty = normalizeFrictionPenalty({
     costEstimateBps,
@@ -88,7 +103,7 @@ function buildExpectedEdgeModel({
     0.75 - (0.2 * setup) - (0.15 * alignment) - (0.1 * triggerStrength) - (0.1 * market) - (0.1 * regimeScore) + (0.1 * frictionPenalty)
   )).toFixed(4));
 
-  const netEdgeNormalized = Math.min(1, Math.max(0, net / 0.6));
+  const netEdgeNormalized = Math.min(1, Math.max(0, effectiveNet / 0.6));
   const grossEdgeNormalized = Math.min(1, Math.max(0, (gross - 1.2) / 1.2));
   const costPenaltyNormalized = Math.min(1, Math.max(0, (toNumberOrNull(costEstimateBps) ?? 0) / 25));
   const edgeScore = Number(Math.max(0, Math.min(1,
@@ -101,6 +116,9 @@ function buildExpectedEdgeModel({
     - (0.05 * costPenaltyNormalized)
   )).toFixed(4));
 
+  const rawEdgeCohort = bucketEdgeCohort(edgeScore, effectiveNet);
+  const edgeCohort = maybeDowngradeEdgeCohortForRealizedExpectancy(rawEdgeCohort, edgeCohortRollingExpectancy);
+
   return Object.freeze({
     present: true,
     tp1_reach_probability: tp1ReachProbability,
@@ -108,12 +126,17 @@ function buildExpectedEdgeModel({
     stop_hit_probability: stopHitProbability,
     friction_penalty_score: frictionPenalty,
     gross_r_multiple: gross,
-    net_r_multiple: net,
+    net_r_multiple: rawNet,
+    effective_net_r_multiple: effectiveNet,
+    adverse_selection_penalty_r: toNumberOrNull(adverseSelectionPenaltyR) ?? 0,
     cost_estimate_bps: toNumberOrNull(costEstimateBps),
     cost_r_equivalent: toNumberOrNull(costREquivalent),
     edge_score: edgeScore,
     edge_score_out_of_20: Math.round(20 * edgeScore),
-    edge_cohort: bucketEdgeCohort(edgeScore, net),
+    raw_edge_cohort: rawEdgeCohort,
+    edge_cohort: edgeCohort,
+    edge_cohort_rolling_expectancy: normalizeRollingExpectancy(edgeCohortRollingExpectancy),
+    edge_cohort_downgraded_by_realized_expectancy: edgeCohort !== rawEdgeCohort,
     trigger_strength_score: triggerStrength,
   });
 }
@@ -124,5 +147,6 @@ module.exports = {
     normalizeTriggerStrength,
     normalizeFrictionPenalty,
     bucketEdgeCohort,
+    maybeDowngradeEdgeCohortForRealizedExpectancy,
   },
 };
