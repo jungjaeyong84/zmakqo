@@ -61,6 +61,10 @@ async function marketDataQualityEmbedsMicrostructureFeatures() {
     fetchPublicJson: async (path) => {
       if (path === "/fapi/v1/premiumIndex") return { markPrice: "2500", indexPrice: "2500" };
       if (path === "/fapi/v1/ticker/24hr") return { quoteVolume: "10000000" };
+      if (path === "/fapi/v1/klines") return [
+        [1770000000000, "2400", "2410", "2390", "2400"],
+        [1770003600000, "2500", "2510", "2490", "2505"],
+      ];
       if (path === "/fapi/v1/fundingRate") return [{ fundingRate: "0.0001", fundingTime: 10, markPrice: "2500" }];
       if (path === "/fapi/v1/openInterest") return { openInterest: "1234.5", time: 11 };
       if (path === "/fapi/v1/depth") return { bids: [["2500", "2"]], asks: [["2501", "1"]] };
@@ -71,6 +75,8 @@ async function marketDataQualityEmbedsMicrostructureFeatures() {
   assert.strictEqual(result.quality.metrics.microstructure_ok, true);
   assert.strictEqual(result.quality.metrics.funding_penalty_bps, 1);
   assert.strictEqual(result.quality.metrics.open_interest, 1234.5);
+  assert.strictEqual(result.quality.metrics.btc_1h_trend, "LONG");
+  assert.strictEqual(result.quality.metrics.mtf_1h_direction, "LONG");
 }
 
 (function bundleIncludesMicrostructureMetricsInFeatureSnapshotAndShadowFilters() {

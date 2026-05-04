@@ -43,6 +43,8 @@ async function collectOutcomes({ db = null, env = process.env } = {}) {
     env,
     collectionKey: "OPENCLAW_OUTCOME_ADJUDICATIONS",
     limit,
+    orderBy: trimOrNull(env.V2_OPENCLAW_DAILY_PERFORMANCE_ORDER_FIELD) || "adjudicated_at",
+    direction: trimOrNull(env.V2_OPENCLAW_DAILY_PERFORMANCE_ORDER_DIRECTION) || "desc",
   });
   return result.rows || [];
 }

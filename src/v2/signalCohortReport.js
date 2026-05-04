@@ -178,8 +178,22 @@ function extractOutcomeContext(row) {
   const openInterestDeltaPct = toNumberOrNull(firstValue(evidence.open_interest_delta_pct, entryFeatures.open_interest_delta_pct, entryFeatures.open_interest_change_pct, marketMetrics.open_interest_delta_pct, marketMetrics.open_interest_change_pct));
   const liquidationNotional5mQuote = toNumberOrNull(firstValue(evidence.liquidation_notional_5m_quote, entryFeatures.liquidation_notional_5m_quote, entryFeatures.liquidation_notional_5m, marketMetrics.liquidation_notional_5m_quote, marketMetrics.liquidation_notional_5m));
   const orderbookImbalanceTop5 = toNumberOrNull(firstValue(evidence.orderbook_imbalance_top5, entryFeatures.orderbook_imbalance_top5, entryFeatures.order_book_imbalance_top5, marketMetrics.orderbook_imbalance_top5, marketMetrics.order_book_imbalance_top5));
-  const btcOneHourTrend = upper(firstValue(evidence.btc_1h_trend, entryFeatures.btc_1h_trend, entryFeatures.btc_1h_direction, entryFeatures.btc_htf_trend)) || "UNKNOWN";
-  const mtfOneHourDirection = upper(firstValue(evidence.mtf_1h_direction, entryFeatures.mtf_1h_direction, entryFeatures.htf_1h_direction, entryFeatures.one_hour_direction)) || "UNKNOWN";
+  const btcOneHourTrend = upper(firstValue(
+    evidence.btc_1h_trend,
+    entryFeatures.btc_1h_trend,
+    entryFeatures.btc_1h_direction,
+    entryFeatures.btc_htf_trend,
+    marketMetrics.btc_1h_trend,
+    marketMetrics.btc_1h_direction,
+  )) || "UNKNOWN";
+  const mtfOneHourDirection = upper(firstValue(
+    evidence.mtf_1h_direction,
+    entryFeatures.mtf_1h_direction,
+    entryFeatures.htf_1h_direction,
+    entryFeatures.one_hour_direction,
+    marketMetrics.mtf_1h_direction,
+    marketMetrics.htf_1h_direction,
+  )) || "UNKNOWN";
 
   return Object.freeze({
     symbol,

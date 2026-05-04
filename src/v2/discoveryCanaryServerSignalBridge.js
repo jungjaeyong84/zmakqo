@@ -430,6 +430,34 @@ function fetchFuturesBaseUrl(env = process.env) {
   return trimOrNull(env.BINANCE_FUTURES_BASE_URL) || "https://fapi.binance.com";
 }
 
+function normalizeOneHourTrendFromKlines(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const closes = list
+    .map((row) => Array.isArray(row) ? toNumberOrNull(row[4]) : toNumberOrNull(row && row.close))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (closes.length < 2) {
+    return Object.freeze({
+      trend: null,
+      change_pct: null,
+      source: "BINANCE_FUTURES_PUBLIC_KLINES_1H",
+      sample_n: closes.length,
+    });
+  }
+  const first = closes[0];
+  const last = closes[closes.length - 1];
+  const changePct = first > 0 ? ((last - first) / first) * 100 : null;
+  const deadbandPct = 0.15;
+  let trend = "NEUTRAL";
+  if (changePct !== null && changePct > deadbandPct) trend = "LONG";
+  if (changePct !== null && changePct < -deadbandPct) trend = "SHORT";
+  return Object.freeze({
+    trend,
+    change_pct: changePct,
+    source: "BINANCE_FUTURES_PUBLIC_KLINES_1H",
+    sample_n: closes.length,
+  });
+}
+
 async function fetchFuturesPublicJson(path, params = {}, env = process.env) {
   const url = new URL(`${fetchFuturesBaseUrl(env)}${path}`);
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -466,6 +494,24 @@ async function collectMarketDataQuality({
           : null))
         .catch(() => null),
   ]);
+  const [btcOneHourTrend, symbolOneHourTrend] = await Promise.all([
+    fetchPublicJson("/fapi/v1/klines", { symbol: "BTCUSDT", interval: "1h", limit: 24 })
+      .then(normalizeOneHourTrendFromKlines)
+      .catch((error) => Object.freeze({
+        trend: null,
+        change_pct: null,
+        source: "BINANCE_FUTURES_PUBLIC_KLINES_1H",
+        error: error && error.message ? String(error.message) : String(error),
+      })),
+    fetchPublicJson("/fapi/v1/klines", { symbol: sym, interval: "1h", limit: 24 })
+      .then(normalizeOneHourTrendFromKlines)
+      .catch((error) => Object.freeze({
+        trend: null,
+        change_pct: null,
+        source: "BINANCE_FUTURES_PUBLIC_KLINES_1H",
+        error: error && error.message ? String(error.message) : String(error),
+      })),
+  ]);
   const microstructure = await collectBinanceMicrostructureFeatures({
     symbol: sym,
     env,
@@ -500,6 +546,16 @@ async function collectMarketDataQuality({
     metrics: Object.freeze({
       ...(asObject(baseQuality.metrics) || {}),
       ...microFeatures,
+      btc_1h_trend: btcOneHourTrend.trend,
+      btc_1h_change_pct: btcOneHourTrend.change_pct,
+      btc_1h_source: btcOneHourTrend.source,
+      btc_1h_sample_n: btcOneHourTrend.sample_n,
+      btc_1h_error: btcOneHourTrend.error || null,
+      mtf_1h_direction: symbolOneHourTrend.trend,
+      mtf_1h_change_pct: symbolOneHourTrend.change_pct,
+      mtf_1h_source: symbolOneHourTrend.source,
+      mtf_1h_sample_n: symbolOneHourTrend.sample_n,
+      mtf_1h_error: symbolOneHourTrend.error || null,
       microstructure_ok: microstructure ? microstructure.ok === true : false,
       microstructure_reason: microstructure ? microstructure.reason : null,
       microstructure_errors: microstructure && Array.isArray(microstructure.errors) ? microstructure.errors : [],

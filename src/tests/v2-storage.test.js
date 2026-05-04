@@ -59,6 +59,26 @@ function buildFakeDb(calls) {
             },
           };
         },
+        orderBy(field, direction) {
+          calls.push({ type: "orderBy", field, direction });
+          return {
+            limit(limit) {
+              calls.push({ type: "limit-ordered", limit });
+              return {
+                async get() {
+                  calls.push({ type: "get-list-ordered" });
+                  return {
+                    docs: [{
+                      data() {
+                        return { exit_repair_request_id: "RQRV2__ORDERED", adjudicated_at: "2026-05-04T00:00:00.000Z" };
+                      },
+                    }],
+                  };
+                },
+              };
+            },
+          };
+        },
         limit(limit) {
           calls.push({ type: "limit-no-where", limit });
           return {
@@ -312,6 +332,26 @@ function buildFakeDb(calls) {
   assert.deepStrictEqual(calls[0], { type: "collection", name: "dbjv2__exit_repair_requests_v2" });
   assert.deepStrictEqual(calls[1], { type: "limit-no-where", limit: 3 });
   assert.strictEqual(result.rows.length, 1);
+})();
+
+(async function listDocsCanOrderByAdjudicatedAtForFreshAnalysis() {
+  const calls = [];
+  const db = buildFakeDb(calls);
+  const result = await listV2Docs({
+    db,
+    env: { DONBEOLJA_V2_COLLECTION_PREFIX: "dbjv2__" },
+    collectionKey: "OPENCLAW_OUTCOME_ADJUDICATIONS",
+    limit: 7,
+    orderBy: "adjudicated_at",
+    direction: "desc",
+  });
+  assert.strictEqual(result.collectionName, "dbjv2__openclaw_outcome_adjudications_v2");
+  assert.deepStrictEqual(calls[0], { type: "collection", name: "dbjv2__openclaw_outcome_adjudications_v2" });
+  assert.deepStrictEqual(calls[1], { type: "orderBy", field: "adjudicated_at", direction: "desc" });
+  assert.deepStrictEqual(calls[2], { type: "limit-ordered", limit: 7 });
+  assert.strictEqual(result.orderBy, "adjudicated_at");
+  assert.strictEqual(result.direction, "desc");
+  assert.strictEqual(result.rows[0].exit_repair_request_id, "RQRV2__ORDERED");
 })();
 
 console.log("V2_STORAGE_TEST_OK");

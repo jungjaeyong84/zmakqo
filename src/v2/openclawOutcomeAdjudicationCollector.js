@@ -526,6 +526,7 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
   const marketDataQuality = extractMarketDataQualityFromDecisionEvidence(decisionEvidence);
   const setupGate = extractGateObject(criteria, "setup_gate");
   const triggerGate = extractGateObject(criteria, "trigger_gate");
+  const noTradeGate = extractGateObject(criteria, "no_trade_gate");
   const expectedEdgeGate = extractGateObject(criteria, "expected_edge_gate");
   const regimeProfile = firstObject(
     criteria && criteria.regime_profile,
@@ -564,12 +565,21 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
     btc_1h_trend: upper(firstValue(
       features && (features.btc_1h_trend || features.btc_1h_direction || features.btc_htf_trend),
       canonical && (canonical.btc_1h_trend || canonical.btc_1h_direction || canonical.btc_htf_trend),
+      getPath(marketDataQuality, ["metrics", "btc_1h_trend"]),
+      getPath(marketDataQuality, ["metrics", "btc_1h_direction"]),
     )),
     mtf_1h_direction: upper(firstValue(
       features && (features.mtf_1h_direction || features.htf_1h_direction || features.one_hour_direction),
       canonical && (canonical.mtf_1h_direction || canonical.htf_1h_direction || canonical.one_hour_direction),
+      getPath(marketDataQuality, ["metrics", "mtf_1h_direction"]),
+      getPath(marketDataQuality, ["metrics", "htf_1h_direction"]),
     )),
-    funding_penalty_bps: toNumberOrNull(firstValue(features && features.funding_penalty_bps, expectedEdgeGate.funding_penalty_bps)),
+    funding_penalty_bps: toNumberOrNull(firstValue(
+      features && features.funding_penalty_bps,
+      noTradeGate.funding_penalty_bps,
+      expectedEdgeGate.funding_penalty_bps,
+      getPath(marketDataQuality, ["metrics", "funding_penalty_bps"]),
+    )),
     funding_rate: toNumberOrNull(firstValue(
       features && (features.funding_rate ?? features.funding_rate_current),
       getPath(marketDataQuality, ["metrics", "funding_rate"]),
@@ -577,12 +587,23 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
     )),
     market_quality_score: toNumberOrNull(firstValue(
       features && features.market_quality_score,
+      noTradeGate.market_quality_score,
       getPath(marketDataQuality, ["metrics", "market_quality_score"]),
       getPath(marketDataQuality, ["metrics", "quality_score"]),
       marketDataQuality && marketDataQuality.quality_score,
     )),
-    spread_bps: toNumberOrNull(firstValue(features && features.spread_bps, expectedEdgeGate.spread_bps, getPath(marketDataQuality, ["metrics", "spread_bps"]))),
-    mark_index_gap_bps: toNumberOrNull(firstValue(features && features.mark_index_gap_bps, expectedEdgeGate.mark_index_gap_bps, getPath(marketDataQuality, ["metrics", "mark_index_gap_bps"]))),
+    spread_bps: toNumberOrNull(firstValue(
+      features && features.spread_bps,
+      noTradeGate.spread_bps,
+      expectedEdgeGate.spread_bps,
+      getPath(marketDataQuality, ["metrics", "spread_bps"]),
+    )),
+    mark_index_gap_bps: toNumberOrNull(firstValue(
+      features && features.mark_index_gap_bps,
+      noTradeGate.mark_index_gap_bps,
+      expectedEdgeGate.mark_index_gap_bps,
+      getPath(marketDataQuality, ["metrics", "mark_index_gap_bps"]),
+    )),
     orderbook_imbalance_top5: toNumberOrNull(firstValue(
       features && (features.orderbook_imbalance_top5 ?? features.order_book_imbalance_top5),
       getPath(marketDataQuality, ["metrics", "orderbook_imbalance_top5"]),

@@ -170,16 +170,23 @@ async function listV2Docs({
   db = null,
   collectionKey,
   limit = 50,
+  orderBy = null,
+  direction = "desc",
   env = process.env,
 } = {}) {
   const { collectionName, ref } = resolveV2CollectionRef({ db, collectionKey, env });
   const boundedLimit = Math.max(1, Number(limit) || 1);
-  const snap = await ref.limit(boundedLimit).get();
+  const orderField = trimOrNull(orderBy);
+  const normalizedDirection = String(direction || "desc").trim().toLowerCase() === "asc" ? "asc" : "desc";
+  const query = orderField ? ref.orderBy(orderField, normalizedDirection) : ref;
+  const snap = await query.limit(boundedLimit).get();
   return {
     ok: true,
     collectionKey,
     collectionName,
     limit: boundedLimit,
+    orderBy: orderField || null,
+    direction: orderField ? normalizedDirection : null,
     rows: snap.docs.map((doc) => ({ ...doc.data() })),
   };
 }
