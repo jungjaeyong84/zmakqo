@@ -14,6 +14,11 @@ async function run() {
       status: "ACTIVE_PROTECTED",
       position_side: "SHORT",
       entry_event_id: "ENTRYV2__ETHUSDT__SHORT__8389766168172990000",
+      signal_intent_id: "SIGINTV2__SERVER_NATIVE_ML_AI__ETHUSDT__SHORT__abc",
+      openclaw_decision_id: "OCDV2__CANARY__APPROVE_ENTRY__abc",
+      openclaw_decision_bundle_hash: "bundlehash123",
+      signal_id: "SIG__BINANCEFUT__ETHUSDT__15m__1777521600000__SHORT",
+      signal_doc_id: "SIG__BINANCEFUT__ETHUSDT__15m__1777521600000__SHORT",
       entry_price: 2252.02,
       entry_qty_abs: 0.053,
       leverage: 3,
@@ -53,6 +58,35 @@ async function run() {
   assert.strictEqual(__test.isTradeBeforePositionEntry(ctx, 1777521680000), false);
   assert.strictEqual(ctx.position.meta.tp_p0_done, false);
   assert.strictEqual(ctx.position.meta.simplified_exit_v2_enabled, true);
+  assert.strictEqual(ctx.openclaw_decision_id, "OCDV2__CANARY__APPROVE_ENTRY__abc");
+  assert.strictEqual(ctx.signal_intent_id, "SIGINTV2__SERVER_NATIVE_ML_AI__ETHUSDT__SHORT__abc");
+  assert.strictEqual(ctx.openclaw_decision_bundle_hash, "bundlehash123");
+  assert.strictEqual(ctx.signal_id, "SIG__BINANCEFUT__ETHUSDT__15m__1777521600000__SHORT");
+  assert.strictEqual(ctx.meta.openclaw_decision_id, "OCDV2__CANARY__APPROVE_ENTRY__abc");
+
+  const signalRefs = __test.resolveSignalRefsForExternalFill({
+    positionCtx: ctx,
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    execTf: "15m",
+  });
+  assert.strictEqual(signalRefs.source, "POSITION_CYCLE_LINEAGE");
+  assert.strictEqual(signalRefs.signalId, "SIG__BINANCEFUT__ETHUSDT__15m__1777521600000__SHORT");
+
+  const lineagePatch = __test.buildV2FillLineagePatch({
+    intent: null,
+    positionCtx: ctx,
+    signalRefs,
+    entryContext: {
+      entryEventId: ctx.entryEventId,
+      entrySignalType: ctx.entrySignalType,
+    },
+  });
+  assert.strictEqual(lineagePatch.topLevel.position_cycle_id, "PCY__BINANCEFUT__ETHUSDT__SHORT__abc123");
+  assert.strictEqual(lineagePatch.topLevel.openclaw_decision_id, "OCDV2__CANARY__APPROVE_ENTRY__abc");
+  assert.strictEqual(lineagePatch.topLevel.signal_intent_id, "SIGINTV2__SERVER_NATIVE_ML_AI__ETHUSDT__SHORT__abc");
+  assert.strictEqual(lineagePatch.featuresJson.openclaw_lineage_source, "POSITION_CYCLE");
+  assert.strictEqual(lineagePatch.featuresJson.openclaw_decision_bundle_hash, "bundlehash123");
 
   const event = await __test.resolveExternalExitEvent({
     trade: {

@@ -1948,6 +1948,30 @@ function resolveSignalRefsForExternalFill({
     };
   }
 
+  const positionSignalId = positionCtx ? (
+    positionCtx.signal_id
+    || positionCtx.signalId
+    || (positionCtx.meta && positionCtx.meta.signal_id)
+  ) : null;
+  const positionSignalDocId = positionCtx ? (
+    positionCtx.signal_doc_id
+    || positionCtx.signalDocId
+    || (positionCtx.meta && positionCtx.meta.signal_doc_id)
+  ) : null;
+  const normalizedPositionSignalId = String(positionSignalId || "").trim() || null;
+  const normalizedPositionSignalDocId = String(positionSignalDocId || "").trim() || null;
+  if (normalizedPositionSignalId || normalizedPositionSignalDocId) {
+    return {
+      signalId: normalizedPositionSignalId || normalizedPositionSignalDocId || null,
+      signalDocId: normalizedPositionSignalDocId || normalizedPositionSignalId || null,
+      signalBarCloseMs: Number.isFinite(Number(positionCtx && positionCtx.signal_bar_close_time_utc_ms))
+        ? Number(positionCtx.signal_bar_close_time_utc_ms)
+        : null,
+      signalTf: String((positionCtx && positionCtx.signal_tf) || execTf || "").trim() || null,
+      source: "POSITION_CYCLE_LINEAGE",
+    };
+  }
+
   const parsedEntry = parseEntryEventId(positionCtx && positionCtx.entryEventId);
   const fallbackTf = (parsedEntry && parsedEntry.tf) || String(execTf || "").trim() || "15m";
   const fallbackBarMs = (parsedEntry && Number.isFinite(parsedEntry.barMs)) ? parsedEntry.barMs : null;
@@ -1967,6 +1991,115 @@ function resolveSignalRefsForExternalFill({
     signalBarCloseMs: fallbackBarMs,
     signalTf: fallbackTf,
     source: fallbackDocId ? "POSITION_ENTRY_EVENT" : "UNAVAILABLE",
+  };
+}
+
+function compactObject(value = {}) {
+  const out = {};
+  for (const [key, raw] of Object.entries(value && typeof value === "object" ? value : {})) {
+    if (raw === undefined || raw === null || raw === "") continue;
+    if (Array.isArray(raw) && raw.length === 0) continue;
+    out[key] = raw;
+  }
+  return out;
+}
+
+function objectOrNull(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function clonePlainObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return null;
+  }
+}
+
+function firstTrimmed(...values) {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (text) return text;
+  }
+  return null;
+}
+
+function buildV2FillLineagePatch({
+  intent = null,
+  positionCtx = null,
+  signalRefs = null,
+  entryContext = null,
+} = {}) {
+  const intentRow = objectOrNull(intent) || {};
+  const intentFeatures = objectOrNull(intentRow.features_json) || {};
+  const ctx = objectOrNull(positionCtx) || {};
+  const meta = objectOrNull(ctx.meta) || {};
+  const ref = objectOrNull(signalRefs) || {};
+  const entry = objectOrNull(entryContext) || {};
+
+  const signalId = firstTrimmed(intentRow.signal_id, intentFeatures.signal_id, ref.signalId, ctx.signal_id, meta.signal_id);
+  const signalDocId = firstTrimmed(intentRow.signal_doc_id, intentFeatures.signal_doc_id, ref.signalDocId, ctx.signal_doc_id, meta.signal_doc_id, signalId);
+  const signalIntentId = firstTrimmed(intentRow.signal_intent_id, intentFeatures.signal_intent_id, ctx.signal_intent_id, meta.signal_intent_id);
+  const openclawDecisionId = firstTrimmed(intentRow.openclaw_decision_id, intentFeatures.openclaw_decision_id, ctx.openclaw_decision_id, meta.openclaw_decision_id);
+  const openclawDecisionBundleHash = firstTrimmed(
+    intentRow.openclaw_decision_bundle_hash,
+    intentRow.v2_openclaw_decision_bundle_hash,
+    intentFeatures.openclaw_decision_bundle_hash,
+    intentFeatures.v2_openclaw_decision_bundle_hash,
+    ctx.openclaw_decision_bundle_hash,
+    meta.openclaw_decision_bundle_hash
+  );
+  const positionCycleId = firstTrimmed(ctx.position_cycle_id, ctx.positionCycleId, meta.position_cycle_id);
+  const entryEventId = firstTrimmed(entry.entryEventId, ctx.entryEventId, meta.entry_event_id, intentRow.entry_event_id, intentFeatures.entry_event_id);
+  const entrySignalType = firstTrimmed(entry.entrySignalType, ctx.entrySignalType, meta.entry_signal_type, intentRow.entry_signal_type, intentFeatures.entry_signal_type);
+
+  const signalCriteria = clonePlainObject(intentFeatures.signal_criteria)
+    || clonePlainObject(ctx.signal_criteria)
+    || clonePlainObject(meta.signal_criteria);
+  const canonicalEvidenceSummary = clonePlainObject(intentFeatures.canonical_evidence_summary)
+    || clonePlainObject(ctx.canonical_evidence_summary)
+    || clonePlainObject(meta.canonical_evidence_summary);
+  const marketDataQuality = clonePlainObject(intentFeatures.market_data_quality)
+    || clonePlainObject(ctx.market_data_quality)
+    || clonePlainObject(meta.market_data_quality);
+
+  const lineage = compactObject({
+    signal_id: signalId,
+    signal_doc_id: signalDocId,
+    signal_intent_id: signalIntentId,
+    openclaw_decision_id: openclawDecisionId,
+    openclaw_decision_bundle_hash: openclawDecisionBundleHash,
+    position_cycle_id: positionCycleId,
+    entry_event_id: entryEventId,
+    entry_signal_type: entrySignalType,
+    signal_bar_close_time_utc_ms: Number.isFinite(Number(ref.signalBarCloseMs))
+      ? Number(ref.signalBarCloseMs)
+      : (Number.isFinite(Number(ctx.signal_bar_close_time_utc_ms)) ? Number(ctx.signal_bar_close_time_utc_ms) : null),
+    signal_tf: firstTrimmed(ref.signalTf, ctx.signal_tf),
+    openclaw_lineage_source: openclawDecisionId || signalIntentId
+      ? (intentRow.intent_id ? "INTENT_OR_POSITION_CYCLE" : "POSITION_CYCLE")
+      : null,
+    signal_criteria: signalCriteria,
+    canonical_evidence_summary: canonicalEvidenceSummary,
+    market_data_quality: marketDataQuality,
+  });
+
+  return {
+    topLevel: compactObject({
+      signal_id: signalId,
+      signal_doc_id: signalDocId,
+      signal_intent_id: signalIntentId,
+      openclaw_decision_id: openclawDecisionId,
+      openclaw_decision_bundle_hash: openclawDecisionBundleHash,
+      position_cycle_id: positionCycleId,
+      entry_event_id: entryEventId,
+      entry_signal_type: entrySignalType,
+    }),
+    featuresJson: {
+      ...intentFeatures,
+      ...lineage,
+    },
   };
 }
 
@@ -2833,10 +2966,25 @@ function buildV2PositionEntryContext({
     : entryQtyAbs;
   const leverage = positiveNumberOrNull(cycle.leverage) || positiveNumberOrNull(runtime.leverage) || null;
   const entryPrice = positiveNumberOrNull(cycle.entry_price) || positiveNumberOrNull(proj.entry_price) || null;
+  const signalIntentId = firstTrimmed(cycle.signal_intent_id, proj.signal_intent_id, runtime.signal_intent_id);
+  const openclawDecisionId = firstTrimmed(cycle.openclaw_decision_id, proj.openclaw_decision_id, runtime.openclaw_decision_id);
+  const openclawDecisionBundleHash = firstTrimmed(
+    cycle.openclaw_decision_bundle_hash,
+    cycle.v2_openclaw_decision_bundle_hash,
+    proj.openclaw_decision_bundle_hash,
+    runtime.openclaw_decision_bundle_hash
+  );
+  const signalId = firstTrimmed(cycle.signal_id, proj.signal_id, runtime.signal_id);
+  const signalDocId = firstTrimmed(cycle.signal_doc_id, proj.signal_doc_id, runtime.signal_doc_id, signalId);
   const meta = {
     entry_event_id: entryEventId,
     entry_signal_type: String(cycle.entry_signal_type || "V2_PROTECTED_ENTRY").trim() || "V2_PROTECTED_ENTRY",
     position_cycle_id: positionCycleId,
+    signal_intent_id: signalIntentId,
+    openclaw_decision_id: openclawDecisionId,
+    openclaw_decision_bundle_hash: openclawDecisionBundleHash,
+    signal_id: signalId,
+    signal_doc_id: signalDocId,
     position_side: positionSide,
     entry_qty_base: entryQtyAbs,
     entry_qty_abs: entryQtyAbs,
@@ -2863,9 +3011,15 @@ function buildV2PositionEntryContext({
     entry_qty_base: entryQtyAbs,
     entry_qty_abs: entryQtyAbs,
     leverage,
+    signal_intent_id: signalIntentId,
+    openclaw_decision_id: openclawDecisionId,
+    openclaw_decision_bundle_hash: openclawDecisionBundleHash,
+    signal_id: signalId,
+    signal_doc_id: signalDocId,
     tpP1Done,
     trailActive,
     positionCycleId,
+    position_cycle_id: positionCycleId,
     entryTimeMs,
     entry_time_ms: entryTimeMs,
     state: "ACTIVE",
@@ -2885,6 +3039,11 @@ function buildV2PositionEntryContext({
       entry_time_ms: entryTimeMs,
       entry_price: entryPrice,
       leverage,
+      signal_intent_id: signalIntentId,
+      openclaw_decision_id: openclawDecisionId,
+      openclaw_decision_bundle_hash: openclawDecisionBundleHash,
+      signal_id: signalId,
+      signal_doc_id: signalDocId,
       execution_mode: "LIVE",
       simplified_exit_v2_enabled: true,
       meta,
@@ -2919,6 +3078,9 @@ function buildV2PositionEntryContext({
     exitRulesOverride: null,
     v2_position_cycle_context: {
       position_cycle_id: positionCycleId,
+      signal_intent_id: signalIntentId,
+      openclaw_decision_id: openclawDecisionId,
+      openclaw_decision_bundle_hash: openclawDecisionBundleHash,
       entry_time_ms: entryTimeMs,
       projection_stage: stage || null,
       protection_runtime_id: String(runtime.protection_runtime_id || "").trim() || null,
@@ -4945,6 +5107,13 @@ async function syncMarketTrades({
         }));
       }
 
+      const v2FillLineagePatch = buildV2FillLineagePatch({
+        intent,
+        positionCtx,
+        signalRefs,
+        entryContext,
+      });
+
       const upserted = await upsertExternalFill({
         fillId,
         intentId,
@@ -4981,11 +5150,12 @@ async function syncMarketTrades({
         signalPriceSource: intent ? (intent.signal_price_source || null) : null,
         leverageApplied: Number.isFinite(intentLeverage) && intentLeverage > 0 ? intentLeverage : null,
         leverageReason: intentLeverageReason || null,
-        featuresJson: (intent && intent.features_json && typeof intent.features_json === "object") ? intent.features_json : null,
+        featuresJson: v2FillLineagePatch.featuresJson,
         createdAt: execTimeIso,
         runId: intent ? (intent.run_id || null) : null,
         decisionReason,
         extra: {
+          ...v2FillLineagePatch.topLevel,
           external: true,
           external_source: "BINANCE_USER_TRADES",
           external_trade_id: Number.isFinite(tradeId) ? tradeId : null,
@@ -5794,6 +5964,8 @@ module.exports = {
     isAuthoritativeEntryEventId,
     buildRecentExitHintFromCanonicalTransition,
     pickExitEntryContext,
+    resolveSignalRefsForExternalFill,
+    buildV2FillLineagePatch,
     maybeWriteV2ShadowTp1Transition,
     resolveLegacyCanonicalTp1WriteGate,
     maybeWriteV2ShadowStopExit,

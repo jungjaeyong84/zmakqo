@@ -9,6 +9,7 @@ const {
   groupRealizedExitFills,
 } = require("../v2/openclawOutcomeAdjudicationCollector");
 const { buildOpenClawDailyPerformanceReport } = require("../v2/openclawDailyPerformanceReport");
+const { extractOutcomeContext } = require("../v2/signalCohortReport");
 const collectorScript = require("../../scripts/collect-v2-openclaw-outcome-adjudications");
 
 const entry = {
@@ -246,10 +247,175 @@ const entry = {
   assert.strictEqual(report.outcomes[0].context.edge_cohort, "BUILDABLE_EDGE");
 })();
 
+(function openclawDecisionEvidenceRecoversMissingEntryFeatureLineage() {
+  const entryWithoutFeatures = {
+    ...entry,
+    features_json: null,
+    openclaw_decision_id: "OCDV2__SOL__1",
+    signal_intent_id: "SIGINTV2__SOL__1",
+  };
+  const decisionEvidenceRows = [
+    {
+      openclaw_decision_id: "OCDV2__SOL__1",
+      signal_intent_id: "SIGINTV2__SOL__1",
+      bundle_payload: {
+        signalCriteria: {
+          verdict: "PASS",
+          signal_score: 88,
+          setup_gate: { setup_type: "BREAKOUT_RETEST" },
+          trigger_gate: { trigger_confirmed: true, trigger_type: "RECLAIM", volume_zscore: 1.9 },
+          expected_edge_gate: {
+            expected_net_r_after_cost: 0.42,
+            funding_penalty_bps: 1.2,
+            spread_bps: 3.1,
+          },
+          regime_profile: {
+            structural_regime: "TREND",
+            regime_cohort: "TREND__NORMAL_VOL__ADEQUATE",
+          },
+          expected_edge_model: {
+            edge_cohort: "BUILDABLE_EDGE",
+          },
+        },
+        marketDataQuality: {
+          ok: true,
+          metrics: {
+            mark_index_gap_bps: 0.8,
+            orderbook_imbalance_top5: 0.17,
+            open_interest_delta_pct: 0.04,
+            liquidation_notional_5m_quote: 120000,
+          },
+        },
+      },
+    },
+  ];
+  const result = collectOpenClawOutcomeAdjudicationsFromFills({
+    now: "2026-05-01T03:00:00.000Z",
+    lookbackHours: 24,
+    decisionEvidenceRows,
+    fills: [
+      entryWithoutFeatures,
+      {
+        id: "decision-feature-exit",
+        action: "EXIT_TP_P1_2.5P",
+        symbol: "SOLUSDT",
+        side: "SELL",
+        created_at: "2026-05-01T01:00:00.000Z",
+        external_order_id: "DECISION_FEATURE_EXIT",
+        external_realized_pnl: 1,
+        canonical_transition_events: ["TP1_REACHED"],
+      },
+    ],
+  });
+  const doc = result.adjudications[0];
+  assert.strictEqual(result.decision_evidence_row_n, 1);
+  assert.strictEqual(doc.openclaw_decision_id, "OCDV2__SOL__1");
+  assert.strictEqual(doc.signal_intent_id, "SIGINTV2__SOL__1");
+  assert.strictEqual(doc.evidence.feature_lineage_source, "OPENCLAW_DECISION");
+  assert.strictEqual(doc.evidence.feature_lineage_recovered, true);
+  assert.strictEqual(doc.evidence.setup_type, "BREAKOUT_RETEST");
+  assert.strictEqual(doc.evidence.edge_cohort, "BUILDABLE_EDGE");
+  assert.strictEqual(doc.evidence.signal_score, 88);
+  assert.strictEqual(doc.evidence.expected_net_r_after_cost, 0.42);
+  assert.strictEqual(doc.evidence.funding_penalty_bps, 1.2);
+  assert.strictEqual(doc.evidence.orderbook_imbalance_top5, 0.17);
+  const context = extractOutcomeContext(doc);
+  assert.strictEqual(context.setup_type, "BREAKOUT_RETEST");
+  assert.strictEqual(context.edge_cohort, "BUILDABLE_EDGE");
+  assert.strictEqual(context.signal_score_bucket, "QUALIFIED");
+  assert.strictEqual(context.expected_net_r_after_cost, 0.42);
+  const report = buildOpenClawDailyPerformanceReport({ outcomes: result.adjudications });
+  assert.notStrictEqual(report.cohort_summary.by_setup_type[0].key, "UNKNOWN");
+  assert.strictEqual(report.cohort_summary.by_setup_type[0].expected_edge_sample_n, 1);
+})();
+
+(function positionCycleLineageLinksBrokerSyncFillToDecisionEvidence() {
+  const result = collectOpenClawOutcomeAdjudicationsFromFills({
+    now: "2026-05-01T03:00:00.000Z",
+    lookbackHours: 24,
+    decisionEvidenceRows: [
+      {
+        position_cycle_id: "PCY__BINANCEFUT__SOLUSDT__LONG__abc",
+        entry_event_id: "ENTRYV2__SOLUSDT__LONG__abc",
+        signal_intent_id: "SIGINTV2__SERVER_NATIVE_ML_AI__SOLUSDT__LONG__abc",
+        openclaw_decision_id: "OCDV2__CANARY__APPROVE_ENTRY__abc",
+      },
+      {
+        openclaw_decision_id: "OCDV2__CANARY__APPROVE_ENTRY__abc",
+        signal_intent_id: "SIGINTV2__SERVER_NATIVE_ML_AI__SOLUSDT__LONG__abc",
+        bundle_payload: {
+          signalCriteria: {
+            signal_score: 89,
+            setup_gate: { setup_type: "PULLBACK_RECLAIM", setup_quality_score: 0.82 },
+            trigger_gate: { trigger_confirmed: true, trigger_type: "RECLAIM" },
+            expected_edge_gate: { expected_net_r_after_cost: 0.44 },
+            entry_grade: "CORE",
+          },
+        },
+      },
+    ],
+    fills: [
+      {
+        id: "entry-no-features",
+        action: "SYNC_FILL",
+        symbol: "SOLUSDT",
+        side: "BUY",
+        created_at: "2026-05-01T00:00:00.000Z",
+        signal_doc_id: "SIG__BINANCEFUT__SOLUSDT__15m__0__V2_PROTECTED_ENTRY",
+        entry_event_id: "ENTRYV2__SOLUSDT__LONG__abc",
+        features_json: null,
+      },
+      {
+        id: "exit-linked-by-entry-event",
+        action: "EXIT_TP_FULL_2.5P",
+        symbol: "SOLUSDT",
+        side: "SELL",
+        created_at: "2026-05-01T01:00:00.000Z",
+        external_order_id: "EXIT_ORDER_LINKED_BY_ENTRY_EVENT",
+        external_realized_pnl: 1.1,
+        entry_event_id: "ENTRYV2__SOLUSDT__LONG__abc",
+        canonical_transition_events: ["TP1_FULL_EXIT"],
+      },
+    ],
+  });
+  assert.strictEqual(result.adjudications.length, 1);
+  const doc = result.adjudications[0];
+  const evidence = doc.evidence;
+  assert.strictEqual(doc.openclaw_decision_id, "OCDV2__CANARY__APPROVE_ENTRY__abc");
+  assert.strictEqual(doc.signal_intent_id, "SIGINTV2__SERVER_NATIVE_ML_AI__SOLUSDT__LONG__abc");
+  assert.strictEqual(evidence.openclaw_decision_id, "OCDV2__CANARY__APPROVE_ENTRY__abc");
+  assert.strictEqual(evidence.signal_intent_id, "SIGINTV2__SERVER_NATIVE_ML_AI__SOLUSDT__LONG__abc");
+  assert.ok(evidence.synthetic_openclaw_decision_id && evidence.synthetic_openclaw_decision_id.startsWith("OCDV2__RECONCILED_BROKER_SYNC__"));
+  assert.strictEqual(evidence.feature_lineage_source, "OPENCLAW_DECISION");
+  assert.strictEqual(evidence.setup_type, "PULLBACK_RECLAIM");
+  assert.strictEqual(evidence.entry_grade, "CORE");
+})();
+
+(function missingDecisionEvidenceKeepsExplicitMissingLineageMarker() {
+  const result = collectOpenClawOutcomeAdjudicationsFromFills({
+    now: "2026-05-01T03:00:00.000Z",
+    lookbackHours: 24,
+    fills: [
+      { ...entry, features_json: null },
+      {
+        id: "missing-feature-exit",
+        action: "EXIT_TP_P1_2.5P",
+        symbol: "SOLUSDT",
+        side: "SELL",
+        created_at: "2026-05-01T01:00:00.000Z",
+        external_order_id: "MISSING_FEATURE_EXIT",
+        external_realized_pnl: 1,
+        canonical_transition_events: ["TP1_REACHED"],
+      },
+    ],
+  });
+  assert.strictEqual(result.adjudications[0].evidence.feature_lineage_source, "MISSING");
+})();
+
 (async function collectorScriptFallsBackToFirestoreWhenCacheFileMissing() {
   const db = {
     collection(name) {
-      assert.strictEqual(name, "fills_paper");
+      assert.ok(name === "fills_paper" || String(name).endsWith("openclaw_decision_bundles_v2") || String(name).endsWith("position_cycles_v2"));
       return {
         orderBy(field, direction) {
           assert.strictEqual(field, "created_at");
@@ -259,6 +425,29 @@ const entry = {
               assert.strictEqual(limit, 1500);
               return {
                 async get() {
+                  if (String(name).endsWith("openclaw_decision_bundles_v2")) {
+                    return {
+                      docs: [
+                        {
+                          id: "BUNDLE_1",
+                          data: () => ({
+                            openclaw_decision_id: "OCDV2__FIRESTORE__1",
+                            signal_intent_id: "SIGINTV2__FIRESTORE__1",
+                            bundle_payload: {
+                              signalCriteria: {
+                                signal_score: 84,
+                                setup_gate: { setup_type: "PULLBACK_RECLAIM" },
+                                expected_edge_gate: { expected_net_r_after_cost: 0.31 },
+                              },
+                            },
+                          }),
+                        },
+                      ],
+                    };
+                  }
+                  if (String(name).endsWith("position_cycles_v2")) {
+                    return { docs: [] };
+                  }
                   return {
                     docs: [
                       { id: entry.id, data: () => ({ ...entry }) },
@@ -306,10 +495,11 @@ const entry = {
     const artifact = await collectorScript.main({
       setProcessExitCode: false,
       env: {
-        V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: "CACHE",
-        V2_OPENCLAW_OUTCOME_ADJUDICATION_INPUT_FILE: inputFile,
-        V2_OPENCLAW_OUTCOME_ADJUDICATION_OUTPUT_FILE: outputFile,
-        V2_OPENCLAW_OUTCOME_ADJUDICATION_NOW: "2026-05-01T03:00:00.000Z",
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: "CACHE",
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_DECISION_EVIDENCE_SOURCE: "NONE",
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_INPUT_FILE: inputFile,
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_OUTPUT_FILE: outputFile,
+      V2_OPENCLAW_OUTCOME_ADJUDICATION_NOW: "2026-05-01T03:00:00.000Z",
       },
     });
     assert.strictEqual(artifact.source, "CACHE_FILE");

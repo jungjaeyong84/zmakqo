@@ -39,6 +39,39 @@ function toNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function cloneJson(value) {
+  if (value === null || value === undefined) return null;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return null;
+  }
+}
+
+function getPath(obj, path) {
+  let cursor = obj;
+  for (const key of path) {
+    if (!cursor || typeof cursor !== "object") return null;
+    cursor = cursor[key];
+  }
+  return cursor == null ? null : cursor;
+}
+
+function firstObject(...candidates) {
+  for (const candidate of candidates) {
+    const parsed = parseObject(candidate);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function firstValue(...candidates) {
+  for (const candidate of candidates) {
+    if (candidate !== null && candidate !== undefined && candidate !== "") return candidate;
+  }
+  return null;
+}
+
 function hash12(value) {
   return crypto.createHash("sha1").update(String(value || "")).digest("hex").slice(0, 12);
 }
@@ -227,21 +260,30 @@ function syntheticOpenClawIds({ entry, exitGroup }) {
   const row = asObject(entry && entry.row) || {};
   const symbol = entry.symbol;
   const positionSide = entry.position_side;
+  const exitRows = asArray(exitGroup && exitGroup.fills);
+  const exitEntryEventId = trimOrNull(firstValue(...exitRows.map((fill) => fill && fill.entry_event_id)));
+  const exitPositionCycleId = trimOrNull(firstValue(...exitRows.map((fill) => fill && fill.position_cycle_id)));
+  const exitOpenClawDecisionId = trimOrNull(firstValue(...exitRows.map((fill) => fill && fill.openclaw_decision_id)));
+  const exitSignalIntentId = trimOrNull(firstValue(...exitRows.map((fill) => fill && (fill.signal_intent_id || fill.intent_id))));
   const entryKey = trimOrNull(row.position_cycle_id)
+    || exitPositionCycleId
+    || exitEntryEventId
     || trimOrNull(row.entry_event_id)
     || trimOrNull(row.canonical_exit_chain_key)
     || trimOrNull(row.signal_doc_id)
     || trimOrNull(row.trade_id)
     || trimOrNull(row.id)
     || `${symbol}__${positionSide}__${entry.entry_ms}`;
-  const positionCycleId = trimOrNull(row.position_cycle_id) || buildPositionCycleId({
+  const positionCycleId = trimOrNull(row.position_cycle_id) || exitPositionCycleId || buildPositionCycleId({
     symbol,
     positionSide,
     entryEventId: entryKey,
   });
   const decisionId = trimOrNull(row.openclaw_decision_id)
+    || exitOpenClawDecisionId
     || `OCDV2__RECONCILED_BROKER_SYNC__${hash12(`${entryKey}__${exitGroup.key}`)}`;
   const signalIntentId = trimOrNull(row.signal_intent_id || row.intent_id)
+    || exitSignalIntentId
     || `SIGINTV2__RECONCILED_BROKER_SYNC__${symbol}__${positionSide}__${hash12(entryKey)}`;
   return Object.freeze({
     openclawDecisionId: decisionId,
@@ -251,7 +293,293 @@ function syntheticOpenClawIds({ entry, exitGroup }) {
   });
 }
 
-function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {}) {
+function appendIndexKey(map, key, row) {
+  const text = trimOrNull(key);
+  if (!text || !map || !row) return;
+  if (!map.has(text)) {
+    map.set(text, row);
+    return;
+  }
+  const existing = map.get(text);
+  const existingHasCriteria = !!(
+    existing && (
+      existing.signal_criteria
+      || existing.signalCriteria
+      || (existing.bundle_payload && (existing.bundle_payload.signalCriteria || existing.bundle_payload.signal_criteria))
+      || (existing.payload && (existing.payload.signalCriteria || existing.payload.signal_criteria))
+    )
+  );
+  const nextHasCriteria = !!(
+    row && (
+      row.signal_criteria
+      || row.signalCriteria
+      || (row.bundle_payload && (row.bundle_payload.signalCriteria || row.bundle_payload.signal_criteria))
+      || (row.payload && (row.payload.signalCriteria || row.payload.signal_criteria))
+    )
+  );
+  if (!existingHasCriteria && nextHasCriteria) map.set(text, row);
+}
+
+function extractDecisionPayload(row) {
+  const source = asObject(row) || {};
+  return firstObject(
+    source.bundle_payload,
+    source.payload,
+    source.decision_bundle,
+    source.bundle,
+  ) || source;
+}
+
+function extractSignalCriteriaFromDecisionEvidence(row) {
+  const source = asObject(row) || {};
+  const payload = extractDecisionPayload(source);
+  return firstObject(
+    source.signal_criteria,
+    source.signalCriteria,
+    getPath(source, ["canonical_evidence_summary", "signal_criteria"]),
+    getPath(source, ["canonicalEvidenceSummary", "signal_criteria"]),
+    getPath(source, ["evidence", "signal_criteria"]),
+    getPath(source, ["bundle_payload", "signalCriteria"]),
+    getPath(source, ["bundle_payload", "signal_criteria"]),
+    getPath(source, ["bundle_payload", "canonicalEvidenceSummary", "signal_criteria"]),
+    getPath(source, ["bundle_payload", "canonical_evidence_summary", "signal_criteria"]),
+    getPath(source, ["bundle_payload", "openclawDecision", "canonical_evidence_summary", "signal_criteria"]),
+    getPath(payload, ["signalCriteria"]),
+    getPath(payload, ["signal_criteria"]),
+    getPath(payload, ["canonicalEvidenceSummary", "signal_criteria"]),
+    getPath(payload, ["canonical_evidence_summary", "signal_criteria"]),
+    getPath(payload, ["openclawDecision", "canonical_evidence_summary", "signal_criteria"]),
+  );
+}
+
+function extractCanonicalEvidenceFromDecisionEvidence(row) {
+  const source = asObject(row) || {};
+  const payload = extractDecisionPayload(source);
+  return firstObject(
+    source.canonical_evidence_summary,
+    source.canonicalEvidenceSummary,
+    getPath(source, ["bundle_payload", "canonicalEvidenceSummary"]),
+    getPath(source, ["bundle_payload", "canonical_evidence_summary"]),
+    getPath(source, ["bundle_payload", "openclawDecision", "canonical_evidence_summary"]),
+    getPath(payload, ["canonicalEvidenceSummary"]),
+    getPath(payload, ["canonical_evidence_summary"]),
+    getPath(payload, ["openclawDecision", "canonical_evidence_summary"]),
+  );
+}
+
+function extractSignalIntentFromDecisionEvidence(row) {
+  const source = asObject(row) || {};
+  const payload = extractDecisionPayload(source);
+  return firstObject(
+    source.signal_intent,
+    source.signalIntent,
+    getPath(source, ["bundle_payload", "signalIntent"]),
+    getPath(source, ["bundle_payload", "signal_intent"]),
+    getPath(payload, ["signalIntent"]),
+    getPath(payload, ["signal_intent"]),
+  );
+}
+
+function extractOpenClawDecisionFromDecisionEvidence(row) {
+  const source = asObject(row) || {};
+  const payload = extractDecisionPayload(source);
+  return firstObject(
+    source.openclaw_decision,
+    source.openclawDecision,
+    getPath(source, ["bundle_payload", "openclawDecision"]),
+    getPath(source, ["bundle_payload", "openclaw_decision"]),
+    getPath(payload, ["openclawDecision"]),
+    getPath(payload, ["openclaw_decision"]),
+  );
+}
+
+function resolveRecoveredDecisionIds({ ids, decisionEvidence = null } = {}) {
+  const source = asObject(decisionEvidence) || {};
+  const openclawDecision = extractOpenClawDecisionFromDecisionEvidence(source);
+  const signalIntent = extractSignalIntentFromDecisionEvidence(source);
+  return Object.freeze({
+    openclawDecisionId: trimOrNull(firstValue(
+      source.openclaw_decision_id,
+      openclawDecision && openclawDecision.openclaw_decision_id,
+      ids && ids.openclawDecisionId,
+    )),
+    signalIntentId: trimOrNull(firstValue(
+      source.signal_intent_id,
+      source.intent_id,
+      signalIntent && signalIntent.signal_intent_id,
+      signalIntent && signalIntent.intent_id,
+      ids && ids.signalIntentId,
+    )),
+  });
+}
+
+function extractMarketDataQualityFromDecisionEvidence(row) {
+  const source = asObject(row) || {};
+  const payload = extractDecisionPayload(source);
+  return firstObject(
+    source.market_data_quality,
+    source.marketDataQuality,
+    getPath(source, ["bundle_payload", "marketDataQuality"]),
+    getPath(source, ["bundle_payload", "market_data_quality"]),
+    getPath(payload, ["marketDataQuality"]),
+    getPath(payload, ["market_data_quality"]),
+  );
+}
+
+function buildDecisionEvidenceIndex(rows = []) {
+  const byOpenClawDecisionId = new Map();
+  const bySignalIntentId = new Map();
+  const bySignalLineageId = new Map();
+  const byPositionCycleId = new Map();
+  const byEntryEventId = new Map();
+  for (const row of asArray(rows)) {
+    const source = asObject(row);
+    if (!source) continue;
+    const payload = extractDecisionPayload(source);
+    const signalIntent = extractSignalIntentFromDecisionEvidence(source);
+    const openclawDecision = extractOpenClawDecisionFromDecisionEvidence(source);
+    appendIndexKey(byOpenClawDecisionId, source.openclaw_decision_id, source);
+    appendIndexKey(byOpenClawDecisionId, openclawDecision && openclawDecision.openclaw_decision_id, source);
+    appendIndexKey(bySignalIntentId, source.signal_intent_id, source);
+    appendIndexKey(bySignalIntentId, signalIntent && signalIntent.signal_intent_id, source);
+    appendIndexKey(bySignalLineageId, source.signal_lineage_id, source);
+    appendIndexKey(bySignalLineageId, signalIntent && signalIntent.signal_lineage_id, source);
+    appendIndexKey(bySignalLineageId, signalIntent && signalIntent.signal_id, source);
+    appendIndexKey(byPositionCycleId, source.position_cycle_id, source);
+    appendIndexKey(byEntryEventId, source.entry_event_id, source);
+  }
+  return Object.freeze({
+    byOpenClawDecisionId,
+    bySignalIntentId,
+    bySignalLineageId,
+    byPositionCycleId,
+    byEntryEventId,
+    row_n: asArray(rows).length,
+  });
+}
+
+function resolveDecisionEvidenceForEntry({ entryRow, ids, decisionEvidenceIndex = null } = {}) {
+  const index = decisionEvidenceIndex || {};
+  const features = parseObject(entryRow && entryRow.features_json) || parseObject(entryRow && entryRow.features) || {};
+  const candidates = [
+    trimOrNull(entryRow && entryRow.openclaw_decision_id),
+    trimOrNull(features && features.openclaw_decision_id),
+    trimOrNull(ids && ids.openclawDecisionId),
+  ];
+  for (const id of candidates) {
+    const row = id && index.byOpenClawDecisionId && index.byOpenClawDecisionId.get(id);
+    if (row) return row;
+  }
+  const positionCycleCandidates = [
+    trimOrNull(entryRow && entryRow.position_cycle_id),
+    trimOrNull(features && features.position_cycle_id),
+    trimOrNull(ids && ids.positionCycleId),
+  ];
+  for (const id of positionCycleCandidates) {
+    const row = id && index.byPositionCycleId && index.byPositionCycleId.get(id);
+    const linkedDecisionId = trimOrNull(row && row.openclaw_decision_id);
+    const linkedBundle = linkedDecisionId && index.byOpenClawDecisionId && index.byOpenClawDecisionId.get(linkedDecisionId);
+    if (linkedBundle) return linkedBundle;
+    if (row) return row;
+  }
+  const entryEventCandidates = [
+    trimOrNull(entryRow && entryRow.entry_event_id),
+    trimOrNull(features && features.entry_event_id),
+  ];
+  for (const id of entryEventCandidates) {
+    const row = id && index.byEntryEventId && index.byEntryEventId.get(id);
+    const linkedDecisionId = trimOrNull(row && row.openclaw_decision_id);
+    const linkedBundle = linkedDecisionId && index.byOpenClawDecisionId && index.byOpenClawDecisionId.get(linkedDecisionId);
+    if (linkedBundle) return linkedBundle;
+    if (row) return row;
+  }
+  const signalCandidates = [
+    trimOrNull(entryRow && (entryRow.signal_intent_id || entryRow.intent_id)),
+    trimOrNull(features && (features.signal_intent_id || features.intent_id)),
+    trimOrNull(ids && ids.signalIntentId),
+  ];
+  for (const id of signalCandidates) {
+    const row = id && index.bySignalIntentId && index.bySignalIntentId.get(id);
+    if (row) return row;
+  }
+  const lineageCandidates = [
+    trimOrNull(entryRow && entryRow.signal_doc_id),
+    trimOrNull(entryRow && entryRow.signal_id),
+    trimOrNull(features && (features.signal_doc_id || features.signal_id || features.signal_lineage_id)),
+  ];
+  for (const id of lineageCandidates) {
+    const row = id && index.bySignalLineageId && index.bySignalLineageId.get(id);
+    if (row) return row;
+  }
+  return null;
+}
+
+function extractGateObject(criteria, gateKey) {
+  const gate = criteria && criteria[gateKey];
+  return asObject(gate) || {};
+}
+
+function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = null } = {}) {
+  const features = asObject(entryFeatures) || null;
+  const criteria = extractSignalCriteriaFromDecisionEvidence(decisionEvidence);
+  const canonical = extractCanonicalEvidenceFromDecisionEvidence(decisionEvidence);
+  const marketDataQuality = extractMarketDataQualityFromDecisionEvidence(decisionEvidence);
+  const setupGate = extractGateObject(criteria, "setup_gate");
+  const triggerGate = extractGateObject(criteria, "trigger_gate");
+  const expectedEdgeGate = extractGateObject(criteria, "expected_edge_gate");
+  const regimeProfile = firstObject(
+    criteria && criteria.regime_profile,
+    canonical && canonical.signal_regime_profile,
+    canonical && canonical.regime_profile,
+  ) || {};
+  const expectedEdgeModel = firstObject(
+    criteria && criteria.expected_edge_model,
+    canonical && canonical.expected_edge_model,
+  ) || {};
+  const source = features && criteria
+    ? "ENTRY_FEATURES_AND_OPENCLAW_DECISION"
+    : (criteria || canonical || marketDataQuality ? "OPENCLAW_DECISION" : (features ? "ENTRY_FEATURES" : "MISSING"));
+  const topLevel = {
+    setup_type: upper(firstValue(features && features.setup_type, setupGate.setup_type, canonical && canonical.setup_type)),
+    structural_regime: upper(firstValue(
+      features && (features.structural_regime || features.htf_regime || features.market_regime),
+      regimeProfile.structural_regime,
+      canonical && (canonical.structural_regime || canonical.htf_regime || canonical.market_regime),
+    )),
+    regime_cohort: upper(firstValue(features && features.regime_cohort, regimeProfile.regime_cohort, canonical && canonical.regime_cohort)),
+    edge_cohort: upper(firstValue(features && features.edge_cohort, expectedEdgeModel.edge_cohort, canonical && canonical.edge_cohort)),
+    signal_score: toNumberOrNull(firstValue(features && (features.signal_score ?? features.score_norm), criteria && criteria.signal_score, canonical && canonical.signal_score)),
+    trigger_confirmed: firstValue(features && features.trigger_confirmed, triggerGate.trigger_confirmed) === true,
+    trigger_type: upper(firstValue(features && features.trigger_type, triggerGate.trigger_type, criteria && criteria.trigger_type, canonical && canonical.trigger_type)),
+    volume_zscore: toNumberOrNull(firstValue(features && (features.volume_zscore ?? features.volume_ratio), triggerGate.volume_zscore)),
+    expected_net_r_after_cost: toNumberOrNull(firstValue(
+      features && features.expected_net_r_after_cost,
+      expectedEdgeGate.expected_net_r_after_cost,
+      expectedEdgeModel.net_r_multiple,
+      criteria && criteria.expected_net_r_after_cost,
+      canonical && canonical.expected_net_r_after_cost,
+    )),
+    entry_grade: upper(firstValue(features && features.entry_grade, criteria && criteria.entry_grade, canonical && canonical.entry_grade)),
+    timing_bucket: upper(firstValue(features && features.timing_bucket, criteria && criteria.timing_bucket, canonical && canonical.timing_bucket)),
+    funding_penalty_bps: toNumberOrNull(firstValue(features && features.funding_penalty_bps, expectedEdgeGate.funding_penalty_bps)),
+    spread_bps: toNumberOrNull(firstValue(features && features.spread_bps, expectedEdgeGate.spread_bps, getPath(marketDataQuality, ["metrics", "spread_bps"]))),
+    mark_index_gap_bps: toNumberOrNull(firstValue(features && features.mark_index_gap_bps, expectedEdgeGate.mark_index_gap_bps, getPath(marketDataQuality, ["metrics", "mark_index_gap_bps"]))),
+    orderbook_imbalance_top5: toNumberOrNull(firstValue(features && features.orderbook_imbalance_top5, getPath(marketDataQuality, ["metrics", "orderbook_imbalance_top5"]))),
+    open_interest_delta_pct: toNumberOrNull(firstValue(features && features.open_interest_delta_pct, getPath(marketDataQuality, ["metrics", "open_interest_delta_pct"]))),
+    liquidation_notional_5m_quote: toNumberOrNull(firstValue(features && features.liquidation_notional_5m_quote, getPath(marketDataQuality, ["metrics", "liquidation_notional_5m_quote"]))),
+  };
+  return Object.freeze({
+    ...topLevel,
+    entry_features: features ? cloneJson(features) : null,
+    signal_criteria: criteria ? cloneJson(criteria) : null,
+    canonical_evidence_summary: canonical ? cloneJson(canonical) : null,
+    market_data_quality: marketDataQuality ? cloneJson(marketDataQuality) : null,
+    feature_lineage_source: source,
+    feature_lineage_recovered: source === "OPENCLAW_DECISION" || source === "ENTRY_FEATURES_AND_OPENCLAW_DECISION",
+  });
+}
+
+function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null, decisionEvidenceIndex = null } = {}) {
   if (!exitGroup || !entry) return null;
   const ids = syntheticOpenClawIds({ entry, exitGroup });
   const at = isoFromMs(exitGroup.latest_ms) || isoFromMs(nowMs) || new Date().toISOString();
@@ -268,14 +596,17 @@ function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {})
   }
   const entryRow = asObject(entry.row) || {};
   const entryFeatures = parseObject(entryRow.features_json) || parseObject(entryRow.features) || null;
+  const decisionEvidence = resolveDecisionEvidenceForEntry({ entryRow, ids, decisionEvidenceIndex });
+  const resolvedIds = resolveRecoveredDecisionIds({ ids, decisionEvidence });
+  const featureEvidence = buildEntryFeatureEvidence({ entryFeatures, decisionEvidence });
   const fillIds = exitGroup.fills.map((row) => trimOrNull(row.id || row.trade_id)).filter(Boolean);
   const exitActions = exitGroup.fills.map(normalizeAction).filter(Boolean);
   const exitReasons = Array.from(new Set(exitGroup.fills.map((row) => upper(row && (
     row.status_reason || row.reason || row.decision_reason || row.lineage_gap_reason
   ))).filter(Boolean)));
   return Object.freeze(buildOpenClawOutcomeAdjudicationDoc({
-    openclawDecisionId: ids.openclawDecisionId,
-    signalIntentId: ids.signalIntentId,
+    openclawDecisionId: resolvedIds.openclawDecisionId,
+    signalIntentId: resolvedIds.signalIntentId,
     positionCycleId: ids.positionCycleId,
     adjudicationLabel: label,
     adjudicationFamily: family,
@@ -295,18 +626,7 @@ function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {})
       lineage_gap: exitGroup.lineage_gap === true,
       symbol: entry.symbol,
       side: entry.position_side,
-      setup_type: entryFeatures && upper(entryFeatures.setup_type),
-      structural_regime: entryFeatures && upper(entryFeatures.structural_regime || entryFeatures.htf_regime || entryFeatures.market_regime),
-      regime_cohort: entryFeatures && upper(entryFeatures.regime_cohort),
-      edge_cohort: entryFeatures && upper(entryFeatures.edge_cohort),
-      signal_score: entryFeatures && toNumberOrNull(entryFeatures.signal_score ?? entryFeatures.score_norm),
-      trigger_confirmed: entryFeatures && entryFeatures.trigger_confirmed === true,
-      trigger_type: entryFeatures && upper(entryFeatures.trigger_type),
-      volume_zscore: entryFeatures && toNumberOrNull(entryFeatures.volume_zscore ?? entryFeatures.volume_ratio),
-      expected_net_r_after_cost: entryFeatures && toNumberOrNull(entryFeatures.expected_net_r_after_cost),
-      entry_grade: entryFeatures && upper(entryFeatures.entry_grade),
-      timing_bucket: entryFeatures && upper(entryFeatures.timing_bucket),
-      entry_features: entryFeatures,
+      ...featureEvidence,
       exit_side: exitGroup.side,
       entry_fill_id: trimOrNull(entryRow.id),
       entry_trade_id: trimOrNull(entryRow.trade_id),
@@ -322,8 +642,10 @@ function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {})
       exit_canonical_transition_events: Array.from(new Set(exitGroup.fills.flatMap((row) => asArray(row.canonical_transition_events).map(upper).filter(Boolean)))),
       source_fill_count: exitGroup.fills.length,
       realized_pnl_source: "BINANCE_USER_TRADES_REALIZED_PNL",
-      openclaw_decision_id: ids.openclawDecisionId,
-      signal_intent_id: ids.signalIntentId,
+      openclaw_decision_id: resolvedIds.openclawDecisionId,
+      signal_intent_id: resolvedIds.signalIntentId,
+      synthetic_openclaw_decision_id: resolvedIds.openclawDecisionId === ids.openclawDecisionId ? null : ids.openclawDecisionId,
+      synthetic_signal_intent_id: resolvedIds.signalIntentId === ids.signalIntentId ? null : ids.signalIntentId,
       position_cycle_id: ids.positionCycleId,
     },
   }));
@@ -331,6 +653,7 @@ function buildAdjudicationFromExitGroup({ exitGroup, entry, nowMs = null } = {})
 
 function collectOpenClawOutcomeAdjudicationsFromFills({
   fills = [],
+  decisionEvidenceRows = [],
   lookbackHours = 72,
   now = null,
 } = {}) {
@@ -342,6 +665,7 @@ function collectOpenClawOutcomeAdjudicationsFromFills({
     return lookbackMs <= 0 || ms >= nowMs - lookbackMs;
   });
   const entryIndex = buildProtectedEntryLineageIndex(rows);
+  const decisionEvidenceIndex = buildDecisionEvidenceIndex(decisionEvidenceRows);
   const exitGroups = groupRealizedExitFills(rows);
   const docs = [];
   const skipped = [];
@@ -358,7 +682,7 @@ function collectOpenClawOutcomeAdjudicationsFromFills({
       }));
       continue;
     }
-    docs.push(buildAdjudicationFromExitGroup({ exitGroup: group, entry, nowMs }));
+    docs.push(buildAdjudicationFromExitGroup({ exitGroup: group, entry, nowMs, decisionEvidenceIndex }));
   }
   return Object.freeze({
     ok: true,
@@ -367,6 +691,7 @@ function collectOpenClawOutcomeAdjudicationsFromFills({
     lookback_hours: Number(lookbackHours),
     scanned_fill_n: rows.length,
     protected_entry_fill_n: Array.from(entryIndex.values()).reduce((sum, list) => sum + list.length, 0),
+    decision_evidence_row_n: decisionEvidenceIndex.row_n,
     realized_exit_group_n: exitGroups.length,
     adjudication_n: docs.length,
     skipped_n: skipped.length,
@@ -380,6 +705,8 @@ module.exports = {
   isRealizedExitFill,
   groupRealizedExitFills,
   buildProtectedEntryLineageIndex,
+  buildDecisionEvidenceIndex,
+  buildEntryFeatureEvidence,
   matchExitGroupToEntry,
   buildAdjudicationFromExitGroup,
   collectOpenClawOutcomeAdjudicationsFromFills,
@@ -390,6 +717,10 @@ module.exports = {
     asObject,
     parseObject,
     toNumberOrNull,
+    cloneJson,
+    getPath,
+    firstObject,
+    firstValue,
     hash12,
     timestampMs,
     normalizeAction,
@@ -401,5 +732,12 @@ module.exports = {
     positionSideFromEntrySide,
     oppositeExitSideForPosition,
     syntheticOpenClawIds,
+    extractSignalCriteriaFromDecisionEvidence,
+    extractCanonicalEvidenceFromDecisionEvidence,
+    extractOpenClawDecisionFromDecisionEvidence,
+    extractSignalIntentFromDecisionEvidence,
+    extractMarketDataQualityFromDecisionEvidence,
+    resolveRecoveredDecisionIds,
+    resolveDecisionEvidenceForEntry,
   },
 };
