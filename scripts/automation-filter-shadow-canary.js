@@ -39,6 +39,7 @@ const REPORT_LATEST_MD = path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.m
 const REPORT_LATEST_JSON = path.join(OPS_DAILY_DIR, "filter_shadow_canary_latest.json");
 const SYSTEM_OPS_LATEST_JSON = path.join(OPS_DAILY_DIR, "system_ops_check_latest.json");
 const GOLDEN_FIXTURE_VERSION = 2;
+const AI_SHADOW_EXPECTATION_MODE_ENV = "FILTER_SHADOW_CANARY_AI_EXPECTATION_MODE";
 
 function parseIsoMs(value) {
   const ms = Date.parse(String(value || ""));
@@ -86,6 +87,22 @@ function normalizeBool(value, fallback = false) {
   const raw = String(value).trim().toLowerCase();
   if (!raw) return !!fallback;
   return ["1", "true", "yes", "y", "on"].includes(raw);
+}
+
+function resolveAiShadowExpectationMode(env = process.env) {
+  const rawOverride = String(env && env[AI_SHADOW_EXPECTATION_MODE_ENV] || "").trim().toUpperCase();
+  if (["CURRENT", "HISTORICAL_DROP"].includes(rawOverride)) return rawOverride;
+
+  const signalAiEnabled = normalizeBool(env && env.SIGNAL_AI_ENABLED, false);
+  const mlLiveServingArmed = normalizeBool(env && env.ML_LIVE_SERVING_ARMED, false);
+  const agentApplyEnabled = normalizeBool(env && env.OPENCLAW_AGENT_APPLY_ENABLED, false);
+  const decisionGateMode = String(env && env.DONBEOLJA_V2_OPENCLAW_DECISION_GATE_MODE || "").trim().toUpperCase();
+  const codexOnlyNarrative = String(env && env.OPENCLAW_NARRATIVE_PROVIDER_MODE || "").trim().toUpperCase() === "CODEX_CLI_ONLY";
+  const paidAiDisabled = normalizeBool(env && env.DONBEOLJA_PAID_AI_API_DISABLED, false);
+
+  if (!signalAiEnabled || codexOnlyNarrative || paidAiDisabled) return "CURRENT";
+  if (!mlLiveServingArmed && !agentApplyEnabled && decisionGateMode !== "APPLY") return "CURRENT";
+  return "HISTORICAL_DROP";
 }
 
 function approxEqual(a, b, tol = FLOAT_TOL) {
@@ -852,28 +869,41 @@ async function ensureGoldenFixture() {
   return fixture;
 }
 
-function buildShadowAiCase(row) {
+function buildShadowAiCase(row, opts = {}) {
   const market = String(row.symbol_or_pair_id || row.symbol || row.market || "").trim().toUpperCase() || null;
-  return {
-    id: `shadow_ai__${String(row.signal_id || row.id || "").replace(/[^A-Za-z0-9_\-]/g, "_")}`,
-    stage: "AI",
-    source: "shadow",
-    sourceDoc: { id: row.id || null, signal_id: row.signal_id || null, market, reason: row.drop_reason_code || row.reason || null, created_at: row.created_at || null },
-    input: {
-      qtyFraction: Number(row.qty_pct),
-      features: (() => {
-        const features = cloneJson(row.features_json || {});
-        delete features.ai_signal;
-        return features;
-      })(),
-    },
-    expected: {
+  const features = (() => {
+    const copied = cloneJson(row.features_json || {});
+    delete copied.ai_signal;
+    return copied;
+  })();
+  const input = {
+    qtyFraction: Number(row.qty_pct),
+    features,
+  };
+  const expectationMode = resolveAiShadowExpectationMode(opts.env || process.env);
+  const expected = expectationMode === "CURRENT"
+    ? summarizeStageResult("AI", engineTest.resolveAiMissingPolicy(input))
+    : {
       drop: true,
       reason: String(row.drop_reason_code || row.reason || "") || null,
       qtyFraction: null,
       aiPolicy: row.features_json && row.features_json.ai_missing_policy ? String(row.features_json.ai_missing_policy) : null,
       aiFallback: row.features_json && row.features_json.ai_missing_fallback ? String(row.features_json.ai_missing_fallback) : null,
+    };
+  return {
+    id: `shadow_ai__${String(row.signal_id || row.id || "").replace(/[^A-Za-z0-9_\-]/g, "_")}`,
+    stage: "AI",
+    source: "shadow",
+    sourceDoc: {
+      id: row.id || null,
+      signal_id: row.signal_id || null,
+      market,
+      reason: row.drop_reason_code || row.reason || null,
+      created_at: row.created_at || null,
+      ai_expectation_mode: expectationMode,
     },
+    input,
+    expected,
   };
 }
 
@@ -1266,6 +1296,8 @@ module.exports = {
     compareCanaryOutcome,
     parseIsoMs,
     resolveCreatedMs,
+    resolveAiShadowExpectationMode,
+    buildShadowAiCase,
     inferAiBiasCfgFromFeatures,
     inferEvCfgFromFeatures,
     inferQualityCfgFromRow,

@@ -44,6 +44,63 @@ function run() {
   assert.strictEqual(aiCfg.strongOppositeScore, 0.3);
   assert.strictEqual(aiCfg.strongOppositeConf, 0.66);
 
+  assert.strictEqual(__test.resolveAiShadowExpectationMode({
+    SIGNAL_AI_ENABLED: "0",
+    ML_LIVE_SERVING_ARMED: "0",
+    OPENCLAW_AGENT_APPLY_ENABLED: "0",
+    DONBEOLJA_V2_OPENCLAW_DECISION_GATE_MODE: "BLOCK_ONLY",
+    OPENCLAW_NARRATIVE_PROVIDER_MODE: "CODEX_CLI_ONLY",
+    DONBEOLJA_PAID_AI_API_DISABLED: "1",
+  }), "CURRENT");
+  assert.strictEqual(__test.resolveAiShadowExpectationMode({
+    SIGNAL_AI_ENABLED: "1",
+    ML_LIVE_SERVING_ARMED: "1",
+    OPENCLAW_AGENT_APPLY_ENABLED: "1",
+    DONBEOLJA_V2_OPENCLAW_DECISION_GATE_MODE: "APPLY",
+  }), "HISTORICAL_DROP");
+
+  const advisoryAiCase = __test.buildShadowAiCase({
+    id: "drop1",
+    signal_id: "SIG__BINANCEFUT__ETHUSDT__15m__1__LONG",
+    symbol: "ETHUSDT",
+    qty_pct: 1,
+    drop_reason_code: "AI_BLOCK",
+    features_json: { ai_signal: { verdict: "BLOCK" } },
+  }, {
+    env: {
+      SIGNAL_AI_ENABLED: "0",
+      ML_LIVE_SERVING_ARMED: "0",
+      OPENCLAW_AGENT_APPLY_ENABLED: "0",
+      DONBEOLJA_V2_OPENCLAW_DECISION_GATE_MODE: "BLOCK_ONLY",
+      OPENCLAW_NARRATIVE_PROVIDER_MODE: "CODEX_CLI_ONLY",
+      DONBEOLJA_PAID_AI_API_DISABLED: "1",
+    },
+  });
+  assert.strictEqual(advisoryAiCase.sourceDoc.ai_expectation_mode, "CURRENT");
+  assert.strictEqual(advisoryAiCase.expected.drop, false);
+  assert.strictEqual(advisoryAiCase.expected.reason, null);
+  assert.strictEqual(advisoryAiCase.expected.qtyFraction, 1);
+  assert.strictEqual(advisoryAiCase.input.features.ai_signal, undefined);
+
+  const strictAiCase = __test.buildShadowAiCase({
+    id: "drop2",
+    signal_id: "SIG__BINANCEFUT__ETHUSDT__15m__2__LONG",
+    symbol: "ETHUSDT",
+    qty_pct: 1,
+    drop_reason_code: "AI_BLOCK",
+    features_json: { ai_missing_policy: "BLOCK" },
+  }, {
+    env: {
+      SIGNAL_AI_ENABLED: "1",
+      ML_LIVE_SERVING_ARMED: "1",
+      OPENCLAW_AGENT_APPLY_ENABLED: "1",
+      DONBEOLJA_V2_OPENCLAW_DECISION_GATE_MODE: "APPLY",
+    },
+  });
+  assert.strictEqual(strictAiCase.sourceDoc.ai_expectation_mode, "HISTORICAL_DROP");
+  assert.strictEqual(strictAiCase.expected.drop, true);
+  assert.strictEqual(strictAiCase.expected.reason, "AI_BLOCK");
+
   const waitCfg = __test.inferWaitCfgFromFeatures({
     wait_one_bar_same_dir_streak_min: 2,
     wait_one_bar_chase_ratio_min: 1.6,
