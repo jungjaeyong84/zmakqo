@@ -9,6 +9,7 @@ const { persistOpenClawExecutionAudit } = require("./openclawExecutionAuditLedge
 const { validateOpenClawExecutionPermit } = require("./openclawExecutionPermit");
 const { queryV2DocsByField, resolveV2CollectionRef } = require("./storage");
 const { evaluateV2SameDirectionCooldown, extractCurrentSignalContext } = require("./sameDirectionCooldown");
+const { evaluateV2OpenClawDecisionGate } = require("./openclawDecisionGate");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -528,6 +529,7 @@ async function runV2ProductionEntryRoute({
   riskGovernorSurface = null,
   findRecentSameDirectionExecutionsFn = findRecentSameDirectionExecutions,
   evaluateSameDirectionCooldown = evaluateV2SameDirectionCooldown,
+  evaluateOpenClawDecisionGate = evaluateV2OpenClawDecisionGate,
   routeEntryIntentFromOpenClaw = resolveEntryIntentFromOpenClaw,
   now = () => new Date().toISOString(),
   placementRetryId = "R0",
@@ -543,6 +545,7 @@ async function runV2ProductionEntryRoute({
   if (typeof finalizeExecutionClaim !== "function") throw new Error("FINALIZE_EXECUTION_CLAIM_REQUIRED");
   if (typeof findRecentSameDirectionExecutionsFn !== "function") throw new Error("FIND_RECENT_SAME_DIRECTION_EXECUTIONS_REQUIRED");
   if (typeof evaluateSameDirectionCooldown !== "function") throw new Error("EVALUATE_SAME_DIRECTION_COOLDOWN_REQUIRED");
+  if (typeof evaluateOpenClawDecisionGate !== "function") throw new Error("EVALUATE_OPENCLAW_DECISION_GATE_REQUIRED");
 
   const runtimeConfig = resolveV2RuntimeConfig(env);
   const runtime = summarizeRuntimeConfig(runtimeConfig);
@@ -740,6 +743,45 @@ async function runV2ProductionEntryRoute({
     });
   }
 
+  let openclawDecisionGate = null;
+  try {
+    openclawDecisionGate = evaluateOpenClawDecisionGate({
+      env,
+      bundle,
+      routedDecision,
+      riskGovernorSurface,
+    });
+  } catch (error) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_OPENCLAW_DECISION_GATE_FAILED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
+      openclawDecisionGate: Object.freeze({
+        ok: false,
+        reason: "OPENCLAW_DECISION_GATE_THROWN",
+        error_message: trimOrNull(error && error.message) || String(error),
+      }),
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+  if (!openclawDecisionGate || openclawDecisionGate.ok !== true) {
+    return buildRouteBlock("V2_PRODUCTION_ENTRY_OPENCLAW_DECISION_GATE_BLOCKED", {
+      runtime,
+      routedDecision,
+      kernelResult: null,
+      executionPermitValidation,
+      decisionBundleReplayGuard,
+      sameDirectionCooldownGuard,
+      openclawDecisionGate,
+      openclawExecutionAudit: preExecutionAudit,
+      auditLedgerResult: null,
+    });
+  }
+
   let executionClaim = null;
   try {
     executionClaim = await claimExecution({
@@ -759,6 +801,7 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      openclawDecisionGate,
       executionClaim: Object.freeze({
         ok: false,
         claimed: false,
@@ -778,6 +821,7 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      openclawDecisionGate,
       executionClaim,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
@@ -791,6 +835,7 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      openclawDecisionGate,
       executionClaim,
       openclawExecutionAudit: preExecutionAudit,
       auditLedgerResult: null,
@@ -850,6 +895,7 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      openclawDecisionGate,
       executionClaim,
       claimFinalizeResult,
       openclawExecutionAudit: preExecutionAudit,
@@ -880,6 +926,7 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      openclawDecisionGate,
       executionClaim,
       claimFinalizeResult,
       openclawExecutionAudit: preExecutionAudit,
@@ -936,6 +983,7 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      openclawDecisionGate,
       executionClaim,
       claimFinalizeResult,
       openclawExecutionAudit,
@@ -975,6 +1023,7 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      openclawDecisionGate,
       executionClaim,
       claimFinalizeResult,
       openclawExecutionAudit,
@@ -991,6 +1040,7 @@ async function runV2ProductionEntryRoute({
       executionPermitValidation,
       decisionBundleReplayGuard,
       sameDirectionCooldownGuard,
+      openclawDecisionGate,
       executionClaim,
       claimFinalizeResult,
       openclawExecutionAudit,
@@ -1006,6 +1056,7 @@ async function runV2ProductionEntryRoute({
     executionPermitValidation,
     decisionBundleReplayGuard,
     sameDirectionCooldownGuard,
+    openclawDecisionGate,
     executionClaim,
     claimFinalizeResult,
     openclawExecutionAudit,

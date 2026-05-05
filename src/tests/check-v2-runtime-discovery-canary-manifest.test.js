@@ -49,6 +49,8 @@ function serviceJson({
                 Object.freeze({ name: "DONBEOLJA_V2_SHADOW_ALERT_DELIVERY_ENABLED", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_ENABLED", value: "1" }),
                 Object.freeze({ name: "DONBEOLJA_V2_SAME_DIRECTION_COOLDOWN_BARS", value: "8" }),
+                Object.freeze({ name: "DONBEOLJA_V2_OPENCLAW_DECISION_GATE_ENABLED", value: "1" }),
+                Object.freeze({ name: "DONBEOLJA_V2_OPENCLAW_DECISION_GATE_MODE", value: "BLOCK_ONLY" }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", value: discoveryEnabled }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS", value: symbols }),
                 Object.freeze({ name: "DONBEOLJA_V2_DISCOVERY_CANARY_MAX_SYMBOL_COUNT", value: maxSymbolCount }),

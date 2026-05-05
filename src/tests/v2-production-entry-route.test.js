@@ -524,6 +524,46 @@ async function sameDirectionCooldownBlocksDuplicateTriggerBeforeKernel() {
   assert.deepStrictEqual(calls.map((row) => row.type), ["replay_guard"]);
 }
 
+async function openclawDecisionGateBlocksBeforeExecutionClaimAndKernel() {
+  const calls = [];
+  const bundle = buildBundle();
+  const permit = buildPermitForBundle(bundle);
+  const result = await runV2ProductionEntryRoute({
+    env: buildEnv(),
+    bundle,
+    ...permit,
+    findExistingBundleExecution: noReplayGuard(calls),
+    findRecentSameDirectionExecutionsFn: noSameDirectionCooldown(),
+    evaluateOpenClawDecisionGate: () => {
+      calls.push({ type: "openclaw_decision_gate" });
+      return {
+        ok: false,
+        reason: "V2_OPENCLAW_DECISION_GATE_BLOCKED",
+        blockers: ["OPENCLAW_DECISION_GATE:BTC_1H_TREND_ALT_LONG:BTC_1H_TREND_DOWN_ALT_LONG_RISK"],
+        no_sizing_mutation: true,
+      };
+    },
+    claimExecution: async () => {
+      calls.push({ type: "execution_claim" });
+      return { ok: true, claimed: true };
+    },
+    runEntryKernel: async () => {
+      calls.push({ type: "kernel" });
+      return buildKernelResultFromBundle(bundle);
+    },
+    persistExecutionAudit: async () => {
+      calls.push({ type: "persist" });
+      return { ok: true };
+    },
+    now: () => "2026-04-21T06:00:00.000Z",
+  });
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.reason, "V2_PRODUCTION_ENTRY_OPENCLAW_DECISION_GATE_BLOCKED");
+  assert.strictEqual(result.openclawDecisionGate.reason, "V2_OPENCLAW_DECISION_GATE_BLOCKED");
+  assert.strictEqual(result.openclawDecisionGate.no_sizing_mutation, true);
+  assert.deepStrictEqual(calls.map((row) => row.type), ["replay_guard", "openclaw_decision_gate"]);
+}
+
 async function sameDirectionCooldownAllowsChangedTrigger() {
   const calls = [];
   const currentBarMs = Date.parse("2026-04-21T06:15:00.000Z");
@@ -822,6 +862,7 @@ async function main() {
   await alreadyClaimedPermitBlocksBeforeKernel();
   await executionClaimIsFinalizedAroundAuditLedger();
   await sameDirectionCooldownBlocksDuplicateTriggerBeforeKernel();
+  await openclawDecisionGateBlocksBeforeExecutionClaimAndKernel();
   await sameDirectionCooldownAllowsChangedTrigger();
   await kernelBlockDoesNotBecomeRouteSuccess();
   await postFillProtectionFailureIsClassifiedCritical();
