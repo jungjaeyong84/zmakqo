@@ -49,6 +49,7 @@ async function run() {
   assert.ok(qtyMismatchDocs[0].exit_repair_request_id.startsWith("RQRV2__TP1_ORDER_QTY_MISMATCH__"));
   assert.strictEqual(qtyMismatchDocs[0].issue_code, "TP1_ORDER_QTY_MISMATCH");
   assert.strictEqual(qtyMismatchDocs[0].requested_action, "ENSURE_TP1_ORDER");
+  assert.strictEqual(qtyMismatchDocs[0].detail.tp1_qty_abs, 1070);
   assert.strictEqual(qtyMismatchDocs[0].detail.expected_tp_qty_base, 1070);
   assert.strictEqual(qtyMismatchDocs[0].detail.actual_tp_qty_base, 107);
 

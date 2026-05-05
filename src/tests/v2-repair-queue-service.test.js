@@ -6,6 +6,7 @@ const { reduceCanonicalExit } = require("../v2/canonicalExitReducer");
 const { evaluateTrailRefresh } = require("../v2/tickExitWorker");
 const { evaluateActiveExitWatchdog } = require("../v2/watchdog");
 const { buildRepairQueueBatch } = require("../v2/repairQueueService");
+const repairQueueWorker = require("../v2/repairQueueWorker");
 
 function buildPreTp1Base() {
   return buildV2EntryBootstrap({
@@ -241,6 +242,85 @@ function buildTrailActiveBase() {
   assert.strictEqual(batch.delegated_n, 0);
   assert.strictEqual(batch.skipped_n, 1);
   assert.strictEqual(batch.skipped_repairs[0].skip_reason, "TERMINAL_STAGE_REPAIR_FORBIDDEN");
+})();
+
+(function repairQueueSynthesizesContextFromLatestReadModelForActiveTp1QtyRepair() {
+  const cycleId = "PCY__BINANCEFUT__AXSUSDT__LONG__fb5f089124db";
+  const repairRequest = {
+    exit_repair_request_id: "RQRV2__TP1_ORDER_QTY_MISMATCH__TEST",
+    position_cycle_id: cycleId,
+    stage: "PRE_TP1",
+    issue_code: "TP1_ORDER_QTY_MISMATCH",
+    requested_action: "ENSURE_TP1_ORDER",
+    created_at: "2026-05-05T01:40:00.000Z",
+    detail: {
+      symbol: "AXSUSDT",
+      position_side: "LONG",
+      tp1_qty_abs: 90,
+      expected_tp_qty_base: 90,
+      actual_tp_qty_base: 9,
+      tp1_order_id: "TP1__BAD_QTY",
+      sl_order_id: "SL__OK",
+    },
+  };
+  const latestReadModel = {
+    exchange: "BINANCEFUT",
+    symbol: "AXSUSDT",
+    after_snapshot: {
+      exchange: "BINANCEFUT",
+      symbol_or_pair_id: "AXSUSDT",
+      state: "ACTIVE",
+      position_state: "COMMIT",
+      qty_base: 90,
+      avg_price: 1.33,
+      position_side: "LONG",
+      meta: {
+        position_cycle_id: cycleId,
+        entry_event_id: "ENTRYV2__AXSUSDT__LONG__14875942957",
+        entry_order_id: "14875942957",
+        entry_fill_group_id: "FILLGROUPV2__AXSUSDT__LONG__14875942957",
+        signal_intent_id: "SIGINTV2__AXS",
+        openclaw_decision_id: "OCDV2__AXS",
+        entry_price: 1.33,
+        entry_qty_abs: 90,
+        initial_stop_price: 1.322685,
+        entry_r_distance: 0.007315,
+        final_effective_stop: 1.323,
+        tp1_target_price: 1.341,
+        tp1_target_qty_abs: 90,
+        native_protection_stop_order_id: "SL__OK",
+        native_protection_stop_price: 1.323,
+        native_protection_tp_order_id: "TP1__BAD_QTY",
+        native_protection_tp_price: 1.341,
+        native_protection_tp_qty_base: 9,
+        native_protection_refresh_status: "OK",
+        native_protection_health_status: "HEALTHY",
+      },
+    },
+  };
+  const synthesized = repairQueueWorker.__test.synthesizeRepairContextsFromLatestReadModels({
+    repairRequests: [repairRequest],
+    latestReadModelsBySymbol: {
+      AXSUSDT: latestReadModel,
+    },
+  });
+  assert.strictEqual(synthesized.synthesized_position_cycle_n, 1);
+  assert.strictEqual(synthesized.synthesized_projection_n, 1);
+  assert.strictEqual(synthesized.synthesized_protection_runtime_n, 1);
+
+  const batch = buildRepairQueueBatch({
+    repairRequests: [repairRequest],
+    projections: synthesized.projections,
+    protectionRuntimes: synthesized.protection_runtimes,
+    positionCycles: synthesized.position_cycles,
+    placementStartedAt: "2026-05-05T01:41:00.000Z",
+  });
+  assert.strictEqual(batch.delegated_n, 1);
+  assert.strictEqual(batch.skipped_n, 0);
+  assert.strictEqual(batch.delegated_repairs[0].envelope.tp1_repair_request.requested_tp1_qty_abs, 90);
+  assert.strictEqual(batch.delegated_repairs[0].envelope.tp1_repair_request.requested_tp1_price, 1.341);
+  assert.strictEqual(batch.delegated_repairs[0].envelope.writer_delegation.command.symbol, "AXSUSDT");
+  assert.strictEqual(batch.delegated_repairs[0].envelope.writer_delegation.command.quantity_abs, 90);
 })();
 
 console.log("V2_REPAIR_QUEUE_SERVICE_TEST_OK");

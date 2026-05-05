@@ -510,6 +510,7 @@ function finalizeRefreshStopPlacement({
       ? (normalizedSlAck.trigger_price != null ? normalizedSlAck.trigger_price : Number(request.requested_stop_price))
       : null,
     nativeTp1Price: runtime.native_tp1_price,
+    nativeTp1QtyAbs: runtime.native_tp1_qty_abs,
     nativeRefreshStatus: stopPlaced ? "OK" : "ERROR",
     lastRefreshAt: finishedAt,
     lastGapMs: gapMs,
@@ -572,6 +573,7 @@ function finalizeTp1RepairPlacement({
     nativeTp1Price: tp1Placed
       ? (normalizedTp1Ack.trigger_price != null ? normalizedTp1Ack.trigger_price : Number(request.requested_tp1_price))
       : null,
+    nativeTp1QtyAbs: tp1Placed ? Number(request.requested_tp1_qty_abs) : null,
     nativeRefreshStatus,
     lastRefreshAt: finishedAt,
     lastGapMs: runtime.last_gap_ms,
@@ -677,6 +679,9 @@ function finalizeFullProtectionRepairPlacement({
       : null,
     nativeTp1Price: tp1Placed
       ? (normalizedTp1Ack.trigger_price != null ? normalizedTp1Ack.trigger_price : Number(request.requested_tp1_price || runtime.native_tp1_price))
+      : null,
+    nativeTp1QtyAbs: tp1Placed
+      ? Number(request.requested_tp1_qty_abs || runtime.native_tp1_qty_abs)
       : null,
     nativeRefreshStatus: slPlaced ? "OK" : "ERROR",
     lastRefreshAt: finishedAt,

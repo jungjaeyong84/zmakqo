@@ -47,6 +47,8 @@ function buildFakeDb(writes) {
     },
     protectionWriteResult: {
       runtimeDoc: {
+        protection_runtime_id: "PRTV2__PCY__5",
+        position_cycle_id: "PCY__5",
         native_stop_price: 2020,
       },
       writeDecision: {
@@ -63,8 +65,12 @@ function buildFakeDb(writes) {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.ledger_doc.execution_status, "COMPLETED_SUCCESS");
   assert.strictEqual(result.persisted.collectionName, "dbjv2__repair_execution_ledger_v2");
-  assert.strictEqual(writes.length, 1);
+  assert.strictEqual(result.persisted_runtime.collectionName, "dbjv2__protection_runtime_v2");
+  assert.strictEqual(result.persisted_repair_request.collectionName, "dbjv2__exit_repair_requests_v2");
+  assert.strictEqual(writes.length, 3);
   assert.strictEqual(writes[0].payload.execution_status, "COMPLETED_SUCCESS");
+  assert.strictEqual(writes[1].payload.protection_runtime_id, "PRTV2__PCY__5");
+  assert.strictEqual(writes[2].payload.status, "COMPLETED_SUCCESS");
 })();
 
 console.log("V2_REPAIR_EXECUTION_COMPLETION_TEST_OK");

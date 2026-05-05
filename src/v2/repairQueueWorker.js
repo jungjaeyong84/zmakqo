@@ -94,6 +94,19 @@ function dedupeSymbolsFromPositionCycles(positionCycles = []) {
   return out;
 }
 
+function dedupeSymbolsFromRepairRequests(repairRequests = []) {
+  const out = [];
+  const seen = new Set();
+  for (const row of Array.isArray(repairRequests) ? repairRequests : []) {
+    const detail = row && row.detail && typeof row.detail === "object" ? row.detail : {};
+    const symbol = upper(row && (row.symbol || detail.symbol));
+    if (!symbol || seen.has(symbol)) continue;
+    seen.add(symbol);
+    out.push(symbol);
+  }
+  return out;
+}
+
 function buildPositionReadModelLatestId(exchange, symbol) {
   return `POSITION_READ_MODEL_LATEST__${upper(exchange) || "UNKNOWN"}__${upper(symbol) || "UNKNOWN"}`;
 }
@@ -183,6 +196,245 @@ async function fetchLatestReadModelsForPositionCycles({
     exchange,
     symbol_n: symbols.length,
     rows_by_symbol: Object.freeze(rowsBySymbol),
+  });
+}
+
+async function fetchLatestReadModelsForRepairRequests({
+  db = null,
+  env = process.env,
+  repairRequests = [],
+} = {}) {
+  const firestore = db || getFirestore();
+  if (!firestore || typeof firestore.collection !== "function") {
+    return Object.freeze({ ok: false, rows_by_symbol: Object.freeze({}), error_code: "FIRESTORE_REQUIRED" });
+  }
+  const exchange = upper(env && env.DONBEOLJA_V2_REPAIR_QUEUE_EXCHANGE) || "BINANCEFUT";
+  const symbols = dedupeSymbolsFromRepairRequests(repairRequests);
+  const docs = await Promise.all(symbols.map(async (symbol) => {
+    const snap = await firestore.collection("position_read_model_latest")
+      .doc(buildPositionReadModelLatestId(exchange, symbol))
+      .get()
+      .catch(() => null);
+    return snap && snap.exists ? (snap.data() || null) : null;
+  }));
+  const rowsBySymbol = {};
+  symbols.forEach((symbol, index) => {
+    if (docs[index]) rowsBySymbol[symbol] = docs[index];
+  });
+  return Object.freeze({
+    ok: true,
+    exchange,
+    symbol_n: symbols.length,
+    rows_by_symbol: Object.freeze(rowsBySymbol),
+  });
+}
+
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function readSnapshotMeta(snapshot = null) {
+  if (!snapshot || typeof snapshot !== "object") return {};
+  return snapshot.meta && typeof snapshot.meta === "object" ? snapshot.meta : {};
+}
+
+function readMetaValue(snapshot = null, key) {
+  const meta = readSnapshotMeta(snapshot);
+  if (meta[key] !== undefined) return meta[key];
+  const dotted = `meta.${key}`;
+  return snapshot && snapshot[dotted] !== undefined ? snapshot[dotted] : undefined;
+}
+
+function hasPositionCycle(rows = [], positionCycleId) {
+  const cycleId = trimOrNull(positionCycleId);
+  return !!cycleId && (Array.isArray(rows) ? rows : []).some((row) => trimOrNull(row && row.position_cycle_id) === cycleId);
+}
+
+function hasProjection(rows = [], positionCycleId) {
+  const cycleId = trimOrNull(positionCycleId);
+  return !!cycleId && (Array.isArray(rows) ? rows : []).some((row) => trimOrNull(row && row.position_cycle_id) === cycleId);
+}
+
+function hasProtectionRuntime(rows = [], positionCycleId) {
+  const cycleId = trimOrNull(positionCycleId);
+  return !!cycleId && (Array.isArray(rows) ? rows : []).some((row) => trimOrNull(row && row.position_cycle_id) === cycleId);
+}
+
+function resolveRepairDetail(row = {}) {
+  return row && row.detail && typeof row.detail === "object" ? row.detail : {};
+}
+
+function resolveSyntheticTp1Quantity({ repairRequest, snapshot } = {}) {
+  const detail = resolveRepairDetail(repairRequest);
+  return toNumberOrNull(detail.tp1_qty_abs)
+    ?? toNumberOrNull(detail.expected_tp_qty_base)
+    ?? toNumberOrNull(detail.expected_tp1_qty_abs)
+    ?? toNumberOrNull(readMetaValue(snapshot, "tp1_target_qty_abs"))
+    ?? toNumberOrNull(readMetaValue(snapshot, "tp_p1_target_qty_abs"))
+    ?? toNumberOrNull(readMetaValue(snapshot, "entry_qty_abs"))
+    ?? toNumberOrNull(readMetaValue(snapshot, "entry_qty_base"))
+    ?? readModelQtyAbs(snapshot);
+}
+
+function resolveSyntheticTp1Price({ repairRequest, snapshot } = {}) {
+  const detail = resolveRepairDetail(repairRequest);
+  return toNumberOrNull(detail.tp1_target_price)
+    ?? toNumberOrNull(detail.tp1_trigger_price)
+    ?? toNumberOrNull(readMetaValue(snapshot, "tp1_target_price"))
+    ?? toNumberOrNull(readMetaValue(snapshot, "tp_p1_target_price"))
+    ?? toNumberOrNull(readMetaValue(snapshot, "native_protection_tp_price"));
+}
+
+function resolveSyntheticStopPrice({ repairRequest, snapshot } = {}) {
+  const detail = resolveRepairDetail(repairRequest);
+  return toNumberOrNull(detail.final_effective_stop)
+    ?? toNumberOrNull(detail.chosen_stop_price)
+    ?? toNumberOrNull(detail.native_stop_price)
+    ?? toNumberOrNull(readMetaValue(snapshot, "final_effective_stop"))
+    ?? toNumberOrNull(readMetaValue(snapshot, "native_protection_stop_price"))
+    ?? toNumberOrNull(readMetaValue(snapshot, "initial_stop_price"));
+}
+
+function buildSyntheticRepairContextFromLatestReadModel({
+  repairRequest = null,
+  latestReadModel = null,
+  recordedAt = null,
+} = {}) {
+  const snapshot = resolveLatestReadModelSnapshot(latestReadModel);
+  if (!snapshot || typeof snapshot !== "object") return null;
+  if (isLatestReadModelActiveCandidate(latestReadModel) !== true) return null;
+  const requestedCycleId = trimOrNull(repairRequest && repairRequest.position_cycle_id);
+  const latestCycleId = resolveReadModelPositionCycleId(latestReadModel, snapshot);
+  if (!requestedCycleId || requestedCycleId !== latestCycleId) return null;
+  const detail = resolveRepairDetail(repairRequest);
+  const symbol = upper(detail.symbol || snapshot.symbol || snapshot.symbol_or_pair_id || latestReadModel.symbol);
+  const exchange = upper(snapshot.exchange || latestReadModel.exchange) || "BINANCEFUT";
+  const positionSide = upper(detail.position_side || snapshot.position_side || readMetaValue(snapshot, "position_side"));
+  const entryQtyAbs = toNumberOrNull(readMetaValue(snapshot, "entry_qty_abs"))
+    ?? toNumberOrNull(readMetaValue(snapshot, "entry_qty_base"))
+    ?? readModelQtyAbs(snapshot);
+  const entryPrice = toNumberOrNull(readMetaValue(snapshot, "entry_price"))
+    ?? toNumberOrNull(snapshot.avg_price)
+    ?? toNumberOrNull(readMetaValue(snapshot, "avg_price"));
+  const tp1QtyAbs = resolveSyntheticTp1Quantity({ repairRequest, snapshot });
+  const tp1TargetPrice = resolveSyntheticTp1Price({ repairRequest, snapshot });
+  const stopPrice = resolveSyntheticStopPrice({ repairRequest, snapshot });
+  if (!symbol || !positionSide || !(entryQtyAbs > 0) || !(entryPrice > 0)) return null;
+  const at = trimOrNull(recordedAt) || new Date().toISOString();
+  const protectionRuntimeId = trimOrNull(readMetaValue(snapshot, "protection_runtime_id"))
+    || `PRTV2__${requestedCycleId}`;
+  const positionCycle = Object.freeze({
+    position_cycle_id: requestedCycleId,
+    exchange,
+    symbol,
+    position_side: positionSide,
+    entry_event_id: trimOrNull(readMetaValue(snapshot, "entry_event_id")),
+    entry_order_id: trimOrNull(readMetaValue(snapshot, "entry_order_id")),
+    entry_fill_group_id: trimOrNull(readMetaValue(snapshot, "entry_fill_group_id")),
+    entry_intent_id: trimOrNull(readMetaValue(snapshot, "entry_intent_id")),
+    signal_intent_id: trimOrNull(readMetaValue(snapshot, "signal_intent_id")),
+    openclaw_decision_id: trimOrNull(readMetaValue(snapshot, "openclaw_decision_id")),
+    entry_price: entryPrice,
+    entry_qty_abs: entryQtyAbs,
+    status: "ACTIVE_PROTECTED",
+    protection_runtime_id: protectionRuntimeId,
+    protection_activated_at: trimOrNull(readMetaValue(snapshot, "protection_activated_at")),
+    native_protection_health_status: "HEALTHY",
+    synthetic_repair_context: true,
+    synthetic_repair_context_source: "POSITION_READ_MODEL_LATEST",
+    synthetic_repair_context_at: at,
+  });
+  const projection = Object.freeze({
+    exit_runtime_projection_id: `ERPv2__${requestedCycleId}`,
+    position_cycle_id: requestedCycleId,
+    stage: upper(repairRequest && repairRequest.stage) || "PRE_TP1",
+    tp1_done: readMetaValue(snapshot, "tp_p1_done") === true,
+    trail_active: readMetaValue(snapshot, "trail_active") === true,
+    entry_qty_abs: entryQtyAbs,
+    tp1_target_price: tp1TargetPrice,
+    tp1_target_qty_abs: tp1QtyAbs,
+    tp1_filled_qty_abs: 0,
+    runner_remaining_qty_abs: entryQtyAbs,
+    runner_floor_stop: null,
+    trail_stop_by_r: null,
+    chosen_stop_source: "SL",
+    chosen_stop_price: stopPrice,
+    final_effective_stop: stopPrice,
+    native_stop_price: toNumberOrNull(readMetaValue(snapshot, "native_protection_stop_price")) ?? stopPrice,
+    health_status: "HEALTHY",
+    initial_stop_price: toNumberOrNull(readMetaValue(snapshot, "initial_stop_price")) ?? stopPrice,
+    entry_r_distance: toNumberOrNull(readMetaValue(snapshot, "entry_r_distance")),
+    synthetic_repair_context: true,
+    synthetic_repair_context_source: "POSITION_READ_MODEL_LATEST",
+    synthetic_repair_context_at: at,
+  });
+  const protectionRuntime = Object.freeze({
+    protection_runtime_id: protectionRuntimeId,
+    position_cycle_id: requestedCycleId,
+    exchange,
+    symbol,
+    position_side: positionSide,
+    sl_order_id: trimOrNull(readMetaValue(snapshot, "native_protection_stop_order_id")) || trimOrNull(detail.sl_order_id),
+    sl_order_status: trimOrNull(readMetaValue(snapshot, "native_protection_stop_order_id")) || trimOrNull(detail.sl_order_id) ? "PLACED" : null,
+    tp1_order_id: trimOrNull(readMetaValue(snapshot, "native_protection_tp_order_id")) || trimOrNull(detail.tp1_order_id),
+    tp1_order_status: trimOrNull(readMetaValue(snapshot, "native_protection_tp_order_id")) || trimOrNull(detail.tp1_order_id) ? "PLACED" : null,
+    native_stop_price: toNumberOrNull(readMetaValue(snapshot, "native_protection_stop_price")) ?? stopPrice,
+    native_tp1_price: toNumberOrNull(readMetaValue(snapshot, "native_protection_tp_price")) ?? tp1TargetPrice,
+    native_refresh_status: upper(readMetaValue(snapshot, "native_protection_refresh_status")) || "OK",
+    health_status: upper(readMetaValue(snapshot, "native_protection_health_status")) || "HEALTHY",
+    last_refresh_at: trimOrNull(readMetaValue(snapshot, "external_synced_at")) || at,
+    synthetic_repair_context: true,
+    synthetic_repair_context_source: "POSITION_READ_MODEL_LATEST",
+    synthetic_repair_context_at: at,
+  });
+  return Object.freeze({
+    positionCycle,
+    projection,
+    protectionRuntime,
+  });
+}
+
+function synthesizeRepairContextsFromLatestReadModels({
+  repairRequests = [],
+  positionCycles = [],
+  projections = [],
+  protectionRuntimes = [],
+  latestReadModelsBySymbol = {},
+  recordedAt = null,
+} = {}) {
+  const syntheticPositionCycles = [];
+  const syntheticProjections = [];
+  const syntheticProtectionRuntimes = [];
+  for (const repairRequest of Array.isArray(repairRequests) ? repairRequests : []) {
+    const detail = resolveRepairDetail(repairRequest);
+    const symbol = upper(detail.symbol || repairRequest.symbol);
+    const latestDoc = symbol ? latestReadModelsBySymbol[symbol] : null;
+    const context = buildSyntheticRepairContextFromLatestReadModel({
+      repairRequest,
+      latestReadModel: latestDoc,
+      recordedAt,
+    });
+    if (!context) continue;
+    const cycleId = context.positionCycle.position_cycle_id;
+    if (!hasPositionCycle(positionCycles, cycleId) && !hasPositionCycle(syntheticPositionCycles, cycleId)) {
+      syntheticPositionCycles.push(context.positionCycle);
+    }
+    if (!hasProjection(projections, cycleId) && !hasProjection(syntheticProjections, cycleId)) {
+      syntheticProjections.push(context.projection);
+    }
+    if (!hasProtectionRuntime(protectionRuntimes, cycleId) && !hasProtectionRuntime(syntheticProtectionRuntimes, cycleId)) {
+      syntheticProtectionRuntimes.push(context.protectionRuntime);
+    }
+  }
+  return Object.freeze({
+    position_cycles: Object.freeze(syntheticPositionCycles),
+    projections: Object.freeze(syntheticProjections),
+    protection_runtimes: Object.freeze(syntheticProtectionRuntimes),
+    synthesized_position_cycle_n: syntheticPositionCycles.length,
+    synthesized_projection_n: syntheticProjections.length,
+    synthesized_protection_runtime_n: syntheticProtectionRuntimes.length,
   });
 }
 
@@ -311,12 +563,38 @@ async function fetchRepairQueueInputs({
     docId: `PRTV2__${positionCycleId}`,
   })));
   const positionCycles = Object.freeze(positionCycleResults.filter((row) => row.ok === true).map((row) => row.doc));
+  const projections = Object.freeze(projectionResults.filter((row) => row.ok === true).map((row) => row.doc));
+  const protectionRuntimes = Object.freeze(protectionRuntimeResults.filter((row) => row.ok === true).map((row) => row.doc));
+  const latestByRepairRequest = await fetchLatestReadModelsForRepairRequests({
+    db,
+    env,
+    repairRequests,
+  });
+  const synthesizedContexts = synthesizeRepairContextsFromLatestReadModels({
+    repairRequests,
+    positionCycles,
+    projections,
+    protectionRuntimes,
+    latestReadModelsBySymbol: latestByRepairRequest.rows_by_symbol || {},
+  });
+  const hydratedPositionCycles = Object.freeze([
+    ...positionCycles,
+    ...synthesizedContexts.position_cycles,
+  ]);
+  const hydratedProjections = Object.freeze([
+    ...projections,
+    ...synthesizedContexts.projections,
+  ]);
+  const hydratedProtectionRuntimes = Object.freeze([
+    ...protectionRuntimes,
+    ...synthesizedContexts.protection_runtimes,
+  ]);
   const latestFilter = pendingOnly
     ? await filterRepairRequestsByLatestActiveReadModel({
         db,
         env,
         repairRequests,
-        positionCycles,
+        positionCycles: hydratedPositionCycles,
       })
     : Object.freeze({
         required: false,
@@ -337,24 +615,21 @@ async function fetchRepairQueueInputs({
     latest_active_read_model_skipped_n: latestFilter.skipped_repairs.length,
     latest_active_read_model_skipped_repairs: Object.freeze(latestFilter.skipped_repairs.slice()),
     repair_requests: Object.freeze(selectedRepairRequests.slice()),
-    position_cycles: Object.freeze(positionCycles.filter((row) => selectedCycleIdSet.has(trimOrNull(row && row.position_cycle_id)))),
-    projections: Object.freeze(projectionResults.filter((row) => row.ok === true && selectedCycleIdSet.has(trimOrNull(row.doc && row.doc.position_cycle_id))).map((row) => row.doc)),
-    protection_runtimes: Object.freeze(protectionRuntimeResults.filter((row) => row.ok === true && selectedCycleIdSet.has(trimOrNull(row.doc && row.doc.position_cycle_id))).map((row) => row.doc)),
+    synthetic_repair_context_n: synthesizedContexts.synthesized_position_cycle_n,
+    synthetic_projection_context_n: synthesizedContexts.synthesized_projection_n,
+    synthetic_protection_runtime_context_n: synthesizedContexts.synthesized_protection_runtime_n,
+    position_cycles: Object.freeze(hydratedPositionCycles.filter((row) => selectedCycleIdSet.has(trimOrNull(row && row.position_cycle_id)))),
+    projections: Object.freeze(hydratedProjections.filter((row) => selectedCycleIdSet.has(trimOrNull(row && row.position_cycle_id)))),
+    protection_runtimes: Object.freeze(hydratedProtectionRuntimes.filter((row) => selectedCycleIdSet.has(trimOrNull(row && row.position_cycle_id)))),
     requested_position_cycle_ids: Object.freeze(selectedCycleIds),
     missing_position_cycle_ids: Object.freeze(
-      positionCycleResults.filter((row) => row.ok !== true && selectedCycleIdSet.has(trimOrNull(row.docId))).map((row) => trimOrNull(row.docId)).filter(Boolean)
+      selectedCycleIds.filter((cycleId) => !hasPositionCycle(hydratedPositionCycles, cycleId))
     ),
     missing_projection_cycle_ids: Object.freeze(
-      projectionResults.filter((row) => {
-        const cycleId = trimOrNull(row.docId && row.docId.replace(/^ERPv2__/, ""));
-        return row.ok !== true && selectedCycleIdSet.has(cycleId);
-      }).map((row) => trimOrNull(row.docId && row.docId.replace(/^ERPv2__/, ""))).filter(Boolean)
+      selectedCycleIds.filter((cycleId) => !hasProjection(hydratedProjections, cycleId))
     ),
     missing_protection_runtime_cycle_ids: Object.freeze(
-      protectionRuntimeResults.filter((row) => {
-        const cycleId = trimOrNull(row.docId && row.docId.replace(/^PRTV2__/, ""));
-        return row.ok !== true && selectedCycleIdSet.has(cycleId);
-      }).map((row) => trimOrNull(row.docId && row.docId.replace(/^PRTV2__/, ""))).filter(Boolean)
+      selectedCycleIds.filter((cycleId) => !hasProtectionRuntime(hydratedProtectionRuntimes, cycleId))
     ),
   });
 }
@@ -433,5 +708,11 @@ module.exports = {
     isPendingRepairRequest,
     sortRepairRequestsByCreatedAt,
     dedupePositionCycleIds,
+    dedupeSymbolsFromRepairRequests,
+    toNumberOrNull,
+    readSnapshotMeta,
+    readMetaValue,
+    buildSyntheticRepairContextFromLatestReadModel,
+    synthesizeRepairContextsFromLatestReadModels,
   },
 };

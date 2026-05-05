@@ -53,6 +53,7 @@ function validateResolvedLiveCfg(liveCfg = null) {
 }
 
 async function resolveBinanceRepairLiveCfg({
+  env = process.env,
   positionCycle,
   resolveLiveFuturesConfigFn = resolveDefaultLiveFuturesConfig,
 } = {}) {
@@ -63,6 +64,7 @@ async function resolveBinanceRepairLiveCfg({
   const liveCfg = await resolveLiveFuturesConfigFn({
     exchange: context.exchange,
     symbol: context.symbol,
+    env,
   });
   return validateResolvedLiveCfg(liveCfg);
 }

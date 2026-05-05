@@ -619,6 +619,8 @@ function buildWatchdogV2RepairRequests(row = {}) {
         position_side: upper(row.position_side),
         qty_base: toNum(row.qty_base),
         avg_price: toNum(row.avg_price),
+        tp1_qty_abs: toNum(row.expected_tp_qty_base),
+        tp1_target_price: toNum(row.tp1_target_price),
         expected_tp_qty_base: toNum(row.expected_tp_qty_base),
         expected_tp1_remaining_ratio: toNum(row.expected_tp1_remaining_ratio),
         actual_tp_qty_base: toNum(row.actual_tp_qty_base),

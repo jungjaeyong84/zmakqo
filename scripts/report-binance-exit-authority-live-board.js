@@ -11,6 +11,7 @@ const { resolveExitRulesForPosition } = require("../src/engine/signalEngine");
 const { resolveTp1RemainingContractQtyRatio } = require("../src/utils/exitQtyContract");
 const { resolveCanonicalPositionExitStage } = require("../src/services/positionStateMachine");
 const { isFullTpExitRatio } = require("../src/v2/exitPolicy");
+const { getV2Doc } = require("../src/v2/storage");
 
 function nowIso() {
   return new Date().toISOString();
@@ -69,11 +70,23 @@ function isSimplifiedExitV2Position(row = {}) {
     || row.simplified_exit_v2_enabled === true;
 }
 
-function resolveAuthorityNativeProtection(meta = {}, trailSnapshot = {}) {
+function resolveAuthorityNativeProtection(meta = {}, trailSnapshot = {}, protectionRuntime = {}) {
+  const runtimeStopPrice = toNum(protectionRuntime.native_stop_price);
+  const runtimeStopOrderId = String(protectionRuntime.sl_order_id || "").trim() || null;
+  const runtimeRefreshStatus = upper(protectionRuntime.native_refresh_status);
   const metaStopPrice = toNum(meta.native_protection_stop_price);
   const metaStopOrderId = String(meta.native_protection_stop_order_id || "").trim() || null;
   const snapshotStopPrice = toNum(trailSnapshot.native_stop_price);
   const snapshotStopOrderId = String(trailSnapshot.native_stop_order_id || "").trim() || null;
+  const preferRuntimeNative = Boolean(runtimeStopOrderId) || Number.isFinite(runtimeStopPrice);
+  if (preferRuntimeNative) {
+    return {
+      stopPrice: runtimeStopPrice,
+      stopOrderId: runtimeStopOrderId,
+      refreshStatus: runtimeRefreshStatus || upper(meta.native_protection_refresh_status) || upper(trailSnapshot.native_refresh_status),
+      source: "V2_PROTECTION_RUNTIME",
+    };
+  }
   const preferMetaNative = Boolean(metaStopOrderId) || Number.isFinite(metaStopPrice);
   if (preferMetaNative) {
     return {
@@ -110,26 +123,35 @@ function resolveStage(row = {}, options = {}) {
 function summarizeLivePosition(row = {}, context = {}) {
   const meta = row && typeof row.meta === "object" ? row.meta : {};
   const simplifiedExitV2Enabled = isSimplifiedExitV2Position(row);
-  const observation = context.observationsBySymbol && context.observationsBySymbol[upper(row.symbol_or_pair_id || row.symbol)] || null;
+  const symbol = upper(row.symbol_or_pair_id || row.symbol);
+  const cycleId = String(meta.position_cycle_id || "").trim();
+  const protectionRuntime = cycleId && context.protectionRuntimeByCycleId
+    ? (context.protectionRuntimeByCycleId[cycleId] || {})
+    : {};
+  const observation = context.observationsBySymbol && context.observationsBySymbol[symbol] || null;
   const trailSnapshot = resolveTrailObservationSnapshot({ meta, observation });
-  const nativeProtection = resolveAuthorityNativeProtection(meta, trailSnapshot);
+  const nativeProtection = resolveAuthorityNativeProtection(meta, trailSnapshot, protectionRuntime);
   const rules = resolveExitRulesForPosition({
     exchange: upper(row.exchange) || "BINANCEFUT",
     position: row,
   });
   const fullTpExit = isFullTpExitRatio(rules.TP_P1_QTY);
-  const symbol = upper(row.symbol_or_pair_id || row.symbol);
   const qtyBase = toNum(row.qty_base, 0) || 0;
   const tp0Done = meta.tp_p0_done === true;
   const tp1Done = meta.tp_p1_done === true;
   const trailActive = meta.trail_active === true;
   const expectedTp1RemainingRatio = resolveTp1RemainingContractQtyRatio(rules, 1);
-  const actualTp1Ratio = toNum(meta.native_protection_tp_qty_ratio);
-  const actualTp1Base = toNum(meta.native_protection_tp_qty_base);
+  const runtimeTp1Base = toNum(protectionRuntime.native_tp1_qty_abs);
+  const actualTp1Base = Number.isFinite(runtimeTp1Base)
+    ? runtimeTp1Base
+    : toNum(meta.native_protection_tp_qty_base);
   const expectedTp1Base = qtyBase > 0 ? Number((qtyBase * expectedTp1RemainingRatio).toFixed(8)) : null;
+  const actualTp1Ratio = Number.isFinite(actualTp1Base) && qtyBase > 0
+    ? actualTp1Base / qtyBase
+    : toNum(meta.native_protection_tp_qty_ratio);
   const stopPrice = nativeProtection.stopPrice;
   const stopOrderId = nativeProtection.stopOrderId;
-  const tpOrderId = meta.native_protection_tp_order_id || null;
+  const tpOrderId = protectionRuntime.tp1_order_id || meta.native_protection_tp_order_id || null;
   const refreshStatus = nativeProtection.refreshStatus;
   const stageInfo = resolveStage(row, { fullTpExit });
   const stage = stageInfo.stage;
@@ -240,6 +262,8 @@ function summarizeLivePosition(row = {}, context = {}) {
     current_guaranteed_profit_pct: currentGuaranteedProfitPct,
     native_refresh_status: refreshStatus || null,
     native_protection_state_source: nativeProtection.source,
+    protection_runtime_id: protectionRuntime.protection_runtime_id || null,
+    protection_runtime_write_reason: protectionRuntime.runtime_write_reason || null,
     trail_observation_source: trailSnapshot.trail_source || null,
     trail_observation_runtime_eval_at_ms: toNum(trailSnapshot.runtime_eval_at_ms),
     updated_at: row.updated_at || null,
@@ -257,6 +281,7 @@ function buildLiveAuthorityBoard({ positions = [], artifacts = {} } = {}) {
     trailFloorLiveSymbols: buildSymbolSet(artifacts.trailFloorLiveRows || []),
     duplicationLiveSymbols: buildSymbolSet(artifacts.duplicationLiveRows || []),
     observationsBySymbol: artifacts.observationsBySymbol || {},
+    protectionRuntimeByCycleId: artifacts.protectionRuntimeByCycleId || {},
   };
   const rows = (Array.isArray(positions) ? positions : [])
     .filter((row) => isActivePosition(row))
@@ -286,6 +311,23 @@ function buildLiveAuthorityBoard({ positions = [], artifacts = {} } = {}) {
     actionable_live_issue_rows: actionableRows,
     artifact_only_live_issue_rows: artifactOnlyRows,
   };
+}
+
+async function fetchProtectionRuntimeByCycleId({ positions = [] } = {}) {
+  const out = {};
+  for (const row of Array.isArray(positions) ? positions : []) {
+    if (!isActivePosition(row)) continue;
+    const meta = row && typeof row.meta === "object" ? row.meta : {};
+    const cycleId = String(meta.position_cycle_id || "").trim();
+    if (!cycleId || out[cycleId]) continue;
+    const docId = `PRTV2__${cycleId}`;
+    const fetched = await getV2Doc({
+      collectionKey: "PROTECTION_RUNTIME",
+      docId,
+    }).catch(() => null);
+    if (fetched && fetched.ok === true && fetched.doc) out[cycleId] = fetched.doc;
+  }
+  return out;
 }
 
 function buildMarkdown(report = {}) {
@@ -323,12 +365,14 @@ async function main() {
     if (!symbol) continue;
     observationsBySymbol[symbol] = await getPositionRuntimeObservation({ exchange: "BINANCEFUT", symbol }).catch(() => null);
   }
+  const protectionRuntimeByCycleId = await fetchProtectionRuntimeByCycleId({ positions });
   const artifacts = {
     nativeGapRows: readJsonIfExists(path.join(outDir, "native_trail_protection_gap_latest.json"), {}).rows || [],
     exitQtyLiveRows: readJsonIfExists(path.join(outDir, "binance_exit_qty_live_separation_latest.json"), {}).live_issues || [],
     trailFloorLiveRows: readJsonIfExists(path.join(outDir, "trail_runner_floor_live_separation_latest.json"), {}).live_violations || [],
     duplicationLiveRows: readJsonIfExists(path.join(outDir, "fill_sync_alert_duplication_live_separation_latest.json"), {}).live_duplicate_groups || [],
     observationsBySymbol,
+    protectionRuntimeByCycleId,
   };
   const report = buildLiveAuthorityBoard({ positions, artifacts });
   const jsonPath = path.join(outDir, "binance_exit_authority_live_board_latest.json");
@@ -357,6 +401,7 @@ if (require.main === module) {
   module.exports = {
     __test: {
       resolveAuthorityNativeProtection,
+      fetchProtectionRuntimeByCycleId,
       summarizeLivePosition,
       buildLiveAuthorityBoard,
       buildMarkdown,

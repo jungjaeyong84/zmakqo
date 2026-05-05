@@ -33,6 +33,9 @@ function resolveTp1RepairQuantityAbs({ repairRequest, projection } = {}) {
     ? repairRequest.detail
     : {};
   return toNumberOrNull(detail.tp1_qty_abs)
+    ?? toNumberOrNull(detail.expected_tp_qty_base)
+    ?? toNumberOrNull(detail.expected_tp1_qty_abs)
+    ?? toNumberOrNull(detail.requested_tp1_qty_abs)
     ?? toNumberOrNull(projection && projection.tp1_target_qty_abs);
 }
 

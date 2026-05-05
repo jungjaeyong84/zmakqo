@@ -127,6 +127,9 @@ function buildProtectionRuntimeWriteResult({
     nativeTp1Price: normalizedTp1Ack.status === "PLACED"
       ? (normalizedTp1Ack.trigger_price != null ? normalizedTp1Ack.trigger_price : request.tp1_trigger_price)
       : null,
+    nativeTp1QtyAbs: normalizedTp1Ack.status === "PLACED"
+      ? request.tp1_qty_abs
+      : null,
     nativeRefreshStatus: writeState.native_refresh_status,
     lastRefreshAt: trimOrNull(observedAt),
     lastGapMs,

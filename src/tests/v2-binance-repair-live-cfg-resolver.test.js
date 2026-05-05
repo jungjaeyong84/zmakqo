@@ -14,9 +14,11 @@ const positionCycle = Object.freeze({
   entry_price: 2500,
 });
 
-(async function resolverPassesOnlyExchangeAndSymbolFromPositionCycle() {
+(async function resolverPassesExchangeSymbolAndEnvFromPositionCycle() {
   const calls = [];
+  const env = { DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED: "1" };
   const cfg = await resolveBinanceRepairLiveCfg({
+    env,
     positionCycle,
     resolveLiveFuturesConfigFn: async (args) => {
       calls.push(args);
@@ -30,7 +32,7 @@ const positionCycle = Object.freeze({
       };
     },
   });
-  assert.deepStrictEqual(calls, [{ exchange: "BINANCEFUT", symbol: "ETHUSDT" }]);
+  assert.deepStrictEqual(calls, [{ exchange: "BINANCEFUT", symbol: "ETHUSDT", env }]);
   assert.strictEqual(cfg.apiKey, "key");
   assert.strictEqual(cfg.apiSecret, "secret");
   assert.strictEqual(cfg.executionMode, "LIVE");
