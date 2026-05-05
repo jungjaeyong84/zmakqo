@@ -173,8 +173,10 @@ function run() {
     openOrders: [],
     algoOrders: [],
   });
-  assert.strictEqual(simplifiedRunner.stage, "TP1");
+  assert.strictEqual(simplifiedRunner.stage, "PRE_TP1");
+  assert.strictEqual(simplifiedRunner.canonical_stage, null);
   assert.ok(!simplifiedRunner.actionable_issue_codes.includes("TRAIL_STOP_MISSING"));
+  assert.ok(!simplifiedRunner.actionable_issue_codes.includes("TRAIL_STOP_BELOW_RUNNER_FLOOR_LONG"));
   const trailing = __test.inspectExitProtection({
     symbol: "DOGEUSDT",
     internalPosition: {

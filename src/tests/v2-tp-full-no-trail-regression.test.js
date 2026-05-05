@@ -3,6 +3,9 @@
 const assert = require("assert");
 const fillsSync = require("../services/binanceFuturesFillsSync");
 const reconciler = require("../services/binancePositionReconciler");
+const positionStateMachine = require("../services/positionStateMachine");
+const liveTrailingStageRepair = require("../services/liveTrailingStageRepair");
+const fillProjectionAudit = require("../services/binanceFillProjectionAudit");
 
 const fullTpRules = Object.freeze({
   SL: -0.0165,
@@ -124,6 +127,102 @@ function fullTpMeta(overrides = {}) {
   assert.strictEqual(out.meta.trail_high, null);
   assert.strictEqual(out.meta.runner_remaining_qty_abs, 0);
   assert.strictEqual(out.meta.exit_contract_mode, "TP_FULL_ONLY");
+})();
+
+(function positionStateMachineDoesNotExposeRunnerForTpFullOnlyActiveState() {
+  const positionSnapshot = {
+    state: "ACTIVE",
+    position_state: "COMMIT",
+    qty_base: 72,
+    entry_qty_base: 72,
+    execution_mode: "LIVE",
+    meta: fullTpMeta({
+      tp_p1_done: true,
+      trail_active: true,
+      canonical_exit_stage: "TRAIL",
+    }),
+  };
+
+  assert.strictEqual(
+    positionStateMachine.__test.buildCanonicalExitEvent({
+      stage: "TRAIL",
+      rules: fullTpRules,
+      positionSnapshot,
+      fallbackEvent: "EXIT_TRAIL",
+    }),
+    "EXIT_EXTERNAL_SYNC",
+    "TP_FULL_ONLY must not render canonical TRAIL events",
+  );
+
+  assert.deepStrictEqual(
+    positionStateMachine.resolveCanonicalPositionExitStage({ positionSnapshot }),
+    {
+      stage: null,
+      source: "POSITION_STATE_MACHINE_TP_FULL_ONLY_ACTIVE_MILESTONE_SUPPRESSED",
+    },
+    "active TP_FULL_ONLY positions cannot be treated as post-TP1 runner/trail",
+  );
+
+  const transition = positionStateMachine.__test.resolveCanonicalExitTransitionEvents({
+    resolvedStage: "TRAIL",
+    positionSnapshot,
+    rules: fullTpRules,
+    fullExit: false,
+  });
+  assert.deepStrictEqual(transition.transitionEvents, []);
+  assert.strictEqual(transition.primaryTransitionEvent, null);
+
+  const invalid = positionStateMachine.validatePositionSnapshotTransition({
+    prev: { state: "ACTIVE", position_state: "COMMIT", qty_base: 72, meta: fullTpMeta() },
+    next: positionSnapshot,
+  });
+  assert.strictEqual(invalid.ok, false);
+  assert.ok(invalid.issues.some((issue) => issue.code === "TP_FULL_ONLY_TRAIL_STATE"));
+})();
+
+(function liveTrailingStageRepairDoesNotPromoteTpFullToTrail() {
+  const positionSnapshot = {
+    state: "ACTIVE",
+    position_state: "COMMIT",
+    qty_base: 72,
+    entry_qty_base: 72,
+    meta: fullTpMeta({
+      tp_p1_done: true,
+      trail_active: true,
+      canonical_exit_stage: "TRAIL",
+    }),
+  };
+  const target = liveTrailingStageRepair.__test.resolveRepairTargetStage({
+    positionSnapshot,
+    externalQty: 72,
+  });
+  assert.strictEqual(target.stage, null);
+  assert.strictEqual(target.reason, "TP_FULL_ONLY_HAS_NO_TRAILING_REPAIR_TARGET");
+
+  const repaired = liveTrailingStageRepair.__test.buildRepairedMeta(positionSnapshot.meta, { stage: "TRAIL" });
+  assert.strictEqual(repaired.trail_active, false);
+  assert.strictEqual(repaired.runner_remaining_qty_abs, 0);
+  assert.strictEqual(repaired.canonical_exit_stage, null);
+})();
+
+(function fillProjectionAuditSurfacesTpFullOnlyTrailLeakInsteadOfTrailRequirement() {
+  const out = fillProjectionAudit.buildBinanceFillProjectionAudit({
+    nowMs: 1_777_778_000_000,
+    positions: [{
+      exchange: "BINANCEFUT",
+      symbol: "AXSUSDT",
+      state: "ACTIVE",
+      qty_base: 72,
+      meta: fullTpMeta({
+        entry_event_id: "ENTRYV2__AXSUSDT__LONG__14875942957",
+        tp_p1_done: true,
+        trail_active: true,
+      }),
+    }],
+    fills: [],
+  });
+  assert.strictEqual(out.tp_full_only_trail_state_leak_n, 1);
+  assert.strictEqual(out.tp1_fill_trail_inactive_n, 0);
 })();
 
 console.log("V2_TP_FULL_NO_TRAIL_REGRESSION_TEST_OK");

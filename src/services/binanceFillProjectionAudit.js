@@ -119,6 +119,29 @@ function countIssuesByCode(issues = []) {
   return out;
 }
 
+function isFullTpOnlyMeta(meta = {}) {
+  const source = meta && typeof meta === "object" ? meta : {};
+  const rules = source.exit_rules_override && typeof source.exit_rules_override === "object"
+    ? source.exit_rules_override
+    : {};
+  const mode = toUpper(
+    source.exit_contract_mode
+    || source.exitContractMode
+    || rules.exit_contract_mode
+    || rules.exitContractMode
+  );
+  if (mode === "TP_FULL_ONLY") return true;
+  if (source.tp_full_only === true || source.tpFullOnly === true) return true;
+  const qty = toNum(
+    source.TP_P1_QTY
+    ?? source.tp1_qty_ratio
+    ?? source.native_protection_tp_qty_ratio
+    ?? rules.TP_P1_QTY
+    ?? rules.tp1_qty_ratio
+  );
+  return Number.isFinite(qty) && qty >= 0.999999;
+}
+
 function buildBinanceFillProjectionAudit({
   positions = [],
   fills = [],
@@ -141,6 +164,7 @@ function buildBinanceFillProjectionAudit({
     const symbol = toUpper(pos.symbol_or_pair_id || pos.symbol);
     const meta = pos && typeof pos.meta === "object" ? pos.meta : {};
     if (!symbol) continue;
+    const fullTpOnly = isFullTpOnlyMeta(meta);
     const marketFills = recentFills.filter((row) => toUpper(row.symbol || row.symbol_or_pair_id) === symbol);
     const latestTp0Fill = pickLatestFill(marketFills, (row) => {
       return eventMatches(row, "EXIT_TP_P0") && fillMatchesCurrentEntry(row, meta);
@@ -179,7 +203,14 @@ function buildBinanceFillProjectionAudit({
         fill: latestTp1Fill,
       }));
     }
-    if (latestTp1Fill && !isTerminalFullTpFill(latestTp1Fill)) {
+    if (fullTpOnly && meta.trail_active === true) {
+      issues.push(makeIssue({
+        symbol,
+        code: "TP_FULL_ONLY_TRAIL_STATE_LEAK",
+        detail: "TP_FULL_ONLY 계약인데 포지션 projection이 trail_active=true를 보유",
+      }));
+    }
+    if (!fullTpOnly && latestTp1Fill && !isTerminalFullTpFill(latestTp1Fill)) {
       const tp1AtMs = parseMs(latestTp1Fill.exec_bar_close_time_utc_ms || latestTp1Fill.exec_ms || latestTp1Fill.created_at);
       if (
         Number.isFinite(tp1AtMs)
@@ -222,6 +253,7 @@ function buildBinanceFillProjectionAudit({
     tp1_fill_projection_missing_n: byCode.TP1_FILL_PROJECTION_MISSING || 0,
     tp1_fill_trail_inactive_n: byCode.TP1_FILL_TRAIL_INACTIVE || 0,
     tp_full_fill_projection_still_active_n: byCode.TP_FULL_FILL_PROJECTION_STILL_ACTIVE || 0,
+    tp_full_only_trail_state_leak_n: byCode.TP_FULL_ONLY_TRAIL_STATE_LEAK || 0,
     projection_out_of_sync_n: byCode.PROJECTION_OUT_OF_SYNC || 0,
     native_protection_not_ok_n: byCode.NATIVE_PROTECTION_NOT_OK || 0,
     issues,
@@ -237,5 +269,6 @@ module.exports = {
     fillMatchesCurrentEntry,
     normalizeTransitionEvents,
     isTerminalFullTpFill,
+    isFullTpOnlyMeta,
   },
 };

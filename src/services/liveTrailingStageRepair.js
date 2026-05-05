@@ -16,6 +16,7 @@ const {
   resolveCanonicalPositionExitStage,
   buildExitQuantityContractLedger,
   validateExitQuantityContractLedger,
+  resolveFullTpOnlyDecision,
 } = require("./positionStateMachine");
 const { isSimplifiedExitV2Active } = require("./simplifiedExitV2");
 
@@ -52,6 +53,17 @@ function isSimplifiedExitV2Position(positionSnapshot = null) {
   return isSimplifiedExitV2Active(meta);
 }
 
+function isFullTpOnlyPosition(positionSnapshot = null) {
+  const snapshot = positionSnapshot && typeof positionSnapshot === "object" ? positionSnapshot : {};
+  const meta = snapshot.meta && typeof snapshot.meta === "object" ? snapshot.meta : {};
+  return resolveFullTpOnlyDecision({
+    positionSnapshot: snapshot,
+    rules: meta.exit_rules_override && typeof meta.exit_rules_override === "object"
+      ? meta.exit_rules_override
+      : null,
+  }) === true;
+}
+
 function resolveRepairTargetStage({
   positionSnapshot = null,
   externalQty = null,
@@ -62,6 +74,13 @@ function resolveRepairTargetStage({
     simplifiedExitV2Enabled,
   });
   const currentQty = Number(externalQty);
+  if (isFullTpOnlyPosition(positionSnapshot)) {
+    return {
+      stage: null,
+      source: canonical.source || "TP_FULL_ONLY_CONTRACT",
+      reason: "TP_FULL_ONLY_HAS_NO_TRAILING_REPAIR_TARGET",
+    };
+  }
   if (canonical.stage === "TRAIL") {
     return {
       stage: "TRAIL",
@@ -100,8 +119,19 @@ function resolveRepairTargetStage({
 function buildRepairedMeta(meta = {}, stageInfo = {}) {
   const nextMeta = { ...(meta && typeof meta === "object" ? meta : {}) };
   const stage = normalizeSymbol(stageInfo.stage);
-  const simplifiedExitV2Enabled = isSimplifiedExitV2Position({ meta: nextMeta });
-  void simplifiedExitV2Enabled;
+  const fullTpOnly = isFullTpOnlyPosition({ meta: nextMeta });
+  if (fullTpOnly && stage === "TRAIL") {
+    nextMeta.trail_active = false;
+    nextMeta.trail_high = null;
+    nextMeta.trail_low = null;
+    nextMeta.trail_high_at_ms = null;
+    nextMeta.trail_low_at_ms = null;
+    nextMeta.runner_remaining_qty_abs = 0;
+    nextMeta.canonical_exit_stage = null;
+    nextMeta.exit_contract_mode = nextMeta.exit_contract_mode || "TP_FULL_ONLY";
+    nextMeta.tp_full_only = true;
+    return nextMeta;
+  }
   if (stage === "TRAIL") {
     const entryEventId = String(nextMeta.entry_event_id || "").trim();
     nextMeta.tp_p1_done = true;
@@ -355,5 +385,6 @@ module.exports = {
     shouldEnforceSingleStopWriter,
     resolveNonAuthorityRepairStatus,
     sanitizeNativeProtectionResultForNonAuthority,
+    isFullTpOnlyPosition,
   },
 };

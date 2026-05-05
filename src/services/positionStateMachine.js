@@ -361,6 +361,12 @@ function buildCanonicalExitEvent({
     return token ? `EXIT_TP_P1_${token}P` : "EXIT_TP_P1";
   }
   if (resolvedStage === "TRAIL") {
+    const fullTpOnly = resolveFullTpOnlyDecision({ positionSnapshot, rules });
+    if (fullTpOnly) {
+      return fallback && fallback.startsWith("EXIT_TP_FULL")
+        ? fallback
+        : "EXIT_EXTERNAL_SYNC";
+    }
     if (fallback && fallback.startsWith("EXIT_TRAIL")) return fallback;
     const trailR = toNum(rules && rules.TRAIL_R_MULTIPLE);
     if (Number.isFinite(trailR) && trailR > 0) return "EXIT_TRAIL";
@@ -787,6 +793,7 @@ function resolveCanonicalExitTransitionEvents({
   observedQtyRatio = null,
   fullExit = false,
   simplifiedExitV2Enabled = null,
+  rules = null,
 } = {}) {
   const snapshot = normalizeSnapshot(positionSnapshot || {});
   const stage = normalizeExitStage(resolvedStage);
@@ -801,13 +808,14 @@ function resolveCanonicalExitTransitionEvents({
   const recent = recentStages && typeof recentStages === "object" ? recentStages : {};
   const events = [];
   const effectiveStage = tp0RetiredRuntime && stage === "TP0" ? "TP1" : stage;
+  const fullTpOnly = resolveFullTpOnlyDecision({ positionSnapshot: snapshot, rules });
   if (effectiveStage === "TP1") {
     if (snapshot.tp_p1_done !== true || (simplifiedV2 && fullExit === true)) {
       events.push(simplifiedV2 ? "TP1_FULL_EXIT" : "TP1_REACHED");
     }
     if (!simplifiedV2 && snapshot.trail_active !== true) events.push("TRAIL_ACTIVE");
   } else if (effectiveStage === "TRAIL") {
-    if (simplifiedV2) {
+    if (simplifiedV2 || fullTpOnly) {
       if (fullExit === true) events.push("EXTERNAL_CLOSE_SYNC");
       return {
         transitionEvents: events,
@@ -890,6 +898,22 @@ function resolveCanonicalPositionExitStage({
     || meta.authoritative_exit_stage
     || meta.canonical_exit_stage
   );
+  const fullTpOnly = resolveFullTpOnlyDecision({
+    positionSnapshot: positionSnapshot || {},
+    rules: meta.exit_rules_override && typeof meta.exit_rules_override === "object"
+      ? meta.exit_rules_override
+      : null,
+  });
+  const hasExposure = (
+    (Number.isFinite(snapshot.size_pct) && snapshot.size_pct > 0)
+    || (Number.isFinite(snapshot.qty_base) && snapshot.qty_base > 0)
+  );
+  if (fullTpOnly && hasExposure && (snapshot.trail_active === true || snapshot.tp_p1_done === true)) {
+    return {
+      stage: null,
+      source: "POSITION_STATE_MACHINE_TP_FULL_ONLY_ACTIVE_MILESTONE_SUPPRESSED",
+    };
+  }
   if (snapshot.trail_active === true && simplifiedV2 === true) {
     return {
       stage: snapshot.tp_p1_done === true ? "TP1" : null,
@@ -1149,6 +1173,7 @@ function resolveCanonicalExitAuthorityDecision({
       ledger,
       observedQtyRatio,
       fullExit,
+      rules,
     });
 
   return {
@@ -1236,6 +1261,19 @@ function validatePositionSnapshotTransition({ prev = null, next = null } = {}) {
       message: "trail_active requires tp_p1_done=true.",
     });
   }
+  const fullTpOnly = resolveFullTpOnlyDecision({
+    positionSnapshot: next || {},
+    rules: current.meta && current.meta.exit_rules_override && typeof current.meta.exit_rules_override === "object"
+      ? current.meta.exit_rules_override
+      : null,
+  });
+  if (fullTpOnly && current.trail_active === true) {
+    issues.push({
+      code: "TP_FULL_ONLY_TRAIL_STATE",
+      severity: "critical",
+      message: "TP_FULL_ONLY positions cannot carry trail_active=true; TP_FULL exits are terminal and have no runner.",
+    });
+  }
   if (tp0RetiredRuntime !== true && current.trail_active === true && current.tp_p0_done !== true) {
     issues.push({
       code: "TRAIL_WITHOUT_TP0",
@@ -1297,6 +1335,7 @@ module.exports = {
   getLegacyTp0LiveNamespaceObservations,
   resetLegacyTp0LiveNamespaceObservationsForTest,
   resolveStoredCanonicalExitStage,
+  resolveFullTpOnlyDecision,
   __test: {
     normalizeSnapshot,
     normalizeExitStage,
@@ -1317,6 +1356,7 @@ module.exports = {
     buildCanonicalExitEvent,
     classifyExitEventStage,
     resolveStoredCanonicalExitStage,
+    resolveFullTpOnlyDecision,
     requiresCanonicalExitEntryLineage,
     isSimplifiedExitV2Enabled,
     ALLOWED_POSITION_STATE_TRANSITIONS,
