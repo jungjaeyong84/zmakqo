@@ -10,16 +10,18 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
 (() => {
   const registry = __test.buildStepRegistry();
   assert.ok(Array.isArray(registry));
-  assert.strictEqual(registry.length, 17);
+  assert.strictEqual(registry.length, 19);
 
   const ids = registry.map((row) => row.id);
   assert.deepStrictEqual(ids, [
     "analytics_local_cache",
     "v2_outcome_adjudication_collector",
+    "v2_openclaw_daily_performance_report",
     "execution_quality",
     "v2_openclaw_root_cause_analysis",
     "v2_openclaw_policy_candidate_from_root_cause",
     "execution_watch_markets",
+    "v2_openclaw_learning_artifact_aliases",
     "signal_lineage_health",
     "binance_exit_integrity_cycle",
     "openclaw_policy_authority",
@@ -40,8 +42,12 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
   const executionQualityStep = registry.find((row) => row.id === "execution_quality");
   assert.deepStrictEqual(executionQualityStep.depends_on, ["v2_outcome_adjudication_collector"]);
 
+  const dailyPerformanceStep = registry.find((row) => row.id === "v2_openclaw_daily_performance_report");
+  assert.deepStrictEqual(dailyPerformanceStep.depends_on, ["v2_outcome_adjudication_collector"]);
+  assert.strictEqual(dailyPerformanceStep.produces_artifact, "v2_openclaw_daily_performance_report_latest.json");
+
   const rootCauseStep = registry.find((row) => row.id === "v2_openclaw_root_cause_analysis");
-  assert.deepStrictEqual(rootCauseStep.depends_on, ["v2_outcome_adjudication_collector"]);
+  assert.deepStrictEqual(rootCauseStep.depends_on, ["v2_openclaw_daily_performance_report"]);
   assert.strictEqual(rootCauseStep.produces_artifact, "v2_openclaw_root_cause_analysis_latest.json");
 
   const policyCandidateStep = registry.find((row) => row.id === "v2_openclaw_policy_candidate_from_root_cause");
@@ -51,6 +57,13 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
   const watchMarketsStep = registry.find((row) => row.id === "execution_watch_markets");
   assert.deepStrictEqual(watchMarketsStep.depends_on, ["execution_quality"]);
   assert.strictEqual(watchMarketsStep.produces_artifact, "best_self_evolution_execution_watch_markets_latest.json");
+
+  const v2AliasStep = registry.find((row) => row.id === "v2_openclaw_learning_artifact_aliases");
+  assert.deepStrictEqual(v2AliasStep.depends_on, ["execution_quality", "execution_watch_markets", "v2_openclaw_root_cause_analysis"]);
+  assert.strictEqual(v2AliasStep.produces_artifact, "v2_openclaw_learning_artifact_aliases_latest.json");
+
+  const signalLineageStep = registry.find((row) => row.id === "signal_lineage_health");
+  assert.deepStrictEqual(signalLineageStep.depends_on, ["execution_quality", "execution_watch_markets", "v2_openclaw_learning_artifact_aliases"]);
 
   const exitIntegrityStep = registry.find((row) => row.id === "binance_exit_integrity_cycle");
   assert.deepStrictEqual(exitIntegrityStep.depends_on, ["signal_lineage_health"]);
@@ -106,7 +119,8 @@ const { __test: trailRunnerFloorAuditTest } = require("../../scripts/report-trai
       criticality: "MEDIUM",
       depends_on: [],
       produces_artifact: null,
-      run() {
+      run(context) {
+        assert.strictEqual(context.runId, "run-2");
         return {
           status: "PASS",
           summary: "OK",

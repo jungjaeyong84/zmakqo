@@ -232,6 +232,12 @@ function extractOutcomeContext(row) {
   const baseContext = {
     symbol,
     side,
+    feature_lineage_source: upper(firstValue(
+      row && row.feature_lineage_source,
+      evidence.feature_lineage_source,
+      featureSnapshotContract.feature_lineage_source,
+      getPath(evidence, ["bundle", "feature_lineage_source"])
+    )) || "UNKNOWN",
     entry_grade: entryGrade,
     trigger_type: triggerType,
     timing_bucket: timingBucket,
@@ -299,6 +305,7 @@ function createBucketRow(key, context) {
     btc_1h_alignment: context.btc_1h_alignment,
     mtf_1h_alignment: context.mtf_1h_alignment,
     evidence_completeness: context.evidence_completeness,
+    feature_lineage_source: context.feature_lineage_source,
     outcome_n: 0,
     trade_n: 0,
     win_n: 0,
@@ -341,6 +348,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
   const byBtc1hAlignment = new Map();
   const byMtf1hAlignment = new Map();
   const byEvidenceCompleteness = new Map();
+  const byFeatureLineageSource = new Map();
 
   function record(map, key, row, context) {
     if (!map.has(key)) map.set(key, createBucketRow(key, context));
@@ -382,6 +390,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
     record(byBtc1hAlignment, context.btc_1h_alignment, row, context);
     record(byMtf1hAlignment, context.mtf_1h_alignment, row, context);
     record(byEvidenceCompleteness, context.evidence_completeness, row, context);
+    record(byFeatureLineageSource, context.feature_lineage_source, row, context);
   }
 
   const setupRegimeRows = finalizeBucketRows(bySetupRegime);
@@ -407,6 +416,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
     by_btc_1h_alignment: finalizeBucketRows(byBtc1hAlignment),
     by_mtf_1h_alignment: finalizeBucketRows(byMtf1hAlignment),
     by_evidence_completeness: finalizeBucketRows(byEvidenceCompleteness),
+    by_feature_lineage_source: finalizeBucketRows(byFeatureLineageSource),
     top_positive_setup_regime: topPositiveSetupRegime,
     top_negative_setup_regime: topNegativeSetupRegime,
   });

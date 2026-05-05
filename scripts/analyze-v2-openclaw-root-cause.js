@@ -175,6 +175,7 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_funding_rate_bucket: groupRows(enriched, (row) => row.context.funding_rate_bucket),
     by_open_interest_delta_bucket: groupRows(enriched, (row) => row.context.open_interest_delta_bucket),
     by_liquidation_notional_5m_bucket: groupRows(enriched, (row) => row.context.liquidation_notional_5m_bucket),
+    by_feature_lineage_source: groupRows(enriched, (row) => row.context.feature_lineage_source),
     by_setup_edge_side: groupRows(enriched, (row) => `${row.context.setup_type}|${row.context.edge_cohort}|${row.context.side}`, { minN: 3 }),
     by_symbol_setup: groupRows(enriched, (row) => `${row.context.symbol}|${row.context.setup_type}`, { minN: 3 }),
     by_evidence_completeness: groupRows(enriched, (row) => row.context.evidence_completeness),
@@ -186,6 +187,13 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     sample_n: total.n,
     total,
     root_cause_findings: rootCauseFindings({ total, groups }),
+    by_evidence_completeness: groups.by_evidence_completeness,
+    by_feature_lineage_source: groups.by_feature_lineage_source,
+    by_setup_type: groups.by_setup_type,
+    by_side: groups.by_side,
+    by_edge_cohort: groups.by_edge_cohort,
+    by_btc_1h_alignment: groups.by_btc_1h_alignment,
+    by_market_quality_bucket: groups.by_market_quality_bucket,
     groups,
   });
 }
@@ -220,9 +228,22 @@ function resolveOutputDir(env = process.env) {
   return path.resolve(trimOrNull(env.V2_OPENCLAW_ROOT_CAUSE_OUTPUT_DIR) || path.join("ops", "daily"));
 }
 
+function resolveRunId(env = process.env) {
+  return trimOrNull(env.V2_EVIDENCE_CYCLE_RUN_ID)
+    || trimOrNull(env.OPENCLAW_RUN_ID)
+    || null;
+}
+
 async function main(env = process.env) {
   const rows = await collectOutcomes({ env });
-  const analysis = buildAnalysis({ rows });
+  const runId = resolveRunId(env);
+  const baseAnalysis = buildAnalysis({ rows });
+  const analysis = Object.freeze({
+    ...baseAnalysis,
+    run_id: runId,
+    source_cycle_id: runId,
+    manual_run: trimOrNull(env.V2_EVIDENCE_CYCLE_MANUAL_RUN) === "1",
+  });
   const outputDir = resolveOutputDir(env);
   ensureDir(outputDir);
   const jsonFile = path.join(outputDir, OUTPUT_JSON);
@@ -249,6 +270,7 @@ if (require.main === module) {
   });
 } else {
   module.exports = {
+    main,
     buildAnalysis,
     renderMarkdown,
     __test: { stats, groupRows, projectionIfRemoved, formatMetric },

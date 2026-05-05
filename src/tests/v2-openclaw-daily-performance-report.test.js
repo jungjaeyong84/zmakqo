@@ -30,6 +30,7 @@ const outcomes = [
       orderbook_imbalance_top5: 0.12,
       btc_1h_trend: "LONG",
       mtf_1h_direction: "LONG",
+      feature_lineage_source: "OPENCLAW_DECISION",
     },
     adjudicated_at: "2026-04-23T00:00:00.000Z",
   },
@@ -106,6 +107,7 @@ const outcomes = [
   assert.strictEqual(report.outcomes[0].context.open_interest_delta_bucket, "UP_1_3");
   assert.strictEqual(report.outcomes[0].context.liquidation_notional_5m_bucket, "HIGH_1M_5M");
   assert.strictEqual(report.outcomes[0].context.btc_1h_alignment, "SELF");
+  assert.strictEqual(report.outcomes[0].context.feature_lineage_source, "OPENCLAW_DECISION");
   assert.strictEqual(report.outcomes[0].context.full_evidence, true);
   assert.deepStrictEqual(report.outcomes[0].context.missing_feature_fields, []);
   assert.strictEqual(report.outcomes[1].context.full_evidence, false);
@@ -120,6 +122,9 @@ const outcomes = [
   assert.strictEqual(report.cohort_summary.by_market_quality_bucket[0].key, "HIGH");
   assert.strictEqual(report.cohort_summary.by_btc_1h_alignment[0].key, "SELF");
   assert.strictEqual(report.cohort_summary.by_evidence_completeness.some((row) => row.key === "FULL_EVIDENCE"), true);
+  assert.strictEqual(report.by_evidence_completeness.some((row) => row.key === "FULL_EVIDENCE"), true);
+  assert.strictEqual(report.by_feature_lineage_source.some((row) => row.key === "OPENCLAW_DECISION"), true);
+  assert.strictEqual(report.by_setup_type.length > 0, true);
   assert.strictEqual(report.cohort_summary.top_positive_setup_regime.key, "PULLBACK_RECLAIM__TREND");
 }
 

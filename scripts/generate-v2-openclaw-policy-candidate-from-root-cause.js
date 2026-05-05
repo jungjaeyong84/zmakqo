@@ -29,6 +29,14 @@ function writeJson(file, payload) {
   fs.writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+function resolveRunId(env = process.env, analysis = {}) {
+  return trimOrNull(env.V2_EVIDENCE_CYCLE_RUN_ID)
+    || trimOrNull(env.OPENCLAW_RUN_ID)
+    || trimOrNull(analysis.run_id)
+    || trimOrNull(analysis.source_cycle_id)
+    || null;
+}
+
 function renderMarkdown(payload) {
   const lines = [];
   lines.push("# V2 OpenClaw Policy Candidate From Root Cause");
@@ -61,9 +69,14 @@ function main(env = process.env) {
   const outputFile = path.resolve(trimOrNull(env.V2_OPENCLAW_POLICY_CANDIDATE_OUTPUT_FILE) || DEFAULT_OUTPUT);
   const mdFile = path.resolve(trimOrNull(env.V2_OPENCLAW_POLICY_CANDIDATE_MARKDOWN_FILE) || DEFAULT_MD);
   const analysis = readJson(inputFile);
+  const runId = resolveRunId(env, analysis);
   const payload = buildOpenClawPolicyCandidateFromRootCause({ analysis, env });
   const withFiles = Object.freeze({
     ...payload,
+    run_id: runId,
+    source_cycle_id: runId,
+    manual_run: trimOrNull(env.V2_EVIDENCE_CYCLE_MANUAL_RUN) === "1",
+    source_analysis_run_id: trimOrNull(analysis.run_id),
     input_file: inputFile,
     output_file: outputFile,
     markdown_file: mdFile,

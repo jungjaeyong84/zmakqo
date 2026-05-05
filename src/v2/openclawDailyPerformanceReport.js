@@ -171,6 +171,13 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
     full_evidence_summary: fullEvidenceSummary,
     unknown_evidence_summary: unknownEvidenceSummary,
     cohort_summary: cohortSummary,
+    by_evidence_completeness: cohortSummary.by_evidence_completeness || Object.freeze([]),
+    by_feature_lineage_source: cohortSummary.by_feature_lineage_source || Object.freeze([]),
+    by_setup_type: cohortSummary.by_setup_type || Object.freeze([]),
+    by_side: cohortSummary.by_side || Object.freeze([]),
+    by_edge_cohort: cohortSummary.by_edge_cohort || Object.freeze([]),
+    by_btc_1h_alignment: cohortSummary.by_btc_1h_alignment || Object.freeze([]),
+    by_market_quality_bucket: cohortSummary.by_market_quality_bucket || Object.freeze([]),
     timing_summary: Object.freeze({
       by_timing_bucket: cohortSummary.by_timing_bucket || Object.freeze([]),
       by_entry_grade: cohortSummary.by_entry_grade || Object.freeze([]),

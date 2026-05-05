@@ -184,7 +184,7 @@ function toStepResult(step, result = {}, context = {}) {
 
 function executeStep(step, context = {}) {
   const startedAtMs = Date.now();
-  const result = step.run();
+  const result = step.run(context);
   const durationMs = Date.now() - startedAtMs;
   return toStepResult(step, result, {
     runId: context.runId || null,
@@ -229,16 +229,41 @@ function buildStepRegistry() {
       criticality: "HIGH",
       depends_on: ["analytics_local_cache"],
       produces_artifact: "v2_openclaw_outcome_adjudication_collector_latest.json",
-      run() {
+      run(context = {}) {
         const res = runScript(this.script, {
           V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE || "AUTO",
           V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE: process.env.V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE || "1",
+          OPENCLAW_RUN_ID: context.runId || process.env.OPENCLAW_RUN_ID || "",
+          V2_EVIDENCE_CYCLE_RUN_ID: context.runId || process.env.V2_EVIDENCE_CYCLE_RUN_ID || "",
         });
         const summary = res.parsed && res.parsed.summary ? res.parsed.summary : {};
         return {
           status: res.ok ? "PASS" : "FAIL",
           summary: res.parsed
             ? `source=${res.parsed.source || "N/A"} adjudication_n=${summary.adjudication_n ?? "N/A"} write_n=${res.parsed.write_n ?? "N/A"}`
+            : "N/A",
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
+        };
+      },
+    },
+    {
+      id: "v2_openclaw_daily_performance_report",
+      kind: "script",
+      script: "generate-v2-openclaw-daily-performance-report.js",
+      criticality: "HIGH",
+      depends_on: ["v2_outcome_adjudication_collector"],
+      produces_artifact: "v2_openclaw_daily_performance_report_latest.json",
+      run(context = {}) {
+        const res = runScript(this.script, {
+          DONBEOLJA_V2_COLLECTION_PREFIX: process.env.DONBEOLJA_V2_COLLECTION_PREFIX || "v2__",
+          V2_OPENCLAW_DAILY_PERFORMANCE_LIMIT: process.env.V2_OPENCLAW_DAILY_PERFORMANCE_LIMIT || "500",
+          OPENCLAW_RUN_ID: context.runId || process.env.OPENCLAW_RUN_ID || "",
+          V2_EVIDENCE_CYCLE_RUN_ID: context.runId || process.env.V2_EVIDENCE_CYCLE_RUN_ID || "",
+        });
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed
+            ? `sample_n=${res.parsed.sample_n ?? "N/A"} pf=${res.parsed.profit_factor ?? "N/A"} expectancy=${res.parsed.expectancy ?? "N/A"}`
             : "N/A",
           reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
         };
@@ -265,12 +290,14 @@ function buildStepRegistry() {
       kind: "script",
       script: "analyze-v2-openclaw-root-cause.js",
       criticality: "HIGH",
-      depends_on: ["v2_outcome_adjudication_collector"],
+      depends_on: ["v2_openclaw_daily_performance_report"],
       produces_artifact: "v2_openclaw_root_cause_analysis_latest.json",
-      run() {
+      run(context = {}) {
         const res = runScript(this.script, {
           DONBEOLJA_V2_COLLECTION_PREFIX: process.env.DONBEOLJA_V2_COLLECTION_PREFIX || "v2__",
           V2_OPENCLAW_DAILY_PERFORMANCE_LIMIT: process.env.V2_OPENCLAW_DAILY_PERFORMANCE_LIMIT || "500",
+          OPENCLAW_RUN_ID: context.runId || process.env.OPENCLAW_RUN_ID || "",
+          V2_EVIDENCE_CYCLE_RUN_ID: context.runId || process.env.V2_EVIDENCE_CYCLE_RUN_ID || "",
         });
         return {
           status: res.ok ? "PASS" : "FAIL",
@@ -288,10 +315,12 @@ function buildStepRegistry() {
       criticality: "HIGH",
       depends_on: ["v2_openclaw_root_cause_analysis"],
       produces_artifact: "v2_openclaw_policy_candidate_from_root_cause_latest.json",
-      run() {
+      run(context = {}) {
         const res = runScript(this.script, {
           V2_OPENCLAW_POLICY_CANDIDATE_SOFT: "1",
           DONBEOLJA_V2_OPENCLAW_POLICY_AUTO_APPLY_ENABLED: process.env.DONBEOLJA_V2_OPENCLAW_POLICY_AUTO_APPLY_ENABLED || "0",
+          OPENCLAW_RUN_ID: context.runId || process.env.OPENCLAW_RUN_ID || "",
+          V2_EVIDENCE_CYCLE_RUN_ID: context.runId || process.env.V2_EVIDENCE_CYCLE_RUN_ID || "",
         });
         return {
           status: res.ok ? "PASS" : "FAIL",
@@ -319,11 +348,29 @@ function buildStepRegistry() {
       },
     },
     {
+      id: "v2_openclaw_learning_artifact_aliases",
+      kind: "script",
+      script: "sync-v2-openclaw-learning-artifact-aliases.js",
+      criticality: "MEDIUM",
+      depends_on: ["execution_quality", "execution_watch_markets", "v2_openclaw_root_cause_analysis"],
+      produces_artifact: "v2_openclaw_learning_artifact_aliases_latest.json",
+      run() {
+        const res = runScript(this.script);
+        return {
+          status: res.ok ? "PASS" : "FAIL",
+          summary: res.parsed
+            ? `alias_n=${res.parsed.alias_n ?? "N/A"} skipped_n=${res.parsed.skipped_n ?? "N/A"}`
+            : "N/A",
+          reason: res.parsed && (res.parsed.reason || res.parsed.error) || (!res.ok ? scriptFailureReason(res) : null),
+        };
+      },
+    },
+    {
       id: "signal_lineage_health",
       kind: "script",
       script: "report-signal-lineage-health.js",
       criticality: "HIGH",
-      depends_on: ["execution_quality", "execution_watch_markets"],
+      depends_on: ["execution_quality", "execution_watch_markets", "v2_openclaw_learning_artifact_aliases"],
       produces_artifact: "signal_lineage_health_latest.json",
       run() {
         const res = runScript(this.script);

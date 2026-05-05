@@ -21,6 +21,12 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
 }
 
+function resolveRunId(env = process.env) {
+  return trimOrNull(env.V2_EVIDENCE_CYCLE_RUN_ID)
+    || trimOrNull(env.OPENCLAW_RUN_ID)
+    || null;
+}
+
 function resolveOutputFile(env = process.env) {
   const explicit = trimOrNull(env.V2_OPENCLAW_DAILY_PERFORMANCE_REPORT_FILE);
   if (explicit) return path.resolve(explicit);
@@ -51,10 +57,17 @@ async function collectOutcomes({ db = null, env = process.env } = {}) {
 
 async function main(env = process.env) {
   const rows = await collectOutcomes({ env });
-  const payload = buildOpenClawDailyPerformanceReport({
+  const basePayload = buildOpenClawDailyPerformanceReport({
     outcomes: rows,
     source: trimOrNull(env.V2_OPENCLAW_DAILY_PERFORMANCE_INPUT_FILE) ? "JSON_FIXTURE" : "OPENCLAW_OUTCOME_ADJUDICATIONS",
     lookbackHours: Number(env.V2_OPENCLAW_DAILY_PERFORMANCE_LOOKBACK_HOURS || 24) || 24,
+  });
+  const runId = resolveRunId(env);
+  const payload = Object.freeze({
+    ...basePayload,
+    run_id: runId,
+    source_cycle_id: runId,
+    manual_run: trimOrNull(env.V2_EVIDENCE_CYCLE_MANUAL_RUN) === "1",
   });
   const outputFile = resolveOutputFile(env);
   ensureDir(path.dirname(outputFile));

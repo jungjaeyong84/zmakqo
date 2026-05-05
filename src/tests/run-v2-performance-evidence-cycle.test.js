@@ -5,11 +5,15 @@ const cycle = require("../../scripts/run-v2-performance-evidence-cycle");
 
 (async () => {
   {
-    const env = cycle.buildCycleEnv({});
+    const env = cycle.buildCycleEnv({}, { runId: "test_run", manualRun: false });
+    assert.strictEqual(env.V2_EVIDENCE_CYCLE_RUN_ID, "test_run");
+    assert.strictEqual(env.OPENCLAW_RUN_ID, "test_run");
+    assert.strictEqual(env.V2_EVIDENCE_CYCLE_MANUAL_RUN, "0");
     assert.strictEqual(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE, "FIRESTORE");
     assert.strictEqual(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE, "1");
     assert.strictEqual(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_REQUIRE_NONEMPTY, "0");
     assert.strictEqual(env.V2_PERFORMANCE_GATE_SOFT, "1");
+    assert.strictEqual(env.V2_OPENCLAW_POLICY_CANDIDATE_SOFT, "1");
   }
 
   {
@@ -26,7 +30,7 @@ const cycle = require("../../scripts/run-v2-performance-evidence-cycle");
   {
     const order = [];
     const result = await cycle.main({
-      env: {},
+      env: { V2_EVIDENCE_CYCLE_RUN_ID: "cycle_test_run" },
       setProcessExitCode: false,
       steps: [
         {
@@ -62,6 +66,8 @@ const cycle = require("../../scripts/run-v2-performance-evidence-cycle");
     });
     assert.deepStrictEqual(order, ["collector", "performance_gate", "formal_live_promotion_readiness"]);
     assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.run_id, "cycle_test_run");
+    assert.strictEqual(result.manual_run, false);
     assert.strictEqual(result.gate_ok, false);
     assert.strictEqual(result.formal_live_ok, false);
   }

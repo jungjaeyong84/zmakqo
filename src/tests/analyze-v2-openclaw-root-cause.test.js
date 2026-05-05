@@ -71,6 +71,8 @@ const analysis = buildAnalysis({ rows: expanded, generatedAt: "2026-05-01T01:00:
 assert.strictEqual(analysis.ok, true);
 assert.strictEqual(analysis.sample_n, 11);
 assert.strictEqual(analysis.groups.by_setup_type[0].key, "PULLBACK_RECLAIM");
+assert.strictEqual(analysis.by_setup_type[0].key, "PULLBACK_RECLAIM");
+assert.ok(Array.isArray(analysis.by_feature_lineage_source));
 assert.strictEqual(analysis.groups.by_btc_1h_alignment.some((row) => row.key === "OPPOSED"), true);
 assert.ok(analysis.root_cause_findings.some((row) => row.id === "PULLBACK_RECLAIM_DECAY"));
 const markdown = renderMarkdown(analysis);

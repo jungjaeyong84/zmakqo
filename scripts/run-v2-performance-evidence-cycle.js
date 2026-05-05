@@ -11,13 +11,24 @@ function withDefault(env, key, value) {
   return current == null ? value : env[key];
 }
 
-function buildCycleEnv(env = process.env) {
+function buildRunId(now = Date.now()) {
+  return `v2_performance_evidence_cycle_${now}`;
+}
+
+function buildCycleEnv(env = process.env, { runId = null, manualRun = null } = {}) {
+  const resolvedRunId = trimOrNull(runId) || trimOrNull(env.V2_EVIDENCE_CYCLE_RUN_ID) || buildRunId();
   return Object.freeze({
     ...env,
+    V2_EVIDENCE_CYCLE_RUN_ID: resolvedRunId,
+    OPENCLAW_RUN_ID: withDefault({ ...env, OPENCLAW_RUN_ID: env.OPENCLAW_RUN_ID || resolvedRunId }, "OPENCLAW_RUN_ID", resolvedRunId),
+    V2_EVIDENCE_CYCLE_MANUAL_RUN: manualRun == null
+      ? withDefault(env, "V2_EVIDENCE_CYCLE_MANUAL_RUN", require.main === module ? "1" : "0")
+      : (manualRun ? "1" : "0"),
     V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE: withDefault(env, "V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE", "FIRESTORE"),
     V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE: withDefault(env, "V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE", "1"),
     V2_OPENCLAW_OUTCOME_ADJUDICATION_REQUIRE_NONEMPTY: withDefault(env, "V2_OPENCLAW_OUTCOME_ADJUDICATION_REQUIRE_NONEMPTY", "0"),
     V2_PERFORMANCE_GATE_SOFT: withDefault(env, "V2_PERFORMANCE_GATE_SOFT", "1"),
+    V2_OPENCLAW_POLICY_CANDIDATE_SOFT: withDefault(env, "V2_OPENCLAW_POLICY_CANDIDATE_SOFT", "1"),
   });
 }
 
@@ -48,6 +59,35 @@ function buildDefaultSteps() {
         win_rate_pct: result && result.win_rate_pct,
         profit_factor: result && result.profit_factor,
         expectancy: result && result.expectancy,
+      }),
+    },
+    {
+      id: "root_cause_analysis",
+      critical: true,
+      run: async (env) => require("./analyze-v2-openclaw-root-cause").main(env),
+      summarize: (result) => ({
+        ok: result && result.ok === true,
+        reason: result && result.reason,
+        sample_n: result && result.sample_n,
+        profit_factor: result && result.total && result.total.profit_factor,
+        finding_n: result && Array.isArray(result.root_cause_findings) ? result.root_cause_findings.length : null,
+        run_id: result && result.run_id,
+      }),
+    },
+    {
+      id: "policy_candidate_from_root_cause",
+      critical: true,
+      allowBlocked: true,
+      run: async (env) => require("./generate-v2-openclaw-policy-candidate-from-root-cause").main(env),
+      summarize: (result) => ({
+        ok: Boolean(result && typeof result === "object"),
+        candidate_ok: result && result.ok === true,
+        reason: result && result.reason,
+        decision: result && result.decision,
+        blockers: result && result.blockers,
+        output_file: result && result.output_file,
+        source_sample_n: result && result.candidate && result.candidate.source_sample_n,
+        run_id: result && result.run_id,
       }),
     },
     {
@@ -144,8 +184,9 @@ async function runStep(step, env) {
 }
 
 async function main({ env = process.env, steps = buildDefaultSteps(), setProcessExitCode = require.main === module } = {}) {
-  const cycleEnv = buildCycleEnv(env);
   const started = Date.now();
+  const runId = trimOrNull(env.V2_EVIDENCE_CYCLE_RUN_ID) || buildRunId(started);
+  const cycleEnv = buildCycleEnv(env, { runId, manualRun: setProcessExitCode === true });
   const results = [];
 
   for (const step of steps) {
@@ -160,6 +201,9 @@ async function main({ env = process.env, steps = buildDefaultSteps(), setProcess
   const payload = Object.freeze({
     ok: failed.length === 0,
     reason: failed.length === 0 ? "V2_PERFORMANCE_EVIDENCE_CYCLE_COMPLETE" : "V2_PERFORMANCE_EVIDENCE_CYCLE_FAILED",
+    run_id: runId,
+    source_cycle_id: runId,
+    manual_run: cycleEnv.V2_EVIDENCE_CYCLE_MANUAL_RUN === "1",
     generated_at: new Date().toISOString(),
     duration_ms: Date.now() - started,
     step_n: results.length,
@@ -194,5 +238,6 @@ if (require.main === module) {
     buildDefaultSteps,
     runStep,
     __test: { trimOrNull, withDefault },
+    buildRunId,
   };
 }
