@@ -58,6 +58,32 @@ function maybeDowngradeEdgeCohortForRealizedExpectancy(cohort, rollingExpectancy
   return cohort;
 }
 
+function applyEdgeCohortAuthority({ rawEdgeCohort, edgeCohortAfterRealizedExpectancy, rollingExpectancy }) {
+  // 2026-05-05: realized V2 outcomes showed BUILDABLE_EDGE is not
+  // monotonic with realized PnL. Keep the raw label for diagnostics, but
+  // remove its authority from live decisions until cohort-level recovery is
+  // proven. STRONG_EDGE can still survive if realized expectancy is positive.
+  if (rawEdgeCohort === "BUILDABLE_EDGE") {
+    return Object.freeze({
+      edge_cohort: "MARGINAL_EDGE",
+      edge_cohort_authority: "ADVISORY_ONLY",
+      edge_cohort_downgraded: true,
+      edge_cohort_downgrade_reason: "BUILDABLE_EDGE_ADVISORY_ONLY",
+      edge_cohort_downgraded_by_realized_expectancy: normalizeRollingExpectancy(rollingExpectancy) !== null
+        && normalizeRollingExpectancy(rollingExpectancy) <= 0,
+    });
+  }
+  return Object.freeze({
+    edge_cohort: edgeCohortAfterRealizedExpectancy,
+    edge_cohort_authority: "AUTHORITATIVE",
+    edge_cohort_downgraded: edgeCohortAfterRealizedExpectancy !== rawEdgeCohort,
+    edge_cohort_downgrade_reason: edgeCohortAfterRealizedExpectancy !== rawEdgeCohort
+      ? "REALIZED_EXPECTANCY_NON_POSITIVE"
+      : null,
+    edge_cohort_downgraded_by_realized_expectancy: edgeCohortAfterRealizedExpectancy !== rawEdgeCohort,
+  });
+}
+
 function buildExpectedEdgeModel({
   signalSide,
   htfAlignmentScore = null,
@@ -117,7 +143,12 @@ function buildExpectedEdgeModel({
   )).toFixed(4));
 
   const rawEdgeCohort = bucketEdgeCohort(edgeScore, effectiveNet);
-  const edgeCohort = maybeDowngradeEdgeCohortForRealizedExpectancy(rawEdgeCohort, edgeCohortRollingExpectancy);
+  const edgeCohortAfterRealizedExpectancy = maybeDowngradeEdgeCohortForRealizedExpectancy(rawEdgeCohort, edgeCohortRollingExpectancy);
+  const edgeCohortAuthority = applyEdgeCohortAuthority({
+    rawEdgeCohort,
+    edgeCohortAfterRealizedExpectancy,
+    rollingExpectancy: edgeCohortRollingExpectancy,
+  });
 
   return Object.freeze({
     present: true,
@@ -134,9 +165,12 @@ function buildExpectedEdgeModel({
     edge_score: edgeScore,
     edge_score_out_of_20: Math.round(20 * edgeScore),
     raw_edge_cohort: rawEdgeCohort,
-    edge_cohort: edgeCohort,
+    edge_cohort: edgeCohortAuthority.edge_cohort,
+    edge_cohort_authority: edgeCohortAuthority.edge_cohort_authority,
     edge_cohort_rolling_expectancy: normalizeRollingExpectancy(edgeCohortRollingExpectancy),
-    edge_cohort_downgraded_by_realized_expectancy: edgeCohort !== rawEdgeCohort,
+    edge_cohort_downgraded: edgeCohortAuthority.edge_cohort_downgraded,
+    edge_cohort_downgrade_reason: edgeCohortAuthority.edge_cohort_downgrade_reason,
+    edge_cohort_downgraded_by_realized_expectancy: edgeCohortAuthority.edge_cohort_downgraded_by_realized_expectancy,
     trigger_strength_score: triggerStrength,
   });
 }
@@ -148,5 +182,6 @@ module.exports = {
     normalizeFrictionPenalty,
     bucketEdgeCohort,
     maybeDowngradeEdgeCohortForRealizedExpectancy,
+    applyEdgeCohortAuthority,
   },
 };

@@ -7,6 +7,14 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
 
 function buildNativeSignalBundle(overrides = {}) {
   const side = String(overrides.side || "LONG").trim().toUpperCase() === "SHORT" ? "SHORT" : "LONG";
+  const { featureValues: overrideFeatureValues, ...restOverrides } = overrides;
+  const featureValues = {
+    trend_bias: side === "LONG" ? 0.64 : -0.64,
+    volatility_rank: 0.59,
+    btc_1h_trend: side,
+    mtf_1h_direction: side,
+    ...(overrideFeatureValues || {}),
+  };
   return buildOpenClawDecisionBundle({
     signalSourceMode: "SERVER_NATIVE_ML_AI",
     signalLineageId: "LINEAGE__NATIVE_SIGNAL_ROUTER__1",
@@ -25,10 +33,7 @@ function buildNativeSignalBundle(overrides = {}) {
     htfConfidence: 0.83,
     timeframe: "15M",
     featureSchemaVersion: "ml_features_v1",
-    featureValues: {
-      trend_bias: side === "LONG" ? 0.64 : -0.64,
-      volatility_rank: 0.59,
-    },
+    featureValues,
     proposalVerdict: "PASS",
     rankScore: 0.72,
     sizeRatio: 0.3,
@@ -42,7 +47,7 @@ function buildNativeSignalBundle(overrides = {}) {
       metrics: { symbol: "ETHUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
     },
     signalCriteria: buildPassSignalCriteriaSeed(side),
-    ...overrides,
+    ...restOverrides,
   });
 }
 
@@ -54,7 +59,7 @@ function buildNativeSignalBundle(overrides = {}) {
     rationaleSummary: "canary-approved native signal",
     policyScope: "SOL_15M",
     htfConfidence: 0.76,
-    featureValues: { trend_bias: 0.77, volatility_rank: 0.48 },
+    featureValues: { trend_bias: 0.77, volatility_rank: 0.48, btc_1h_trend: "LONG", mtf_1h_direction: "LONG" },
     rankScore: 0.79,
     sizeRatio: 0.45,
     featuresHash: "feat_hash_sol_1",
@@ -81,7 +86,7 @@ function buildNativeSignalBundle(overrides = {}) {
     rationaleSummary: "missing market data quality should fail closed",
     policyScope: "SOL_15M",
     htfConfidence: 0.76,
-    featureValues: { trend_bias: 0.77, volatility_rank: 0.48 },
+    featureValues: { trend_bias: 0.77, volatility_rank: 0.48, btc_1h_trend: "LONG", mtf_1h_direction: "LONG" },
     rankScore: 0.79,
     sizeRatio: 0.45,
     featuresHash: "feat_hash_sol_missing_mdq",

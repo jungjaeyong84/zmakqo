@@ -54,4 +54,31 @@ const { buildExpectedEdgeModel } = require("../v2/expectedEdgeModel");
   assert.strictEqual(model.edge_cohort, "MARGINAL_EDGE");
 })();
 
+(function buildableEdgeIsAdvisoryOnlyUntilRealizedRecovery() {
+  const model = buildExpectedEdgeModel({
+    signalSide: "LONG",
+    htfAlignmentScore: 0.85,
+    setupQualityScore: 0.8,
+    volumeZScore: 2,
+    rsiEntryTf: 62,
+    marketQualityScore: 0.9,
+    spreadBps: 3,
+    fundingPenaltyBps: 1,
+    expectedGrossR: 2.1,
+    expectedNetRAfterCost: 0.35,
+    costEstimateBps: 6,
+    costREquivalent: 1.75,
+    regimeProfile: {
+      regime_score: 0.8,
+      liquidity_regime: "ADEQUATE",
+    },
+  });
+
+  assert.strictEqual(model.raw_edge_cohort, "BUILDABLE_EDGE");
+  assert.strictEqual(model.edge_cohort, "MARGINAL_EDGE");
+  assert.strictEqual(model.edge_cohort_authority, "ADVISORY_ONLY");
+  assert.strictEqual(model.edge_cohort_downgraded, true);
+  assert.strictEqual(model.edge_cohort_downgrade_reason, "BUILDABLE_EDGE_ADVISORY_ONLY");
+})();
+
 console.log("V2_EXPECTED_EDGE_MODEL_TEST_OK");

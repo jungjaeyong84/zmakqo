@@ -28,6 +28,8 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
       market_quality_score: 0.9,
       spread_bps: 2,
       mark_index_gap_bps: 1,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     },
     marketDataQuality: {
       ok: true,
@@ -145,6 +147,8 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
       cost_r_equivalent: 0.1,
       funding_penalty_bps: 0,
       market_quality_score: 0.9,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     },
     marketDataQuality: {
       ok: true,
@@ -181,6 +185,8 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
       market_quality_score: 0.9,
       spread_bps: 2,
       mark_index_gap_bps: 1,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     },
     marketDataQuality: {
       ok: true,
@@ -222,6 +228,8 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
       market_quality_score: 0.9,
       spread_bps: 2,
       mark_index_gap_bps: 1,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     },
     marketDataQuality: {
       ok: true,
@@ -266,6 +274,8 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
       market_quality_score: 0.9,
       spread_bps: 2,
       mark_index_gap_bps: 1,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     },
     marketDataQuality: {
       ok: true,
@@ -313,6 +323,74 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.setup_gate.setup_type, "PULLBACK_PROBE");
   assert.strictEqual(criteria.feature_snapshot_contract.pullback_reclaim_downgraded, true);
   assert.ok(criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:HOLD_NOT_CONFIRMED"));
+})();
+
+(function pullbackReclaimRequiresBtcAndMtfAlignmentEvidence() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.82,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.82,
+      trigger_type: "RECLAIM",
+      trigger_confirmed: true,
+      reclaim_confirmed: true,
+      hold_after_reclaim: true,
+      stop_distance_sane: true,
+      volume_zscore: 1.4,
+      rsi_entry_tf: 58,
+      expected_gross_r: 1.9,
+      expected_net_r_after_cost: 0.4,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1.5,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.9,
+      spread_bps: 2,
+      mark_index_gap_bps: 1,
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 1 } },
+  });
+  assert.strictEqual(criteria.verdict, "BLOCK");
+  assert.strictEqual(criteria.setup_gate.setup_type, "PULLBACK_PROBE");
+  assert.ok(criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:BTC_MTF_ALIGNMENT_EVIDENCE_REQUIRED"));
+})();
+
+(function shortPullbackReclaimRequiresRecoveryEvidence() {
+  const criteria = buildSignalCriteria({
+    signalSide: "SHORT",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "SHORT",
+      htf_alignment_score: 0.82,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.82,
+      trigger_type: "RECLAIM",
+      trigger_confirmed: true,
+      reclaim_confirmed: true,
+      hold_after_reclaim: true,
+      stop_distance_sane: true,
+      volume_zscore: 1.4,
+      rsi_entry_tf: 42,
+      expected_gross_r: 1.9,
+      expected_net_r_after_cost: 0.4,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1.5,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.9,
+      spread_bps: 2,
+      mark_index_gap_bps: 1,
+      btc_1h_trend: "SHORT",
+      mtf_1h_direction: "SHORT",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 1 } },
+  });
+  assert.strictEqual(criteria.verdict, "BLOCK");
+  assert.strictEqual(criteria.setup_gate.setup_type, "PULLBACK_PROBE");
+  assert.ok(criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:SHORT_DISABLED_BY_REALIZED_DECAY"));
 })();
 
 (function adverseSelectionPenaltyReducesEffectiveNetRAndBlocksOpposedMtf() {

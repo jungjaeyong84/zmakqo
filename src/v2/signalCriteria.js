@@ -239,27 +239,37 @@ function evaluatePullbackReclaimContract({
   if (setupType !== "PULLBACK_RECLAIM") {
     return Object.freeze({ setup_type: setupType, downgraded: false, blockers: Object.freeze([]) });
   }
+  const normalizedSide = upper(side);
   const reclaimConfirmed = isBooleanTrue(resolveFeatureValue(features, "reclaim_confirmed", "pullback_reclaim_confirmed", "trigger_confirmed"))
     || triggerConfirmed === true;
   const holdConfirmed = isBooleanTrue(resolveFeatureValue(features, "hold_after_reclaim", "reclaim_hold_confirmed", "reclaim_level_held"));
   const stopDistanceSane = asBooleanOrNull(resolveFeatureValue(features, "stop_distance_sane", "sl_distance_sane", "trigger_stop_distance_sane"));
+  const shortRecoveryConfirmed = isBooleanTrue(resolveFeatureValue(
+    features,
+    "pullback_reclaim_short_recovery_confirmed",
+    "short_reclaim_recovery_confirmed",
+    "short_reclaim_live_override"
+  ));
   const explicitStopDistance = stopDistanceSane === true;
   const implicitStopDistance = stopDistanceSane === null && (toNumberOrNull(setupQualityScore) ?? 0) >= 0.75;
   const volumeConfirmed = (toNumberOrNull(volumeZScore) ?? -Infinity) >= 1;
-  const alignmentNotOpposed = btcAlignment !== "OPPOSED" && mtfAlignment !== "OPPOSED";
+  const alignmentKnown = btcAlignment !== "UNKNOWN" && mtfAlignment !== "UNKNOWN";
+  const alignmentNotOpposed = alignmentKnown && btcAlignment !== "OPPOSED" && mtfAlignment !== "OPPOSED";
   const htfStrong = (toNumberOrNull(htfAlignmentScore) ?? 0) >= 0.75;
   const setupStrong = (toNumberOrNull(setupQualityScore) ?? 0) >= 0.75;
   const blockers = [];
+  if (normalizedSide === "SHORT" && !shortRecoveryConfirmed) blockers.push("PULLBACK_RECLAIM:SHORT_DISABLED_BY_REALIZED_DECAY");
   if (!reclaimConfirmed) blockers.push("PULLBACK_RECLAIM:RECLAIM_NOT_CONFIRMED");
   if (!holdConfirmed && !(htfStrong && setupStrong && volumeConfirmed)) blockers.push("PULLBACK_RECLAIM:HOLD_NOT_CONFIRMED");
   if (!(explicitStopDistance || implicitStopDistance)) blockers.push("PULLBACK_RECLAIM:STOP_DISTANCE_NOT_SANE");
   if (!volumeConfirmed) blockers.push("PULLBACK_RECLAIM:VOLUME_NOT_CONFIRMED");
+  if (!alignmentKnown) blockers.push("PULLBACK_RECLAIM:BTC_MTF_ALIGNMENT_EVIDENCE_REQUIRED");
   if (!alignmentNotOpposed) blockers.push("PULLBACK_RECLAIM:BTC_OR_MTF_OPPOSED");
   return Object.freeze({
     setup_type: blockers.length ? "PULLBACK_PROBE" : "PULLBACK_RECLAIM",
     downgraded: blockers.length > 0,
     blockers: Object.freeze(blockers),
-    side: upper(side),
+    side: normalizedSide,
   });
 }
 
@@ -713,6 +723,9 @@ function buildSignalCriteria({
       adverse_selection_reasons: adverseSelection.reasons,
       edge_cohort: expectedEdgeModel.edge_cohort,
       raw_edge_cohort: expectedEdgeModel.raw_edge_cohort,
+      edge_cohort_authority: expectedEdgeModel.edge_cohort_authority,
+      edge_cohort_downgraded: expectedEdgeModel.edge_cohort_downgraded,
+      edge_cohort_downgrade_reason: expectedEdgeModel.edge_cohort_downgrade_reason,
       edge_cohort_downgraded_by_realized_expectancy: expectedEdgeModel.edge_cohort_downgraded_by_realized_expectancy,
       tp1_reach_probability: expectedEdgeModel.tp1_reach_probability,
       continuation_probability: expectedEdgeModel.continuation_probability,

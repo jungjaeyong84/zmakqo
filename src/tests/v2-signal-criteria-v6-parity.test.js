@@ -44,6 +44,8 @@ const pineV611Path = path.join(__dirname, "../../code/donbeolja_v6.1.1.0_PRODUCT
       market_quality_score: 0.82,
       spread_bps: 6,
       mark_index_gap_bps: 2,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     },
     marketDataQuality: {
       ok: true,

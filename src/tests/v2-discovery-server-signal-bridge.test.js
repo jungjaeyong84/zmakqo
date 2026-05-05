@@ -59,6 +59,8 @@ function buildIntent(overrides = {}) {
       stop_distance_sane: true,
       htf_regime: "LONG",
       htf_alignment_score: 0.62,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
       setup_quality_score: 0.72,
       volume_ratio: 1.05,
       rsi_entry_tf: 50.4,
