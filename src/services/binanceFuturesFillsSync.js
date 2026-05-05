@@ -1246,6 +1246,10 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
   // validator and canonical transition layer already refuse to escalate TP0
   // in v2, so zeroing the hint here keeps the meta internally consistent.
   const v2Enabled = isTp0RetiredRuntime(nextMeta);
+  const fullTpOnly = isFullTpOnlyExitContract({
+    rules: nextMeta.exit_rules_override,
+    positionCtx: { meta: nextMeta },
+  });
   if (isTpP0Event(ev)) {
     if (!v2Enabled) {
       nextMeta.tp_p0_done = true;
@@ -1257,7 +1261,16 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
   if (isTpP1Event(ev)) {
     if (!v2Enabled) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
-    nextMeta.trail_active = true;
+    nextMeta.trail_active = fullTpOnly ? false : true;
+    if (fullTpOnly) {
+      nextMeta.trail_high = null;
+      nextMeta.trail_low = null;
+      nextMeta.trail_high_at_ms = null;
+      nextMeta.trail_low_at_ms = null;
+      nextMeta.runner_remaining_qty_abs = 0;
+      nextMeta.exit_contract_mode = nextMeta.exit_contract_mode || "TP_FULL_ONLY";
+      nextMeta.tp_full_only = true;
+    }
     nextMeta.tp_p1_pending = false;
     nextMeta.tp_p1_pending_at_ms = null;
     nextMeta.tp_p1_pending_until_ms = null;
@@ -1270,8 +1283,10 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
   }
   if (ev.startsWith("EXIT_TRAIL")) {
     if (!v2Enabled) nextMeta.tp_p0_done = true;
-    nextMeta.tp_p1_done = true;
-    nextMeta.trail_active = true;
+    if (!fullTpOnly) {
+      nextMeta.tp_p1_done = true;
+      nextMeta.trail_active = true;
+    }
   }
   return nextMeta;
 }
@@ -1415,13 +1430,26 @@ function mergeRecentExitHintsIntoMeta(meta = {}, {
   // TP0 retirement policy — v2 positions never stamp tp_p0_done regardless of
   // which cached hint arrives. See buildStageHintedMeta for rationale.
   const v2Enabled = isTp0RetiredRuntime(nextMeta);
+  const fullTpOnly = isFullTpOnlyExitContract({
+    rules: nextMeta.exit_rules_override,
+    positionCtx: { meta: nextMeta },
+  });
   if (!v2Enabled && recentTp0 && isTpP0Event(recentTp0.event)) {
     nextMeta.tp_p0_done = true;
   }
   if (recentTp1 && isTpP1Event(recentTp1.event)) {
     if (!v2Enabled) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
-    nextMeta.trail_active = true;
+    nextMeta.trail_active = fullTpOnly ? false : true;
+    if (fullTpOnly) {
+      nextMeta.trail_high = null;
+      nextMeta.trail_low = null;
+      nextMeta.trail_high_at_ms = null;
+      nextMeta.trail_low_at_ms = null;
+      nextMeta.runner_remaining_qty_abs = 0;
+      nextMeta.exit_contract_mode = nextMeta.exit_contract_mode || "TP_FULL_ONLY";
+      nextMeta.tp_full_only = true;
+    }
     nextMeta.tp_p1_pending = false;
     nextMeta.tp_p1_pending_at_ms = null;
     nextMeta.tp_p1_pending_until_ms = null;
@@ -1429,8 +1457,10 @@ function mergeRecentExitHintsIntoMeta(meta = {}, {
   }
   if (recentTrail && String(recentTrail.event || "").trim().toUpperCase().startsWith("EXIT_TRAIL")) {
     if (!v2Enabled) nextMeta.tp_p0_done = true;
-    nextMeta.tp_p1_done = true;
-    nextMeta.trail_active = true;
+    if (!fullTpOnly) {
+      nextMeta.tp_p1_done = true;
+      nextMeta.trail_active = true;
+    }
   }
   return nextMeta;
 }
@@ -3205,6 +3235,7 @@ function buildExitEventByKind(kind, rules, positionCtx = null) {
     return tpLabel ? `EXIT_TP_P1_${tpLabel}P` : "EXIT_TP_P1";
   }
   if (k === "TRAIL") {
+    if (isFullTpOnlyExitContract({ rules, positionCtx })) return "EXIT_EXTERNAL_SYNC";
     const trailR = Number(rules && rules.TRAIL_R_MULTIPLE);
     if (Number.isFinite(trailR) && trailR > 0) return "EXIT_TRAIL";
     return trailLabel ? `EXIT_TRAIL_${trailLabel}P` : "EXIT_TRAIL";
@@ -3301,6 +3332,7 @@ function shouldTrustMatchedIntentExitEvent({
 
 function isTrailExitEligible(positionCtx, recentTp1) {
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
+  if (isFullTpOnlyExitContract({ rules: ctx.exitRules || ctx.exit_rules || null, positionCtx: ctx })) return false;
   const recentTp1Event = String(recentTp1 && recentTp1.event || "").toUpperCase();
   if (isTpP1Event(recentTp1Event)) return true;
   if (ctx.trailActive !== true) return false;
@@ -4183,7 +4215,11 @@ function applyActiveExitStageBackstopOverride({
   const currentIsTp1 = isTpP1Event(currentEvent);
   const ctx = (positionCtx && typeof positionCtx === "object") ? positionCtx : {};
   const tp0RetiredRuntime = isTp0RetiredRuntime(ctx);
+  const fullTpOnly = isFullTpOnlyExitContract({ rules, positionCtx: ctx });
   if (!(currentIsTp0 || currentIsTp1)) {
+    if (fullTpOnly && currentEvent.startsWith("EXIT_TRAIL")) {
+      return "EXIT_EXTERNAL_SYNC";
+    }
     if (tp0RetiredRuntime
       && currentEvent.startsWith("EXIT_TRAIL")
       && ctx.tpP1Done !== true
@@ -4224,6 +4260,10 @@ function applyActiveExitStageBackstopOverride({
 
   const recentTrailEvent = String(recentTrail && recentTrail.event || "").trim().toUpperCase();
   const trailEligible = isTrailExitEligible(ctx, recentTp1) || recentTrailEvent.startsWith("EXIT_TRAIL");
+
+  if (fullTpOnly) {
+    return buildExitEventByKind("TP1", rules, ctx);
+  }
 
   if (ctx.tpP1Done === true || ctx.trailActive === true || trailEligible) {
     return buildExitEventByKind("TRAIL", rules, ctx);

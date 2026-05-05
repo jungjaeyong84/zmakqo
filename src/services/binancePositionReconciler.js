@@ -7,6 +7,7 @@ const {
   resolveTp0ContractQtyRatio,
   resolveTp1AbsoluteContractQtyRatio,
 } = require("../utils/exitQtyContract");
+const { isFullTpExitRatio } = require("../v2/exitPolicy");
 
 function toNum(value) {
   const n = Number(value);
@@ -15,6 +16,29 @@ function toNum(value) {
 
 function isSimplifiedExitV2Enabled(meta = {}) {
   return isSimplifiedExitV2Active(meta);
+}
+
+function isFullTpOnlyExitContractMeta(meta = {}) {
+  const source = meta && typeof meta === "object" ? meta : {};
+  const rules = source.exit_rules_override && typeof source.exit_rules_override === "object"
+    ? source.exit_rules_override
+    : {};
+  const mode = String(
+    source.exit_contract_mode
+    || source.exitContractMode
+    || rules.exit_contract_mode
+    || rules.exitContractMode
+    || ""
+  ).trim().toUpperCase();
+  if (mode === "TP_FULL_ONLY") return true;
+  if (source.tp_full_only === true || source.tpFullOnly === true) return true;
+  return isFullTpExitRatio(
+    source.TP_P1_QTY
+    ?? source.tp1_qty_ratio
+    ?? source.native_protection_tp_qty_ratio
+    ?? rules.TP_P1_QTY
+    ?? rules.tp1_qty_ratio
+  );
 }
 
 function normalizeAlgoOrderFetchResult(payload) {
@@ -241,6 +265,7 @@ function recoverSimplifiedExitV2RunnerMetaFromQtyReduction({
 } = {}) {
   const baseMeta = meta && typeof meta === "object" ? meta : {};
   if (!isSimplifiedExitV2Enabled(baseMeta)) return null;
+  if (isFullTpOnlyExitContractMeta(baseMeta)) return null;
   if (baseMeta.tp_p1_done === true || baseMeta.trail_active === true) return null;
   if (tpOrder || !stopOrder) return null;
 
@@ -701,6 +726,7 @@ function reconcileBinancePositionMetaWithExchange({
   markPrice = null,
 } = {}) {
   const baseMeta = meta && typeof meta === "object" ? meta : {};
+  const fullTpOnly = isFullTpOnlyExitContractMeta(baseMeta);
   if (!active) {
     return {
       meta: buildFlatMetaProjection(baseMeta),
@@ -757,7 +783,7 @@ function reconcileBinancePositionMetaWithExchange({
     || tp1ObservedAtMs <= 0
     || (Number.isFinite(trailObservedAtMs) && trailObservedAtMs >= tp1ObservedAtMs)
   );
-  if (nextMeta.tp_p1_done === true && hasFreshTrailObservation) {
+  if (!fullTpOnly && nextMeta.tp_p1_done === true && hasFreshTrailObservation) {
     nextMeta.trail_active = true;
   }
 
@@ -821,6 +847,16 @@ function reconcileBinancePositionMetaWithExchange({
     nextMeta.native_protection_tp0_qty_ratio = null;
     nextMeta.native_protection_tp0_status = null;
     nextMeta.native_protection_tp0_reason = null;
+    if (fullTpOnly) {
+      nextMeta.exit_contract_mode = nextMeta.exit_contract_mode || "TP_FULL_ONLY";
+      nextMeta.tp_full_only = true;
+      nextMeta.trail_active = false;
+      nextMeta.trail_high = null;
+      nextMeta.trail_low = null;
+      nextMeta.trail_high_at_ms = null;
+      nextMeta.trail_low_at_ms = null;
+      nextMeta.runner_remaining_qty_abs = 0;
+    }
   }
 
   if (!stop) invariants.push("NATIVE_STOP_MISSING");
