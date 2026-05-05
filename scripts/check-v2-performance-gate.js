@@ -35,11 +35,20 @@ function resolveOutputFile(env = process.env) {
     || path.resolve("ops", "daily", OUTPUT_FILENAME);
 }
 
+function resolveRunId(metrics = {}, env = process.env) {
+  return trimOrNull(env.V2_EVIDENCE_CYCLE_RUN_ID)
+    || trimOrNull(env.OPENCLAW_RUN_ID)
+    || trimOrNull(metrics.run_id)
+    || trimOrNull(metrics.source_cycle_id)
+    || null;
+}
+
 function main(env = process.env) {
   const inputFile = path.resolve(resolveInputFile(env));
   const outputFile = path.resolve(resolveOutputFile(env));
   const metrics = JSON.parse(fs.readFileSync(inputFile, "utf8"));
   const resolvedStage = resolvePerformanceGateStage(null, env);
+  const runId = resolveRunId(metrics, env);
   const payload = {
     ...evaluateV2PerformanceGate({
       metrics,
@@ -52,6 +61,10 @@ function main(env = process.env) {
       env,
       mode: trimOrNull(env.V2_PERFORMANCE_GATE_MODE) || metrics.mode || "LIVE",
     }),
+    run_id: runId,
+    source_cycle_id: runId,
+    manual_run: trimOrNull(env.V2_EVIDENCE_CYCLE_MANUAL_RUN) === "1",
+    input_generated_at: trimOrNull(metrics.generated_at) || null,
     input_file: inputFile,
     output_file: outputFile,
     generated_at: new Date().toISOString(),

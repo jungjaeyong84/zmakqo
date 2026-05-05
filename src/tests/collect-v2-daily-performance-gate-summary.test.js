@@ -24,6 +24,9 @@ function gateFixture(overrides = {}) {
     ok: false,
     reason: "V2_PERFORMANCE_GATE_BLOCKED",
     stage: "LIVE",
+    run_id: "cycle_a",
+    source_cycle_id: "cycle_a",
+    generated_at: "2026-05-01T00:01:00.000Z",
     blockers: ["PERFORMANCE_GATE:SAMPLE_INSUFFICIENT"],
     metrics: {
       sample_n: 0,
@@ -43,6 +46,9 @@ function gateFixture(overrides = {}) {
 
 function reportFixture(overrides = {}) {
   return {
+    run_id: "cycle_a",
+    source_cycle_id: "cycle_a",
+    generated_at: "2026-05-01T00:00:30.000Z",
     fee_included: true,
     funding_included: true,
     slippage_included: true,
@@ -92,6 +98,24 @@ function missingGateBlocksCollector() {
   assert.ok(summary.blockers.includes("PERFORMANCE_DAILY:GATE_ARTIFACT_MISSING"));
 }
 
+function cycleMismatchBlocksSummary() {
+  const summary = buildSummary({
+    performanceGate: gateFixture({ run_id: "cycle_gate", source_cycle_id: "cycle_gate" }),
+    performanceReport: reportFixture({ run_id: "cycle_report", source_cycle_id: "cycle_report" }),
+  });
+  assert.strictEqual(summary.ok, false);
+  assert.ok(summary.blockers.includes("PERFORMANCE_DAILY:CYCLE_ID_MISMATCH"));
+}
+
+function staleGateBlocksSummary() {
+  const summary = buildSummary({
+    performanceGate: gateFixture({ generated_at: "2026-05-01T00:00:00.000Z" }),
+    performanceReport: reportFixture({ generated_at: "2026-05-01T00:02:00.000Z" }),
+  });
+  assert.strictEqual(summary.ok, false);
+  assert.ok(summary.blockers.includes("PERFORMANCE_DAILY:GATE_STALE_VS_REPORT"));
+}
+
 function collectWritesOutputAndHistory() {
   const tmp = mkTmp();
   const gateFile = path.join(tmp, "gate.json");
@@ -120,6 +144,8 @@ blockedGateIsAccumulatingSummary();
 passingGateShowsStagePass();
 costWarningsAreExplicit();
 missingGateBlocksCollector();
+cycleMismatchBlocksSummary();
+staleGateBlocksSummary();
 collectWritesOutputAndHistory();
 nestedCostFallbacksWork();
 console.log("COLLECT_V2_DAILY_PERFORMANCE_GATE_SUMMARY_TEST_OK");

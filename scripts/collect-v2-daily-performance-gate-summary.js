@@ -32,6 +32,13 @@ function boolOrNull(value) {
   return null;
 }
 
+function parseTimeMs(value) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function readJsonSafe(file) {
   try {
     return { ok: true, data: JSON.parse(fs.readFileSync(file, "utf8")) };
@@ -78,14 +85,29 @@ function summarizeStage(stageResult = null) {
   });
 }
 
+function resolveCycleId(row = null) {
+  if (!row || typeof row !== "object") return null;
+  return trimOrNull(row.source_cycle_id) || trimOrNull(row.run_id) || null;
+}
+
 function buildSummary({ performanceGate = null, performanceReport = null, env = process.env, nowMs = Date.now(), gateFile = DEFAULT_PERFORMANCE_GATE_FILE, reportFile = DEFAULT_PERFORMANCE_REPORT_FILE } = {}) {
   const blockers = [];
   const warnings = [];
   const gate = performanceGate && typeof performanceGate === "object" ? performanceGate : null;
   const report = performanceReport && typeof performanceReport === "object" ? performanceReport : null;
+  const gateCycleId = resolveCycleId(gate);
+  const reportCycleId = resolveCycleId(report);
+  const gateGeneratedAtMs = parseTimeMs(gate && gate.generated_at);
+  const reportGeneratedAtMs = parseTimeMs(report && report.generated_at);
 
   if (!gate) blockers.push("PERFORMANCE_DAILY:GATE_ARTIFACT_MISSING");
   if (!report) warnings.push("PERFORMANCE_DAILY:REPORT_ARTIFACT_MISSING");
+  if (gate && report && gateCycleId && reportCycleId && gateCycleId !== reportCycleId) {
+    blockers.push("PERFORMANCE_DAILY:CYCLE_ID_MISMATCH");
+  }
+  if (gate && report && Number.isFinite(gateGeneratedAtMs) && Number.isFinite(reportGeneratedAtMs) && gateGeneratedAtMs < reportGeneratedAtMs) {
+    blockers.push("PERFORMANCE_DAILY:GATE_STALE_VS_REPORT");
+  }
 
   const stageMatrix = gate && gate.stage_matrix && typeof gate.stage_matrix === "object"
     ? gate.stage_matrix
@@ -119,6 +141,8 @@ function buildSummary({ performanceGate = null, performanceReport = null, env = 
     profit_factor: profitFactor,
     expectancy_r: expectancyR,
     net_pnl_pct: netPnlPct,
+    gate_cycle_id: gateCycleId,
+    report_cycle_id: reportCycleId,
     fee_included: costs.fee_included,
     funding_included: costs.funding_included,
     slippage_included: costs.slippage_included,
