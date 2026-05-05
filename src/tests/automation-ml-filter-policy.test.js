@@ -150,6 +150,17 @@ function run() {
   assert.strictEqual(normalizedPass.failed_checks.includes("MONTHLY_TARGET_NOT_MET"), false);
   assert.strictEqual(normalizedPass.failed_checks.includes("WIN_RATE_BELOW_TARGET"), true);
 
+  assert.strictEqual(__test.isV2LearningRow({ schema_version: "EVENT_ENVELOPE_V2" }), true);
+  assert.strictEqual(__test.isV2LearningRow({ position_cycle_id: "PCY__BINANCEFUT__SOLUSDT__LONG__abc" }), true);
+  assert.strictEqual(__test.isV2LearningRow({ reason: "DISCOVERY_CANARY:MAX_POSITION_COUNT_REACHED" }), true);
+  assert.strictEqual(__test.isV2LearningRow({ event: "CORE_LONG", reason: "TV_WEBHOOK" }), false);
+  const scoped = __test.applyLearningScope([
+    { schema_version: "EVENT_ENVELOPE_V2" },
+    { event: "CORE_LONG", reason: "TV_WEBHOOK" },
+  ], "signals", { learningScope: "V2_ONLY_OPENCLAW", allowLegacy: false });
+  assert.strictEqual(scoped.rows.length, 1);
+  assert.strictEqual(scoped.summary.rejected_legacy_or_ambiguous_n, 1);
+
   const telegramPayload = __test.buildV2MlFilterTelegramSummary({
     provider: "BINANCEFUT",
     examples: Array.from({ length: 10 }, () => ({})),
@@ -160,6 +171,7 @@ function run() {
     metrics: { ok: true, accuracy: 0.66, brier: 0.23, logloss: 0.65 },
     selfValidation: { ok: false, result: "WARN", checks: ["holdout validation available"] },
     sharedObjective: {
+      fresh: false,
       objectiveConfig: { min_monthly_net_krw: 150000 },
       currentObjective: { verdict: "FAIL", monthly_run_rate_krw: -1234 },
     },
@@ -175,12 +187,41 @@ function run() {
       MARKET: { action: "KEEP", reason: "current evidence weak" },
       EV: { action: "KEEP", reason: "formal live gate blocks loosening" },
     },
+    learningProvenance: {
+      learning_scope: "V2_ONLY_OPENCLAW",
+      v2_only_enforced: true,
+      source_collections: ["signals", "signals_dropped", "fills_paper"],
+      collections: {
+        signals: { rejected_legacy_or_ambiguous_n: 1 },
+        signals_dropped: { rejected_legacy_or_ambiguous_n: 2 },
+        fills_paper: { rejected_legacy_or_ambiguous_n: 3 },
+      },
+    },
+    shadowMode: {
+      learning_mode: "SHADOW_ADVISORY",
+      auto_apply_enabled: false,
+      ml_live_serving_armed: false,
+      policy_auto_apply_enabled: false,
+    },
+    formalPerformance: {
+      sample_n: 278,
+      win_rate_pct: 29.49,
+      profit_factor: 0.431,
+      expectancy_r: -0.254,
+      net_pnl_usdt: -70.63,
+    },
     mdPath: "/tmp/report.md",
     jsonPath: "/tmp/report.json",
   });
   const telegramText = JSON.stringify(telegramPayload);
   assert.strictEqual(telegramPayload.title, "[V2 OpenClaw 학습 점검] BINANCEFUT");
   assert(telegramText.includes("V2 OpenClaw 학습 상태"));
+  assert(telegramText.includes("SHADOW_ADVISORY"));
+  assert(telegramText.includes("auto_apply=0"));
+  assert(telegramText.includes("V2_ONLY_OPENCLAW"));
+  assert(telegramText.includes("V2-only=강제"));
+  assert(telegramText.includes("정식 성과 표본은 278건"));
+  assert(telegramText.includes("성과 목표 artifact가 stale"));
   assert(telegramText.includes("V2 Discovery 계약"));
   assert(telegramText.includes("V2 신호 기준/서버 정본"));
   assert(telegramText.includes("150,000 KRW"));

@@ -42,6 +42,8 @@ const {
 
 const PROVIDER = String(process.env.ML_FILTER_PROVIDER || "BINANCEFUT").trim().toUpperCase();
 const TF = String(process.env.ML_FILTER_TF || "15m").trim();
+const LEARNING_SCOPE = String(process.env.DONBEOLJA_OPENCLAW_LEARNING_SCOPE || process.env.ML_FILTER_LEARNING_SCOPE || "V2_ONLY_OPENCLAW").trim().toUpperCase();
+const ALLOW_LEGACY_OPENCLAW_LEARNING = String(process.env.DONBEOLJA_V2_ALLOW_LEGACY_OPENCLAW_LEARNING || process.env.ML_FILTER_ALLOW_LEGACY_OPENCLAW_LEARNING || "0").trim() === "1";
 const LOOKBACK_DAYS = Math.max(14, Number(process.env.ML_FILTER_LOOKBACK_DAYS || 56));
 const SCAN_LIMIT = Math.max(3000, Number(process.env.ML_FILTER_SCAN_LIMIT || 30000));
 const COUNTERFACTUAL_HOURS = Math.max(6, Number(process.env.ML_FILTER_COUNTERFACTUAL_HOURS || 12));
@@ -74,6 +76,13 @@ const V2_STAGE_LABELS = Object.freeze({
   AI: "V2 진입 품질/시장 데이터",
   MARKET: "V2 리스크 거버너/사이징",
   EV: "V2 기대값 게이트",
+});
+
+const V2_SHADOW_MODE = Object.freeze({
+  learning_mode: "SHADOW_ADVISORY",
+  auto_apply_enabled: false,
+  ml_live_serving_armed: false,
+  policy_auto_apply_enabled: false,
 });
 
 function toNum(v) {
@@ -116,6 +125,107 @@ function sanitizeToken(v) {
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .trim()
     .toLowerCase();
+}
+
+function upperToken(v) {
+  return String(v || "").trim().toUpperCase();
+}
+
+function isV2LearningRow(row) {
+  if (!row || typeof row !== "object") return false;
+  const schema = upperToken(row.schema_version);
+  if (schema === "EVENT_ENVELOPE_V2") return true;
+  const positionCycleId = upperToken(row.position_cycle_id);
+  if (positionCycleId.startsWith("PCY__BINANCEFUT")) return true;
+  const openclawFields = [
+    row.openclaw_decision_id,
+    row.openclaw_decision_bundle_id,
+    row.openclaw_execution_permit_id,
+    row.openclaw_execution_audit_id,
+    row.openclaw_outcome_adjudication_id,
+  ].some((value) => upperToken(value).includes("OPENCLAW"));
+  if (openclawFields) return true;
+  const sourceMode = upperToken(row.source_mode);
+  if (sourceMode === "SERVER_NATIVE_ML_AI") return true;
+  const decisionMode = upperToken(row.decision_mode);
+  if (decisionMode === "CANARY" || decisionMode === "DISCOVERY") return true;
+  const reason = upperToken(row.reason || row.drop_reason_code);
+  return (
+    reason.startsWith("V2_") ||
+    reason.startsWith("DISCOVERY_CANARY") ||
+    reason.startsWith("SIGNAL_CRITERIA") ||
+    reason.startsWith("OPENCLAW_")
+  );
+}
+
+function applyLearningScope(rows = [], collection = "unknown", {
+  learningScope = LEARNING_SCOPE,
+  allowLegacy = ALLOW_LEGACY_OPENCLAW_LEARNING,
+} = {}) {
+  const input = Array.isArray(rows) ? rows : [];
+  const enforceV2Only = String(learningScope || "").trim().toUpperCase() === "V2_ONLY_OPENCLAW" && allowLegacy !== true;
+  const kept = enforceV2Only ? input.filter(isV2LearningRow) : input.slice();
+  const rejected = enforceV2Only ? input.length - kept.length : 0;
+  return {
+    rows: kept,
+    summary: {
+      collection,
+      learning_scope: learningScope || null,
+      v2_only_enforced: enforceV2Only,
+      raw_n: input.length,
+      accepted_n: kept.length,
+      rejected_legacy_or_ambiguous_n: rejected,
+      accepted_rate: input.length > 0 ? kept.length / input.length : null,
+    },
+  };
+}
+
+function summarizeLearningProvenance({
+  signalsRaw = [],
+  dropsRaw = [],
+  fillsRaw = [],
+  signalsScoped = [],
+  dropsScoped = [],
+  fillsScoped = [],
+  signals = [],
+  drops = [],
+  fills = [],
+  learningScope = LEARNING_SCOPE,
+  allowLegacy = ALLOW_LEGACY_OPENCLAW_LEARNING,
+} = {}) {
+  const signalScope = applyLearningScope(signalsRaw, "signals", { learningScope, allowLegacy }).summary;
+  const dropScope = applyLearningScope(dropsRaw, "signals_dropped", { learningScope, allowLegacy }).summary;
+  const fillScope = applyLearningScope(fillsRaw, "fills_paper", { learningScope, allowLegacy }).summary;
+  return {
+    learning_scope: learningScope,
+    allow_legacy_openclaw_learning: allowLegacy === true,
+    v2_only_enforced: signalScope.v2_only_enforced && dropScope.v2_only_enforced && fillScope.v2_only_enforced,
+    source_collections: ["signals", "signals_dropped", "fills_paper"],
+    source_kind: "FIRESTORE_RECENT_CACHE",
+    warning: signalScope.rejected_legacy_or_ambiguous_n + dropScope.rejected_legacy_or_ambiguous_n + fillScope.rejected_legacy_or_ambiguous_n > 0
+      ? "V2_ONLY_OPENCLAW_FILTER_REJECTED_LEGACY_OR_AMBIGUOUS_ROWS"
+      : null,
+    raw: {
+      signals_n: Array.isArray(signalsRaw) ? signalsRaw.length : 0,
+      drops_n: Array.isArray(dropsRaw) ? dropsRaw.length : 0,
+      fills_n: Array.isArray(fillsRaw) ? fillsRaw.length : 0,
+    },
+    v2_scope: {
+      signals_n: Array.isArray(signalsScoped) ? signalsScoped.length : 0,
+      drops_n: Array.isArray(dropsScoped) ? dropsScoped.length : 0,
+      fills_n: Array.isArray(fillsScoped) ? fillsScoped.length : 0,
+    },
+    filtered_entry_scope: {
+      signals_n: Array.isArray(signals) ? signals.length : 0,
+      drops_n: Array.isArray(drops) ? drops.length : 0,
+      fills_n: Array.isArray(fills) ? fills.length : 0,
+    },
+    collections: {
+      signals: signalScope,
+      signals_dropped: dropScope,
+      fills_paper: fillScope,
+    },
+  };
 }
 
 function resolveTier(rowOrEvent) {
@@ -574,6 +684,32 @@ function readFreshWeeklyGovernance(nowMs) {
   };
 }
 
+function readFormalPerformanceSnapshot() {
+  const dailyPath = path.join(OPS_DAILY_DIR, "v2_openclaw_daily_performance_report_latest.json");
+  const summaryPath = path.join(OPS_DAILY_DIR, "v2_daily_performance_gate_summary_latest.json");
+  const daily = readJsonRawSafe(dailyPath, null);
+  const summary = readJsonRawSafe(summaryPath, null);
+  const sampleN = toNum(daily && daily.sample_n) ?? toNum(summary && summary.sample_n);
+  const winRatePct = toNum(daily && daily.win_rate_pct);
+  const profitFactor = toNum(daily && daily.profit_factor) ?? toNum(summary && summary.profit_factor);
+  const expectancyR = toNum(daily && daily.expectancy_r) ?? toNum(daily && daily.expectancy) ?? toNum(summary && summary.expectancy_r);
+  const netPnlUsdt = toNum(daily && daily.net_pnl_usdt) ?? toNum(summary && summary.net_pnl_usdt);
+  return {
+    source: (daily && daily.source) || "OPENCLAW_OUTCOME_ADJUDICATIONS",
+    generated_at: (daily && daily.generated_at) || (summary && summary.generated_at) || null,
+    sample_n: sampleN,
+    win_rate_pct: winRatePct,
+    profit_factor: profitFactor,
+    expectancy_r: expectancyR,
+    net_pnl_usdt: netPnlUsdt,
+    current_stage: summary && summary.current_stage || null,
+    current_status: summary && summary.current_status || null,
+    highest_passed_stage: summary && summary.highest_passed_stage || null,
+    daily_report_path: dailyPath,
+    summary_path: summaryPath,
+  };
+}
+
 function sharedObjectiveFailing(sharedObjective) {
   const current = sharedObjective && sharedObjective.currentObjective;
   if (!current || typeof current !== "object") return false;
@@ -873,6 +1009,9 @@ function buildV2MlFilterTelegramSummary({
   bestFebtContract = null,
   latePenalty = {},
   recommendations = {},
+  learningProvenance = null,
+  shadowMode = V2_SHADOW_MODE,
+  formalPerformance = null,
   mdPath = "",
   jsonPath = "",
 } = {}) {
@@ -890,6 +1029,11 @@ function buildV2MlFilterTelegramSummary({
   const late1 = latePenalty && latePenalty.late_1_plus ? latePenalty.late_1_plus : {};
   const onTime = latePenalty && latePenalty.on_time ? latePenalty.on_time : {};
   const selfChecks = Array.isArray(selfValidation.checks) ? selfValidation.checks : [];
+  const provenance = learningProvenance && typeof learningProvenance === "object" ? learningProvenance : {};
+  const perf = formalPerformance && typeof formalPerformance === "object" ? formalPerformance : {};
+  const staleObjectiveLine = sharedObjective && sharedObjective.fresh === false
+    ? "주의: 성과 목표 artifact가 stale 상태라 월간 페이스는 최신 formal performance와 다를 수 있습니다."
+    : null;
 
   return {
     title: `${V2_TELEGRAM_TITLE_PREFIX} ${provider}`,
@@ -906,9 +1050,14 @@ function buildV2MlFilterTelegramSummary({
       {
         header: "V2 OpenClaw 학습 상태",
         lines: [
+          `운영 모드: ${shadowMode.learning_mode || "SHADOW_ADVISORY"} / auto_apply=${shadowMode.auto_apply_enabled ? 1 : 0} / ml_live=${shadowMode.ml_live_serving_armed ? 1 : 0} / policy_auto_apply=${shadowMode.policy_auto_apply_enabled ? 1 : 0}`,
+          `학습 데이터: ${provenance.learning_scope || "정보 없음"} / V2-only=${provenance.v2_only_enforced ? "강제" : "미강제"} / source=${provenance.source_collections ? provenance.source_collections.join("+") : "정보 없음"}`,
           `학습 표본 ${examples.length}건 / 실제 체결 ${executedExamples.length}건 / 드롭 반사실 ${dropExamples.length}건입니다.`,
+          `학습 입력 제외: signals ${provenance.collections && provenance.collections.signals ? provenance.collections.signals.rejected_legacy_or_ambiguous_n : 0}건 / drops ${provenance.collections && provenance.collections.signals_dropped ? provenance.collections.signals_dropped.rejected_legacy_or_ambiguous_n : 0}건 / fills ${provenance.collections && provenance.collections.fills_paper ? provenance.collections.fills_paper.rejected_legacy_or_ambiguous_n : 0}건입니다.`,
           `검증 방식은 ${split.mode || "정보 없음"}, 학습 ${trainingRows.length}건, 평가 ${Array.isArray(split.eval) ? split.eval.length : 0}건입니다.`,
           `정식 LIVE 성과 게이트는 ${objectiveVerdict} / 월간 페이스 ${monthlyRunRate} / 목표 ${targetMonthly.toLocaleString("ko-KR")} KRW 입니다.`,
+          `정식 성과 표본은 ${perf.sample_n == null ? "정보 없음" : `${perf.sample_n}건`} / win ${perf.win_rate_pct == null ? "정보 없음" : `${Number(perf.win_rate_pct).toFixed(2)}%`} / PF ${perf.profit_factor == null ? "정보 없음" : Number(perf.profit_factor).toFixed(3)} / expectancy ${perf.expectancy_r == null ? "정보 없음" : signedNum(perf.expectancy_r, 3)} / net ${perf.net_pnl_usdt == null ? "정보 없음" : `${signedNum(perf.net_pnl_usdt, 2)} USDT`} 입니다.`,
+          ...(staleObjectiveLine ? [staleObjectiveLine] : []),
           `V2 Discovery 계약은 ${discoveryMode} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "정보 없음"} / 기회 수 ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "정보 없음"} 입니다.`,
           `평가 결과는 정확도 ${pct(metrics.accuracy)}, Brier ${metrics.brier == null ? "정보 없음" : metrics.brier.toFixed(4)}, logloss ${metrics.logloss == null ? "정보 없음" : metrics.logloss.toFixed(4)} 입니다.`,
           `자체 검증 ${selfValidation.result || "정보 없음"} / ${selfChecks.join(" ; ") || "정보 없음"}`,
@@ -936,13 +1085,20 @@ function buildV2MlFilterTelegramSummary({
   };
 }
 
-function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, trainMetrics, validation, latePenalty, recommendations, coverage, stageSamples, selfValidation, artifacts, sharedObjective, bestFebtContract, bestFebtMarketGuard }) {
+function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, trainMetrics, validation, latePenalty, recommendations, coverage, stageSamples, selfValidation, artifacts, sharedObjective, bestFebtContract, bestFebtMarketGuard, learningProvenance, shadowMode, formalPerformance }) {
   const lines = [];
+  const provenance = learningProvenance && typeof learningProvenance === "object" ? learningProvenance : {};
+  const perf = formalPerformance && typeof formalPerformance === "object" ? formalPerformance : {};
   lines.push("# V2 OpenClaw Learning Policy");
   lines.push("");
   lines.push(`- 실행 시각: ${nowMeta.kst}`);
   lines.push(`- 대상: ${provider} ${tf}`);
-  lines.push("- 운영 범위: V2 Discovery/OpenClaw advisory, 정식 LIVE 자동 승격 없음");
+  lines.push("- 운영 범위: V2 Discovery/OpenClaw shadow advisory, 정식 LIVE 자동 승격 없음");
+  lines.push(`- 운영 모드: ${(shadowMode && shadowMode.learning_mode) || "SHADOW_ADVISORY"}`);
+  lines.push(`- 자동 적용: auto_apply=${shadowMode && shadowMode.auto_apply_enabled ? 1 : 0} / ml_live=${shadowMode && shadowMode.ml_live_serving_armed ? 1 : 0} / policy_auto_apply=${shadowMode && shadowMode.policy_auto_apply_enabled ? 1 : 0}`);
+  lines.push(`- 학습 범위: ${provenance.learning_scope || "N/A"} / V2-only ${provenance.v2_only_enforced ? "ENFORCED" : "NOT_ENFORCED"}`);
+  lines.push(`- 학습 데이터 소스: ${Array.isArray(provenance.source_collections) ? provenance.source_collections.join(" + ") : "N/A"} (${provenance.source_kind || "N/A"})`);
+  if (provenance.warning) lines.push(`- provenance warning: ${provenance.warning}`);
   lines.push(`- 평가 윈도우: 최근 ${lookbackDays}일`);
   lines.push(`- 학습 표본: ${model.sample_n}`);
   lines.push(`- executed: ${model.executed_n}`);
@@ -953,6 +1109,10 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   lines.push(`- 정식 LIVE 목표 월간 순수익: ${Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW).toLocaleString("ko-KR")} KRW`);
   lines.push(`- 정식 LIVE 성과 게이트: ${sharedObjective && sharedObjective.currentObjective ? sharedObjective.currentObjective.verdict : "N/A"}`);
   lines.push(`- 월간 페이스: ${sharedObjective && sharedObjective.currentObjective && Number.isFinite(Number(sharedObjective.currentObjective.monthly_run_rate_krw)) ? `${Number(sharedObjective.currentObjective.monthly_run_rate_krw).toLocaleString("ko-KR")} KRW` : "N/A"}`);
+  if (sharedObjective && sharedObjective.fresh === false) {
+    lines.push("- 주의: 성과 목표 artifact가 stale 상태입니다. 월간 페이스는 최신 formal performance와 다를 수 있습니다.");
+  }
+  lines.push(`- 정식 성과 표본: sample_n=${perf.sample_n == null ? "N/A" : perf.sample_n} / win=${perf.win_rate_pct == null ? "N/A" : `${Number(perf.win_rate_pct).toFixed(2)}%`} / PF=${perf.profit_factor == null ? "N/A" : Number(perf.profit_factor).toFixed(3)} / expectancy=${perf.expectancy_r == null ? "N/A" : signedNum(perf.expectancy_r, 3)} / net=${perf.net_pnl_usdt == null ? "N/A" : `${signedNum(perf.net_pnl_usdt, 2)} USDT`}`);
   lines.push(`- holdout accuracy: ${pct(metrics.accuracy)}`);
   lines.push(`- holdout brier: ${metrics.brier == null ? "N/A" : metrics.brier.toFixed(4)}`);
   lines.push(`- holdout logloss: ${metrics.logloss == null ? "N/A" : metrics.logloss.toFixed(4)}`);
@@ -962,6 +1122,27 @@ function renderMarkdown({ nowMeta, provider, tf, lookbackDays, model, metrics, t
   if (selfValidation && Array.isArray(selfValidation.checks)) {
     selfValidation.checks.forEach((row) => lines.push(`  - ${row}`));
   }
+  lines.push("");
+  lines.push("## learning data provenance");
+  lines.push(`- learning_scope: ${provenance.learning_scope || "N/A"}`);
+  lines.push(`- allow_legacy_openclaw_learning: ${provenance.allow_legacy_openclaw_learning ? "YES" : "NO"}`);
+  lines.push(`- v2_only_enforced: ${provenance.v2_only_enforced ? "YES" : "NO"}`);
+  if (provenance.collections) {
+    for (const key of ["signals", "signals_dropped", "fills_paper"]) {
+      const row = provenance.collections[key] || {};
+      lines.push(`- ${key}: raw=${row.raw_n || 0} / accepted=${row.accepted_n || 0} / rejected_legacy_or_ambiguous=${row.rejected_legacy_or_ambiguous_n || 0}`);
+    }
+  }
+  lines.push("");
+  lines.push("## formal performance evidence");
+  lines.push(`- source: ${perf.source || "N/A"}`);
+  lines.push(`- generated_at: ${perf.generated_at || "N/A"}`);
+  lines.push(`- current_status: ${perf.current_status || "N/A"} / highest_passed_stage: ${perf.highest_passed_stage || "N/A"}`);
+  lines.push(`- sample_n: ${perf.sample_n == null ? "N/A" : perf.sample_n}`);
+  lines.push(`- win_rate_pct: ${perf.win_rate_pct == null ? "N/A" : Number(perf.win_rate_pct).toFixed(2)}`);
+  lines.push(`- profit_factor: ${perf.profit_factor == null ? "N/A" : Number(perf.profit_factor).toFixed(3)}`);
+  lines.push(`- expectancy_r: ${perf.expectancy_r == null ? "N/A" : Number(perf.expectancy_r).toFixed(4)}`);
+  lines.push(`- net_pnl_usdt: ${perf.net_pnl_usdt == null ? "N/A" : Number(perf.net_pnl_usdt).toFixed(4)}`);
   lines.push("");
   lines.push("## V2 Discovery / OpenClaw 계약");
   lines.push(`- mode: ${bestFebtContract && bestFebtContract.mode || "N/A"}`);
@@ -1029,9 +1210,12 @@ async function main() {
     getCachedRecentByCreatedAt("fills_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: true }),
   ]);
   const sysCfg = sysRes && sysRes.data ? sysRes.data : {};
-  const signals = filterEntryRows(signalsRes.rows, { exchange: PROVIDER, tf: TF, fromMs, toMs: nowMs });
-  const drops = filterEntryRows(dropsRes.rows, { exchange: PROVIDER, tf: TF, fromMs, toMs: nowMs });
-  const fills = (Array.isArray(fillsRes.rows) ? fillsRes.rows : []).filter((row) => {
+  const scopedSignals = applyLearningScope(signalsRes.rows, "signals");
+  const scopedDrops = applyLearningScope(dropsRes.rows, "signals_dropped");
+  const scopedFills = applyLearningScope(fillsRes.rows, "fills_paper");
+  const signals = filterEntryRows(scopedSignals.rows, { exchange: PROVIDER, tf: TF, fromMs, toMs: nowMs });
+  const drops = filterEntryRows(scopedDrops.rows, { exchange: PROVIDER, tf: TF, fromMs, toMs: nowMs });
+  const fills = (Array.isArray(scopedFills.rows) ? scopedFills.rows : []).filter((row) => {
     const ex = String(row && row.exchange || "").trim().toUpperCase();
     const rowTf = String(row && row.tf || "").trim();
     const ms = resolveFillMs(row);
@@ -1040,6 +1224,18 @@ async function main() {
     if (Number.isFinite(fromMs) && Number.isFinite(ms) && ms < fromMs) return false;
     return true;
   });
+  const learningProvenance = summarizeLearningProvenance({
+    signalsRaw: signalsRes.rows,
+    dropsRaw: dropsRes.rows,
+    fillsRaw: fillsRes.rows,
+    signalsScoped: scopedSignals.rows,
+    dropsScoped: scopedDrops.rows,
+    fillsScoped: scopedFills.rows,
+    signals,
+    drops,
+    fills,
+  });
+  const formalPerformance = readFormalPerformanceSnapshot();
 
   const barsByMarket = await loadBarsByMarket(signals.concat(drops), { exchange: PROVIDER, tf: TF, fromMs, toMs: nowMs });
   const quality = await summarizePineSignalQuality({ signals, fills, exchange: PROVIDER, tf: TF, fromMs, toMs: nowMs });
@@ -1119,7 +1315,10 @@ async function main() {
     tf: TF,
     lookback_days: LOOKBACK_DAYS,
     model: {
-      type: "LOGISTIC_REGRESSION_V1",
+      type: learningProvenance.v2_only_enforced
+        ? "LOGISTIC_REGRESSION_SHADOW_V2_FEATURES"
+        : "LOGISTIC_REGRESSION_MIXED_PROVENANCE",
+      algorithm_family: "LOGISTIC_REGRESSION_V1",
       sample_n: examples.length,
       executed_n: executedExamples.length,
       drop_counterfactual_n: dropExamples.length,
@@ -1148,6 +1347,9 @@ async function main() {
       fresh: sharedObjective.fresh,
       target_monthly_net_krw: Number(sharedObjective && sharedObjective.objectiveConfig && sharedObjective.objectiveConfig.min_monthly_net_krw || OBJECTIVE_TARGET_MONTHLY_KRW),
     },
+    shadow_mode: V2_SHADOW_MODE,
+    learning_provenance: learningProvenance,
+    formal_performance: formalPerformance,
     best_febt_tuning_contract: bestFebtContract,
     best_febt_market_guard_contract: bestFebtMarketGuard,
     recommendations,
@@ -1192,6 +1394,9 @@ async function main() {
       sharedObjective,
       bestFebtContract,
       bestFebtMarketGuard,
+      learningProvenance,
+      shadowMode: V2_SHADOW_MODE,
+      formalPerformance,
     }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ml_filter_policy_latest.md"));
@@ -1209,6 +1414,9 @@ async function main() {
     bestFebtContract,
     latePenalty,
     recommendations,
+    learningProvenance,
+    shadowMode: V2_SHADOW_MODE,
+    formalPerformance,
     mdPath,
     jsonPath,
   }));
@@ -1219,6 +1427,10 @@ async function main() {
     provider: report.provider,
     tf: report.tf,
     sample_n: report.model.sample_n,
+    model_type: report.model.type,
+    learning_scope: report.learning_provenance.learning_scope,
+    v2_only_enforced: report.learning_provenance.v2_only_enforced,
+    formal_performance_sample_n: report.formal_performance.sample_n,
     executed_n: report.model.executed_n,
     drop_counterfactual_n: report.model.drop_counterfactual_n,
     quality_action_count: Array.isArray(report.recommendations.QUALITY) ? report.recommendations.QUALITY.length : 0,
@@ -1259,5 +1471,9 @@ module.exports = {
     describeQualityRecommendationKeyForUser,
     rewriteQualityRecommendationReasonForUser,
     normalizeObjectiveAgainstMonthlyTarget,
+    isV2LearningRow,
+    applyLearningScope,
+    summarizeLearningProvenance,
+    readFormalPerformanceSnapshot,
   },
 };
