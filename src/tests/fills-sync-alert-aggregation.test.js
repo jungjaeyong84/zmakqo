@@ -590,8 +590,9 @@ async function run() {
 
   const msg = alertTest.buildMessage(merged.payload);
   assert.ok(msg, "aggregated TP1 alert message must be buildable");
-  assert.strictEqual(msg.title, "XRPUSDT 정본재분류 TP1_2.5->TP_FULL_2.5 전량 청산");
+  assert.strictEqual(msg.title, "XRPUSDT TP_FULL_2.5 전량 청산");
   assert.ok(msg.body.includes("종류: 전량익절(TP) 2.5%"), "full TP label must be preserved");
+  assert.ok(!msg.body.includes("정본재분류:"), "TP_FULL-only aggregation should not show TP evidence as reclassification noise");
   assert.ok(msg.body.includes("청산규모: 402.37 USDT"), "aggregated notional must be visible");
 
   const repeatedContractRatioBatches = new Map();

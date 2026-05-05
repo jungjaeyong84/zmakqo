@@ -160,6 +160,23 @@ function formatBaseQty(value) {
 function resolveExitContractLedgerLines(payload = {}) {
   const lines = [];
   const simplifiedV2 = isSimplifiedExitV2Enabled(payload);
+  const exitRules = (payload.exitRules && typeof payload.exitRules === "object")
+    ? payload.exitRules
+    : ((payload.exit_rules && typeof payload.exit_rules === "object") ? payload.exit_rules : {});
+  const transitionEvents = [
+    ...(Array.isArray(payload.canonicalTransitionEvents) ? payload.canonicalTransitionEvents : []),
+    ...(Array.isArray(payload.canonical_transition_events) ? payload.canonical_transition_events : []),
+    payload.canonicalTransitionEvent,
+    payload.canonical_primary_transition_event,
+  ].map((item) => String(item || "").trim().toUpperCase()).filter(Boolean);
+  const canonicalExitEvent = String(payload.canonicalExitEvent || payload.canonical_exit_event || payload.event || "").trim().toUpperCase();
+  const tpFullOnly = simplifiedV2 && (
+    isFullTpExitRatio(exitRules.TP_P1_QTY)
+    || exitRules.TP_FULL_ONLY === true
+    || String(exitRules.exit_contract_mode || payload.exit_contract_mode || "").trim().toUpperCase() === "TP_FULL_ONLY"
+    || transitionEvents.includes("TP1_FULL_EXIT")
+    || canonicalExitEvent.startsWith("EXIT_TP_FULL_")
+  );
   const observed = Number(payload.contractObservedQtyAbs);
   const entry = Number(payload.contractEntryQtyAbs);
   const tp0Allowed = Number(payload.contractTp0AllowedAbs);
@@ -170,8 +187,15 @@ function resolveExitContractLedgerLines(payload = {}) {
   }
   const contractParts = [];
   if (Number.isFinite(entry) && entry > 0) contractParts.push(`ENTRY ${formatBaseQty(entry)}`);
-  if (Number.isFinite(tp1Allowed) && tp1Allowed > 0) contractParts.push(`TP1 ${formatBaseQty(tp1Allowed)}`);
-  if (Number.isFinite(runnerRemaining) && runnerRemaining >= 0) contractParts.push(`RUNNER ${formatBaseQty(runnerRemaining)}`);
+  if (tpFullOnly) {
+    const fullTpQty = Number.isFinite(tp1Allowed) && tp1Allowed > 0
+      ? tp1Allowed
+      : (Number.isFinite(entry) && entry > 0 ? entry : null);
+    if (Number.isFinite(fullTpQty) && fullTpQty > 0) contractParts.push(`TP_FULL ${formatBaseQty(fullTpQty)}`);
+  } else {
+    if (Number.isFinite(tp1Allowed) && tp1Allowed > 0) contractParts.push(`TP1 ${formatBaseQty(tp1Allowed)}`);
+    if (Number.isFinite(runnerRemaining) && runnerRemaining >= 0) contractParts.push(`RUNNER ${formatBaseQty(runnerRemaining)}`);
+  }
   if (contractParts.length) {
     lines.push(`계약수량(base): ${contractParts.join(" / ")}`);
   }
@@ -630,6 +654,14 @@ function resolveCanonicalReclassificationLine(resolved = {}) {
     : String(resolved.rawMeta && resolved.rawMeta.token || resolved.rawStage || "").trim();
   const canonicalToken = String(resolved.meta && resolved.meta.token || resolved.canonicalStage || "").trim();
   if (!rawToken || !canonicalToken || rawToken === canonicalToken) return null;
+  if (simplifiedV2Enabled && canonicalToken.startsWith("TP_FULL_")) {
+    const normalizedRawToken = String(rawToken || "").trim().toUpperCase();
+    const rawIsTpEvidence = normalizedRawToken === "EXIT"
+      || normalizedRawToken === "TP1"
+      || normalizedRawToken.startsWith("TP1_")
+      || normalizedRawToken === "RAW_EVIDENCE";
+    if (rawIsTpEvidence) return null;
+  }
   return `${rawToken} -> ${canonicalToken}`;
 }
 

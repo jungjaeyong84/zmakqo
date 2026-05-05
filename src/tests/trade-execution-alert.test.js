@@ -95,12 +95,12 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_R_MULTIPLE: 0.9, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.02, BE_PCT: 0.0025 },
   });
   assert.ok(tp1Failure, "tp1 failure message should exist");
-  assert.strictEqual(tp1Failure.title, "SOLUSDT 정본재분류 TP1_1.65->TP_FULL_2.5 주문 실패");
+  assert.strictEqual(tp1Failure.title, "SOLUSDT 전량익절(TP) 2.5% 주문 실패");
   assert.ok(tp1Failure.body.includes("방향: 숏 청산"), "failure message should include exit direction");
   assert.ok(tp1Failure.body.includes("종류: 전량익절(TP) 2.5%"), "failure message should use canonical full-TP label");
   assert.ok(tp1Failure.body.includes("실행계약: TP_FULL_2.5"), "failure message should show canonical executed contract");
   assert.ok(tp1Failure.body.includes("주문비율: 전량"), "failure message should include full close ratio");
-  assert.ok(tp1Failure.body.includes("정본재분류: TP1_1.65 -> TP_FULL_2.5"), "failure message should expose canonical reclassification");
+  assert.ok(!tp1Failure.body.includes("정본재분류:"), "TP_FULL-only TP evidence should not be reported as reclassification noise");
   assert.ok(tp1Failure.body.includes("전략계약: SL_1.65 / TP_FULL_2.5"), "failure message should separate strategy contract from executed stage");
   assert.ok(!tp1Failure.body.includes("RUNNER_MIN"), "full-TP message must not include runner floor");
   assert.ok(tp1Failure.body.includes("실패사유: MARGIN_TYPE_SET_FAILED"), "failure reason should be explicit");
@@ -156,7 +156,7 @@ async function run() {
   assert.ok(!simplifiedTp0FailureReclassified.title.includes("TP0"), "v2 failure title must not expose TP0");
   assert.ok(simplifiedTp0FailureReclassified.body.includes("종류: 전량익절(TP) 2.5%"), "v2 failure must show full TP label");
   assert.ok(simplifiedTp0FailureReclassified.body.includes("실행계약: TP_FULL_2.5"), "v2 failure must show full TP executed contract");
-  assert.ok(simplifiedTp0FailureReclassified.body.includes("정본재분류: RAW_EVIDENCE -> TP_FULL_2.5"), "v2 failure must keep reclassification while hiding legacy TP0 contract namespace");
+  assert.ok(!simplifiedTp0FailureReclassified.body.includes("정본재분류:"), "v2 TP_FULL-only failure should not show TP0 legacy evidence as reclassification noise");
   assert.ok(simplifiedTp0FailureReclassified.body.includes("이벤트: EXIT_TP_P0_0.8P"), "raw TP0 evidence should remain visible in v2 failure alert");
 
   const externalSync = __test.buildMessage({
@@ -294,7 +294,7 @@ async function run() {
   assert.ok(!simplifiedTp0EvidenceReclassified.title.includes("TP0"), "v2 alert title must not expose TP0");
   assert.ok(simplifiedTp0EvidenceReclassified.body.includes("종류: 전량익절(TP) 2.5%"), "v2 alert should show full TP label");
   assert.ok(simplifiedTp0EvidenceReclassified.body.includes("실행계약: TP_FULL_2.5"), "v2 alert should show full TP executed contract");
-  assert.ok(simplifiedTp0EvidenceReclassified.body.includes("정본재분류: RAW_EVIDENCE -> TP_FULL_2.5"), "v2 raw tp0 evidence should be normalized without exposing legacy TP0 contract namespace");
+  assert.ok(!simplifiedTp0EvidenceReclassified.body.includes("정본재분류:"), "v2 raw tp0 evidence should be normalized without reclassification noise");
   assert.ok(simplifiedTp0EvidenceReclassified.body.includes("이벤트: EXIT_TP_P0_0.8P"), "raw evidence event should remain visible");
 
   const simplifiedExternalSyncAfterTp0 = __test.buildMessage({
@@ -337,9 +337,10 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.03, TP_P1_QTY: 1, TRAIL_R_MULTIPLE: null, RUNNER_MIN_PROFIT_PCT: null, BE_ENABLE: false, BE_PCT: null },
   });
   assert.ok(canonicalTp1Event, "canonical tp1 event message should exist");
-  assert.strictEqual(canonicalTp1Event.title, "BTCUSDT 정본재분류 TP1_5->TP_FULL_3 전량 청산");
+  assert.strictEqual(canonicalTp1Event.title, "BTCUSDT TP_FULL_3 전량 청산");
   assert.ok(canonicalTp1Event.body.includes("종류: 전량익절(TP) 3%"), "canonical exit event should control displayed label");
   assert.ok(canonicalTp1Event.body.includes("실행계약: TP_FULL_3"), "canonical exit event should control executed contract");
+  assert.ok(!canonicalTp1Event.body.includes("정본재분류:"), "TP_FULL-only TP evidence should not be rendered as reclassification noise");
 
   const canonicalTrailWithRawEvidence = __test.buildMessage({
     exchange: "BINANCEFUT",
@@ -394,9 +395,10 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.025, TRAIL_PCT: 0.01, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp1, "simplified v2 tp1 message should exist");
-  assert.strictEqual(simplifiedTp1.title, "ETHUSDT 정본재분류 TP1_1.65->TP_FULL_2.5 전량 청산");
+  assert.strictEqual(simplifiedTp1.title, "ETHUSDT TP_FULL_2.5 전량 청산");
   assert.ok(simplifiedTp1.body.includes("종류: 전량익절(TP) 2.5%"), "v2 projection should prefer canonical full tp contract");
   assert.ok(simplifiedTp1.body.includes("실행계약: TP_FULL_2.5"), "v2 projection should prefer canonical executed contract");
+  assert.ok(!simplifiedTp1.body.includes("정본재분류:"), "TP_FULL_ONLY TP evidence should not be reported as reclassification noise");
   assert.ok(simplifiedTp1.body.includes("정본전이: TP1_FULL_EXIT"), "v2 projection should expose canonical transition only");
   assert.ok(simplifiedTp1.body.includes("이벤트: EXIT_TP_FULL_2.5P"), "v2 tp1 alert event must match the canonical full 2.5 contract");
   assert.ok(simplifiedTp1.body.includes("원본이벤트: EXIT_TP_P1_1.65P"), "v2 tp1 alert should retain raw legacy evidence separately");
@@ -423,7 +425,7 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp1LegacyRescueLabel, "simplified v2 tp1 message with legacy rescue label should exist");
-  assert.strictEqual(simplifiedTp1LegacyRescueLabel.title, "ETHUSDT 정본재분류 TP1_1.65->TP_FULL_2.5 전량 청산");
+  assert.strictEqual(simplifiedTp1LegacyRescueLabel.title, "ETHUSDT TP_FULL_2.5 전량 청산");
   assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("종류: 전량익절(TP) 2.5%"), "v2 tp1 alert must not display legacy rescue 1.65% as the executed TP1 target");
   assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("실행계약: TP_FULL_2.5"), "v2 tp1 executed contract must remain the protected-entry 2.5% PnL target");
   assert.ok(simplifiedTp1LegacyRescueLabel.body.includes("전략계약: SL_1.65 / TP_FULL_2.5"), "v2 tp1 strategy line must display the actual full TP protection target");
@@ -451,13 +453,43 @@ async function run() {
     exitRules: { SL: -0.0165, TP_P1: 0.0165, TRAIL_R_MULTIPLE: 0.6, RUNNER_MIN_PROFIT_PCT: 0.0165, BE_PCT: 0.0015 },
   });
   assert.ok(simplifiedTp1WithTrailActivation, "tp1 plus trail activation message should exist");
-  assert.strictEqual(simplifiedTp1WithTrailActivation.title, "ARBUSDT 정본재분류 TP1_1.65->TP_FULL_2.5 전량 청산");
+  assert.strictEqual(simplifiedTp1WithTrailActivation.title, "ARBUSDT TP_FULL_2.5 전량 청산");
   assert.ok(simplifiedTp1WithTrailActivation.body.includes("종류: 전량익절(TP) 2.5%"), "tp1 fill must remain full TP under simplified V2");
   assert.ok(simplifiedTp1WithTrailActivation.body.includes("실행계약: TP_FULL_2.5"), "executed contract must be full TP, not TRAIL");
   assert.ok(simplifiedTp1WithTrailActivation.body.includes("정본전이: TP1_FULL_EXIT"), "transition order should show terminal full TP");
   assert.ok(simplifiedTp1WithTrailActivation.body.includes("이벤트: EXIT_TP_FULL_2.5P"), "displayed event should be the V2 full TP event");
   assert.ok(simplifiedTp1WithTrailActivation.body.includes("원본이벤트: EXIT_TP_P1_1.65P"), "raw legacy event should be kept for audit only");
   assert.ok(!simplifiedTp1WithTrailActivation.body.includes("실행계약: TRAIL"), "tp1 fill must not be mislabeled as trail execution");
+
+  const simplifiedGenericExitToTpFull = __test.buildMessage({
+    exchange: "BINANCEFUT",
+    symbol: "TAOUSDT",
+    event: "EXIT",
+    intent: "EXIT",
+    side: "BUY",
+    positionSideBefore: "SHORT",
+    executionMode: "LIVE",
+    notional: 118.96,
+    execPrice: 283.91,
+    closeRatio: 1,
+    fullExit: true,
+    realizedPnl: 1.01,
+    simplifiedExitV2Enabled: true,
+    canonicalExitEvent: "EXIT_TP_FULL_2.5P",
+    canonicalExitStage: "TP1",
+    canonicalTransitionEvent: "TP1_FULL_EXIT",
+    canonicalTransitionEvents: ["TP1_FULL_EXIT"],
+    contractObservedQtyAbs: 0.401,
+    contractEntryQtyAbs: 0.419,
+    contractTp1AllowedAbs: 0.419,
+    contractRunnerRemainingAbs: 0.419,
+    exitRules: { SL: -0.0165, TP_P1: 0.025, TP_P1_QTY: 1, exit_contract_mode: "TP_FULL_ONLY" },
+  });
+  assert.ok(simplifiedGenericExitToTpFull, "generic EXIT with canonical TP_FULL transition should render");
+  assert.strictEqual(simplifiedGenericExitToTpFull.title, "TAOUSDT TP_FULL_2.5 전량 청산");
+  assert.ok(!simplifiedGenericExitToTpFull.body.includes("정본재분류:"), "generic EXIT -> TP_FULL must not be shown as reclassification");
+  assert.ok(simplifiedGenericExitToTpFull.body.includes("계약수량(base): ENTRY 0.419 / TP_FULL 0.419"), "full TP ledger should render TP_FULL quantity only");
+  assert.ok(!simplifiedGenericExitToTpFull.body.includes("RUNNER"), "full TP ledger must not render stale runner quantity");
 
   const invalidSimplifiedV2Requirement = __test.resolveCanonicalExitAlertRequirement({
     exchange: "BINANCEFUT",
