@@ -173,6 +173,8 @@ function buildDefaultLiveEndpointBundle({ createdAt } = {}) {
       trend_bias: 0.74,
       volatility_rank: 0.46,
       volume_impulse: 0.63,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     }),
     proposalVerdict: "PASS",
     rankScore: 0.77,
@@ -193,6 +195,7 @@ function buildDefaultLiveEndpointBundle({ createdAt } = {}) {
       trigger_gate: { trigger_confirmed: true, volume_zscore: 2.1, rsi_entry_tf: 65 },
       no_trade_gate: { market_quality_score: 1, spread_bps: 2, mark_index_gap_bps: 1, funding_penalty_bps: 1 },
       expected_edge_gate: { expected_gross_r: 2.2, expected_net_r_after_cost: 0.5, cost_estimate_bps: 5, cost_r_equivalent: 1.7 },
+      feature_snapshot_contract: { btc_1h_trend: "LONG", mtf_1h_direction: "LONG" },
     },
     createdAt,
   });

@@ -28,6 +28,10 @@ function buildPassSignalCriteriaSeed(side = "LONG", overrides = {}) {
       cost_estimate_bps: 5,
       cost_r_equivalent: 1.7,
     },
+    feature_snapshot_contract: {
+      btc_1h_trend: normalizedSide,
+      mtf_1h_direction: normalizedSide,
+    },
   };
   return Object.freeze({
     ...base,
@@ -37,6 +41,10 @@ function buildPassSignalCriteriaSeed(side = "LONG", overrides = {}) {
     trigger_gate: { ...base.trigger_gate, ...(overrides.trigger_gate || {}) },
     no_trade_gate: { ...base.no_trade_gate, ...(overrides.no_trade_gate || {}) },
     expected_edge_gate: { ...base.expected_edge_gate, ...(overrides.expected_edge_gate || {}) },
+    feature_snapshot_contract: {
+      ...base.feature_snapshot_contract,
+      ...(overrides.feature_snapshot_contract || {}),
+    },
   });
 }
 

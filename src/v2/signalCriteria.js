@@ -358,6 +358,7 @@ function buildSignalCriteria({
   }
 
   const seed = asObject(signalCriteria) || {};
+  const seedFeatureSnapshot = asObject(seed.feature_snapshot_contract) || {};
   const features = asObject(featureValues) || {};
   const market = asObject(marketDataQuality) || {};
   const metrics = resolveMarketMetrics(marketDataQuality);
@@ -492,13 +493,17 @@ function buildSignalCriteria({
     "btc_1h_trend",
     "btc_1h_direction",
     "btc_htf_trend"
-  );
+  )
+    ?? upper(seed.btc_1h_trend ?? seed.btc_1h_direction ?? seed.btc_htf_trend)
+    ?? upper(seedFeatureSnapshot.btc_1h_trend ?? seedFeatureSnapshot.btc_1h_direction ?? seedFeatureSnapshot.btc_htf_trend);
   const resolvedMtf1hDirection = resolveTextMetricOrFeature(
     { features, marketDataQuality },
     "mtf_1h_direction",
     "htf_1h_direction",
     "one_hour_direction"
-  );
+  )
+    ?? upper(seed.mtf_1h_direction ?? seed.htf_1h_direction ?? seed.one_hour_direction)
+    ?? upper(seedFeatureSnapshot.mtf_1h_direction ?? seedFeatureSnapshot.htf_1h_direction ?? seedFeatureSnapshot.one_hour_direction);
   const resolvedBtc1hAlignment = resolveDirectionalAlignment({ symbol, side, direction: resolvedBtc1hTrend });
   const resolvedMtf1hAlignment = resolveDirectionalAlignment({ symbol, side, direction: resolvedMtf1hDirection });
   const resolvedOpenInterestDeltaPct = resolveMetricOrFeature(
