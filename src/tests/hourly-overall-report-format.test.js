@@ -6,6 +6,8 @@ const { __test } = require("../../scripts/automation-hourly-overall-report");
 function run() {
   assert.strictEqual(typeof __test.resolveComparisonLabel, "function", "resolveComparisonLabel export missing");
   assert.strictEqual(typeof __test.formatSignedPercent, "function", "formatSignedPercent export missing");
+  assert.strictEqual(typeof __test.formatPercentPlain, "function", "formatPercentPlain export missing");
+  assert.strictEqual(typeof __test.formatV2Performance24hLine, "function", "formatV2Performance24hLine export missing");
   assert.strictEqual(typeof __test.positionStatusLabel, "function", "positionStatusLabel export missing");
   assert.strictEqual(typeof __test.buildSystemOpsPrereportCommands, "function", "buildSystemOpsPrereportCommands export missing");
   assert.strictEqual(typeof __test.shouldRunPrereportCommands, "function", "shouldRunPrereportCommands export missing");
@@ -45,6 +47,29 @@ function run() {
   );
 
   assert.strictEqual(__test.formatSignedPercent(-1.2345, 4), "-1.2345%");
+  assert.strictEqual(__test.formatPercentPlain(29.787234, 2), "29.79%");
+  assert.strictEqual(
+    __test.formatV2Performance24hLine({
+      available: true,
+      stale: false,
+      sample_n: 282,
+      win_n: 84,
+      loss_n: 198,
+      win_rate_pct: 29.78723404255319,
+    }),
+    "최근 24시간 승률 29.79% (84승/198패, 표본 282)"
+  );
+  assert.strictEqual(
+    __test.formatV2Performance24hLine({
+      available: true,
+      stale: true,
+      sample_n: 10,
+      win_n: 4,
+      loss_n: 6,
+      win_rate_pct: 40,
+    }),
+    "최근 24시간 승률 40.00% (4승/6패, 표본 10) / stale"
+  );
   const prereports = __test.buildSystemOpsPrereportCommands();
   assert.ok(prereports.some((step) => step.command === "node scripts/report-tp1-fail-closed-events.js"));
   assert.strictEqual(prereports[prereports.length - 1].errorCode, "TP1_FAIL_CLOSED_REPORT_FAILED");

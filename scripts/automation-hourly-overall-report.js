@@ -59,6 +59,12 @@ function formatSignedPercent(value, digits = 4) {
   return `${n > 0 ? "+" : ""}${n.toFixed(digits)}%`;
 }
 
+function formatPercentPlain(value, digits = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "N/A";
+  return `${n.toFixed(digits)}%`;
+}
+
 function toNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -316,6 +322,63 @@ function buildEvGateSummary(evRun) {
   };
 }
 
+function loadV2Performance24hSummary({ nowMs = Date.now(), maxAgeMs = 3 * 60 * 60 * 1000 } = {}) {
+  const filePath = path.join(OPS_DAILY_DIR, "v2_openclaw_daily_performance_report_latest.json");
+  const data = readJsonSafe(filePath, null);
+  if (!data || typeof data !== "object") {
+    return {
+      available: false,
+      reason: "V2_PERFORMANCE_24H_REPORT_MISSING",
+      source: filePath,
+    };
+  }
+  const lookbackHours = Number(data.lookback_hours);
+  if (lookbackHours !== 24) {
+    return {
+      available: false,
+      reason: "V2_PERFORMANCE_24H_LOOKBACK_MISMATCH",
+      source: filePath,
+      lookback_hours: Number.isFinite(lookbackHours) ? lookbackHours : null,
+    };
+  }
+  const summary = data.summary && typeof data.summary === "object" ? data.summary : {};
+  const generatedAt = String(data.generated_at || data.generated_at_kst || "").trim() || null;
+  const generatedAtMs = generatedAt ? Date.parse(generatedAt) : NaN;
+  const stale = Number.isFinite(generatedAtMs) && Number.isFinite(Number(nowMs))
+    ? (Number(nowMs) - generatedAtMs) > Math.max(60 * 1000, Number(maxAgeMs) || 0)
+    : true;
+  const sampleN = toNumber(data.sample_n ?? summary.performance_eligible_outcome_n ?? summary.pnl_sample_n, 0);
+  const winN = toNumber(summary.win_n, 0);
+  const lossN = toNumber(summary.loss_n, 0);
+  const winRatePct = Number(data.win_rate_pct ?? summary.win_rate_pct);
+  return {
+    available: true,
+    stale,
+    reason: stale ? "V2_PERFORMANCE_24H_REPORT_STALE" : "V2_PERFORMANCE_24H_READY",
+    source: filePath,
+    generated_at: generatedAt,
+    lookback_hours: 24,
+    sample_n: sampleN,
+    win_n: winN,
+    loss_n: lossN,
+    win_rate_pct: Number.isFinite(winRatePct) ? winRatePct : null,
+    profit_factor: Number.isFinite(Number(data.profit_factor ?? summary.profit_factor))
+      ? Number(data.profit_factor ?? summary.profit_factor)
+      : null,
+    net_pnl_usdt: Number.isFinite(Number(data.net_pnl_usdt ?? summary.net_pnl_usdt))
+      ? Number(data.net_pnl_usdt ?? summary.net_pnl_usdt)
+      : null,
+  };
+}
+
+function formatV2Performance24hLine(performance24h) {
+  if (!performance24h || performance24h.available !== true) {
+    return "최근 24시간 승률 N/A";
+  }
+  const staleSuffix = performance24h.stale ? " / stale" : "";
+  return `최근 24시간 승률 ${formatPercentPlain(performance24h.win_rate_pct, 2)} (${performance24h.win_n}승/${performance24h.loss_n}패, 표본 ${performance24h.sample_n})${staleSuffix}`;
+}
+
 async function fetchUsdKrwRate() {
   try {
     const res = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(5000) });
@@ -534,6 +597,7 @@ async function main() {
   const positionsRaw = await readActivePositions();
   const positions = mergeIntegrityMarketsIntoPositions(positionsRaw, integrity);
   const recentTp1FillMap = await readRecentTp1FillMap({ exchange: "BINANCEFUT" });
+  const performance24h = loadV2Performance24hSummary({ nowMs: meta.nowMs });
   const { rate: usdKrwRate, source: rateSource } = await fetchUsdKrwRate();
   const evGateSummary = buildEvGateSummary(evGateRun);
 
@@ -589,6 +653,7 @@ async function main() {
       funding_count_today: toNumber(snapshot.derived && snapshot.derived.funding_count_today, 0),
       symbols: Array.isArray(snapshot.symbols) ? snapshot.symbols : [],
     },
+    performance_24h: performance24h,
     operations: {
       status: String(ops.status || "").trim() || "N/A",
       mode: String(ops.mode || "").trim() || "N/A",
@@ -681,6 +746,7 @@ async function main() {
       `- 순손익률: \`${formatSignedPercent(report.pnl_today.net_pnl_pct, 4)}\``,
       `- 비용 비율: \`${report.pnl_today.cost_ratio_pct.toFixed(4)}%\``,
       `- 미실현 포함 총 손익: \`${formatSignedRounded(grossUsdt, " USDT")}\` (\`${formatSignedRounded(grossUsdt * usdKrwRate, " KRW")}\`)`,
+      `- ${formatV2Performance24hLine(report.performance_24h)}`,
       "",
       "## 3. 거래 활동",
       "",
@@ -761,6 +827,7 @@ async function main() {
           `순손익 ${formatSignedRounded(netUsdt, " USDT")} (${formatSignedPercent(report.pnl_today.net_pnl_pct, 4)})`,
           `실현 ${formatSignedRounded(realizedUsdt, " USDT")} / 수수료 ${formatSignedRounded(commissionUsdt, " USDT")} / 펀딩비 ${formatSignedRounded(fundingUsdt, " USDT")}`,
           `미실현 포함 총 손익 ${formatSignedRounded(grossUsdt, " USDT")}`,
+          formatV2Performance24hLine(report.performance_24h),
         ],
       },
       {
@@ -816,6 +883,9 @@ if (require.main === module) {
       runSystemOpsCheckIfEnabled,
       buildTp1FailClosedQuarantineLines,
       formatSignedPercent,
+      formatPercentPlain,
+      loadV2Performance24hSummary,
+      formatV2Performance24hLine,
       summarizeExecutionEngine,
       positionStatusLabel,
       envBool,
