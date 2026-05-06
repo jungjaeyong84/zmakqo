@@ -205,6 +205,20 @@ const {
 
 (async function tp1RepairTransportUsesReduceOnlyTakeProfitContract() {
   const calls = [];
+  const cancels = [];
+  const liveOrders = [
+    {
+      algoId: "ALGO__OLD_TP1",
+      symbol: "ETHUSDT",
+      side: "SELL",
+      type: "TAKE_PROFIT_MARKET",
+      reduceOnly: true,
+      closePosition: false,
+      quantity: "0.1",
+      triggerPrice: "2540",
+      createTime: 1,
+    },
+  ];
   const transport = buildBinancePlaceOrReplaceTp1Transport({
     now: () => "2026-04-21T06:10:02.000Z",
     resolveContext: async () => ({
@@ -220,8 +234,27 @@ const {
       fallbackEntryPrice: 2500,
       fallbackLeverage: 2,
     }),
+    fetchAlgoOpenOrders: async () => liveOrders,
+    cancelAlgoOrder: async (payload) => {
+      cancels.push(payload);
+      const index = liveOrders.findIndex((order) => String(order.algoId) === String(payload.algoId));
+      if (index >= 0) liveOrders.splice(index, 1);
+      return { ok: true };
+    },
     placeTakeProfitMarketOrder: async (payload) => {
       calls.push(payload);
+      liveOrders.push({
+        algoId: "TP1__REPAIR_AUTH",
+        clientAlgoId: payload.clientOrderId,
+        symbol: payload.symbol,
+        side: payload.side,
+        type: "TAKE_PROFIT_MARKET",
+        reduceOnly: payload.reduceOnly,
+        closePosition: payload.closePosition,
+        quantity: String(payload.quantity),
+        triggerPrice: String(payload.stopPrice),
+        createTime: 2,
+      });
       return {
         orderId: "TP1__REPAIR_AUTH",
         stopPrice: payload.stopPrice,
@@ -245,6 +278,9 @@ const {
   assert.strictEqual(ack.status, "PLACED");
   assert.strictEqual(ack.order_id, "TP1__REPAIR_AUTH");
   assert.strictEqual(ack.ack_at, "2026-04-21T06:10:02.000Z");
+  assert.strictEqual(cancels.length, 1);
+  assert.strictEqual(cancels[0].algoId, "ALGO__OLD_TP1");
+  assert.strictEqual(cancels[0].symbol, "ETHUSDT");
   assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].symbol, "ETHUSDT");
   assert.strictEqual(calls[0].side, "SELL");
@@ -256,6 +292,56 @@ const {
   assert.strictEqual(calls[0].priceProtect, true);
   assert.strictEqual(calls[0].clientOrderId, "RTP1__PRATTV2__TP1_REPAIR");
   assert.ok(calls[0].signal);
+})();
+
+(async function tp1RepairTransportFailsClosedWhenExchangeVerificationMismatches() {
+  const transport = buildBinancePlaceOrReplaceTp1Transport({
+    resolveContext: async () => ({
+      liveCfg: {
+        apiKey: "key",
+        apiSecret: "secret",
+        liveEnabled: true,
+        liveDryRun: false,
+      },
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      fallbackSide: "SELL",
+      fallbackEntryPrice: 2500,
+      fallbackLeverage: 2,
+    }),
+    fetchAlgoOpenOrders: async () => ([
+      {
+        algoId: "TP1__BAD_QTY",
+        clientAlgoId: "RTP1__PRATTV2__BAD",
+        symbol: "ETHUSDT",
+        side: "SELL",
+        type: "TAKE_PROFIT_MARKET",
+        reduceOnly: true,
+        closePosition: false,
+        quantity: "0.1",
+        triggerPrice: "2542",
+        createTime: 1,
+      },
+    ]),
+    cancelAlgoOrder: async () => ({ ok: true }),
+    placeTakeProfitMarketOrder: async () => ({
+      orderId: "TP1__BAD_QTY",
+      stopPrice: 2542,
+    }),
+  });
+  const ack = await transport({
+    command: {
+      command_type: "PLACE_OR_REPLACE_TP1",
+      symbol: "ETHUSDT",
+      close_side: "SELL",
+      trigger_price: 2542,
+      quantity_abs: 0.4,
+      client_order_key: "RTP1__PRATTV2__BAD",
+    },
+    delegatedRepair: {},
+  });
+  assert.strictEqual(ack.status, "FAILED");
+  assert.strictEqual(ack.error_code, "BINANCE_TP1_VERIFY_QTY_MISMATCH");
 })();
 
 (async function tp1RepairDryRunDoesNotWriteExchange() {
@@ -331,6 +417,8 @@ const {
       fallbackEntryPrice: 2500,
       fallbackLeverage: 2,
     }),
+    fetchAlgoOpenOrders: async () => [],
+    cancelAlgoOrder: async () => ({ ok: true }),
     placeTakeProfitMarketOrder: async () => new Promise(() => {}),
   });
   const ack = await transport({
@@ -350,6 +438,7 @@ const {
 
 (async function fullProtectionTransportPlacesStopThenTp1WithExplicitContracts() {
   const calls = [];
+  const liveOrders = [];
   const transport = buildBinancePlaceOrReplaceFullProtectionTransport({
     now: () => "2026-04-21T06:20:02.000Z",
     resolveContext: async () => ({
@@ -365,6 +454,8 @@ const {
       fallbackEntryPrice: 100000,
       fallbackLeverage: 2,
     }),
+    fetchAlgoOpenOrders: async () => liveOrders,
+    cancelAlgoOrder: async () => ({ ok: true }),
     placeStopMarketOrder: async (payload) => {
       calls.push({ kind: "SL", payload });
       return {
@@ -374,6 +465,18 @@ const {
     },
     placeTakeProfitMarketOrder: async (payload) => {
       calls.push({ kind: "TP1", payload });
+      liveOrders.push({
+        algoId: "TP1__FULL_AUTH",
+        clientAlgoId: payload.clientOrderId,
+        symbol: payload.symbol,
+        side: payload.side,
+        type: "TAKE_PROFIT_MARKET",
+        reduceOnly: payload.reduceOnly,
+        closePosition: payload.closePosition,
+        quantity: String(payload.quantity),
+        triggerPrice: String(payload.stopPrice),
+        createTime: 1,
+      });
       return {
         orderId: "TP1__FULL_AUTH",
         stopPrice: payload.stopPrice,
@@ -439,6 +542,8 @@ const {
       fallbackEntryPrice: 100000,
       fallbackLeverage: 2,
     }),
+    fetchAlgoOpenOrders: async () => [],
+    cancelAlgoOrder: async () => ({ ok: true }),
     placeStopMarketOrder: async () => {
       called = true;
       return {};
@@ -469,6 +574,7 @@ const {
 })();
 
 (async function fullProtectionTransportFailsClosedPerLegOnProtectionWriteDeadline() {
+  const liveOrders = [];
   const transport = buildBinancePlaceOrReplaceFullProtectionTransport({
     deadlineMs: 5,
     resolveContext: async () => ({
@@ -484,11 +590,27 @@ const {
       fallbackEntryPrice: 100000,
       fallbackLeverage: 2,
     }),
+    fetchAlgoOpenOrders: async () => liveOrders,
+    cancelAlgoOrder: async () => ({ ok: true }),
     placeStopMarketOrder: async () => new Promise(() => {}),
-    placeTakeProfitMarketOrder: async () => ({
-      orderId: "TP1__OK_AFTER_SL_TIMEOUT",
-      stopPrice: 101680,
-    }),
+    placeTakeProfitMarketOrder: async (payload) => {
+      liveOrders.push({
+        algoId: "TP1__OK_AFTER_SL_TIMEOUT",
+        clientAlgoId: payload.clientOrderId,
+        symbol: payload.symbol,
+        side: payload.side,
+        type: "TAKE_PROFIT_MARKET",
+        reduceOnly: payload.reduceOnly,
+        closePosition: payload.closePosition,
+        quantity: String(payload.quantity),
+        triggerPrice: String(payload.stopPrice),
+        createTime: 1,
+      });
+      return {
+        orderId: "TP1__OK_AFTER_SL_TIMEOUT",
+        stopPrice: 101680,
+      };
+    },
   });
   const ack = await transport({
     command: {

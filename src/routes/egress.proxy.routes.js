@@ -131,6 +131,7 @@ const handlers = {
     setFuturesMarginType: (payload) => binance.setFuturesMarginType(payload || {}),
     placeFuturesStopMarketOrder: (payload) => binance.placeFuturesStopMarketOrder(payload || {}),
     placeFuturesTakeProfitMarketOrder: (payload) => binance.placeFuturesTakeProfitMarketOrder(payload || {}),
+    cancelFuturesAlgoOrder: (payload) => binance.cancelFuturesAlgoOrder(payload || {}),
     cancelFuturesOpenOrders: (payload) => binance.cancelFuturesOpenOrders(payload || {}),
   },
 };

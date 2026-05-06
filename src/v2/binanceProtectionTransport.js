@@ -4,6 +4,8 @@ const { BINANCE_NATIVE_STOP_WRITER_SOURCE } = require("../utils/binanceNativePro
 const {
   placeFuturesStopMarketOrder,
   placeFuturesTakeProfitMarketOrder,
+  fetchFuturesAlgoOpenOrders,
+  cancelFuturesAlgoOrder,
 } = require("../exchanges/binanceFuturesPrivate");
 
 const DEFAULT_WORKING_TYPE = "MARK_PRICE";
@@ -34,6 +36,131 @@ function stableCode(value) {
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
   return code || null;
+}
+
+function toBool(value, fallback = false) {
+  if (value === true || value === false) return value;
+  const raw = String(value == null ? "" : value).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "y", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "n", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+function normalizeOrderType(order) {
+  return upper(order && (order.type || order.origType || order.orderType || order.algoType)) || "";
+}
+
+function normalizeOrderId(order) {
+  return trimOrNull(order && (order.orderId || order.order_id || order.algoId || order.algo_id));
+}
+
+function normalizeOrderTriggerPrice(order) {
+  return toNumberOrNull(order && (order.triggerPrice || order.stopPrice || order.activatePrice));
+}
+
+function normalizeOrderQuantity(order) {
+  return toNumberOrNull(order && (order.quantity || order.origQty || order.qty || order.executedQty));
+}
+
+function isTp1AlgoCandidate(order, { symbol = null, closeSide = null } = {}) {
+  const orderType = normalizeOrderType(order);
+  const orderSymbol = upper(order && order.symbol);
+  const orderSide = upper(order && order.side);
+  return (orderType === "TAKE_PROFIT_MARKET" || orderType === "TAKE_PROFIT")
+    && (!symbol || orderSymbol === upper(symbol))
+    && (!closeSide || orderSide === upper(closeSide))
+    && toBool(order && order.reduceOnly, false) === true
+    && toBool(order && order.closePosition, false) !== true;
+}
+
+async function clearExistingTp1AlgoOrders({
+  apiKey,
+  apiSecret,
+  symbol,
+  closeSide,
+  signal = null,
+  fetchAlgoOpenOrders = fetchFuturesAlgoOpenOrders,
+  cancelAlgoOrder = cancelFuturesAlgoOrder,
+} = {}) {
+  if (typeof fetchAlgoOpenOrders !== "function") throw new Error("BINANCE_TP1_FETCH_ALGO_ORDERS_FN_REQUIRED");
+  if (typeof cancelAlgoOrder !== "function") throw new Error("BINANCE_TP1_CANCEL_ALGO_ORDER_FN_REQUIRED");
+  const rows = await fetchAlgoOpenOrders({ apiKey, apiSecret, symbol, signal });
+  const candidates = (Array.isArray(rows) ? rows : []).filter((order) => isTp1AlgoCandidate(order, { symbol, closeSide }));
+  for (const order of candidates) {
+    await cancelAlgoOrder({
+      apiKey,
+      apiSecret,
+      symbol,
+      algoId: normalizeOrderId(order),
+      clientAlgoId: trimOrNull(order && order.clientAlgoId),
+      signal,
+    });
+  }
+  return Object.freeze({
+    canceled_n: candidates.length,
+    canceled_order_ids: Object.freeze(candidates.map((order) => normalizeOrderId(order)).filter(Boolean)),
+  });
+}
+
+function approxEqualNumber(actual, expected, toleranceRatio = 0.005) {
+  const a = toNumberOrNull(actual);
+  const e = toNumberOrNull(expected);
+  if (!(Number.isFinite(a) && Number.isFinite(e))) return false;
+  const tolerance = Math.max(1e-9, Math.abs(e) * toleranceRatio);
+  return Math.abs(a - e) <= tolerance;
+}
+
+function selectVerifiedTp1Order(rows, {
+  symbol = null,
+  closeSide = null,
+  clientOrderId = null,
+  orderId = null,
+} = {}) {
+  const candidates = (Array.isArray(rows) ? rows : []).filter((order) => isTp1AlgoCandidate(order, { symbol, closeSide }));
+  const expectedOrderId = trimOrNull(orderId);
+  if (expectedOrderId) {
+    const matchedById = candidates.find((order) => normalizeOrderId(order) === expectedOrderId);
+    if (matchedById) return matchedById;
+  }
+  const expectedClientOrderId = trimOrNull(clientOrderId);
+  if (expectedClientOrderId) {
+    const matchedByClient = candidates.find((order) => trimOrNull(order && order.clientAlgoId) === expectedClientOrderId);
+    if (matchedByClient) return matchedByClient;
+  }
+  candidates.sort((a, b) => Number(b && b.createTime) - Number(a && a.createTime));
+  return candidates[0] || null;
+}
+
+async function verifyTp1PlacementOnExchange({
+  apiKey,
+  apiSecret,
+  symbol,
+  closeSide,
+  expectedQty,
+  expectedTriggerPrice,
+  order = null,
+  clientOrderId = null,
+  signal = null,
+  fetchAlgoOpenOrders = fetchFuturesAlgoOpenOrders,
+} = {}) {
+  const rows = await fetchAlgoOpenOrders({ apiKey, apiSecret, symbol, signal });
+  const matched = selectVerifiedTp1Order(rows, {
+    symbol,
+    closeSide,
+    clientOrderId,
+    orderId: normalizeOrderId(order),
+  });
+  if (!matched) {
+    return Object.freeze({ ok: false, error_code: "BINANCE_TP1_VERIFY_ORDER_NOT_FOUND" });
+  }
+  if (!approxEqualNumber(normalizeOrderQuantity(matched), expectedQty)) {
+    return Object.freeze({ ok: false, error_code: "BINANCE_TP1_VERIFY_QTY_MISMATCH" });
+  }
+  if (!approxEqualNumber(normalizeOrderTriggerPrice(matched), expectedTriggerPrice, 0.0002)) {
+    return Object.freeze({ ok: false, error_code: "BINANCE_TP1_VERIFY_TRIGGER_MISMATCH" });
+  }
+  return Object.freeze({ ok: true, order: matched });
 }
 
 function resolveProtectionWriteDeadlineMs({ env = process.env, deadlineMs = null } = {}) {
@@ -333,6 +460,8 @@ function assertFullProtectionCommand(command) {
 
 function buildBinancePlaceOrReplaceTp1Transport({
   placeTakeProfitMarketOrder = placeFuturesTakeProfitMarketOrder,
+  fetchAlgoOpenOrders = fetchFuturesAlgoOpenOrders,
+  cancelAlgoOrder = cancelFuturesAlgoOrder,
   resolveContext,
   now = () => new Date().toISOString(),
   deadlineMs = null,
@@ -385,21 +514,53 @@ function buildBinancePlaceOrReplaceTp1Transport({
     }
     let order;
     try {
-      order = await withProtectionWriteDeadline(({ signal }) => placeTakeProfitMarketOrder({
-        apiKey: cfg.apiKey,
-        apiSecret: cfg.apiSecret,
-        symbol: upper(row.symbol) || context.symbol,
-        side: upper(row.close_side) || context.fallbackSide,
-        stopPrice: triggerPrice,
-        closePosition: false,
-        quantity: qty,
-        reduceOnly: true,
-        workingType: DEFAULT_WORKING_TYPE,
-        priceProtect: DEFAULT_PRICE_PROTECT,
-        clientOrderId: trimOrNull(row.client_order_key),
-        idempotencyKey: trimOrNull(row.client_order_key) || trimOrNull(row.placement_attempt_id),
-        signal,
-      }), {
+      order = await withProtectionWriteDeadline(async ({ signal }) => {
+        const symbol = upper(row.symbol) || context.symbol;
+        const closeSide = upper(row.close_side) || context.fallbackSide;
+        await clearExistingTp1AlgoOrders({
+          apiKey: cfg.apiKey,
+          apiSecret: cfg.apiSecret,
+          symbol,
+          closeSide,
+          signal,
+          fetchAlgoOpenOrders,
+          cancelAlgoOrder,
+        });
+        const placedOrder = await placeTakeProfitMarketOrder({
+          apiKey: cfg.apiKey,
+          apiSecret: cfg.apiSecret,
+          symbol,
+          side: closeSide,
+          stopPrice: triggerPrice,
+          closePosition: false,
+          quantity: qty,
+          reduceOnly: true,
+          workingType: DEFAULT_WORKING_TYPE,
+          priceProtect: DEFAULT_PRICE_PROTECT,
+          clientOrderId: trimOrNull(row.client_order_key),
+          idempotencyKey: trimOrNull(row.client_order_key) || trimOrNull(row.placement_attempt_id),
+          signal,
+        });
+        const verified = await verifyTp1PlacementOnExchange({
+          apiKey: cfg.apiKey,
+          apiSecret: cfg.apiSecret,
+          symbol,
+          closeSide,
+          expectedQty: qty,
+          expectedTriggerPrice: triggerPrice,
+          order: placedOrder,
+          clientOrderId: trimOrNull(row.client_order_key),
+          signal,
+          fetchAlgoOpenOrders,
+        });
+        if (verified.ok !== true) {
+          return {
+            skipped: true,
+            reason: verified.error_code,
+          };
+        }
+        return placedOrder;
+      }, {
         env,
         deadlineMs,
         errorCode: "BINANCE_TP1_REPAIR_DEADLINE_EXCEEDED",
@@ -421,6 +582,8 @@ function buildBinancePlaceOrReplaceTp1Transport({
 function buildBinancePlaceOrReplaceFullProtectionTransport({
   placeStopMarketOrder = placeFuturesStopMarketOrder,
   placeTakeProfitMarketOrder = placeFuturesTakeProfitMarketOrder,
+  fetchAlgoOpenOrders = fetchFuturesAlgoOpenOrders,
+  cancelAlgoOrder = cancelFuturesAlgoOrder,
   resolveContext,
   now = () => new Date().toISOString(),
   deadlineMs = null,
@@ -496,21 +659,53 @@ function buildBinancePlaceOrReplaceFullProtectionTransport({
       } else {
         let tp1Order;
         try {
-          tp1Order = await withProtectionWriteDeadline(({ signal }) => placeTakeProfitMarketOrder({
-            apiKey: cfg.apiKey,
-            apiSecret: cfg.apiSecret,
-            symbol: upper(tp1.symbol) || context.symbol,
-            side: upper(tp1.close_side) || context.fallbackSide,
-            stopPrice: triggerPrice,
-            closePosition: false,
-            quantity: qty,
-            reduceOnly: true,
-            workingType: DEFAULT_WORKING_TYPE,
-            priceProtect: DEFAULT_PRICE_PROTECT,
-            clientOrderId: trimOrNull(tp1.client_order_key),
-            idempotencyKey: trimOrNull(tp1.client_order_key) || trimOrNull(tp1.placement_attempt_id),
-            signal,
-          }), {
+          tp1Order = await withProtectionWriteDeadline(async ({ signal }) => {
+            const symbol = upper(tp1.symbol) || context.symbol;
+            const closeSide = upper(tp1.close_side) || context.fallbackSide;
+            await clearExistingTp1AlgoOrders({
+              apiKey: cfg.apiKey,
+              apiSecret: cfg.apiSecret,
+              symbol,
+              closeSide,
+              signal,
+              fetchAlgoOpenOrders,
+              cancelAlgoOrder,
+            });
+            const placedOrder = await placeTakeProfitMarketOrder({
+              apiKey: cfg.apiKey,
+              apiSecret: cfg.apiSecret,
+              symbol,
+              side: closeSide,
+              stopPrice: triggerPrice,
+              closePosition: false,
+              quantity: qty,
+              reduceOnly: true,
+              workingType: DEFAULT_WORKING_TYPE,
+              priceProtect: DEFAULT_PRICE_PROTECT,
+              clientOrderId: trimOrNull(tp1.client_order_key),
+              idempotencyKey: trimOrNull(tp1.client_order_key) || trimOrNull(tp1.placement_attempt_id),
+              signal,
+            });
+            const verified = await verifyTp1PlacementOnExchange({
+              apiKey: cfg.apiKey,
+              apiSecret: cfg.apiSecret,
+              symbol,
+              closeSide,
+              expectedQty: qty,
+              expectedTriggerPrice: triggerPrice,
+              order: placedOrder,
+              clientOrderId: trimOrNull(tp1.client_order_key),
+              signal,
+              fetchAlgoOpenOrders,
+            });
+            if (verified.ok !== true) {
+              return {
+                skipped: true,
+                reason: verified.error_code,
+              };
+            }
+            return placedOrder;
+          }, {
             env,
             deadlineMs,
             errorCode: "BINANCE_FULL_PROTECTION_TP1_DEADLINE_EXCEEDED",
@@ -555,5 +750,8 @@ module.exports = {
     withProtectionWriteDeadline,
     buildFailedRepairAck,
     assertFullProtectionCommand,
+    clearExistingTp1AlgoOrders,
+    verifyTp1PlacementOnExchange,
+    selectVerifiedTp1Order,
   },
 };

@@ -229,6 +229,7 @@ const BINANCE_PRIVATE_ACTIONS = new Set([
   "fetchFuturesAlgoOrder",
   "placeFuturesStopMarketOrder",
   "placeFuturesTakeProfitMarketOrder",
+  "cancelFuturesAlgoOrder",
   "cancelFuturesOpenOrders",
   "fetchFuturesOrder",
   "fetchFuturesUserTrades",

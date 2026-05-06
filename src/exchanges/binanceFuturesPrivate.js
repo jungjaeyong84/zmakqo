@@ -1189,6 +1189,62 @@ async function cancelFuturesAlgoOpenOrders({ apiKey, apiSecret, symbol, recvWind
   }
 }
 
+async function cancelFuturesAlgoOrder({
+  apiKey,
+  apiSecret,
+  symbol,
+  algoId,
+  clientAlgoId,
+  recvWindow = 5000,
+  signal = null,
+} = {}) {
+  if (shouldUseEgressProxy()) {
+    return callEgressProxy({
+      provider: "binancefut",
+      action: "cancelFuturesAlgoOrder",
+      payload: {
+        apiKey,
+        apiSecret,
+        symbol,
+        algoId,
+        clientAlgoId,
+        recvWindow,
+      },
+      signal,
+    });
+  }
+  const sym = String(symbol || "").trim().toUpperCase();
+  const id = Number(algoId);
+  const clientId = sanitizeClientOrderId(clientAlgoId);
+  if (!sym || (!Number.isFinite(id) && !clientId)) {
+    throw new Error("BINANCEFUT_ALGO_ORDER_ID_REQUIRED");
+  }
+  const ts = getSignedTimestamp();
+  try {
+    return await binanceRequest({
+      method: "DELETE",
+      path: "/fapi/v1/algoOrder",
+      params: {
+        symbol: sym,
+        algoId: Number.isFinite(id) ? id : undefined,
+        clientAlgoId: clientId || undefined,
+        timestamp: ts,
+        recvWindow: normalizeRecvWindow(recvWindow),
+      },
+      apiKey,
+      apiSecret,
+      signal,
+    });
+  } catch (e) {
+    const msg = String(e && e.message ? e.message : "");
+    const body = String(e && e.body ? e.body : "");
+    if ((e && e.code === -2013) || msg.includes("Order does not exist") || body.includes("Order does not exist")) {
+      return { ok: true, skipped: true, note: "ALGO_ORDER_NOT_FOUND" };
+    }
+    throw e;
+  }
+}
+
 async function placeFuturesStopMarketOrder({
   apiKey,
   apiSecret,
@@ -1709,6 +1765,7 @@ module.exports = {
   placeFuturesStopMarketOrder,
   placeFuturesTakeProfitMarketOrder,
   cancelFuturesOpenOrders,
+  cancelFuturesAlgoOrder,
   calcAveragePrice,
   getFuturesBaseUrl,
   getSpotBaseUrl,
