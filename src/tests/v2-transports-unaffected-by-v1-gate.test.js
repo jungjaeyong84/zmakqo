@@ -78,6 +78,20 @@ async function initialProtectionTransportStillWritesWhenV1WriterDenied() {
 
 async function repairProtectionTransportStillWritesWhenV1WriterDenied() {
   const calls = [];
+  const openAlgoOrders = [
+    {
+      algoId: "STALE__TP1__1",
+      clientAlgoId: "STALE__TP1__1",
+      symbol: "XRPUSDT",
+      side: "SELL",
+      type: "TAKE_PROFIT_MARKET",
+      quantity: 3,
+      triggerPrice: 1.51,
+      reduceOnly: true,
+      closePosition: false,
+      createTime: 1,
+    },
+  ];
   const transport = buildBinancePlaceOrReplaceFullProtectionTransport({
     now: () => "2026-04-26T00:01:00.000Z",
     resolveContext: async () => ({
@@ -94,7 +108,25 @@ async function repairProtectionTransportStillWritesWhenV1WriterDenied() {
     },
     placeTakeProfitMarketOrder: async (payload) => {
       calls.push({ kind: "TP1", payload });
+      openAlgoOrders.push({
+        algoId: "RTP1__V2__OK",
+        clientAlgoId: "V2_REPAIR_TP1__1",
+        symbol: "XRPUSDT",
+        side: "SELL",
+        type: "TAKE_PROFIT_MARKET",
+        quantity: 10,
+        triggerPrice: 1.55,
+        reduceOnly: true,
+        closePosition: false,
+        createTime: 2,
+      });
       return { orderId: "RTP1__V2__OK", stopPrice: payload.stopPrice };
+    },
+    fetchAlgoOpenOrders: async () => openAlgoOrders.slice(),
+    cancelAlgoOrder: async ({ algoId }) => {
+      const index = openAlgoOrders.findIndex((row) => row.algoId === algoId);
+      if (index >= 0) openAlgoOrders.splice(index, 1);
+      return { ok: true };
     },
   });
 
