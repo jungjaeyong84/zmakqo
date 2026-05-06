@@ -14604,6 +14604,7 @@ async function runPaperBinanceForBar({
 
       const v2GenSignals = v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [];
       for (const sig of v2GenSignals) {
+        directHandoffGeneratedN += 1;
         try {
           const sigBarMs = Number(sig.bar_close_time_utc_ms);
           const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
@@ -14659,6 +14660,18 @@ async function runPaperBinanceForBar({
             reason: "V2_DISCOVERY_BRIDGE_THROWN",
             error_message: error && error.message ? String(error.message) : String(error),
           }));
+          if (handoff && handoff.ok === true) {
+            directHandoffExecutedN += 1;
+          } else {
+            directHandoffBlockedN += 1;
+            const reasonKey = String(
+              (handoff && (handoff.reason
+                || (handoff.endpoint_result && handoff.endpoint_result.reason)
+                || (handoff.routedDecision && handoff.routedDecision.reason)))
+              || "V2_DISCOVERY_BRIDGE_BLOCKED"
+            ).trim() || "V2_DISCOVERY_BRIDGE_BLOCKED";
+            directHandoffReasonCounts[reasonKey] = (directHandoffReasonCounts[reasonKey] || 0) + 1;
+          }
 
           try {
             // Drill into nested block reasons so we can pinpoint where
@@ -14783,6 +14796,10 @@ async function runPaperBinanceForBar({
   const ttlMs = Number.isFinite(execProfile.intentTtlMs) ? execProfile.intentTtlMs
     : (Number.isFinite(execProfile.intentTtlBars) && Number.isFinite(execTfMs) ? (execTfMs * execProfile.intentTtlBars) : null);
   let lateSignals = 0;
+  let directHandoffGeneratedN = 0;
+  let directHandoffExecutedN = 0;
+  let directHandoffBlockedN = 0;
+  const directHandoffReasonCounts = {};
 
   const externalSignals = externalSignalsRaw.map((s) => {
     const signalBarMs = Number(s.bar_close_time_utc_ms);
@@ -16107,6 +16124,12 @@ async function runPaperBinanceForBar({
     signals_seen: signals.length,
     signals_external: externalSignals.length,
     signals_internal: internalSignals.length,
+    signals_seen_total: signals.length + directHandoffGeneratedN,
+    signals_internal_total: internalSignals.length + directHandoffGeneratedN,
+    direct_handoff_generated_n: directHandoffGeneratedN,
+    direct_handoff_executed_n: directHandoffExecutedN,
+    direct_handoff_blocked_n: directHandoffBlockedN,
+    direct_handoff_reason_counts: directHandoffReasonCounts,
     signals_external_late: lateSignals,
     signal_drop_n: recordedSignalDrops.length,
     signal_drop_suppressed_n: Math.max(0, signalDrops.length - recordedSignalDrops.length),
@@ -18388,6 +18411,7 @@ async function runPaperFuturesForBar({
       // Direct-batch handoff per generated signal.
       const v2GenSignals = v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [];
       for (const sig of v2GenSignals) {
+        directHandoffGeneratedN += 1;
         try {
           const sigBarMs = Number(sig.bar_close_time_utc_ms);
           const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
@@ -18443,6 +18467,18 @@ async function runPaperFuturesForBar({
             reason: "V2_DISCOVERY_BRIDGE_THROWN",
             error_message: error && error.message ? String(error.message) : String(error),
           }));
+          if (handoff && handoff.ok === true) {
+            directHandoffExecutedN += 1;
+          } else {
+            directHandoffBlockedN += 1;
+            const reasonKey = String(
+              (handoff && (handoff.reason
+                || (handoff.endpoint_result && handoff.endpoint_result.reason)
+                || (handoff.routedDecision && handoff.routedDecision.reason)))
+              || "V2_DISCOVERY_BRIDGE_BLOCKED"
+            ).trim() || "V2_DISCOVERY_BRIDGE_BLOCKED";
+            directHandoffReasonCounts[reasonKey] = (directHandoffReasonCounts[reasonKey] || 0) + 1;
+          }
 
           try {
             // Drill into nested block reasons so we can pinpoint where
@@ -20235,6 +20271,12 @@ async function runPaperFuturesForBar({
     signals_seen: signals.length,
     signals_external: externalSignals.length,
     signals_internal: internalSignals.length,
+    signals_seen_total: signals.length + directHandoffGeneratedN,
+    signals_internal_total: internalSignals.length + directHandoffGeneratedN,
+    direct_handoff_generated_n: directHandoffGeneratedN,
+    direct_handoff_executed_n: directHandoffExecutedN,
+    direct_handoff_blocked_n: directHandoffBlockedN,
+    direct_handoff_reason_counts: directHandoffReasonCounts,
     signals_external_late: lateSignals,
     signal_drop_n: recordedSignalDrops.length,
     signal_drop_suppressed_n: Math.max(0, signalDrops.length - recordedSignalDrops.length),

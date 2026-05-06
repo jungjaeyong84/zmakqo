@@ -75,14 +75,27 @@ const { deriveServerSignalQuality } = require("../utils/serverSignalQuality");
         { parity_match: false, mismatch_scope: "FINAL_DOWNSTREAM_MISMATCH", market: "BNBUSDT", actual_drop_reason_family: "OTHER_SERVER_POLICY", actual_drop_reason: "LIVE_RESCUE_ADD_POST_TP1_BLOCKED" },
       ],
     },
+    runtimeTickWindow: {
+      server_signal_created_24h_n: 0,
+      intents_created_24h_n: 0,
+      direct_handoff_generated_24h_n: 2,
+      direct_handoff_executed_24h_n: 1,
+      direct_handoff_blocked_24h_n: 1,
+      direct_handoff_reason_counts: {
+        SIGNAL_CRITERIA_BLOCKED: 1,
+      },
+    },
     nowMs: Date.parse("2026-04-02T00:00:00.000Z"),
   });
 
-  assert.strictEqual(report.summary.authoritative_entry_signal_24h_n, 1);
+  assert.strictEqual(report.summary.authoritative_entry_signal_24h_n, 2);
   assert.strictEqual(report.summary.order_intent_24h_n, 1);
   assert.strictEqual(report.summary.fill_24h_n, 1);
   assert.strictEqual(report.summary.trade_24h_n, 1);
   assert.strictEqual(report.summary.quality_status, "OK");
+  assert.strictEqual(report.summary.runtime_direct_handoff_generated_24h_n, 2);
+  assert.strictEqual(report.summary.runtime_direct_handoff_blocked_24h_n, 1);
+  assert.strictEqual(report.summary.top_runtime_direct_handoff_block_reason.key, "SIGNAL_CRITERIA_BLOCKED");
   assert.strictEqual(report.summary.final_downstream_mismatch_n, 3);
   assert.strictEqual(report.summary.top_final_downstream_drop_reason_family.key, "EV_POLICY");
   assert.strictEqual(report.rows.final_downstream_family_actions[0].family, "EV_POLICY");

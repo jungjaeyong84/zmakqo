@@ -95,10 +95,14 @@ function summarizeResults(results = []) {
   let signalInternalN = 0;
   let intentCreatedN = 0;
   let serverSignalCreatedN = 0;
+  let directHandoffGeneratedN = 0;
+  let directHandoffExecutedN = 0;
+  let directHandoffBlockedN = 0;
   let marketErrorN = 0;
   let snapshotRefreshFailN = 0;
   let signalSnapshotRefreshFailN = 0;
   const statusCounts = {};
+  const directHandoffReasonCounts = {};
   const failedMarkets = [];
 
   for (const row of rows) {
@@ -108,10 +112,19 @@ function summarizeResults(results = []) {
       if (oldestBarCloseMs == null || barCloseMs < oldestBarCloseMs) oldestBarCloseMs = barCloseMs;
       if (newestBarCloseMs == null || barCloseMs > newestBarCloseMs) newestBarCloseMs = barCloseMs;
     }
-    signalSeenN += Number(trace.signals_seen || 0);
-    signalInternalN += Number(trace.signals_internal || 0);
+    signalSeenN += Number((trace.signals_seen_total ?? trace.signals_seen) || 0);
+    signalInternalN += Number((trace.signals_internal_total ?? trace.signals_internal) || 0);
     intentCreatedN += Number(trace.intents_created || 0);
+    directHandoffGeneratedN += Number(trace.direct_handoff_generated_n || 0);
+    directHandoffExecutedN += Number(trace.direct_handoff_executed_n || 0);
+    directHandoffBlockedN += Number(trace.direct_handoff_blocked_n || 0);
     if (trace.status === "SERVER_SIGNAL_CREATED") serverSignalCreatedN += 1;
+    const traceReasonCounts = trace && trace.signal_drop_reason_counts && typeof trace.signal_drop_reason_counts === "object"
+      ? trace.signal_drop_reason_counts
+      : {};
+    for (const [reason, count] of Object.entries(traceReasonCounts)) {
+      directHandoffReasonCounts[reason] = Number(directHandoffReasonCounts[reason] || 0) + Number(count || 0);
+    }
     const status = trimOrNull(trace.status) || "UNKNOWN";
     statusCounts[status] = (statusCounts[status] || 0) + 1;
     if (row && row.error) {
@@ -136,12 +149,16 @@ function summarizeResults(results = []) {
     signals_seen_n: signalSeenN,
     signals_internal_n: signalInternalN,
     intents_created_n: intentCreatedN,
+    direct_handoff_generated_n: directHandoffGeneratedN,
+    direct_handoff_executed_n: directHandoffExecutedN,
+    direct_handoff_blocked_n: directHandoffBlockedN,
     market_error_n: marketErrorN,
     snapshot_refresh_fail_n: snapshotRefreshFailN,
     snapshot_refresh_signal_fail_n: signalSnapshotRefreshFailN,
     oldest_bar_close_time_utc_ms: oldestBarCloseMs,
     newest_bar_close_time_utc_ms: newestBarCloseMs,
     signal_status_counts: statusCounts,
+    direct_handoff_reason_counts: directHandoffReasonCounts,
     top_signal_drop_reasons: summarizeDropReasons(rows).slice(0, 10),
     failed_markets: failedMarkets.slice(0, 20),
   });
@@ -350,6 +367,10 @@ async function main({
       server_signal_created_n: summary.server_signal_created_n,
       signals_seen_n: summary.signals_seen_n,
       intents_created_n: summary.intents_created_n,
+      direct_handoff_generated_n: summary.direct_handoff_generated_n,
+      direct_handoff_executed_n: summary.direct_handoff_executed_n,
+      direct_handoff_blocked_n: summary.direct_handoff_blocked_n,
+      direct_handoff_reason_counts: summary.direct_handoff_reason_counts,
       derived_artifact_fail_n: derivedArtifactFailN,
     });
     console.log(JSON.stringify({
@@ -361,6 +382,9 @@ async function main({
       server_signal_created_n: artifact.summary.server_signal_created_n,
       signals_seen_n: artifact.summary.signals_seen_n,
       intents_created_n: artifact.summary.intents_created_n,
+      direct_handoff_generated_n: artifact.summary.direct_handoff_generated_n,
+      direct_handoff_executed_n: artifact.summary.direct_handoff_executed_n,
+      direct_handoff_blocked_n: artifact.summary.direct_handoff_blocked_n,
       oldest_bar_close_time_utc_ms: artifact.summary.oldest_bar_close_time_utc_ms,
       newest_bar_close_time_utc_ms: artifact.summary.newest_bar_close_time_utc_ms,
       market_error_n: artifact.summary.market_error_n,

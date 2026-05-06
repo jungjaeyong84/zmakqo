@@ -4,6 +4,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { getFirestore } = require("../src/storage/firestore");
 const { deriveServerSignalQuality } = require("../src/utils/serverSignalQuality");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -50,9 +51,46 @@ function readCycleId(doc = null) {
   return null;
 }
 
-function main() {
+async function loadRuntimeTickWindow({ nowMs = Date.now(), maxRows = 500 } = {}) {
+  const db = getFirestore();
+  const sinceMs = Number(nowMs) - (24 * 60 * 60 * 1000);
+  const snap = await db.collection("system_runs").orderBy("started_at", "desc").limit(maxRows).get();
+  const summary = {
+    server_signal_created_24h_n: 0,
+    intents_created_24h_n: 0,
+    direct_handoff_generated_24h_n: 0,
+    direct_handoff_executed_24h_n: 0,
+    direct_handoff_blocked_24h_n: 0,
+    direct_handoff_reason_counts: {},
+    run_n: 0,
+  };
+  if (snap.empty) return summary;
+
+  for (const doc of snap.docs) {
+    const row = doc.data() || {};
+    const startedMs = Date.parse(String(row.started_at || ""));
+    if (!Number.isFinite(startedMs) || startedMs < sinceMs) continue;
+    if (String(row?.meta?.source || "").trim().toUpperCase() !== "OPENCLAW_SERVER_PRIMARY_TICK") continue;
+    summary.run_n += 1;
+    summary.server_signal_created_24h_n += Number(row.server_signal_created_n || 0);
+    summary.intents_created_24h_n += Number(row.intents_created_n || 0);
+    summary.direct_handoff_generated_24h_n += Number(row.direct_handoff_generated_n || 0);
+    summary.direct_handoff_executed_24h_n += Number(row.direct_handoff_executed_n || 0);
+    summary.direct_handoff_blocked_24h_n += Number(row.direct_handoff_blocked_n || 0);
+    const reasonCounts = row.direct_handoff_reason_counts && typeof row.direct_handoff_reason_counts === "object"
+      ? row.direct_handoff_reason_counts
+      : {};
+    for (const [reason, count] of Object.entries(reasonCounts)) {
+      summary.direct_handoff_reason_counts[reason] = Number(summary.direct_handoff_reason_counts[reason] || 0) + Number(count || 0);
+    }
+  }
+  return summary;
+}
+
+async function main() {
   const meta = nowMeta();
   const parityReport = readJsonSafe(PATHS.parity, null);
+  const runtimeTickWindow = await loadRuntimeTickWindow({ nowMs: Date.now() });
   const output = {
     ok: true,
     generated_at: meta.iso,
@@ -65,6 +103,7 @@ function main() {
       fillsRecent: readJsonSafe(PATHS.fills, null),
       tradesRecent: readJsonSafe(PATHS.trades, null),
       parityReport,
+      runtimeTickWindow,
       nowMs: Date.now(),
     }),
   };
@@ -73,12 +112,10 @@ function main() {
 }
 
 if (require.main === module) {
-  try {
-    main();
-  } catch (err) {
+  main().catch((err) => {
     console.error("SERVER_SIGNAL_QUALITY_REPORT_FAILED", err && err.stack ? err.stack : err);
     process.exit(1);
-  }
+  });
 }
 
-module.exports = { main };
+module.exports = { main, loadRuntimeTickWindow };

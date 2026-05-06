@@ -151,11 +151,22 @@ function dedupeRows(rows, keys = []) {
   return out;
 }
 
-function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null, fillsRecent = null, tradesRecent = null, parityReport = null, nowMs = Date.now() } = {}) {
+function deriveServerSignalQuality({
+  signalsRecent = null,
+  intentsRecent = null,
+  fillsRecent = null,
+  tradesRecent = null,
+  parityReport = null,
+  runtimeTickWindow = null,
+  nowMs = Date.now(),
+} = {}) {
   const signals = pickDocs(signalsRecent);
   const intents = pickDocs(intentsRecent);
   const fills = pickDocs(fillsRecent);
   const trades = pickDocs(tradesRecent);
+  const runtimeSummary = runtimeTickWindow && typeof runtimeTickWindow === "object"
+    ? (runtimeTickWindow.summary && typeof runtimeTickWindow.summary === "object" ? runtimeTickWindow.summary : runtimeTickWindow)
+    : {};
   const dayAgoMs = Number(nowMs) - (24 * 60 * 60 * 1000);
 
   const recentServerEntrySignals = signals.filter((row) => {
@@ -253,13 +264,29 @@ function deriveServerSignalQuality({ signalsRecent = null, intentsRecent = null,
       observed_at_kst: toKstString(row.observation_ms),
     }));
 
+  const authoritativeEntrySignal24hN = Math.max(
+    recentServerEntrySignals.length,
+    Number(runtimeSummary.server_signal_created_24h_n || runtimeSummary.server_signal_created_n || 0),
+    Number(runtimeSummary.direct_handoff_generated_24h_n || runtimeSummary.direct_handoff_generated_n || 0)
+  );
+  const orderIntent24hN = Math.max(
+    intentsLinked.length,
+    Number(runtimeSummary.intents_created_24h_n || runtimeSummary.intents_created_n || 0),
+    Number(runtimeSummary.direct_handoff_executed_24h_n || runtimeSummary.direct_handoff_executed_n || 0)
+  );
+
   const summary = {
-    authoritative_entry_signal_24h_n: recentServerEntrySignals.length,
-    order_intent_24h_n: intentsLinked.length,
+    authoritative_entry_signal_24h_n: authoritativeEntrySignal24hN,
+    order_intent_24h_n: orderIntent24hN,
     fill_24h_n: fillsLinked.length,
     trade_24h_n: tradesFromFills.length,
-    intent_conversion_rate: rate(intentsLinked.length, recentServerEntrySignals.length),
-    fill_conversion_rate: rate(fillsLinked.length, recentServerEntrySignals.length),
+    runtime_server_signal_created_24h_n: Number(runtimeSummary.server_signal_created_24h_n || runtimeSummary.server_signal_created_n || 0),
+    runtime_direct_handoff_generated_24h_n: Number(runtimeSummary.direct_handoff_generated_24h_n || runtimeSummary.direct_handoff_generated_n || 0),
+    runtime_direct_handoff_executed_24h_n: Number(runtimeSummary.direct_handoff_executed_24h_n || runtimeSummary.direct_handoff_executed_n || 0),
+    runtime_direct_handoff_blocked_24h_n: Number(runtimeSummary.direct_handoff_blocked_24h_n || runtimeSummary.direct_handoff_blocked_n || 0),
+    top_runtime_direct_handoff_block_reason: topObjectRows(runtimeSummary.direct_handoff_reason_counts || {}, 1)[0] || null,
+    intent_conversion_rate: rate(orderIntent24hN, authoritativeEntrySignal24hN),
+    fill_conversion_rate: rate(fillsLinked.length, authoritativeEntrySignal24hN),
     latest_authoritative_entry_signal_at_kst: toKstString(latestSignalMs),
     parity_mismatch_rate: Number.isFinite(Number(paritySummary.parity_mismatch_rate)) ? Number(paritySummary.parity_mismatch_rate) : null,
     parity_mismatch_n: Number(paritySummary.parity_mismatch_n) || 0,

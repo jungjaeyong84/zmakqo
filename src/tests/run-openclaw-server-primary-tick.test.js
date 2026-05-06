@@ -41,7 +41,12 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
         status: market === "SOLUSDT" ? "SERVER_SIGNAL_CREATED" : "NO_SERVER_SIGNAL",
         signals_seen: market === "SOLUSDT" ? 1 : 0,
         signals_internal: market === "SOLUSDT" ? 1 : 0,
+        signals_seen_total: market === "SOLUSDT" ? 2 : 0,
+        signals_internal_total: market === "SOLUSDT" ? 2 : 0,
         intents_created: market === "SOLUSDT" ? 1 : 0,
+        direct_handoff_generated_n: market === "SOLUSDT" ? 1 : 0,
+        direct_handoff_executed_n: market === "SOLUSDT" ? 1 : 0,
+        direct_handoff_blocked_n: 0,
         top_signal_drop_reason: market === "BTCUSDT" ? "DROP_OPPOSITE_COOLDOWN" : null,
       },
     }),
@@ -58,8 +63,10 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
   assert.strictEqual(artifact.reason, "OPENCLAW_SERVER_PRIMARY_TICK_PASS");
   assert.strictEqual(artifact.summary.market_n, 2);
   assert.strictEqual(artifact.summary.server_signal_created_n, 1);
-  assert.strictEqual(artifact.summary.signals_seen_n, 1);
+  assert.strictEqual(artifact.summary.signals_seen_n, 2);
   assert.strictEqual(artifact.summary.intents_created_n, 1);
+  assert.strictEqual(artifact.summary.direct_handoff_generated_n, 1);
+  assert.strictEqual(artifact.summary.direct_handoff_executed_n, 1);
   assert.strictEqual(artifact.summary.market_error_n, 0);
   assert.strictEqual(artifact.derived_artifacts.ok, true);
   assert.ok(fs.existsSync(outputFile));
@@ -96,7 +103,12 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
         status: "NO_SERVER_SIGNAL",
         signals_seen: 0,
         signals_internal: 0,
+        signals_seen_total: 0,
+        signals_internal_total: 0,
         intents_created: 0,
+        direct_handoff_generated_n: 0,
+        direct_handoff_executed_n: 0,
+        direct_handoff_blocked_n: 0,
       },
     }),
     analyticsRunner: () => ({ ok: false, skipped: false, reason: "CACHE_REFRESH_FAILED" }),
@@ -145,7 +157,12 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
         status: "RUN_ERROR",
         signals_seen: 0,
         signals_internal: 0,
+        signals_seen_total: 0,
+        signals_internal_total: 0,
         intents_created: 0,
+        direct_handoff_generated_n: 0,
+        direct_handoff_executed_n: 0,
+        direct_handoff_blocked_n: 0,
       },
     }),
     analyticsRunner: () => ({ ok: false, skipped: false, reason: "CACHE_REFRESH_FAILED" }),

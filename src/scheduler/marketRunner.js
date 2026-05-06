@@ -259,9 +259,21 @@ function summarizeServerSignalTrace({
   const dropCounts = paperSafe && paperSafe.signal_drop_reason_counts && typeof paperSafe.signal_drop_reason_counts === "object"
     ? paperSafe.signal_drop_reason_counts
     : {};
+  const directHandoffReasonCounts = paperSafe && paperSafe.direct_handoff_reason_counts && typeof paperSafe.direct_handoff_reason_counts === "object"
+    ? paperSafe.direct_handoff_reason_counts
+    : {};
+  const combinedDropCounts = { ...dropCounts };
+  for (const [reason, count] of Object.entries(directHandoffReasonCounts)) {
+    combinedDropCounts[reason] = Number(combinedDropCounts[reason] || 0) + Number(count || 0);
+  }
   const topDropReason = paperSafe && paperSafe.top_signal_drop_reason
     ? paperSafe.top_signal_drop_reason
-    : (Object.entries(dropCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null);
+    : (Object.entries(combinedDropCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null);
+  const signalsSeen = Number(paperSafe && (paperSafe.signals_seen_total ?? paperSafe.signals_seen) || 0);
+  const signalsInternal = Number(paperSafe && (paperSafe.signals_internal_total ?? paperSafe.signals_internal) || 0);
+  const directHandoffGeneratedN = Number(paperSafe && paperSafe.direct_handoff_generated_n || 0);
+  const directHandoffExecutedN = Number(paperSafe && paperSafe.direct_handoff_executed_n || 0);
+  const directHandoffBlockedN = Number(paperSafe && paperSafe.direct_handoff_blocked_n || 0);
   let status = "UNKNOWN";
   let reason = "UNKNOWN";
   if (error) {
@@ -278,10 +290,12 @@ function summarizeServerSignalTrace({
   } else if (!paperSafe) {
     status = "BLOCKED";
     reason = "PAPER_RESULT_MISSING";
-  } else if (Number(paperSafe.signals_internal || 0) > 0) {
+  } else if (signalsInternal > 0) {
     status = "SERVER_SIGNAL_CREATED";
-    reason = Number(paperSafe.intents_created || 0) > 0 ? "INTENT_CREATED" : (topDropReason || "SERVER_SIGNAL_CREATED");
-  } else if (Number(paperSafe.signals_seen || 0) > 0) {
+    reason = Number(paperSafe.intents_created || 0) > 0
+      ? "INTENT_CREATED"
+      : (directHandoffExecutedN > 0 ? "DIRECT_HANDOFF_EXECUTED" : (topDropReason || "SERVER_SIGNAL_CREATED"));
+  } else if (signalsSeen > 0) {
     status = "NO_SERVER_SIGNAL";
     reason = topDropReason || "EXTERNAL_ONLY_OR_DROPPED";
   } else {
@@ -304,10 +318,15 @@ function summarizeServerSignalTrace({
     gate_reason_codes: gate && Array.isArray(gate.reasonCodes) ? gate.reasonCodes : [],
     signals_seen: Number(paperSafe && paperSafe.signals_seen || 0),
     signals_internal: Number(paperSafe && paperSafe.signals_internal || 0),
+    signals_seen_total: signalsSeen,
+    signals_internal_total: signalsInternal,
     signals_external: Number(paperSafe && paperSafe.signals_external || 0),
     intents_created: Number(paperSafe && paperSafe.intents_created || 0),
+    direct_handoff_generated_n: directHandoffGeneratedN,
+    direct_handoff_executed_n: directHandoffExecutedN,
+    direct_handoff_blocked_n: directHandoffBlockedN,
     signal_drop_n: Number(paperSafe && paperSafe.signal_drop_n || 0),
-    signal_drop_reason_counts: dropCounts,
+    signal_drop_reason_counts: combinedDropCounts,
     top_signal_drop_reason: topDropReason,
     status,
     reason,
