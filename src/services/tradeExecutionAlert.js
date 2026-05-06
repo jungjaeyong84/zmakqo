@@ -1449,6 +1449,7 @@ async function sendTradeExecutionAlert(payload = {}) {
             err && err.message ? err.message : String(err));
         }
         if (degradedOutboxState && degradedOutboxState.skipSend === true) {
+          const degradedSkipReason = degradedOutboxState.reason || "OUTBOX_ALREADY_SENT";
           // Prior SENT exists for this dedupe key — degraded or canonical
           // already dispatched. Don't redispatch and don't downgrade to
           // BLOCKED below; surface the prior id and exit.
@@ -1461,13 +1462,13 @@ async function sendTradeExecutionAlert(payload = {}) {
             body: degradedMsg.body,
             ok: true,
             skipped: true,
-            reason: "OUTBOX_ALREADY_SENT_DEGRADED",
+            reason: degradedSkipReason,
             source: "tradeExecutionAlert.sendTradeExecutionAlert.degraded",
           });
           return {
             ok: true,
             skipped: true,
-            reason: "OUTBOX_ALREADY_SENT",
+            reason: degradedSkipReason,
             degraded: true,
             outboxId: degradedOutboxState.outboxId,
           };
@@ -1496,6 +1497,7 @@ async function sendTradeExecutionAlert(payload = {}) {
             if (degradedResult && degradedResult.ok === true) {
               await markTradeAlertOutboxResult({
                 outboxId: degradedOutboxState.outboxId,
+                claimToken: degradedOutboxState.claimToken || null,
                 ok: true,
                 skipped: false,
                 reason: "DEGRADED_LINEAGE_GAP",
@@ -1531,6 +1533,7 @@ async function sendTradeExecutionAlert(payload = {}) {
             // row so ops can correlate, then fall through to BLOCKED.
             await markTradeAlertOutboxResult({
               outboxId: degradedOutboxState.outboxId,
+              claimToken: degradedOutboxState.claimToken || null,
               ok: false,
               skipped: false,
               reason: degradedSendError
@@ -1582,6 +1585,7 @@ async function sendTradeExecutionAlert(payload = {}) {
         if (blockedOutboxState.skipSend !== true) {
           await markTradeAlertOutboxResult({
             outboxId: blockedOutboxId,
+            claimToken: blockedOutboxState.claimToken || null,
             blocked: true,
             reason: canonicalRequirement.reason,
             source: "tradeExecutionAlert.sendTradeExecutionAlert.blocked",
@@ -1640,6 +1644,7 @@ async function sendTradeExecutionAlert(payload = {}) {
     console.warn("[TRADE_EXEC_ALERT_OUTBOX_PREP_FAIL]", err && err.message ? err.message : String(err));
   }
   if (outboxState && outboxState.skipSend === true) {
+    const skipReason = outboxState.reason || "OUTBOX_ALREADY_SENT";
     appendTradeExecutionAlertDecisionAudit({
       exchange,
       payload,
@@ -1649,13 +1654,13 @@ async function sendTradeExecutionAlert(payload = {}) {
       body: msg.body,
       ok: true,
       skipped: true,
-      reason: "OUTBOX_ALREADY_SENT",
+      reason: skipReason,
       source: "tradeExecutionAlert.sendTradeExecutionAlert",
     });
     return {
       ok: true,
       skipped: true,
-      reason: "OUTBOX_ALREADY_SENT",
+      reason: skipReason,
       outboxId: outboxState.outboxId,
     };
   }
@@ -1665,6 +1670,7 @@ async function sendTradeExecutionAlert(payload = {}) {
     if (outboxState && outboxState.outboxId) {
       await markTradeAlertOutboxResult({
         outboxId: outboxState.outboxId,
+        claimToken: outboxState.claimToken || null,
         ok: false,
         skipped: true,
         reason: "NO_CHANNEL",
@@ -1694,6 +1700,7 @@ async function sendTradeExecutionAlert(payload = {}) {
     if (outboxState && outboxState.outboxId) {
       await markTradeAlertOutboxResult({
         outboxId: outboxState.outboxId,
+        claimToken: outboxState.claimToken || null,
         ok: false,
         skipped: true,
         reason: "NO_TELEGRAM_CHANNEL",
@@ -1729,6 +1736,7 @@ async function sendTradeExecutionAlert(payload = {}) {
     if (outboxState && outboxState.outboxId) {
       await markTradeAlertOutboxResult({
         outboxId: outboxState.outboxId,
+        claimToken: outboxState.claimToken || null,
         ok: false,
         skipped: false,
         reason: err && err.message ? err.message : String(err),
@@ -1744,6 +1752,7 @@ async function sendTradeExecutionAlert(payload = {}) {
   if (outboxState && outboxState.outboxId) {
     await markTradeAlertOutboxResult({
       outboxId: outboxState.outboxId,
+      claimToken: outboxState.claimToken || null,
       ok: result && result.ok === true,
       skipped: false,
       reason: resolveAlertSendResultReason(result),
@@ -1881,6 +1890,7 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
     console.warn("[TRADE_EXEC_FAIL_ALERT_OUTBOX_PREP_FAIL]", err && err.message ? err.message : String(err));
   }
   if (outboxState && outboxState.skipSend === true) {
+    const skipReason = outboxState.reason || "OUTBOX_ALREADY_SENT";
     appendTradeExecutionAlertDecisionAudit({
       type: "TRADE_EXECUTION_FAILURE_ALERT",
       exchange,
@@ -1891,13 +1901,13 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
       body: msg.body,
       ok: true,
       skipped: true,
-      reason: "OUTBOX_ALREADY_SENT",
+      reason: skipReason,
       source: "tradeExecutionAlert.sendTradeExecutionFailureAlert",
     });
     return {
       ok: true,
       skipped: true,
-      reason: "OUTBOX_ALREADY_SENT",
+      reason: skipReason,
       outboxId: outboxState.outboxId,
     };
   }
@@ -1907,6 +1917,7 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
     if (outboxState && outboxState.outboxId) {
       await markTradeAlertOutboxResult({
         outboxId: outboxState.outboxId,
+        claimToken: outboxState.claimToken || null,
         ok: false,
         skipped: true,
         reason: "NO_CHANNEL",
@@ -1937,6 +1948,7 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
     if (outboxState && outboxState.outboxId) {
       await markTradeAlertOutboxResult({
         outboxId: outboxState.outboxId,
+        claimToken: outboxState.claimToken || null,
         ok: false,
         skipped: true,
         reason: "NO_TELEGRAM_CHANNEL",
@@ -1973,6 +1985,7 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
     if (outboxState && outboxState.outboxId) {
       await markTradeAlertOutboxResult({
         outboxId: outboxState.outboxId,
+        claimToken: outboxState.claimToken || null,
         ok: false,
         skipped: false,
         reason: err && err.message ? err.message : String(err),
@@ -1988,6 +2001,7 @@ async function sendTradeExecutionFailureAlert(payload = {}) {
   if (outboxState && outboxState.outboxId) {
     await markTradeAlertOutboxResult({
       outboxId: outboxState.outboxId,
+      claimToken: outboxState.claimToken || null,
       ok: result && result.ok === true,
       skipped: false,
       reason: resolveAlertSendResultReason(result),

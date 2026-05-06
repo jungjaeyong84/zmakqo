@@ -1,9 +1,68 @@
 "use strict";
 
 const assert = require("assert");
-const { __test } = require("../storage/tradeAlertOutbox");
+const path = require("path");
+
+const tradeAlertOutboxPath = path.resolve(__dirname, "../storage/tradeAlertOutbox.js");
+const firestorePath = path.resolve(__dirname, "../storage/firestore.js");
+
+function createFakeDb() {
+  const store = new Map();
+  return {
+    collection() {
+      return {
+        doc(id) {
+          return {
+            id,
+            async get() {
+              const current = store.get(id);
+              return {
+                exists: !!current,
+                data: () => (current ? JSON.parse(JSON.stringify(current)) : undefined),
+              };
+            },
+            set(patch, { merge } = {}) {
+              const prev = store.get(id) || {};
+              const next = merge ? { ...prev, ...patch } : { ...patch };
+              store.set(id, next);
+              return Promise.resolve();
+            },
+          };
+        },
+      };
+    },
+    async runTransaction(handler) {
+      const tx = {
+        async get(ref) {
+          return ref.get();
+        },
+        set(ref, patch, options) {
+          return ref.set(patch, options);
+        },
+      };
+      return handler(tx);
+    },
+    __store: store,
+  };
+}
+
+function loadTradeAlertOutboxWithDb(fakeDb) {
+  delete require.cache[tradeAlertOutboxPath];
+  const original = require.cache[firestorePath];
+  require.cache[firestorePath] = {
+    id: firestorePath,
+    filename: firestorePath,
+    loaded: true,
+    exports: { getFirestore: () => fakeDb },
+  };
+  const mod = require(tradeAlertOutboxPath);
+  if (original) require.cache[firestorePath] = original;
+  else delete require.cache[firestorePath];
+  return mod;
+}
 
 function run() {
+  const { __test } = require(tradeAlertOutboxPath);
   assert.ok(__test, "__test export missing");
   assert.strictEqual(typeof __test.buildTradeAlertOutboxId, "function", "buildTradeAlertOutboxId export missing");
 
@@ -147,12 +206,61 @@ function run() {
   assert.deepStrictEqual(preserved.canonical_transition_events, ["TP1_REACHED"]);
   assert.strictEqual(preserved.simplified_exit_v2_enabled, true);
 
+  return __test;
+}
+
+async function runConcurrencyCase() {
+  const fakeDb = createFakeDb();
+  const mod = loadTradeAlertOutboxWithDb(fakeDb);
+  const first = await mod.prepareTradeAlertOutbox({
+    type: "TRADE_EXECUTION_ALERT",
+    exchange: "BINANCEFUT",
+    symbol: "TIAUSDT",
+    event: "ENTRY_LONG",
+    title: "TIAUSDT 롱 진입",
+    body: "body",
+    payload: { intent: "ENTRY", signalId: "SIG__1" },
+    dedupeKey: "TIAUSDT__ENTRY__SIG__1",
+    source: "test.first",
+  });
+  assert.strictEqual(first.skipSend, false, "first claimant must be allowed to send");
+  assert.ok(first.claimToken, "first claimant token missing");
+
+  const replay = await mod.prepareTradeAlertOutbox({
+    type: "TRADE_EXECUTION_ALERT",
+    exchange: "BINANCEFUT",
+    symbol: "TIAUSDT",
+    event: "ENTRY_LONG",
+    title: "TIAUSDT 롱 진입",
+    body: "body",
+    payload: { intent: "ENTRY", signalId: "SIG__1" },
+    dedupeKey: "TIAUSDT__ENTRY__SIG__1",
+    source: "test.second",
+  });
+  assert.strictEqual(replay.skipSend, true, "second concurrent claimant must be suppressed while claim is active");
+  assert.strictEqual(replay.reason, "CLAIM_HELD");
+  assert.strictEqual(replay.claimToken, null);
+
+  const mismatch = await mod.markTradeAlertOutboxResult({
+    outboxId: first.outboxId,
+    claimToken: first.claimToken,
+    ok: true,
+    reason: "SENT",
+  });
+  assert.strictEqual(mismatch.status, "SENT");
+  const stored = fakeDb.__store.get(first.outboxId);
+  assert.strictEqual(stored.status, "SENT");
+  assert.strictEqual(stored.dispatch_claim_token, null, "claim token must clear after mark");
+
   console.log("TRADE_ALERT_OUTBOX_TEST_OK");
 }
 
-try {
-  run();
-} catch (err) {
+Promise.resolve()
+  .then(() => {
+    run();
+    return runConcurrencyCase();
+  })
+  .catch((err) => {
   console.error("TRADE_ALERT_OUTBOX_TEST_FAIL", err && err.stack ? err.stack : err);
   process.exit(1);
-}
+  });

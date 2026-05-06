@@ -7,6 +7,10 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function nowMs() {
+  return Date.now();
+}
+
 function upper(value) {
   return String(value || "").trim().toUpperCase() || null;
 }
@@ -220,57 +224,83 @@ async function prepareTradeAlertOutbox({
   });
   const db = getFirestore();
   const ref = db.collection("trade_alert_outbox").doc(outboxId);
-  const snap = await ref.get();
-  const prev = snap.exists ? (snap.data() || {}) : null;
-  if (prev && upper(prev.status) === "SENT" && allowResend !== true) {
-    return { outboxId, ref, doc: prev, skipSend: true };
-  }
+  const claimToken = crypto.randomUUID();
+  const transactionResult = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = snap.exists ? (snap.data() || {}) : null;
+    if (prev && upper(prev.status) === "SENT" && allowResend !== true) {
+      return { outboxId, ref, doc: prev, skipSend: true, claimed: false, claimToken: null };
+    }
+    const prevClaimToken = trimOrNull(prev && prev.dispatch_claim_token);
+    const prevClaimExpiry = Number(prev && prev.dispatch_claim_expires_at_ms);
+    if (
+      prev
+      && upper(prev.status) === "PENDING"
+      && prevClaimToken
+      && Number.isFinite(prevClaimExpiry)
+      && prevClaimExpiry > nowMs()
+    ) {
+      return {
+        outboxId,
+        ref,
+        doc: prev,
+        skipSend: true,
+        claimed: false,
+        claimToken: null,
+        reason: "CLAIM_HELD",
+      };
+    }
 
-  const now = nowIso();
-  const attemptCount = Math.max(0, Number(prev && prev.attempt_count) || 0) + 1;
-  const payloadEvidence = resolveOutboxEvidenceFields({
-    payload,
-    prev,
-    sourceFillId,
-    dedupeKey,
+    const now = nowIso();
+    const payloadEvidence = resolveOutboxEvidenceFields({
+      payload,
+      prev,
+      sourceFillId,
+      dedupeKey,
+    });
+    const doc = {
+      trade_alert_outbox_id: outboxId,
+      type: upper(type),
+      exchange: upper(exchange),
+      symbol: upper(symbol),
+      event: upper(event),
+      status: "PENDING",
+      created_at: String(prev && prev.created_at || "").trim() || now,
+      updated_at: now,
+      last_attempt_at: now,
+      attempt_count: Math.max(0, Number(prev && prev.attempt_count) || 0) + 1,
+      source_fill_id: payloadEvidence.source_fill_id,
+      dedupe_key: payloadEvidence.dedupe_key,
+      entry_event_id: payloadEvidence.entry_event_id,
+      order_id: payloadEvidence.order_id,
+      client_order_id: payloadEvidence.client_order_id,
+      raw_evidence_event: payloadEvidence.raw_evidence_event,
+      canonical_event: payloadEvidence.canonical_event,
+      canonical_stage: payloadEvidence.canonical_stage,
+      canonical_transition_events: payloadEvidence.canonical_transition_events,
+      canonical_primary_transition_event: payloadEvidence.canonical_primary_transition_event,
+      simplified_exit_v2_enabled: payloadEvidence.simplified_exit_v2_enabled,
+      last_channel: trimOrNull(channel) || trimOrNull(prev && prev.last_channel),
+      last_title: trimOrNull(title) || trimOrNull(prev && prev.last_title),
+      last_body: trimOrNull(body) || trimOrNull(prev && prev.last_body),
+      last_reason: null,
+      last_error: null,
+      last_result: null,
+      source: trimOrNull(source) || trimOrNull(prev && prev.source),
+      payload: cloneJson(payload) || cloneJson(prev && prev.payload),
+      dispatch_claim_token: claimToken,
+      dispatch_claimed_at: now,
+      dispatch_claim_expires_at_ms: nowMs() + 300000,
+    };
+    tx.set(ref, doc, { merge: true });
+    return { outboxId, ref, doc, skipSend: false, claimed: true, claimToken };
   });
-  const doc = {
-    trade_alert_outbox_id: outboxId,
-    type: upper(type),
-    exchange: upper(exchange),
-    symbol: upper(symbol),
-    event: upper(event),
-    status: "PENDING",
-    created_at: String(prev && prev.created_at || "").trim() || now,
-    updated_at: now,
-    last_attempt_at: now,
-    attempt_count: attemptCount,
-    source_fill_id: payloadEvidence.source_fill_id,
-    dedupe_key: payloadEvidence.dedupe_key,
-    entry_event_id: payloadEvidence.entry_event_id,
-    order_id: payloadEvidence.order_id,
-    client_order_id: payloadEvidence.client_order_id,
-    raw_evidence_event: payloadEvidence.raw_evidence_event,
-    canonical_event: payloadEvidence.canonical_event,
-    canonical_stage: payloadEvidence.canonical_stage,
-    canonical_transition_events: payloadEvidence.canonical_transition_events,
-    canonical_primary_transition_event: payloadEvidence.canonical_primary_transition_event,
-    simplified_exit_v2_enabled: payloadEvidence.simplified_exit_v2_enabled,
-    last_channel: trimOrNull(channel) || trimOrNull(prev && prev.last_channel),
-    last_title: trimOrNull(title) || trimOrNull(prev && prev.last_title),
-    last_body: trimOrNull(body) || trimOrNull(prev && prev.last_body),
-    last_reason: null,
-    last_error: null,
-    last_result: null,
-    source: trimOrNull(source) || trimOrNull(prev && prev.source),
-    payload: cloneJson(payload) || cloneJson(prev && prev.payload),
-  };
-  await ref.set(doc, { merge: true });
-  return { outboxId, ref, doc, skipSend: false };
+  return transactionResult;
 }
 
 async function markTradeAlertOutboxResult({
   outboxId,
+  claimToken = null,
   ok = false,
   skipped = false,
   // 2026-04-20 senior-audit P3: explicit BLOCKED status for the canonical-
@@ -320,8 +350,27 @@ async function markTradeAlertOutboxResult({
   else if (status === "SKIPPED") patch.skipped_at = now;
   else if (status === "BLOCKED") patch.blocked_at = now;
   else patch.failed_at = now;
-  await ref.set(patch, { merge: true });
-  return { outboxId: id, status };
+  const normalizedClaimToken = trimOrNull(claimToken);
+  const resultValue = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = snap.exists ? (snap.data() || {}) : null;
+    const currentClaimToken = trimOrNull(prev && prev.dispatch_claim_token);
+    if (normalizedClaimToken && currentClaimToken && normalizedClaimToken !== currentClaimToken) {
+      return {
+        outboxId: id,
+        status: upper(prev && prev.status) || null,
+        skipped: true,
+        reason: "CLAIM_TOKEN_MISMATCH",
+      };
+    }
+    const writePatch = { ...patch };
+    writePatch.dispatch_claim_token = null;
+    writePatch.dispatch_claimed_at = null;
+    writePatch.dispatch_claim_expires_at_ms = null;
+    tx.set(ref, writePatch, { merge: true });
+    return { outboxId: id, status };
+  });
+  return resultValue;
 }
 
 async function fetchTradeAlertOutboxItems({
