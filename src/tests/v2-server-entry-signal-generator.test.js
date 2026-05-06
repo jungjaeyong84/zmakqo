@@ -388,8 +388,18 @@ function buildSyntheticBars(n, opts = {}) {
   assert.strictEqual(typeof out.diagnostics.pullback_depth_ok_short, "boolean");
   assert.strictEqual(typeof out.diagnostics.continuation_bar_bias_long, "boolean");
   assert.strictEqual(typeof out.diagnostics.continuation_bar_bias_short, "boolean");
+  assert.strictEqual(typeof out.diagnostics.trigger_breakout_long, "boolean");
+  assert.strictEqual(typeof out.diagnostics.trigger_reclaim_long, "boolean");
+  assert.strictEqual(typeof out.diagnostics.trigger_continuation_long, "boolean");
+  assert.strictEqual(typeof out.diagnostics.trigger_breakdown_short, "boolean");
+  assert.strictEqual(typeof out.diagnostics.trigger_loss_short, "boolean");
+  assert.strictEqual(typeof out.diagnostics.trigger_continuation_short, "boolean");
+  assert.strictEqual(typeof out.diagnostics.bull_close, "boolean");
+  assert.strictEqual(typeof out.diagnostics.bear_close, "boolean");
   assert.ok(Number.isFinite(Number(out.diagnostics.continuation_pressure_long)));
   assert.ok(Number.isFinite(Number(out.diagnostics.continuation_pressure_short)));
+  assert.ok(Number.isFinite(Number(out.diagnostics.close_pos_in_bar)));
+  assert.ok(Number.isFinite(Number(out.diagnostics.price_position)));
 })();
 
 (function testDecisionReason_NoTrigger() {
