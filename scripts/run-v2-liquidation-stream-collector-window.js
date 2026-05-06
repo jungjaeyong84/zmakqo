@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 "use strict";
 
+const path = require("path");
 const { createBinanceLiquidationStreamCollector } = require("../src/v2/binanceLiquidationStreamCollector");
+const {
+  OPS_DAILY_DIR,
+  nowKstMeta,
+  writeJson,
+} = require("./lib/automation-utils");
 
 function toPositiveInt(value, fallback, max) {
   const n = Number(value);
@@ -15,6 +21,24 @@ function sleep(ms) {
 
 function emit(payload) {
   process.stdout.write(JSON.stringify(payload) + "\n");
+}
+
+function resolveOutputFile(env = process.env) {
+  const explicit = String(env.DONBEOLJA_V2_LIQUIDATION_STREAM_WINDOW_FILE || "").trim();
+  return explicit || path.join(OPS_DAILY_DIR, "v2_liquidation_stream_collector_window_latest.json");
+}
+
+function finalizePayload(payload = {}, env = process.env) {
+  const nowMeta = nowKstMeta();
+  const outputFile = resolveOutputFile(env);
+  const result = {
+    generated_at_kst: nowMeta.kst,
+    output_file: outputFile,
+    ...payload,
+  };
+  writeJson(outputFile, result);
+  emit(result);
+  return result;
 }
 
 async function main({
@@ -31,19 +55,17 @@ async function main({
       reason: started && started.reason ? started.reason : "LIQUIDATION_STREAM_START_FAILED",
       state: collector.state ? collector.state() : null,
     };
-    emit(payload);
+    finalizePayload(payload, env);
     if (setProcessExitCode) process.exitCode = 1;
     return payload;
   }
   if (started.reason === "LIQUIDATION_STREAM_DISABLED") {
-    const payload = {
+    return finalizePayload({
       ok: true,
       reason: started.reason,
       state: collector.state ? collector.state() : null,
       duration_ms: 0,
-    };
-    emit(payload);
-    return payload;
+    }, env);
   }
 
   const durationMs = toPositiveInt(env.DONBEOLJA_V2_LIQUIDATION_STREAM_WINDOW_MS, 10000, 120000);
@@ -63,19 +85,19 @@ async function main({
     state,
     buffered_event_n: state && Number.isFinite(Number(state.buffered_event_n)) ? Number(state.buffered_event_n) : null,
   };
-  emit(payload);
+  finalizePayload(payload, env);
   return payload;
 }
 
 if (require.main === module) {
   main().catch((error) => {
-    emit({
+    finalizePayload({
       ok: false,
       reason: "V2_LIQUIDATION_STREAM_WINDOW_COLLECTOR_THROWN",
       error_message: error && error.message ? String(error.message) : String(error),
-    });
+    }, process.env);
     process.exitCode = 1;
   });
 }
 
-module.exports = { main, __test: { toPositiveInt } };
+module.exports = { main, __test: { toPositiveInt, resolveOutputFile } };
