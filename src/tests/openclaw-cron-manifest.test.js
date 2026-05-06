@@ -148,6 +148,7 @@ const {
     "v2_active_protection_reconciliation",
     "v2_fill_sync",
     "v2_performance_evidence_cycle",
+    "v2_repair_queue_service",
     "v2_signal_shadow_counterfactual_walker",
     "v2_signal_shadow_counterfactual_analyzer",
     "v2_liquidation_stream_collector_window",
@@ -160,6 +161,9 @@ const {
   const localFillSync = OPENCLAW_LOCAL_COST_SAVER_JOBS.find((job) => job.job_id === "v2_fill_sync");
   assert.strictEqual(localFillSync.wrapper.endsWith("run_v2_fill_sync.sh"), true);
   assert.strictEqual(localFillSync.start_interval_seconds, 300);
+  const localRepairQueue = OPENCLAW_LOCAL_COST_SAVER_JOBS.find((job) => job.job_id === "v2_repair_queue_service");
+  assert.strictEqual(localRepairQueue.wrapper.endsWith("run_v2_repair_queue_service.sh"), true);
+  assert.strictEqual(localRepairQueue.start_interval_seconds, 120);
   const localPrimaryTick = OPENCLAW_LOCAL_COST_SAVER_JOBS.find((job) => job.job_id === "openclaw_server_primary_tick");
   assert.ok(Array.isArray(localPrimaryTick.start_calendar_interval));
   assert.deepStrictEqual(localPrimaryTick.start_calendar_interval.map((row) => row.minute), [1, 16, 31, 46]);

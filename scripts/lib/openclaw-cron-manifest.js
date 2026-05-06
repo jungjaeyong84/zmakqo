@@ -311,6 +311,16 @@ const OPENCLAW_LOCAL_COST_SAVER_JOBS = Object.freeze([
     log_basename: "v2_performance_evidence_cycle",
   },
   {
+    job_id: "v2_repair_queue_service",
+    scheduler_name: "donbeolja-v2-repair-queue-service",
+    label: "com.jeongjaeyong.donbeolja.v2repairqueue",
+    wrapper: `${REPO_ROOT}/ops/launchd/run_v2_repair_queue_service.sh`,
+    start_interval_seconds: 120,
+    runAtLoad: true,
+    criticality: "HIGH",
+    log_basename: "v2_repair_queue_service",
+  },
+  {
     job_id: "v2_signal_shadow_counterfactual_walker",
     scheduler_name: "v2-signal-shadow-counterfactual-walker",
     label: "com.jeongjaeyong.donbeolja.v2signalshadowcounterfactualwalker",

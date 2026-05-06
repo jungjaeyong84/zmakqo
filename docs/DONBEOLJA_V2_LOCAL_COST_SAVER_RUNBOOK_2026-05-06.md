@@ -47,6 +47,11 @@ node scripts/setup-v2-local-cost-saver.js --enable --kickstart
 3. `v2_performance_gate_latest.json`, `v2_active_protection_reconciliation_latest.json`, `v2_repair_queue_service_latest.json` refresh on local cadence.
 4. No duplicate execution between local launchd and Cloud Scheduler during overlap window.
 
+## Local-only ownership that must also be alive
+- `donbeolja-v2-repair-queue-service`
+  - This is not part of the Cloud Scheduler pause set.
+  - It is still required for live V2 repair execution because watchdog/read-only repair requests otherwise accumulate with no authority executor consuming them.
+
 ## Explicit non-goals in this step
 - Firestore removal
 - Full local secret replacement

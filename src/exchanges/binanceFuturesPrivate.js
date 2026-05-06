@@ -45,7 +45,10 @@ function toBinanceNumberString(v, maxDp = 10) {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
   const fixed = n.toFixed(maxDp);
-  const trimmed = fixed.replace(/\.?0+$/, "");
+  const trimmed = fixed
+    .replace(/(\.\d*?[1-9])0+$/, "$1")
+    .replace(/\.0+$/, "")
+    .replace(/\.$/, "");
   return trimmed || "0";
 }
 
@@ -1715,6 +1718,7 @@ module.exports = {
     isAlgoEndpointUnavailableError,
     isPostOnlyRejectError,
     isUnknownOrderError,
+    toBinanceNumberString,
     normalizeAlgoOpenOrdersResponse,
     normalizeAlgoOrderResponse,
     sanitizeClientOrderId,

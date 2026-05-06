@@ -45,8 +45,23 @@ async function operationalCanaryCompletesWatchdogGeneratedRepair() {
   assert.strictEqual(serialized.includes("canary-secret"), false);
 }
 
+async function operationalCanaryIgnoresLatestReadModelStrictRuntimeFlags() {
+  const output = await runRepairQueueOperationalCanary({
+    env: {
+      POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY: "1",
+      DONBEOLJA_V2_REPAIR_QUEUE_REQUIRE_LATEST_ACTIVE_READ_MODEL: "1",
+    },
+    recordedAt: "2026-04-21T08:00:00.000Z",
+  });
+  assert.strictEqual(output.ok, true);
+  assert.strictEqual(output.summary.requested_repair_n, 1);
+  assert.strictEqual(output.summary.delegated_repair_n, 1);
+  assert.strictEqual(output.refresh_call_n, 1);
+}
+
 async function main() {
   await operationalCanaryCompletesWatchdogGeneratedRepair();
+  await operationalCanaryIgnoresLatestReadModelStrictRuntimeFlags();
   console.log("V2_REPAIR_QUEUE_OPERATIONAL_CANARY_TEST_OK");
 }
 

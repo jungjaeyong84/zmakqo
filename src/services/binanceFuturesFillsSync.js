@@ -1250,6 +1250,12 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
     rules: nextMeta.exit_rules_override,
     positionCtx: { meta: nextMeta },
   });
+  const tp1LineageEntryEventId = String(
+    nextMeta.tp_p1_entry_event_id
+    || nextMeta.entry_event_id
+    || nextMeta.origin_entry_event_id
+    || ""
+  ).trim() || null;
   if (isTpP0Event(ev)) {
     if (!v2Enabled) {
       nextMeta.tp_p0_done = true;
@@ -1261,6 +1267,7 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
   if (isTpP1Event(ev)) {
     if (!v2Enabled) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
+    nextMeta.tp_p1_entry_event_id = tp1LineageEntryEventId;
     nextMeta.trail_active = fullTpOnly ? false : true;
     if (fullTpOnly) {
       nextMeta.trail_high = null;
@@ -1285,6 +1292,7 @@ function buildStageHintedMeta(meta = {}, event = "", trade = null) {
     if (!v2Enabled) nextMeta.tp_p0_done = true;
     if (!fullTpOnly) {
       nextMeta.tp_p1_done = true;
+      nextMeta.tp_p1_entry_event_id = tp1LineageEntryEventId;
       nextMeta.trail_active = true;
     }
   }
@@ -1434,12 +1442,19 @@ function mergeRecentExitHintsIntoMeta(meta = {}, {
     rules: nextMeta.exit_rules_override,
     positionCtx: { meta: nextMeta },
   });
+  const tp1LineageEntryEventId = String(
+    nextMeta.tp_p1_entry_event_id
+    || nextMeta.entry_event_id
+    || nextMeta.origin_entry_event_id
+    || ""
+  ).trim() || null;
   if (!v2Enabled && recentTp0 && isTpP0Event(recentTp0.event)) {
     nextMeta.tp_p0_done = true;
   }
   if (recentTp1 && isTpP1Event(recentTp1.event)) {
     if (!v2Enabled) nextMeta.tp_p0_done = true;
     nextMeta.tp_p1_done = true;
+    nextMeta.tp_p1_entry_event_id = tp1LineageEntryEventId;
     nextMeta.trail_active = fullTpOnly ? false : true;
     if (fullTpOnly) {
       nextMeta.trail_high = null;
@@ -1459,6 +1474,7 @@ function mergeRecentExitHintsIntoMeta(meta = {}, {
     if (!v2Enabled) nextMeta.tp_p0_done = true;
     if (!fullTpOnly) {
       nextMeta.tp_p1_done = true;
+      nextMeta.tp_p1_entry_event_id = tp1LineageEntryEventId;
       nextMeta.trail_active = true;
     }
   }

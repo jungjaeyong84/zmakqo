@@ -44,6 +44,20 @@ async function canaryRunsFullQueueToCompletionWithoutExchangeWrite() {
   assert.strictEqual(output.completion_attempts[0].completion_ledger.execution_status, "COMPLETED_SUCCESS");
 }
 
+async function canaryIgnoresLatestReadModelStrictRuntimeFlags() {
+  const output = await runRepairQueueCanary({
+    env: {
+      POSITION_READ_MODEL_STRICT_LATEST_INDEX_ONLY: "1",
+      DONBEOLJA_V2_REPAIR_QUEUE_REQUIRE_LATEST_ACTIVE_READ_MODEL: "1",
+    },
+    recordedAt: "2026-04-21T07:30:00.000Z",
+  });
+  assert.strictEqual(output.ok, true);
+  assert.strictEqual(output.summary.requested_repair_n, 1);
+  assert.strictEqual(output.summary.delegated_repair_n, 1);
+  assert.strictEqual(output.refresh_call_n, 1);
+}
+
 async function canaryArtifactDoesNotLeakLiveCredentials() {
   const output = await runRepairQueueCanary({
     env: {},
@@ -83,6 +97,7 @@ async function canaryArtifactDoesNotLeakLiveCredentials() {
 
 async function main() {
   await canaryRunsFullQueueToCompletionWithoutExchangeWrite();
+  await canaryIgnoresLatestReadModelStrictRuntimeFlags();
   await canaryArtifactDoesNotLeakLiveCredentials();
   console.log("V2_REPAIR_QUEUE_CANARY_TEST_OK");
 }
