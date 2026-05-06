@@ -47,6 +47,15 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
         direct_handoff_generated_n: market === "SOLUSDT" ? 1 : 0,
         direct_handoff_executed_n: market === "SOLUSDT" ? 1 : 0,
         direct_handoff_blocked_n: 0,
+        v2_generator_summary: {
+          skipped: false,
+          skip_reason: null,
+          signals_n: market === "SOLUSDT" ? 1 : 0,
+          diagnostics: {
+            trigger_type_long: market === "SOLUSDT" ? "BREAKOUT" : "NONE",
+            trigger_type_short: "NONE",
+          },
+        },
         top_signal_drop_reason: market === "BTCUSDT" ? "DROP_OPPOSITE_COOLDOWN" : null,
       },
     }),
@@ -67,6 +76,7 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
   assert.strictEqual(artifact.summary.intents_created_n, 1);
   assert.strictEqual(artifact.summary.direct_handoff_generated_n, 1);
   assert.strictEqual(artifact.summary.direct_handoff_executed_n, 1);
+  assert.strictEqual(artifact.summary.generator_trigger_long_counts.BREAKOUT, 1);
   assert.strictEqual(artifact.summary.market_error_n, 0);
   assert.strictEqual(artifact.derived_artifacts.ok, true);
   assert.ok(fs.existsSync(outputFile));
@@ -109,6 +119,12 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
         direct_handoff_generated_n: 0,
         direct_handoff_executed_n: 0,
         direct_handoff_blocked_n: 0,
+        v2_generator_summary: {
+          skipped: true,
+          skip_reason: "POSITION_ACTIVE",
+          signals_n: 0,
+          diagnostics: { trigger_type_long: "NONE", trigger_type_short: "NONE" },
+        },
       },
     }),
     analyticsRunner: () => ({ ok: false, skipped: false, reason: "CACHE_REFRESH_FAILED" }),
@@ -163,6 +179,7 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
         direct_handoff_generated_n: 0,
         direct_handoff_executed_n: 0,
         direct_handoff_blocked_n: 0,
+        v2_generator_summary: null,
       },
     }),
     analyticsRunner: () => ({ ok: false, skipped: false, reason: "CACHE_REFRESH_FAILED" }),

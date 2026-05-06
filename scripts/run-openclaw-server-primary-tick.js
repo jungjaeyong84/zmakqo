@@ -103,10 +103,16 @@ function summarizeResults(results = []) {
   let signalSnapshotRefreshFailN = 0;
   const statusCounts = {};
   const directHandoffReasonCounts = {};
+  const generatorSkipReasonCounts = {};
+  const generatorTriggerLongCounts = {};
+  const generatorTriggerShortCounts = {};
   const failedMarkets = [];
 
   for (const row of rows) {
     const trace = row && row.signal_trace && typeof row.signal_trace === "object" ? row.signal_trace : {};
+    const gen = trace && trace.v2_generator_summary && typeof trace.v2_generator_summary === "object"
+      ? trace.v2_generator_summary
+      : null;
     const barCloseMs = Number(row && row.bar_close_time_utc_ms);
     if (Number.isFinite(barCloseMs)) {
       if (oldestBarCloseMs == null || barCloseMs < oldestBarCloseMs) oldestBarCloseMs = barCloseMs;
@@ -124,6 +130,15 @@ function summarizeResults(results = []) {
       : {};
     for (const [reason, count] of Object.entries(traceReasonCounts)) {
       directHandoffReasonCounts[reason] = Number(directHandoffReasonCounts[reason] || 0) + Number(count || 0);
+    }
+    if (gen) {
+      const skipReason = trimOrNull(gen.skip_reason) || "GENERATOR_NULL";
+      generatorSkipReasonCounts[skipReason] = Number(generatorSkipReasonCounts[skipReason] || 0) + 1;
+      const diag = gen.diagnostics && typeof gen.diagnostics === "object" ? gen.diagnostics : {};
+      const triggerLong = trimOrNull(diag.trigger_type_long) || "NONE";
+      const triggerShort = trimOrNull(diag.trigger_type_short) || "NONE";
+      generatorTriggerLongCounts[triggerLong] = Number(generatorTriggerLongCounts[triggerLong] || 0) + 1;
+      generatorTriggerShortCounts[triggerShort] = Number(generatorTriggerShortCounts[triggerShort] || 0) + 1;
     }
     const status = trimOrNull(trace.status) || "UNKNOWN";
     statusCounts[status] = (statusCounts[status] || 0) + 1;
@@ -159,6 +174,9 @@ function summarizeResults(results = []) {
     newest_bar_close_time_utc_ms: newestBarCloseMs,
     signal_status_counts: statusCounts,
     direct_handoff_reason_counts: directHandoffReasonCounts,
+    generator_skip_reason_counts: generatorSkipReasonCounts,
+    generator_trigger_long_counts: generatorTriggerLongCounts,
+    generator_trigger_short_counts: generatorTriggerShortCounts,
     top_signal_drop_reasons: summarizeDropReasons(rows).slice(0, 10),
     failed_markets: failedMarkets.slice(0, 20),
   });

@@ -274,6 +274,9 @@ function summarizeServerSignalTrace({
   const directHandoffGeneratedN = Number(paperSafe && paperSafe.direct_handoff_generated_n || 0);
   const directHandoffExecutedN = Number(paperSafe && paperSafe.direct_handoff_executed_n || 0);
   const directHandoffBlockedN = Number(paperSafe && paperSafe.direct_handoff_blocked_n || 0);
+  const v2GeneratorSummary = paperSafe && paperSafe.v2_generator_summary && typeof paperSafe.v2_generator_summary === "object"
+    ? paperSafe.v2_generator_summary
+    : null;
   let status = "UNKNOWN";
   let reason = "UNKNOWN";
   if (error) {
@@ -325,6 +328,7 @@ function summarizeServerSignalTrace({
     direct_handoff_generated_n: directHandoffGeneratedN,
     direct_handoff_executed_n: directHandoffExecutedN,
     direct_handoff_blocked_n: directHandoffBlockedN,
+    v2_generator_summary: v2GeneratorSummary,
     signal_drop_n: Number(paperSafe && paperSafe.signal_drop_n || 0),
     signal_drop_reason_counts: combinedDropCounts,
     top_signal_drop_reason: topDropReason,

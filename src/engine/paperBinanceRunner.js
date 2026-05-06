@@ -2641,6 +2641,23 @@ async function repairActivePositionExitRuntimeState({
     const ageMs = Date.now() - recentRefMs;
     if (ageMs >= 0 && ageMs < RECENT_ENTRY_GRACE_MS) {
       try {
+        v2GeneratorSummary = {
+          skipped: v2GenResult ? v2GenResult.skipped === true : true,
+          skip_reason: v2GenResult ? (v2GenResult.skipReason || "GENERATOR_NULL") : "GENERATOR_NULL",
+          signals_n: v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals.length : 0,
+          diagnostics: v2GenResult && v2GenResult.diagnostics
+            ? {
+              market_state: v2GenResult.diagnostics.market_state,
+              htf_bias: v2GenResult.diagnostics.htf_bias,
+              long_opportunity: v2GenResult.diagnostics.long_opportunity,
+              short_opportunity: v2GenResult.diagnostics.short_opportunity,
+              trigger_type_long: v2GenResult.diagnostics.trigger_type_long,
+              trigger_type_short: v2GenResult.diagnostics.trigger_type_short,
+              long_can_fire: v2GenResult.diagnostics.long_can_fire,
+              short_can_fire: v2GenResult.diagnostics.short_can_fire,
+            }
+            : null,
+        };
         console.log(JSON.stringify({
           event: "active_position_exit_runtime_repair_grace_skip",
           ts: new Date().toISOString(),
@@ -14800,6 +14817,7 @@ async function runPaperBinanceForBar({
   let directHandoffExecutedN = 0;
   let directHandoffBlockedN = 0;
   const directHandoffReasonCounts = {};
+  let v2GeneratorSummary = null;
 
   const externalSignals = externalSignalsRaw.map((s) => {
     const signalBarMs = Number(s.bar_close_time_utc_ms);
@@ -16130,6 +16148,7 @@ async function runPaperBinanceForBar({
     direct_handoff_executed_n: directHandoffExecutedN,
     direct_handoff_blocked_n: directHandoffBlockedN,
     direct_handoff_reason_counts: directHandoffReasonCounts,
+    v2_generator_summary: v2GeneratorSummary,
     signals_external_late: lateSignals,
     signal_drop_n: recordedSignalDrops.length,
     signal_drop_suppressed_n: Math.max(0, signalDrops.length - recordedSignalDrops.length),
@@ -18383,6 +18402,23 @@ async function runPaperFuturesForBar({
         }
       }
       try {
+        v2GeneratorSummary = {
+          skipped: v2GenResult ? v2GenResult.skipped === true : true,
+          skip_reason: v2GenResult ? (v2GenResult.skipReason || "GENERATOR_NULL") : "GENERATOR_NULL",
+          signals_n: v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals.length : 0,
+          diagnostics: v2GenResult && v2GenResult.diagnostics
+            ? {
+              market_state: v2GenResult.diagnostics.market_state,
+              htf_bias: v2GenResult.diagnostics.htf_bias,
+              long_opportunity: v2GenResult.diagnostics.long_opportunity,
+              short_opportunity: v2GenResult.diagnostics.short_opportunity,
+              trigger_type_long: v2GenResult.diagnostics.trigger_type_long,
+              trigger_type_short: v2GenResult.diagnostics.trigger_type_short,
+              long_can_fire: v2GenResult.diagnostics.long_can_fire,
+              short_can_fire: v2GenResult.diagnostics.short_can_fire,
+            }
+            : null,
+        };
         console.log(JSON.stringify({
           event: "v2_server_entry_signal_generator_run",
           ts: new Date().toISOString(),
@@ -18602,6 +18638,11 @@ async function runPaperFuturesForBar({
   const ttlMs = Number.isFinite(execProfile.intentTtlMs) ? execProfile.intentTtlMs
     : (Number.isFinite(execProfile.intentTtlBars) && Number.isFinite(execTfMs) ? (execTfMs * execProfile.intentTtlBars) : null);
   let lateSignals = 0;
+  let directHandoffGeneratedN = 0;
+  let directHandoffExecutedN = 0;
+  let directHandoffBlockedN = 0;
+  const directHandoffReasonCounts = {};
+  let v2GeneratorSummary = null;
 
   const externalSignals = externalSignalsRaw.map((s) => {
     const signalBarMs = Number(s.bar_close_time_utc_ms);
@@ -20277,6 +20318,7 @@ async function runPaperFuturesForBar({
     direct_handoff_executed_n: directHandoffExecutedN,
     direct_handoff_blocked_n: directHandoffBlockedN,
     direct_handoff_reason_counts: directHandoffReasonCounts,
+    v2_generator_summary: v2GeneratorSummary,
     signals_external_late: lateSignals,
     signal_drop_n: recordedSignalDrops.length,
     signal_drop_suppressed_n: Math.max(0, signalDrops.length - recordedSignalDrops.length),
