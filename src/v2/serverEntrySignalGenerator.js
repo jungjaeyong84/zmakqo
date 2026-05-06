@@ -30,6 +30,8 @@ const DEFAULT_PARAMS = Object.freeze({
   min_rr: 1.45,
   stop_atr: 1.8,
   target_atr: 2.8,
+  reclaim_trigger_strength_min: 0.64,
+  reclaim_trigger_directional_pressure_min: 0.38,
   max_extension_long: 0.92,
   min_extension_short: 0.08,
   webhook_qty_pct: 1.0,
@@ -653,15 +655,15 @@ function generateV2EntrySignals({
 
   const trigger_breakout_long     = close_cur > recent_high && close_cur > ema_fast && bull_close && body_ratio >= 0.46;
   const trigger_reclaim_long      = close_cur > ema_fast && low_cur <= ema_fast && close_cur >= ema_mid * 0.998
-                                    && reclaim_strength_long >= 0.68 && bull_close
-                                    && directional_pressure_long >= 0.42
+                                    && reclaim_strength_long >= p.reclaim_trigger_strength_min && bull_close
+                                    && directional_pressure_long >= p.reclaim_trigger_directional_pressure_min
                                     && (market_state !== "TRANSITION" || transition_bias_long);
   const trigger_continuation_long = close_cur > ema_fast && ema_fast >= ema_mid && pullback_depth_ok_long
                                     && bull_close && Number.isFinite(macd_hist_prev) && macd_hist >= macd_hist_prev;
   const trigger_breakdown_short   = close_cur < recent_low && close_cur < ema_fast && bear_close && body_ratio >= 0.46;
   const trigger_loss_short        = close_cur < ema_fast && high_cur >= ema_fast && close_cur <= ema_mid * 1.002
-                                    && reclaim_strength_short >= 0.68 && bear_close
-                                    && directional_pressure_short >= 0.42
+                                    && reclaim_strength_short >= p.reclaim_trigger_strength_min && bear_close
+                                    && directional_pressure_short >= p.reclaim_trigger_directional_pressure_min
                                     && (market_state !== "TRANSITION" || transition_bias_short);
   const trigger_continuation_short = close_cur < ema_fast && ema_fast <= ema_mid && pullback_depth_ok_short
                                     && bear_close && Number.isFinite(macd_hist_prev) && macd_hist <= macd_hist_prev;
@@ -721,7 +723,7 @@ function generateV2EntrySignals({
     && (trigger_reclaim_long || trigger_breakout_long)
     && risk_ok_long_early
     && structure_alignment_long >= 0.40
-    && directional_pressure_long >= 0.42
+    && directional_pressure_long >= p.reclaim_trigger_directional_pressure_min
     && anti_chop_gate;
   const long_core_raw = long_opportunity >= p.thr_core
     && (trigger_continuation_long || trigger_breakout_long)
@@ -733,7 +735,7 @@ function generateV2EntrySignals({
     && (trigger_loss_short || trigger_breakdown_short)
     && risk_ok_short_early
     && structure_alignment_short >= 0.40
-    && directional_pressure_short >= 0.42
+    && directional_pressure_short >= p.reclaim_trigger_directional_pressure_min
     && anti_chop_gate;
   const short_core_raw = short_opportunity >= p.thr_core
     && (trigger_continuation_short || trigger_breakdown_short)
@@ -784,7 +786,7 @@ function generateV2EntrySignals({
     structureFloorEarly: 0.40,
     structureFloorCore: 0.62,
     directionalPressure: directional_pressure_long,
-    directionalFloorEarly: 0.42,
+    directionalFloorEarly: p.reclaim_trigger_directional_pressure_min,
     participation,
     participationFloorCore: 0.42,
     antiChopGate: anti_chop_gate,
@@ -808,7 +810,7 @@ function generateV2EntrySignals({
     structureFloorEarly: 0.40,
     structureFloorCore: 0.62,
     directionalPressure: directional_pressure_short,
-    directionalFloorEarly: 0.42,
+    directionalFloorEarly: p.reclaim_trigger_directional_pressure_min,
     participation,
     participationFloorCore: 0.42,
     antiChopGate: anti_chop_gate,
