@@ -32,6 +32,13 @@ const SRC = fs.readFileSync(
     "220 confirmed bars should scan past the latest in-progress candle"
   );
 
+  const liveDefault = fn({ limit: 220, hardLimit: 3000 });
+  assert.deepStrictEqual(
+    liveDefault,
+    { limitSafe: 220, cap: 3000, scanLimit: 232 },
+    "default confirmed-scan headroom must tolerate a larger live tail than a single in-progress candle"
+  );
+
   const capped = fn({ limit: 2999, hardLimit: 3000, scanHeadroom: 10 });
   assert.deepStrictEqual(
     capped,

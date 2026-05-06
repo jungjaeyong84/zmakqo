@@ -141,7 +141,7 @@ function resolveQueryBarsScanLimit({ limit, hardLimit, scanHeadroom } = {}) {
   const headroomRaw = Number(scanHeadroom);
   const effectiveHeadroom = Number.isFinite(headroomRaw) && headroomRaw >= 0
     ? Math.floor(headroomRaw)
-    : 3;
+    : 12;
   return {
     limitSafe,
     cap,

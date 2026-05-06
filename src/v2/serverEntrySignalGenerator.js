@@ -32,6 +32,13 @@ const DEFAULT_PARAMS = Object.freeze({
   target_atr: 2.8,
   reclaim_trigger_strength_min: 0.64,
   reclaim_trigger_directional_pressure_min: 0.38,
+  continuation_close_pos_long_min: 0.48,
+  continuation_close_pos_short_max: 0.52,
+  continuation_pullback_depth_long_min: 0.30,
+  continuation_pullback_depth_long_max: 0.88,
+  continuation_pullback_depth_short_min: 0.12,
+  continuation_pullback_depth_short_max: 0.70,
+  continuation_pressure_min: 0.56,
   max_extension_long: 0.92,
   min_extension_short: 0.08,
   webhook_qty_pct: 1.0,
@@ -650,8 +657,15 @@ function generateV2EntrySignals({
     0.14 * risk_efficiency_short;
 
   // (I) trigger
-  const pullback_depth_ok_long  = price_position >= 0.34 && price_position <= 0.82;
-  const pullback_depth_ok_short = price_position <= 0.66 && price_position >= 0.18;
+  const pullback_depth_ok_long  = price_position >= p.continuation_pullback_depth_long_min
+    && price_position <= p.continuation_pullback_depth_long_max;
+  const pullback_depth_ok_short = price_position <= p.continuation_pullback_depth_short_max
+    && price_position >= p.continuation_pullback_depth_short_min;
+
+  const continuation_bar_bias_long = bull_close
+    || (close_cur >= open_cur * 0.998 && close_pos_in_bar >= p.continuation_close_pos_long_min);
+  const continuation_bar_bias_short = bear_close
+    || (close_cur <= open_cur * 1.002 && close_pos_in_bar <= p.continuation_close_pos_short_max);
 
   const trigger_breakout_long     = close_cur > recent_high && close_cur > ema_fast && bull_close && body_ratio >= 0.46;
   const trigger_reclaim_long      = close_cur > ema_fast && low_cur <= ema_fast && close_cur >= ema_mid * 0.998
@@ -659,14 +673,18 @@ function generateV2EntrySignals({
                                     && directional_pressure_long >= p.reclaim_trigger_directional_pressure_min
                                     && (market_state !== "TRANSITION" || transition_bias_long);
   const trigger_continuation_long = close_cur > ema_fast && ema_fast >= ema_mid && pullback_depth_ok_long
-                                    && bull_close && Number.isFinite(macd_hist_prev) && macd_hist >= macd_hist_prev;
+                                    && continuation_bar_bias_long
+                                    && continuation_pressure_long >= p.continuation_pressure_min
+                                    && Number.isFinite(macd_hist_prev) && macd_hist >= macd_hist_prev;
   const trigger_breakdown_short   = close_cur < recent_low && close_cur < ema_fast && bear_close && body_ratio >= 0.46;
   const trigger_loss_short        = close_cur < ema_fast && high_cur >= ema_fast && close_cur <= ema_mid * 1.002
                                     && reclaim_strength_short >= p.reclaim_trigger_strength_min && bear_close
                                     && directional_pressure_short >= p.reclaim_trigger_directional_pressure_min
                                     && (market_state !== "TRANSITION" || transition_bias_short);
   const trigger_continuation_short = close_cur < ema_fast && ema_fast <= ema_mid && pullback_depth_ok_short
-                                    && bear_close && Number.isFinite(macd_hist_prev) && macd_hist <= macd_hist_prev;
+                                    && continuation_bar_bias_short
+                                    && continuation_pressure_short >= p.continuation_pressure_min
+                                    && Number.isFinite(macd_hist_prev) && macd_hist <= macd_hist_prev;
 
   const trigger_type_long = trigger_breakout_long ? "BREAKOUT"
     : trigger_reclaim_long ? "RECLAIM"
@@ -923,6 +941,12 @@ function generateV2EntrySignals({
     short_opportunity,
     trigger_type_long,
     trigger_type_short,
+    pullback_depth_ok_long,
+    pullback_depth_ok_short,
+    continuation_bar_bias_long,
+    continuation_bar_bias_short,
+    continuation_pressure_long,
+    continuation_pressure_short,
     risk_mode_long_early,
     risk_mode_long_core,
     risk_mode_short_early,

@@ -24,4 +24,19 @@ assert.ok(
   "decision diagnostics must use the same early directional floor as the trigger gate"
 );
 
+assert.ok(
+  src.includes("continuation_pressure_min: 0.56"),
+  "continuation pressure minimum must be pinned to 0.56"
+);
+
+assert.ok(
+  src.includes("continuation_close_pos_long_min: 0.48"),
+  "long continuation close-position floor must be pinned to 0.48"
+);
+
+assert.ok(
+  src.includes("continuation_close_pos_short_max: 0.52"),
+  "short continuation close-position ceiling must be pinned to 0.52"
+);
+
 console.log("V2_SERVER_ENTRY_TRIGGER_FLOOR_CONTRACT_TEST_OK");

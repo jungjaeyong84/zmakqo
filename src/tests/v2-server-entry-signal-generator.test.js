@@ -362,9 +362,34 @@ function buildSyntheticBars(n, opts = {}) {
   assert.ok(approx(DEFAULT_PARAMS.thr_early, 0.56));
   assert.ok(approx(DEFAULT_PARAMS.thr_core, 0.68));
   assert.strictEqual(DEFAULT_PARAMS.same_dir_cooldown_bars, 8);
+  assert.ok(approx(DEFAULT_PARAMS.continuation_close_pos_long_min, 0.48));
+  assert.ok(approx(DEFAULT_PARAMS.continuation_close_pos_short_max, 0.52));
+  assert.ok(approx(DEFAULT_PARAMS.continuation_pullback_depth_long_min, 0.30));
+  assert.ok(approx(DEFAULT_PARAMS.continuation_pullback_depth_long_max, 0.88));
+  assert.ok(approx(DEFAULT_PARAMS.continuation_pullback_depth_short_min, 0.12));
+  assert.ok(approx(DEFAULT_PARAMS.continuation_pullback_depth_short_max, 0.70));
+  assert.ok(approx(DEFAULT_PARAMS.continuation_pressure_min, 0.56));
   assert.ok(approx(DEFAULT_PARAMS.min_rr, 1.45));
   assert.ok(approx(DEFAULT_PARAMS.stop_atr, 1.8));
   assert.ok(approx(DEFAULT_PARAMS.target_atr, 2.8));
+})();
+
+(function testContinuationDiagnosticsPresent() {
+  const bars = buildSyntheticBars(160, { slope: 0.25 });
+  const out = generateV2EntrySignals({
+    exchange: "BINANCEFUT",
+    symbol: "BTCUSDT",
+    tf: "15",
+    bars,
+    htfBias: "BULL",
+    barCloseMs: bars[bars.length - 1].barCloseTimeUtcMs,
+  });
+  assert.strictEqual(typeof out.diagnostics.pullback_depth_ok_long, "boolean");
+  assert.strictEqual(typeof out.diagnostics.pullback_depth_ok_short, "boolean");
+  assert.strictEqual(typeof out.diagnostics.continuation_bar_bias_long, "boolean");
+  assert.strictEqual(typeof out.diagnostics.continuation_bar_bias_short, "boolean");
+  assert.ok(Number.isFinite(Number(out.diagnostics.continuation_pressure_long)));
+  assert.ok(Number.isFinite(Number(out.diagnostics.continuation_pressure_short)));
 })();
 
 (function testDecisionReason_NoTrigger() {
