@@ -600,6 +600,22 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
       const raw = Number(process.env.SERVER_ENTRY_TF_BARS_WARMUP_COUNT);
       return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 230;
     })();
+    // Root cause (2026-05-06): the previous implementation measured
+    // `existing_bars_n` before refreshing the latest 1-3 bars. On a
+    // healthy symbol sitting exactly at the threshold window, every
+    // new 15m bar made the pre-refresh cache look like 219/220 and
+    // triggered a wasteful 230-bar warmup even though a normal refresh
+    // would have restored the window to 220 confirmed bars.
+    //
+    // Fix: always do the cheap normal refresh first, then measure the
+    // confirmed window. Only if the post-refresh cache is still below
+    // the threshold do we escalate to the one-shot 230-bar backfill.
+    snapshotRefresh = await refreshLatestBarSnapshot({
+      exchange,
+      market,
+      tf: execTfFinal,
+      runId: runIdHint,
+    });
     const existingBars = await queryBars({
       exchange: exchange || "BINANCEFUT",
       symbol: market,
@@ -625,13 +641,6 @@ async function runOneMarket({ exchange, market, signalTf, execTf, nowMs, runIdHi
         tf: execTfFinal,
         runId: runIdHint,
         countOverride: ENTRY_TF_BARS_WARMUP_COUNT,
-      });
-    } else {
-      snapshotRefresh = await refreshLatestBarSnapshot({
-        exchange,
-        market,
-        tf: execTfFinal,
-        runId: runIdHint,
       });
     }
   } catch (warmupErr) {

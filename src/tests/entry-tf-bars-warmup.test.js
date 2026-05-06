@@ -58,40 +58,44 @@ const marketRunner = require("../scheduler/marketRunner");
   );
 })();
 
-// (C) cold-start detection via queryBars
+// (C) cold-start detection via post-refresh queryBars
 //
-// The decision is whether existing bars in Firestore < threshold.
-// queryBars must be called with the same exchange/symbol/tf the
-// F2 generator reads. The check is read-only — no mutation in
-// the threshold-decision path.
+// The decision is whether existing bars in Firestore < threshold
+// AFTER a normal refresh. This avoids the false-positive 219/220
+// stale-window case where the latest bar simply hasn't been refreshed
+// yet.
 (function testColdStartDetection() {
   assert.ok(
+    /snapshotRefresh\s*=\s*await\s+refreshLatestBarSnapshot/.test(SRC),
+    "(C1) must perform a normal refresh before warmup escalation"
+  );
+  assert.ok(
     /existingBars\s*=\s*await\s+queryBars/.test(SRC),
-    "(C1) must use queryBars to count existing bars before deciding"
+    "(C2) must use queryBars to count existing bars after the normal refresh"
   );
   assert.ok(
     /existingCount\s*<\s*ENTRY_TF_BARS_WARMUP_THRESHOLD/.test(SRC),
-    "(C2) cold-start condition: existing < threshold"
+    "(C3) cold-start condition: existing < threshold"
   );
 })();
 
-// (D) countOverride applied on cold-start branch only
+// (D) countOverride applied only when post-refresh cache is still cold
 //
-// CRITICAL: warm symbols (existingCount >= threshold) MUST fall
-// through to the normal refresh cadence — not constantly fetch
-// 230 bars every tick. Otherwise we'd burn Binance weight
-// uselessly forever.
+// CRITICAL: healthy symbols must stop after the normal refresh — not
+// constantly fetch 230 bars every tick. Otherwise every new bar
+// briefly makes the stale cache look like 219/220 and wastes Binance
+// weight forever.
 (function testCountOverrideAppliedOnlyOnColdStart() {
-  // Cold-start branch passes countOverride
+  // Warmup branch passes countOverride only after the normal refresh + query.
   assert.ok(
-    /existingCount\s*<\s*ENTRY_TF_BARS_WARMUP_THRESHOLD[\s\S]{0,800}countOverride:\s*ENTRY_TF_BARS_WARMUP_COUNT/.test(SRC),
+    /existingBars\s*=\s*await\s+queryBars[\s\S]{0,1200}existingCount\s*<\s*ENTRY_TF_BARS_WARMUP_THRESHOLD[\s\S]{0,800}countOverride:\s*ENTRY_TF_BARS_WARMUP_COUNT/.test(SRC),
     "(D1) cold-start branch must pass countOverride: ENTRY_TF_BARS_WARMUP_COUNT"
   );
-  // Warm branch (else) does NOT pass countOverride — this is the
-  // saving-Binance-weight half of the contract.
+  // There should be only one unconditional normal refresh in the warmup
+  // block, and no separate else-branch normal refresh anymore.
   assert.ok(
-    /\}\s*else\s*\{[\s\S]{0,500}refreshLatestBarSnapshot\(\{[\s\S]{0,300}runId:\s*runIdHint,?[\s\S]{0,50}\}\);/.test(SRC),
-    "(D2) warm branch (else) must call refreshLatestBarSnapshot WITHOUT countOverride"
+    /snapshotRefresh\s*=\s*await\s+refreshLatestBarSnapshot\(\{[\s\S]{0,300}runId:\s*runIdHint,?[\s\S]{0,120}\}\);/.test(SRC),
+    "(D2) warm path must use the unconditional normal refresh"
   );
 })();
 
