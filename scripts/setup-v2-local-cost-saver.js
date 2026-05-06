@@ -15,6 +15,15 @@ const DEFAULT_RUNTIME_ENV_SERVICE = "donbeolja";
 const DEFAULT_RUNTIME_ENV_REGION = "asia-northeast3";
 const DEFAULT_RUNTIME_ENV_PROJECT = "donbeolja-dev";
 
+function parseSecretRef(row) {
+  const ref = row && (row.valueSource?.secretKeyRef || row.valueFrom?.secretKeyRef);
+  if (!ref || !ref.name) return null;
+  return Object.freeze({
+    secret_name: String(ref.name),
+    secret_version: String(ref.key || "latest"),
+  });
+}
+
 function parseArgs(argv = []) {
   const install = argv.includes("--install") || argv.includes("--enable") || argv.includes("--kickstart");
   return Object.freeze({
@@ -133,11 +142,117 @@ function fetchCloudRunLiteralEnv({
   const parsed = JSON.parse(String(stdout || "{}"));
   const rows = (((parsed || {}).spec || {}).template || {}).spec?.containers?.[0]?.env || [];
   return rows
-    .filter((row) => row && row.name && Object.prototype.hasOwnProperty.call(row, "value"))
-    .map((row) => Object.freeze({
-      name: String(row.name),
-      value: String(row.value == null ? "" : row.value),
-    }));
+    .filter((row) => row && row.name)
+    .map((row) => {
+      const name = String(row.name);
+      if (Object.prototype.hasOwnProperty.call(row, "value")) {
+        return Object.freeze({
+          name,
+          value: String(row.value == null ? "" : row.value),
+          source: "literal",
+        });
+      }
+      const secretRef = parseSecretRef(row);
+      if (secretRef) {
+        return Object.freeze({
+          name,
+          source: "secret",
+          ...secretRef,
+        });
+      }
+      return Object.freeze({
+        name,
+        source: "unset",
+      });
+    });
+}
+
+function fetchSecretValue({
+  envName,
+  secretName,
+  secretVersion = "latest",
+  project = DEFAULT_RUNTIME_ENV_PROJECT,
+  env = process.env,
+  execFileSyncFn = execFileSync,
+} = {}) {
+  const local = String(env && env[envName] || "");
+  if (local) {
+    return Object.freeze({
+      ok: true,
+      name: envName,
+      value: local,
+      source: "local_env",
+      secret_name: secretName || null,
+      secret_version: secretVersion || null,
+    });
+  }
+  const stdout = execFileSyncFn("gcloud", [
+    "secrets",
+    "versions",
+    "access",
+    String(secretVersion || "latest"),
+    "--secret",
+    String(secretName),
+    "--project",
+    String(project),
+  ], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return Object.freeze({
+    ok: true,
+    name: envName,
+    value: String(stdout == null ? "" : stdout).replace(/\r?\n$/, ""),
+    source: "secret_manager",
+    secret_name: secretName || null,
+    secret_version: secretVersion || null,
+  });
+}
+
+function resolveRuntimeEnvRows(rows = [], {
+  env = process.env,
+  project = DEFAULT_RUNTIME_ENV_PROJECT,
+  execFileSyncFn = execFileSync,
+} = {}) {
+  const resolved = [];
+  const stats = {
+    literal_env_n: 0,
+    secret_env_n: 0,
+    synced_secret_env_n: 0,
+    skipped_unset_env_n: 0,
+  };
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || !row.name) continue;
+    if (row.source === "literal") {
+      stats.literal_env_n += 1;
+      resolved.push(Object.freeze({
+        name: row.name,
+        value: String(row.value == null ? "" : row.value),
+        source: "literal",
+      }));
+      continue;
+    }
+    if (row.source === "secret") {
+      stats.secret_env_n += 1;
+      const secretValue = fetchSecretValue({
+        envName: row.name,
+        secretName: row.secret_name,
+        secretVersion: row.secret_version,
+        project,
+        env,
+        execFileSyncFn,
+      });
+      stats.synced_secret_env_n += 1;
+      resolved.push(secretValue);
+      continue;
+    }
+    stats.skipped_unset_env_n += 1;
+  }
+  return Object.freeze({
+    rows: resolved,
+    ...stats,
+  });
 }
 
 function renderRuntimeEnvFile(rows = [], {
@@ -164,18 +279,24 @@ function writeRuntimeEnvSnapshot({
   service = DEFAULT_RUNTIME_ENV_SERVICE,
   region = DEFAULT_RUNTIME_ENV_REGION,
   project = DEFAULT_RUNTIME_ENV_PROJECT,
+  env = process.env,
   execFileSyncFn = execFileSync,
   now = () => new Date().toISOString(),
   outputFile = LOCAL_RUNTIME_ENV_OUTPUT,
 } = {}) {
-  const rows = fetchCloudRunLiteralEnv({
+  const runtimeRows = fetchCloudRunLiteralEnv({
     service,
     region,
     project,
     execFileSyncFn,
   });
+  const resolved = resolveRuntimeEnvRows(runtimeRows, {
+    env,
+    project,
+    execFileSyncFn,
+  });
   ensureDir(fsApi, path.dirname(outputFile));
-  const rendered = renderRuntimeEnvFile(rows, {
+  const rendered = renderRuntimeEnvFile(resolved.rows, {
     generatedAt: now(),
     service,
     region,
@@ -189,7 +310,11 @@ function writeRuntimeEnvSnapshot({
     region,
     project,
     output_file: outputFile,
-    literal_env_n: rows.length,
+    literal_env_n: resolved.literal_env_n,
+    secret_env_n: resolved.secret_env_n,
+    synced_secret_env_n: resolved.synced_secret_env_n,
+    skipped_unset_env_n: resolved.skipped_unset_env_n,
+    total_env_n: resolved.rows.length,
   });
 }
 
@@ -312,6 +437,8 @@ if (require.main === module) {
       renderPlist,
       renderRuntimeEnvFile,
       fetchCloudRunLiteralEnv,
+      fetchSecretValue,
+      resolveRuntimeEnvRows,
       writeRuntimeEnvSnapshot,
       plistPathForLabel,
       installJob,

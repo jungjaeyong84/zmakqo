@@ -102,8 +102,12 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
     const result = setup.__test.writeRuntimeEnvSnapshot({
       fsApi: fs,
       outputFile,
+      env: { SCHEDULER_TOKEN: "local-scheduler-token" },
       now: () => "2026-05-06T05:10:00.000Z",
-      execFileSyncFn() {
+      execFileSyncFn(cmd, args) {
+        if (cmd === "gcloud" && Array.isArray(args) && args[0] === "secrets") {
+          return "secret-from-secret-manager\n";
+        }
         return JSON.stringify({
           spec: {
             template: {
@@ -112,6 +116,7 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
                   env: [
                     { name: "DONBEOLJA_V2_ENABLED", value: "1" },
                     { name: "DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", value: "1" },
+                    { name: "SCHEDULER_TOKEN", valueFrom: { secretKeyRef: { name: "DONBEOLJA_SCHEDULER_TOKEN", key: "latest" } } },
                     { name: "SESSION_SECRET", valueFrom: { secretKeyRef: { name: "SECRET", key: "latest" } } },
                   ],
                 }],
@@ -123,11 +128,39 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
     });
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.literal_env_n, 2);
+    assert.strictEqual(result.secret_env_n, 2);
+    assert.strictEqual(result.synced_secret_env_n, 2);
     const contents = fs.readFileSync(outputFile, "utf8");
     assert.ok(contents.includes("export DONBEOLJA_V2_ENABLED='1'"));
     assert.ok(contents.includes("export DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED='1'"));
-    assert.ok(!contents.includes("SESSION_SECRET"));
+    assert.ok(contents.includes("export SCHEDULER_TOKEN='local-scheduler-token'"));
+    assert.ok(contents.includes("export SESSION_SECRET='secret-from-secret-manager'"));
   });
+})();
+
+(function resolveRuntimeEnvRowsFetchesSecretManagerWhenLocalEnvMissing() {
+  const calls = [];
+  const result = setup.__test.resolveRuntimeEnvRows([
+    { name: "A", value: "1", source: "literal" },
+    { name: "B", source: "secret", secret_name: "B_SECRET", secret_version: "latest" },
+    { name: "C", source: "unset" },
+  ], {
+    env: {},
+    project: "donbeolja-dev",
+    execFileSyncFn(cmd, args) {
+      calls.push([cmd, args]);
+      return "b-secret-value\n";
+    },
+  });
+  assert.strictEqual(result.literal_env_n, 1);
+  assert.strictEqual(result.secret_env_n, 1);
+  assert.strictEqual(result.synced_secret_env_n, 1);
+  assert.strictEqual(result.skipped_unset_env_n, 1);
+  assert.strictEqual(result.rows[1].value, "b-secret-value");
+  assert.deepStrictEqual(calls[0], [
+    "gcloud",
+    ["secrets", "versions", "access", "latest", "--secret", "B_SECRET", "--project", "donbeolja-dev"],
+  ]);
 })();
 
 (function installWritesPlistAndLaunchctlCalls() {
