@@ -211,4 +211,18 @@ const source = fs.readFileSync(path.resolve(__dirname, "../engine/paperBinanceRu
   );
 })();
 
+(function discoveryCanaryHandoffMustUseCycleAnchoredNowMs() {
+  assert.ok(
+    source.includes("function resolveDiscoveryHandoffNowMs("),
+    "discovery handoff must define a cycle-anchored nowMs helper"
+  );
+  const handoffCallN = (source.match(/runV2DiscoveryCanaryServerSignalHandoff\(\{/g) || []).length;
+  const anchoredNowMsN = (source.match(/nowMs: resolveDiscoveryHandoffNowMs\(\{/g) || []).length;
+  assert.ok(handoffCallN >= 7, "expected discovery handoff callsites missing from source audit");
+  assert.ok(
+    anchoredNowMsN >= handoffCallN,
+    "every discovery handoff callsite must pass a cycle-anchored nowMs to avoid late-symbol stale-candle drift"
+  );
+})();
+
 console.log("V2_DISCOVERY_ENTRY_WRITE_BOUNDARY_TEST_OK");

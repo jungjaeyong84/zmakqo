@@ -12736,6 +12736,30 @@ function allowByTradingModeIntent(tradingMode, intent) {
   return false;
 }
 
+function resolveDiscoveryHandoffNowMs({
+  execBarCloseMs = null,
+  signalBarCloseMs = null,
+  intentRow = null,
+} = {}) {
+  const execMs = Number(execBarCloseMs);
+  if (Number.isFinite(execMs) && execMs > 0) return execMs;
+  const signalMs = Number(signalBarCloseMs);
+  if (Number.isFinite(signalMs) && signalMs > 0) return signalMs;
+  const row = intentRow && typeof intentRow === "object" ? intentRow : null;
+  const candidates = [
+    row && row.exec_bar_close_time_utc_ms,
+    row && row.signal_bar_close_time_utc_ms,
+    row && row.intent_signal_bar_close_time_utc_ms,
+    row && row.features_json && row.features_json.exec_bar_close_time_utc_ms,
+    row && row.features_json && row.features_json.signal_bar_close_time_utc_ms,
+  ];
+  for (const value of candidates) {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return Date.now();
+}
+
 function normalizeQtyFraction(raw) {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -13231,6 +13255,11 @@ async function runPaperBinanceForBar({
         liveCfg,
         referencePrice: Number(bar && (bar.open ?? bar.o)) || Number(it.signal_price) || Number(bar && (bar.close ?? bar.c)),
         requestId: it.request_id || it.intent_id || it.signal_id || (it.features_json && it.features_json.signal_id),
+        nowMs: resolveDiscoveryHandoffNowMs({
+          intentRow: it,
+          execBarCloseMs: execBarCloseMsForIntent,
+          signalBarCloseMs: intentSignalBarCloseMs,
+        }),
       }).catch((error) => ({
         ok: false,
         reason: "V2_DISCOVERY_BRIDGE_THROWN",
@@ -14681,6 +14710,11 @@ async function runPaperBinanceForBar({
             referencePrice: Number.isFinite(Number(sig.price)) ? Number(sig.price)
               : Number(bar && (bar.close ?? bar.c)),
             requestId: handoffIntentRow.request_id,
+            nowMs: resolveDiscoveryHandoffNowMs({
+              intentRow: handoffIntentRow,
+              execBarCloseMs: sigBarMs,
+              signalBarCloseMs: sigBarMs,
+            }),
           }).catch((error) => ({
             ok: false,
             reason: "V2_DISCOVERY_BRIDGE_THROWN",
@@ -15883,6 +15917,11 @@ async function runPaperBinanceForBar({
         liveCfg,
         referencePrice: Number(bar && (bar.open ?? bar.o)) || handoffIntentRow.signal_price || Number(bar && (bar.close ?? bar.c)),
         requestId: handoffIntentRow.request_id,
+        nowMs: resolveDiscoveryHandoffNowMs({
+          intentRow: handoffIntentRow,
+          execBarCloseMs: execBarCloseMsForIntent,
+          signalBarCloseMs: intentSignalBarCloseMs,
+        }),
       }).catch((error) => ({
         ok: false,
         reason: "V2_DISCOVERY_BRIDGE_THROWN",
@@ -16389,6 +16428,11 @@ async function runPaperFuturesForBar({
         liveCfg,
         referencePrice: Number(bar && (bar.open ?? bar.o)) || Number(it.signal_price) || Number(bar && (bar.close ?? bar.c)),
         requestId: it.request_id || it.intent_id || it.signal_id || (it.features_json && it.features_json.signal_id),
+        nowMs: resolveDiscoveryHandoffNowMs({
+          intentRow: it,
+          execBarCloseMs: execBarCloseMsForIntent,
+          signalBarCloseMs: intentSignalBarCloseMs,
+        }),
       }).catch((error) => ({
         ok: false,
         reason: "V2_DISCOVERY_BRIDGE_THROWN",
@@ -17224,6 +17268,11 @@ async function runPaperFuturesForBar({
           liveCfg,
           referencePrice: fillPrice || nextOpen || (it.features_json && it.features_json.signal_price) || it.signal_price,
           requestId: it.request_id || it.intent_id || liveSignalId,
+          nowMs: resolveDiscoveryHandoffNowMs({
+            intentRow: it,
+            execBarCloseMs: execBarCloseMsForIntent,
+            signalBarCloseMs: intentSignalBarCloseMs,
+          }),
         }).catch((error) => ({
           ok: false,
           reason: "V2_DISCOVERY_BRIDGE_THROWN",
@@ -18515,6 +18564,11 @@ async function runPaperFuturesForBar({
             referencePrice: Number.isFinite(Number(sig.price)) ? Number(sig.price)
               : Number(bar && (bar.close ?? bar.c)),
             requestId: handoffIntentRow.request_id,
+            nowMs: resolveDiscoveryHandoffNowMs({
+              intentRow: handoffIntentRow,
+              execBarCloseMs: sigBarMs,
+              signalBarCloseMs: sigBarMs,
+            }),
           }).catch((error) => ({
             ok: false,
             reason: "V2_DISCOVERY_BRIDGE_THROWN",
@@ -20026,6 +20080,11 @@ async function runPaperFuturesForBar({
         liveCfg,
         referencePrice: Number(bar && (bar.open ?? bar.o)) || handoffIntentRow.signal_price || Number(bar && (bar.close ?? bar.c)),
         requestId: handoffIntentRow.request_id,
+        nowMs: resolveDiscoveryHandoffNowMs({
+          intentRow: handoffIntentRow,
+          execBarCloseMs: execBarCloseMsForIntent,
+          signalBarCloseMs: intentSignalBarCloseMs,
+        }),
       }).catch((error) => ({
         ok: false,
         reason: "V2_DISCOVERY_BRIDGE_THROWN",
