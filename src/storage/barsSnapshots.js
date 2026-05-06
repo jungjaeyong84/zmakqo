@@ -134,13 +134,33 @@ async function upsertBarSnapshot({
  * @param {Object} opts - { exchange, symbol, tf, limit }
  * @returns {Array} bars 배열 (오래된 것부터 정렬)
  */
+function resolveQueryBarsScanLimit({ limit, hardLimit, scanHeadroom } = {}) {
+  const rawLimit = Number(limit) || 200;
+  const cap = Number.isFinite(Number(hardLimit)) ? Number(hardLimit) : rawLimit;
+  const limitSafe = Math.max(1, Math.min(rawLimit, cap));
+  const headroomRaw = Number(scanHeadroom);
+  const effectiveHeadroom = Number.isFinite(headroomRaw) && headroomRaw >= 0
+    ? Math.floor(headroomRaw)
+    : 3;
+  return {
+    limitSafe,
+    cap,
+    scanLimit: Math.max(limitSafe, Math.min(cap, limitSafe + effectiveHeadroom)),
+  };
+}
+
 async function queryBars({ exchange, symbol, tf, limit = 200 } = {}) {
   const db = getFirestore();
-  const rawLimit = Number(limit) || 200;
-  const hardLimit = Number(process.env.BARS_SNAPSHOT_MAX_LIMIT || 3000);
-  const cap = Number.isFinite(hardLimit) ? hardLimit : rawLimit;
-  const limitSafe = Math.max(1, Math.min(rawLimit, cap));
-
+  const { limitSafe, scanLimit } = resolveQueryBarsScanLimit({
+    limit,
+    hardLimit: process.env.BARS_SNAPSHOT_MAX_LIMIT || 3000,
+    scanHeadroom: process.env.BARS_SNAPSHOT_CONFIRMED_SCAN_HEADROOM,
+  });
+  // Binance often returns the current in-progress candle whose close time
+  // is still in the future. queryBars() must return confirmed-only bars,
+  // so the storage query needs a small headroom above the requested limit;
+  // otherwise the future candle consumes one slot and callers that ask for
+  // 220 confirmed bars can get stuck at 219 forever.
   // Document ID prefix query (index-free)
   // ID format: EXCHANGE__SYMBOL__TF__TIMESTAMP
   const ex = exchange || "BINANCEFUT";
@@ -168,7 +188,7 @@ async function queryBars({ exchange, symbol, tf, limit = 200 } = {}) {
 
   // Primary path: latest N via asc + limitToLast (stable and low noise).
   try {
-    snapshot = await baseQueryAsc.limitToLast(limitSafe).get();
+    snapshot = await baseQueryAsc.limitToLast(scanLimit).get();
   } catch (_) {
     snapshot = null;
   }
@@ -181,7 +201,7 @@ async function queryBars({ exchange, symbol, tf, limit = 200 } = {}) {
         .orderBy("__name__")
         .startAt(prefix + String(recentStartMs))
         .endAt(prefix + "\uf8ff")
-        .limit(limitSafe)
+        .limit(scanLimit)
         .get();
       fallbackRecent = true;
     } catch (_) {
@@ -197,12 +217,12 @@ async function queryBars({ exchange, symbol, tf, limit = 200 } = {}) {
         .orderBy("__name__", "desc")
         .startAt(prefix + "\uf8ff")
         .endAt(prefix)
-        .limit(limitSafe)
+        .limit(scanLimit)
         .get();
       fallbackLimitToLast = true;
     } catch (_) {
       // Last resort: bounded scan.
-      snapshot = await baseQueryAsc.limit(limitSafe).get();
+      snapshot = await baseQueryAsc.limit(scanLimit).get();
       fallbackLimited = true;
     }
   }
@@ -278,4 +298,10 @@ async function queryBars({ exchange, symbol, tf, limit = 200 } = {}) {
   return sliced;
 }
 
-module.exports = { upsertBarSnapshot, queryBars };
+module.exports = {
+  upsertBarSnapshot,
+  queryBars,
+  __test: {
+    resolveQueryBarsScanLimit,
+  },
+};
