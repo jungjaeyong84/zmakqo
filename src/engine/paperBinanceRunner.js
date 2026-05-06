@@ -14537,6 +14537,11 @@ async function runPaperBinanceForBar({
     ? Number(barCloseMs)
     : (Number.isFinite(fallbackSignalBarMs) ? fallbackSignalBarMs : null);
   const signalBarCloseUtc = Number.isFinite(signalBarCloseMs) ? msToUtcZ(signalBarCloseMs) : null;
+  let directHandoffGeneratedN = 0;
+  let directHandoffExecutedN = 0;
+  let directHandoffBlockedN = 0;
+  const directHandoffReasonCounts = {};
+  let v2GeneratorSummary = null;
   const nativeInitialSignals = Number.isFinite(signalBarCloseMs)
     ? await loadServerNativeInitialSignals({
       exchange,
@@ -14817,11 +14822,6 @@ async function runPaperBinanceForBar({
   const ttlMs = Number.isFinite(execProfile.intentTtlMs) ? execProfile.intentTtlMs
     : (Number.isFinite(execProfile.intentTtlBars) && Number.isFinite(execTfMs) ? (execTfMs * execProfile.intentTtlBars) : null);
   let lateSignals = 0;
-  let directHandoffGeneratedN = 0;
-  let directHandoffExecutedN = 0;
-  let directHandoffBlockedN = 0;
-  const directHandoffReasonCounts = {};
-  let v2GeneratorSummary = null;
 
   const externalSignals = externalSignalsRaw.map((s) => {
     const signalBarMs = Number(s.bar_close_time_utc_ms);
@@ -18339,6 +18339,11 @@ async function runPaperFuturesForBar({
     ? Number(barCloseMs)
     : (Number.isFinite(fallbackSignalBarMs) ? fallbackSignalBarMs : null);
   const signalBarCloseUtc = Number.isFinite(signalBarCloseMs) ? msToUtcZ(signalBarCloseMs) : null;
+  let directHandoffGeneratedN = 0;
+  let directHandoffExecutedN = 0;
+  let directHandoffBlockedN = 0;
+  const directHandoffReasonCounts = {};
+  let v2GeneratorSummary = null;
   const nativeInitialSignals = Number.isFinite(signalBarCloseMs)
     ? await loadServerNativeInitialSignals({
       exchange,
@@ -18650,11 +18655,6 @@ async function runPaperFuturesForBar({
   const ttlMs = Number.isFinite(execProfile.intentTtlMs) ? execProfile.intentTtlMs
     : (Number.isFinite(execProfile.intentTtlBars) && Number.isFinite(execTfMs) ? (execTfMs * execProfile.intentTtlBars) : null);
   let lateSignals = 0;
-  let directHandoffGeneratedN = 0;
-  let directHandoffExecutedN = 0;
-  let directHandoffBlockedN = 0;
-  const directHandoffReasonCounts = {};
-  let v2GeneratorSummary = null;
 
   const externalSignals = externalSignalsRaw.map((s) => {
     const signalBarMs = Number(s.bar_close_time_utc_ms);
