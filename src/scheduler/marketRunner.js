@@ -367,6 +367,8 @@ async function refreshLatestBarSnapshot({ exchange, market, tf, runId, countOver
     let written = 0;
     let latestMs = null;
     let latestIso = null;
+    let earliestMs = null;
+    let earliestIso = null;
 
     for (const bar of bars) {
       const barCloseUtc = bar.closeTimeUtc || bar.t || null;
@@ -391,21 +393,72 @@ async function refreshLatestBarSnapshot({ exchange, market, tf, runId, countOver
         bar,
       });
       written += 1;
+      if (earliestMs === null || barCloseMs < earliestMs) {
+        earliestMs = barCloseMs;
+        earliestIso = barCloseUtcFinal;
+      }
       if (latestMs === null || barCloseMs > latestMs) {
         latestMs = barCloseMs;
         latestIso = barCloseUtcFinal;
       }
     }
 
+    let persistedAfterCount = null;
+    let persistedAfterFirstIso = null;
+    let persistedAfterLastIso = null;
+    try {
+      const persistedAfter = await queryBars({
+        exchange: exchange || "BINANCEFUT",
+        symbol: market,
+        tf,
+        limit: count,
+      });
+      if (Array.isArray(persistedAfter)) {
+        persistedAfterCount = persistedAfter.length;
+        persistedAfterFirstIso = persistedAfter[0]?.closeTimeUtc || null;
+        persistedAfterLastIso = persistedAfter[persistedAfter.length - 1]?.closeTimeUtc || null;
+      }
+    } catch (persistedErr) {
+      console.warn(
+        `[snapshot_refresh_persisted_after_check_fail] ex=${exchange} sym=${market} tf=${tf} err=${persistedErr && persistedErr.message ? persistedErr.message : String(persistedErr)}`
+      );
+    }
+
+    if (Number.isFinite(Number(countOverride)) && Number(countOverride) > 0) {
+      console.log(JSON.stringify({
+        event: "entry_tf_bars_warmup_completed",
+        ts: new Date().toISOString(),
+        exchange,
+        symbol: market,
+        tf,
+        run_id: runId || null,
+        requested_count: Math.floor(Number(countOverride)),
+        effective_count: count,
+        fetched_count: bars.length,
+        written_count: written,
+        earliest_bar_close_time_utc: earliestIso,
+        latest_bar_close_time_utc: latestIso,
+        persisted_after_count: persistedAfterCount,
+        persisted_after_first_bar_close_time_utc: persistedAfterFirstIso,
+        persisted_after_last_bar_close_time_utc: persistedAfterLastIso,
+      }));
+    }
+
     return {
       ok: true,
       written,
+      fetched_count: bars.length,
       requested_count: Number.isFinite(Number(countOverride)) && Number(countOverride) > 0
         ? Math.floor(Number(countOverride))
         : count,
       effective_count: count,
+      earliest_bar_close_time_utc_ms: earliestMs,
+      earliest_bar_close_time_utc: earliestIso,
       bar_close_time_utc_ms: latestMs,
       bar_close_time_utc: latestIso,
+      persisted_after_count: persistedAfterCount,
+      persisted_after_first_bar_close_time_utc: persistedAfterFirstIso,
+      persisted_after_last_bar_close_time_utc: persistedAfterLastIso,
     };
   } catch (e) {
     return { ok: false, error: (e && e.message) ? e.message : String(e) };

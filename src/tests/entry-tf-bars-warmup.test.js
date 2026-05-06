@@ -33,6 +33,10 @@ const marketRunner = require("../scheduler/marketRunner");
     /entry_tf_bars_warmup_triggered/.test(SRC),
     "(A3) marketRunner must emit entry_tf_bars_warmup_triggered observability event"
   );
+  assert.ok(
+    /entry_tf_bars_warmup_completed/.test(SRC),
+    "(A4) marketRunner must emit entry_tf_bars_warmup_completed observability event"
+  );
 })();
 
 // (B) thresholds default to 220 / 230
