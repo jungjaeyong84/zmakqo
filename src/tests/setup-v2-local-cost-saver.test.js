@@ -79,6 +79,57 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
   assert.ok(result.cloud_scheduler_pause_targets.includes("v2-fill-sync"));
 })();
 
+(function runtimeEnvSnapshotRendersCloudRunLiteralValuesOnly() {
+  const rendered = setup.__test.renderRuntimeEnvFile([
+    { name: "DONBEOLJA_V2_ENABLED", value: "1" },
+    { name: "DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", value: "1" },
+    { name: "DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS", value: "BTCUSDT|AAVEUSDT" },
+  ], {
+    generatedAt: "2026-05-06T05:10:00.000Z",
+    service: "donbeolja",
+    region: "asia-northeast3",
+    project: "donbeolja-dev",
+  });
+  assert.ok(rendered.includes("source=cloud-run service=donbeolja region=asia-northeast3 project=donbeolja-dev"));
+  assert.ok(rendered.includes("export DONBEOLJA_V2_ENABLED='1'"));
+  assert.ok(rendered.includes("export DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED='1'"));
+  assert.ok(rendered.includes("export DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS='BTCUSDT|AAVEUSDT'"));
+})();
+
+(function runtimeEnvSnapshotWritesOutputFile() {
+  withTempDir("dbj-local-cost-saver-env-", (dir) => {
+    const outputFile = path.join(dir, "local_cost_saver_runtime.env");
+    const result = setup.__test.writeRuntimeEnvSnapshot({
+      fsApi: fs,
+      outputFile,
+      now: () => "2026-05-06T05:10:00.000Z",
+      execFileSyncFn() {
+        return JSON.stringify({
+          spec: {
+            template: {
+              spec: {
+                containers: [{
+                  env: [
+                    { name: "DONBEOLJA_V2_ENABLED", value: "1" },
+                    { name: "DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED", value: "1" },
+                    { name: "SESSION_SECRET", valueFrom: { secretKeyRef: { name: "SECRET", key: "latest" } } },
+                  ],
+                }],
+              },
+            },
+          },
+        });
+      },
+    });
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.literal_env_n, 2);
+    const contents = fs.readFileSync(outputFile, "utf8");
+    assert.ok(contents.includes("export DONBEOLJA_V2_ENABLED='1'"));
+    assert.ok(contents.includes("export DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED='1'"));
+    assert.ok(!contents.includes("SESSION_SECRET"));
+  });
+})();
+
 (function installWritesPlistAndLaunchctlCalls() {
   withTempDir("dbj-local-cost-saver-", (dir) => {
     const plistTarget = path.join(dir, "LaunchAgents", "test.plist");

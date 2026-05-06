@@ -10,6 +10,11 @@ const {
   OPENCLAW_LOCAL_COST_SAVER_JOBS,
 } = require("./lib/openclaw-cron-manifest");
 
+const LOCAL_RUNTIME_ENV_OUTPUT = path.join(REPO_ROOT, "ops", "runtime", "local_cost_saver_runtime.env");
+const DEFAULT_RUNTIME_ENV_SERVICE = "donbeolja";
+const DEFAULT_RUNTIME_ENV_REGION = "asia-northeast3";
+const DEFAULT_RUNTIME_ENV_PROJECT = "donbeolja-dev";
+
 function parseArgs(argv = []) {
   const install = argv.includes("--install") || argv.includes("--enable") || argv.includes("--kickstart");
   return Object.freeze({
@@ -100,6 +105,94 @@ function runLaunchctl(args) {
   }
 }
 
+function shellQuote(value) {
+  return `'${String(value == null ? "" : value).replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function fetchCloudRunLiteralEnv({
+  service = DEFAULT_RUNTIME_ENV_SERVICE,
+  region = DEFAULT_RUNTIME_ENV_REGION,
+  project = DEFAULT_RUNTIME_ENV_PROJECT,
+  execFileSyncFn = execFileSync,
+} = {}) {
+  const stdout = execFileSyncFn("gcloud", [
+    "run",
+    "services",
+    "describe",
+    service,
+    "--region",
+    region,
+    "--project",
+    project,
+    "--format=json",
+  ], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const parsed = JSON.parse(String(stdout || "{}"));
+  const rows = (((parsed || {}).spec || {}).template || {}).spec?.containers?.[0]?.env || [];
+  return rows
+    .filter((row) => row && row.name && Object.prototype.hasOwnProperty.call(row, "value"))
+    .map((row) => Object.freeze({
+      name: String(row.name),
+      value: String(row.value == null ? "" : row.value),
+    }));
+}
+
+function renderRuntimeEnvFile(rows = [], {
+  generatedAt = new Date().toISOString(),
+  service = DEFAULT_RUNTIME_ENV_SERVICE,
+  region = DEFAULT_RUNTIME_ENV_REGION,
+  project = DEFAULT_RUNTIME_ENV_PROJECT,
+} = {}) {
+  const safeRows = Array.isArray(rows) ? rows.filter((row) => row && row.name) : [];
+  const lines = [
+    "#!/bin/zsh",
+    `# generated_at=${generatedAt}`,
+    `# source=cloud-run service=${service} region=${region} project=${project}`,
+  ];
+  safeRows.forEach((row) => {
+    lines.push(`export ${String(row.name)}=${shellQuote(row.value)}`);
+  });
+  lines.push("");
+  return lines.join("\n");
+}
+
+function writeRuntimeEnvSnapshot({
+  fsApi = fs,
+  service = DEFAULT_RUNTIME_ENV_SERVICE,
+  region = DEFAULT_RUNTIME_ENV_REGION,
+  project = DEFAULT_RUNTIME_ENV_PROJECT,
+  execFileSyncFn = execFileSync,
+  now = () => new Date().toISOString(),
+  outputFile = LOCAL_RUNTIME_ENV_OUTPUT,
+} = {}) {
+  const rows = fetchCloudRunLiteralEnv({
+    service,
+    region,
+    project,
+    execFileSyncFn,
+  });
+  ensureDir(fsApi, path.dirname(outputFile));
+  const rendered = renderRuntimeEnvFile(rows, {
+    generatedAt: now(),
+    service,
+    region,
+    project,
+  });
+  fsApi.writeFileSync(outputFile, rendered, "utf8");
+  if (typeof fsApi.chmodSync === "function") fsApi.chmodSync(outputFile, 0o600);
+  return Object.freeze({
+    ok: true,
+    service,
+    region,
+    project,
+    output_file: outputFile,
+    literal_env_n: rows.length,
+  });
+}
+
 function isLoaded(label, uid, runner = runLaunchctl) {
   return runner(["print", `gui/${uid}/${label}`]).ok === true;
 }
@@ -162,8 +255,27 @@ function main({
     kickstart_requested: args.kickstart,
     job_n: OPENCLAW_LOCAL_COST_SAVER_JOBS.length,
     cloud_scheduler_pause_targets: OPENCLAW_LOCAL_COST_SAVER_JOBS.map((job) => job.scheduler_name),
+    runtime_env_sync: null,
     jobs: [],
   };
+  if (!args.dryRun) {
+    try {
+      payload.runtime_env_sync = writeRuntimeEnvSnapshot({
+        fsApi,
+        execFileSyncFn: deps.execFileSync || execFileSync,
+        now,
+      });
+    } catch (error) {
+      payload.runtime_env_sync = {
+        ok: false,
+        output_file: LOCAL_RUNTIME_ENV_OUTPUT,
+        reason: "LOCAL_COST_SAVER_RUNTIME_ENV_SYNC_FAILED",
+        error: error && error.message ? error.message : String(error),
+      };
+      payload.ok = false;
+      return Object.freeze(payload);
+    }
+  }
   for (const job of OPENCLAW_LOCAL_COST_SAVER_JOBS) {
     if (args.dryRun) {
       payload.jobs.push({
@@ -198,6 +310,9 @@ if (require.main === module) {
     __test: {
       parseArgs,
       renderPlist,
+      renderRuntimeEnvFile,
+      fetchCloudRunLiteralEnv,
+      writeRuntimeEnvSnapshot,
       plistPathForLabel,
       installJob,
     },

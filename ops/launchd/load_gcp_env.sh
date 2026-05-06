@@ -13,3 +13,11 @@ if [ -f "$HOME/.env.openclaw" ]; then
   . "$HOME/.env.openclaw"
   set +o allexport
 fi
+
+LOCAL_COST_SAVER_RUNTIME_ENV="/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/local_cost_saver_runtime.env"
+if [ -f "$LOCAL_COST_SAVER_RUNTIME_ENV" ]; then
+  set -o allexport
+  # shellcheck disable=SC1090
+  . "$LOCAL_COST_SAVER_RUNTIME_ENV"
+  set +o allexport
+fi
