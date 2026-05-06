@@ -16,7 +16,7 @@ assert.ok(routeSource.includes("/api/openclaw/cron/v2-active-protection-reconcil
 assert.ok(routeSource.includes("check-v2-active-protection-reconciliation"), "v2 active protection reconciliation script binding missing");
 assert.ok(routeSource.includes("v2_active_protection_reconciliation"), "v2 active protection reconciliation timeout label missing");
 assert.ok(routeSource.includes("/api/openclaw/cron/v2-fill-sync"), "v2 fill sync endpoint missing");
-assert.ok(routeSource.includes("syncBinanceFuturesFills"), "v2 fill sync script binding missing");
+assert.ok(routeSource.includes("run-v2-fill-sync"), "v2 fill sync script binding missing");
 assert.ok(routeSource.includes("v2_fill_sync"), "v2 fill sync timeout label missing");
 assert.ok(routeSource.includes("/api/openclaw/cron/v2-performance-evidence-cycle"), "v2 performance evidence cycle endpoint missing");
 assert.ok(routeSource.includes("run-v2-performance-evidence-cycle"), "v2 performance evidence cycle script binding missing");

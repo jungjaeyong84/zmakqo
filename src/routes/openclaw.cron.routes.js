@@ -222,34 +222,13 @@ router.post("/api/openclaw/cron/v2-active-protection-reconciliation", requireSch
 // fills when the websocket stream misses or lags a fill.
 router.post("/api/openclaw/cron/v2-fill-sync", requireSchedulerToken, async (req, res) => {
   try {
-    const { syncBinanceFuturesFills } = require("../services/binanceFuturesFillsSync");
-    const { getExchangeSettingsForProvider } = require("../utils/exchangeSettings");
-    const { defaultExecTfFromEnv } = require("../utils/marketConfig");
-    const ex = await getExchangeSettingsForProvider("BINANCEFUT", 5000);
-    const symbols = String(process.env.DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS || "")
-      .split(/[|,]/)
-      .map((item) => item.trim().toUpperCase())
-      .filter(Boolean);
-    const markets = symbols.length
-      ? symbols
-      : (Array.isArray(ex && ex.markets) ? ex.markets.map((item) => String(item || "").trim().toUpperCase()).filter(Boolean) : []);
-    const lookbackHours = Number(process.env.BINANCEFUT_FILLS_SYNC_CRON_LOOKBACK_HOURS) || 12;
-    const outcome = await runWithShortTimeout("v2_fill_sync", () => syncBinanceFuturesFills({
-      markets,
-      execTf: ex && ex.exec_tf ? ex.exec_tf : (defaultExecTfFromEnv() || "15m"),
-      executionMode: "LIVE",
-      liveEnabled: true,
-      lookbackMs: lookbackHours * 60 * 60 * 1000,
-      minIntervalMs: 0,
-      force: true,
-      reprocessExisting: String(process.env.BINANCEFUT_FILLS_SYNC_CRON_REPROCESS_EXISTING || "0") === "1",
-    }), 240000);
+    const { main } = require("../../scripts/run-v2-fill-sync");
+    const outcome = await runWithShortTimeout("v2_fill_sync", () => main({ env: process.env }), 240000);
     const result = outcome && outcome.result ? outcome.result : null;
     const resultOk = outcome.ok === true && result && result.ok === true;
     return res.status(resultOk ? 200 : 500).json({
       ...outcome,
       ok: resultOk,
-      market_n: markets.length,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err && err.message ? err.message : String(err) });

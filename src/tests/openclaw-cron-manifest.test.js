@@ -7,6 +7,7 @@ const {
   OPENCLAW_OPTIONAL_CRON_JOBS,
   OPENCLAW_CRON_ARTIFACT_MAP,
   OPENCLAW_SCHEDULER_SOT,
+  OPENCLAW_LOCAL_COST_SAVER_JOBS,
   buildOpenClawCronMessage,
 } = require("../../scripts/lib/openclaw-cron-manifest");
 
@@ -139,6 +140,29 @@ const {
   assert.strictEqual(liquidationWindow.criticality, "MEDIUM");
   assert.strictEqual(liquidationWindow.runtime_mode, "LIQUIDATION_STREAM_WINDOW_COLLECTOR");
   assert.strictEqual(liquidationWindow.scheduler_schedule, "*/5 * * * *");
+  const localCostSaverIds = new Set((OPENCLAW_LOCAL_COST_SAVER_JOBS || []).map((job) => job.job_id));
+  for (const required of [
+    "openclaw_server_primary_tick",
+    "v2_production_entry_route_canary",
+    "v2_exit_runtime_canary",
+    "v2_active_protection_reconciliation",
+    "v2_fill_sync",
+    "v2_performance_evidence_cycle",
+    "v2_signal_shadow_counterfactual_walker",
+    "v2_signal_shadow_counterfactual_analyzer",
+    "v2_liquidation_stream_collector_window",
+    "openclaw_agent_evidence_linker",
+    "openclaw_agent_calibration",
+    "openclaw_agent_retrospect",
+  ]) {
+    assert.ok(localCostSaverIds.has(required), `local cost saver job missing: ${required}`);
+  }
+  const localFillSync = OPENCLAW_LOCAL_COST_SAVER_JOBS.find((job) => job.job_id === "v2_fill_sync");
+  assert.strictEqual(localFillSync.wrapper.endsWith("run_v2_fill_sync.sh"), true);
+  assert.strictEqual(localFillSync.start_interval_seconds, 300);
+  const localPrimaryTick = OPENCLAW_LOCAL_COST_SAVER_JOBS.find((job) => job.job_id === "openclaw_server_primary_tick");
+  assert.ok(Array.isArray(localPrimaryTick.start_calendar_interval));
+  assert.deepStrictEqual(localPrimaryTick.start_calendar_interval.map((row) => row.minute), [1, 16, 31, 46]);
   // weekly_summary intentionally not on Cloud Scheduler yet — dashboard
   // content is too sparse pre-Day 14 to warrant a weekly digest.
   assert.ok(!cloudJobIds.has("openclaw_agent_weekly_summary"),
