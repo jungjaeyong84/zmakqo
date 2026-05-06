@@ -54,6 +54,8 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
           diagnostics: {
             trigger_type_long: market === "SOLUSDT" ? "BREAKOUT" : "NONE",
             trigger_type_short: "NONE",
+            long_decision_reason: market === "SOLUSDT" ? "LONG_CORE_SIGNAL" : "LONG_NO_TRIGGER",
+            short_decision_reason: "SHORT_NO_TRIGGER",
           },
         },
         top_signal_drop_reason: market === "BTCUSDT" ? "DROP_OPPOSITE_COOLDOWN" : null,
@@ -77,6 +79,8 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
   assert.strictEqual(artifact.summary.direct_handoff_generated_n, 1);
   assert.strictEqual(artifact.summary.direct_handoff_executed_n, 1);
   assert.strictEqual(artifact.summary.generator_trigger_long_counts.BREAKOUT, 1);
+  assert.strictEqual(artifact.summary.generator_long_decision_reason_counts.LONG_CORE_SIGNAL, 1);
+  assert.strictEqual(artifact.summary.generator_short_decision_reason_counts.SHORT_NO_TRIGGER, 2);
   assert.strictEqual(artifact.summary.market_error_n, 0);
   assert.strictEqual(artifact.derived_artifacts.ok, true);
   assert.ok(fs.existsSync(outputFile));
@@ -123,7 +127,12 @@ const runner = require("../../scripts/run-openclaw-server-primary-tick");
           skipped: true,
           skip_reason: "POSITION_ACTIVE",
           signals_n: 0,
-          diagnostics: { trigger_type_long: "NONE", trigger_type_short: "NONE" },
+          diagnostics: {
+            trigger_type_long: "NONE",
+            trigger_type_short: "NONE",
+            long_decision_reason: "LONG_NO_TRIGGER",
+            short_decision_reason: "SHORT_NO_TRIGGER",
+          },
         },
       },
     }),

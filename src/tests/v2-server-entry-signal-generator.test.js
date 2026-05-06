@@ -21,7 +21,7 @@ const {
   __test,
 } = require("../v2/serverEntrySignalGenerator");
 
-const { sma, ema, rsi, macd, atr, highest, lowest, clamp01, safeDiv, tfStringToMs } = __test;
+const { sma, ema, rsi, macd, atr, highest, lowest, clamp01, safeDiv, tfStringToMs, deriveDirectionDecision } = __test;
 
 // ───── helpers ─────────────────────────────────────────────
 
@@ -216,6 +216,8 @@ function buildSyntheticBars(n, opts = {}) {
   assert.strictEqual(r.skipped, false);
   assert.strictEqual(r.signals.length, 0);
   assert.ok(r.diagnostics.market_state);
+  assert.strictEqual(typeof r.diagnostics.long_decision_reason, "string");
+  assert.strictEqual(typeof r.diagnostics.short_decision_reason, "string");
 })();
 
 (function testHappyPath_StructureProducesDiagnostics() {
@@ -363,6 +365,29 @@ function buildSyntheticBars(n, opts = {}) {
   assert.ok(approx(DEFAULT_PARAMS.min_rr, 1.45));
   assert.ok(approx(DEFAULT_PARAMS.stop_atr, 1.8));
   assert.ok(approx(DEFAULT_PARAMS.target_atr, 2.8));
+})();
+
+(function testDecisionReason_NoTrigger() {
+  const out = deriveDirectionDecision({
+    direction: "LONG",
+    triggerType: "NONE",
+    triggerActive: false,
+    signalFired: false,
+  });
+  assert.strictEqual(out.reason, "LONG_NO_TRIGGER");
+})();
+
+(function testDecisionReason_CooldownBlocked() {
+  const out = deriveDirectionDecision({
+    direction: "SHORT",
+    triggerType: "LOSS",
+    triggerActive: true,
+    signalFired: false,
+    canFire: false,
+    earlyEligible: true,
+    coreEligible: false,
+  });
+  assert.strictEqual(out.reason, "SHORT_COOLDOWN_BLOCKED");
 })();
 
 console.log("V2_SERVER_ENTRY_SIGNAL_GENERATOR_TEST_OK");

@@ -14614,6 +14614,10 @@ async function runPaperBinanceForBar({
               trigger_type_short: v2GenResult.diagnostics.trigger_type_short,
               long_can_fire: v2GenResult.diagnostics.long_can_fire,
               short_can_fire: v2GenResult.diagnostics.short_can_fire,
+              long_decision_path: v2GenResult.diagnostics.long_decision_path,
+              long_decision_reason: v2GenResult.diagnostics.long_decision_reason,
+              short_decision_path: v2GenResult.diagnostics.short_decision_path,
+              short_decision_reason: v2GenResult.diagnostics.short_decision_reason,
             }
             : null,
         }));
@@ -18416,6 +18420,10 @@ async function runPaperFuturesForBar({
               trigger_type_short: v2GenResult.diagnostics.trigger_type_short,
               long_can_fire: v2GenResult.diagnostics.long_can_fire,
               short_can_fire: v2GenResult.diagnostics.short_can_fire,
+              long_decision_path: v2GenResult.diagnostics.long_decision_path,
+              long_decision_reason: v2GenResult.diagnostics.long_decision_reason,
+              short_decision_path: v2GenResult.diagnostics.short_decision_path,
+              short_decision_reason: v2GenResult.diagnostics.short_decision_reason,
             }
             : null,
         };
@@ -18439,6 +18447,10 @@ async function runPaperFuturesForBar({
               trigger_type_short: v2GenResult.diagnostics.trigger_type_short,
               long_can_fire: v2GenResult.diagnostics.long_can_fire,
               short_can_fire: v2GenResult.diagnostics.short_can_fire,
+              long_decision_path: v2GenResult.diagnostics.long_decision_path,
+              long_decision_reason: v2GenResult.diagnostics.long_decision_reason,
+              short_decision_path: v2GenResult.diagnostics.short_decision_path,
+              short_decision_reason: v2GenResult.diagnostics.short_decision_reason,
             }
             : null,
         }));

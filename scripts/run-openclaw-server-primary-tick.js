@@ -106,6 +106,8 @@ function summarizeResults(results = []) {
   const generatorSkipReasonCounts = {};
   const generatorTriggerLongCounts = {};
   const generatorTriggerShortCounts = {};
+  const generatorLongDecisionReasonCounts = {};
+  const generatorShortDecisionReasonCounts = {};
   const failedMarkets = [];
 
   for (const row of rows) {
@@ -137,8 +139,12 @@ function summarizeResults(results = []) {
       const diag = gen.diagnostics && typeof gen.diagnostics === "object" ? gen.diagnostics : {};
       const triggerLong = trimOrNull(diag.trigger_type_long) || "NONE";
       const triggerShort = trimOrNull(diag.trigger_type_short) || "NONE";
+      const longDecisionReason = trimOrNull(diag.long_decision_reason) || "UNKNOWN";
+      const shortDecisionReason = trimOrNull(diag.short_decision_reason) || "UNKNOWN";
       generatorTriggerLongCounts[triggerLong] = Number(generatorTriggerLongCounts[triggerLong] || 0) + 1;
       generatorTriggerShortCounts[triggerShort] = Number(generatorTriggerShortCounts[triggerShort] || 0) + 1;
+      generatorLongDecisionReasonCounts[longDecisionReason] = Number(generatorLongDecisionReasonCounts[longDecisionReason] || 0) + 1;
+      generatorShortDecisionReasonCounts[shortDecisionReason] = Number(generatorShortDecisionReasonCounts[shortDecisionReason] || 0) + 1;
     }
     const status = trimOrNull(trace.status) || "UNKNOWN";
     statusCounts[status] = (statusCounts[status] || 0) + 1;
@@ -177,6 +183,8 @@ function summarizeResults(results = []) {
     generator_skip_reason_counts: generatorSkipReasonCounts,
     generator_trigger_long_counts: generatorTriggerLongCounts,
     generator_trigger_short_counts: generatorTriggerShortCounts,
+    generator_long_decision_reason_counts: generatorLongDecisionReasonCounts,
+    generator_short_decision_reason_counts: generatorShortDecisionReasonCounts,
     top_signal_drop_reasons: summarizeDropReasons(rows).slice(0, 10),
     failed_markets: failedMarkets.slice(0, 20),
   });

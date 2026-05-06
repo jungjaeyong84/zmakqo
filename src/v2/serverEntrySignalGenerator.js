@@ -252,6 +252,108 @@ function computeHtfBias(htfBars) {
   return { htf_bias: bias, htf_fast: fast, htf_slow: slow, ok: true, reason: null };
 }
 
+function deriveDirectionDecision({
+  direction,
+  triggerType,
+  triggerActive,
+  signalFired,
+  signalGrade,
+  canFire,
+  earlyEligible,
+  coreEligible,
+  opportunity,
+  thrEarly,
+  thrCore,
+  riskOkEarly,
+  riskOkCore,
+  structureAlignment,
+  structureFloorEarly,
+  structureFloorCore,
+  directionalPressure,
+  directionalFloorEarly,
+  participation,
+  participationFloorCore,
+  antiChopGate,
+  transitionCoreQuality,
+} = {}) {
+  const prefix = String(direction || "UNKNOWN").toUpperCase();
+  if (signalFired === true) {
+    return {
+      path: signalGrade === "CORE" ? `${prefix}_CORE` : `${prefix}_EARLY`,
+      reason: signalGrade === "CORE" ? `${prefix}_CORE_SIGNAL` : `${prefix}_EARLY_SIGNAL`,
+    };
+  }
+  if (triggerActive !== true || triggerType === "NONE") {
+    return {
+      path: `${prefix}_NONE`,
+      reason: `${prefix}_NO_TRIGGER`,
+    };
+  }
+  if (canFire !== true) {
+    return {
+      path: `${prefix}_${coreEligible ? "CORE" : "EARLY"}`,
+      reason: `${prefix}_COOLDOWN_BLOCKED`,
+    };
+  }
+  if (coreEligible) {
+    if (opportunity < thrCore) {
+      return { path: `${prefix}_CORE`, reason: `${prefix}_CORE_THRESHOLD_BLOCKED` };
+    }
+    if (riskOkCore !== true) {
+      return { path: `${prefix}_CORE`, reason: `${prefix}_CORE_RISK_BLOCKED` };
+    }
+    if (structureAlignment < structureFloorCore) {
+      return { path: `${prefix}_CORE`, reason: `${prefix}_CORE_STRUCTURE_BLOCKED` };
+    }
+    if (participation < participationFloorCore) {
+      return { path: `${prefix}_CORE`, reason: `${prefix}_CORE_PARTICIPATION_BLOCKED` };
+    }
+    if (transitionCoreQuality !== true) {
+      return { path: `${prefix}_CORE`, reason: `${prefix}_CORE_TRANSITION_BLOCKED` };
+    }
+    if (earlyEligible) {
+      if (opportunity < thrEarly) {
+        return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_THRESHOLD_BLOCKED` };
+      }
+      if (riskOkEarly !== true) {
+        return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_RISK_BLOCKED` };
+      }
+      if (structureAlignment < structureFloorEarly) {
+        return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_STRUCTURE_BLOCKED` };
+      }
+      if (directionalPressure < directionalFloorEarly) {
+        return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_DIRECTIONAL_BLOCKED` };
+      }
+      if (antiChopGate !== true) {
+        return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_ANTI_CHOP_BLOCKED` };
+      }
+    }
+    return { path: `${prefix}_CORE`, reason: `${prefix}_CORE_OTHER_BLOCKED` };
+  }
+  if (earlyEligible) {
+    if (opportunity < thrEarly) {
+      return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_THRESHOLD_BLOCKED` };
+    }
+    if (riskOkEarly !== true) {
+      return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_RISK_BLOCKED` };
+    }
+    if (structureAlignment < structureFloorEarly) {
+      return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_STRUCTURE_BLOCKED` };
+    }
+    if (directionalPressure < directionalFloorEarly) {
+      return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_DIRECTIONAL_BLOCKED` };
+    }
+    if (antiChopGate !== true) {
+      return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_ANTI_CHOP_BLOCKED` };
+    }
+    return { path: `${prefix}_EARLY`, reason: `${prefix}_EARLY_OTHER_BLOCKED` };
+  }
+  return {
+    path: `${prefix}_OTHER`,
+    reason: `${prefix}_UNCLASSIFIED_BLOCKED`,
+  };
+}
+
 // ───────────────────────────────────────────────────────────
 // Main generator
 // ───────────────────────────────────────────────────────────
@@ -664,6 +766,55 @@ function generateV2EntrySignals({
   const long_early_pulse  = long_early_raw  && !long_core_pulse  && long_can_fire;
   const short_early_pulse = short_early_raw && !short_core_pulse && short_can_fire;
 
+  const longDecision = deriveDirectionDecision({
+    direction: "LONG",
+    triggerType: trigger_type_long,
+    triggerActive: trigger_long,
+    signalFired: long_core_pulse || long_early_pulse,
+    signalGrade: long_core_pulse ? "CORE" : (long_early_pulse ? "EARLY" : null),
+    canFire: long_can_fire,
+    earlyEligible: trigger_reclaim_long || trigger_breakout_long,
+    coreEligible: trigger_continuation_long || trigger_breakout_long,
+    opportunity: long_opportunity,
+    thrEarly: p.thr_early,
+    thrCore: p.thr_core,
+    riskOkEarly: risk_ok_long_early,
+    riskOkCore: risk_ok_long_core,
+    structureAlignment: structure_alignment_long,
+    structureFloorEarly: 0.40,
+    structureFloorCore: 0.62,
+    directionalPressure: directional_pressure_long,
+    directionalFloorEarly: 0.42,
+    participation,
+    participationFloorCore: 0.42,
+    antiChopGate: anti_chop_gate,
+    transitionCoreQuality: transition_core_quality_long,
+  });
+  const shortDecision = deriveDirectionDecision({
+    direction: "SHORT",
+    triggerType: trigger_type_short,
+    triggerActive: trigger_short,
+    signalFired: short_core_pulse || short_early_pulse,
+    signalGrade: short_core_pulse ? "CORE" : (short_early_pulse ? "EARLY" : null),
+    canFire: short_can_fire,
+    earlyEligible: trigger_loss_short || trigger_breakdown_short,
+    coreEligible: trigger_continuation_short || trigger_breakdown_short,
+    opportunity: short_opportunity,
+    thrEarly: p.thr_early,
+    thrCore: p.thr_core,
+    riskOkEarly: risk_ok_short_early,
+    riskOkCore: risk_ok_short_core,
+    structureAlignment: structure_alignment_short,
+    structureFloorEarly: 0.40,
+    structureFloorCore: 0.62,
+    directionalPressure: directional_pressure_short,
+    directionalFloorEarly: 0.42,
+    participation,
+    participationFloorCore: 0.42,
+    antiChopGate: anti_chop_gate,
+    transitionCoreQuality: transition_core_quality_short,
+  });
+
   // (M) signal payload(s)
   // Per-direction inputs the V2 signalCriteria gate inspects via
   // buildSignalCriteriaSeedFromIntent. We expose them here through
@@ -780,6 +931,10 @@ function generateV2EntrySignals({
     long_early_raw,
     short_core_raw,
     short_early_raw,
+    long_decision_path: longDecision.path,
+    long_decision_reason: longDecision.reason,
+    short_decision_path: shortDecision.path,
+    short_decision_reason: shortDecision.reason,
   };
 
   return result;
@@ -933,5 +1088,6 @@ module.exports = {
     safeDiv,
     tfStringToMs,
     buildPayload,
+    deriveDirectionDecision,
   },
 };
