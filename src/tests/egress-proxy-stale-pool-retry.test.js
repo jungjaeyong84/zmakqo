@@ -48,6 +48,11 @@ assert.strictEqual(
   "function",
   "isTransientEgressFetchError export missing"
 );
+assert.strictEqual(
+  typeof __test.resolveEgressBaseCandidatesFor,
+  "function",
+  "resolveEgressBaseCandidatesFor export missing"
+);
 
 // ── Transient-classifier unit tests ─────────────────────────────────
 assert.strictEqual(
@@ -85,6 +90,16 @@ assert.strictEqual(
   false,
   "null must not crash the classifier"
 );
+assert.deepStrictEqual(
+  __test.resolveEgressBaseCandidatesFor("binancefut", "fetchBinanceFuturesAccount"),
+  ["https://stub.egress.private.example", "https://stub.egress.example"],
+  "private binance actions must prefer private egress and keep public egress as transport fallback"
+);
+assert.deepStrictEqual(
+  __test.resolveEgressBaseCandidatesFor("binancefut", "fetchFuturesPrices"),
+  ["https://stub.egress.example"],
+  "public binance actions must stay on the public egress base"
+);
 
 (async () => {
   // ── Retry integration: fail once then succeed ───────────────────────
@@ -115,6 +130,10 @@ assert.strictEqual(
         "retry must return the attempt-2 payload data"
       );
       assert.strictEqual(calls.length, 2, "fetch must be called exactly twice (1 fail + 1 retry)");
+      assert.strictEqual(calls[0].url, "https://stub.egress.private.example/egress/binancefut",
+        "attempt 1 must use private egress for private binance actions");
+      assert.strictEqual(calls[1].url, "https://stub.egress.example/egress/binancefut",
+        "attempt 2 must fail over to public egress when the private transport fails");
       assert.ok(/^EGR__\d+__[0-9a-f]+$/.test(calls[0].requestId),
         "attempt 1 must use the root request_id");
       assert.ok(calls[1].requestId.endsWith("__retry2"),

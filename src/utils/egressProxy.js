@@ -295,6 +295,15 @@ function resolveEgressBaseUrlFor(provider, action) {
   return resolveEgressBaseUrl();
 }
 
+function resolveEgressBaseCandidatesFor(provider, action) {
+  const primary = resolveEgressBaseUrlFor(provider, action);
+  const fallback = resolveEgressBaseUrl();
+  const out = [];
+  if (primary) out.push(primary);
+  if (fallback && fallback !== primary) out.push(fallback);
+  return out;
+}
+
 function resolveEgressToken() {
   return String(process.env.EGRESS_PROXY_TOKEN || process.env.SCHEDULER_TOKEN || "").trim();
 }
@@ -440,7 +449,8 @@ async function callEgressProxyOnce({
 
 async function callEgressProxy({ provider, action, payload, timeoutMs, maxAttempts, signal = null } = {}) {
   const requestIdRoot = buildEgressRequestId();
-  const base = resolveEgressBaseUrlFor(provider, action);
+  const baseCandidates = resolveEgressBaseCandidatesFor(provider, action);
+  const base = baseCandidates[0];
   if (!base) throw new Error("EGRESS_PROXY_URL_MISSING");
   const prov = String(provider || "").trim().toLowerCase();
   if (!prov) throw new Error("EGRESS_PROXY_PROVIDER_REQUIRED");
@@ -471,9 +481,10 @@ async function callEgressProxy({ provider, action, payload, timeoutMs, maxAttemp
     const requestId = attempt === 1
       ? requestIdRoot
       : `${requestIdRoot}__retry${attempt}`;
+    const attemptBase = baseCandidates[Math.min(attempt - 1, baseCandidates.length - 1)];
     try {
       const { json } = await callEgressProxyOnce({
-        base,
+        base: attemptBase,
         prov,
         action,
         payload,
@@ -518,6 +529,7 @@ async function callEgressProxy({ provider, action, payload, timeoutMs, maxAttemp
           request_id: err.requestId,
           provider: prov,
           action,
+          base: attemptBase,
           message: err.message,
           code: err.code,
           attempt,
@@ -525,6 +537,17 @@ async function callEgressProxy({ provider, action, payload, timeoutMs, maxAttemp
         });
       }
       if (!transient || attempt >= totalAttempts) break;
+      const nextBase = baseCandidates[Math.min(attempt, baseCandidates.length - 1)];
+      if (nextBase && nextBase !== attemptBase) {
+        console.warn("[egress][FAILOVER_NEXT_BASE]", {
+          provider: prov,
+          action,
+          failed_request_id: err.requestId,
+          attempt,
+          from_base: attemptBase,
+          next_base: nextBase,
+        });
+      }
       // Before the next attempt, tear down the dispatcher so the retry
       // draws from a fresh connection pool.  undici cannot detect
       // half-open TCP sockets (Cloud Run LB kills idle connections
@@ -545,6 +568,7 @@ module.exports = {
   buildEgressRequestId,
   shouldUsePrivateBinanceEgress,
   resolveEgressBaseUrlFor,
+  resolveEgressBaseCandidatesFor,
   // 2026-04-20 senior-audit H1/H2: exported so the deploy-gate wrapper
   // and runtime startup guard can share a single implementation of the
   // env→disabled predicate.
@@ -556,6 +580,7 @@ module.exports = {
     closeEgressDispatcher,
     isEgressDispatcherDisabledByEnv,
     assertEgressProductionStartupGuard,
+    resolveEgressBaseCandidatesFor,
     _resetProductionStartupGuardCheckedForTest: () => {
       _productionStartupGuardChecked = false;
     },
