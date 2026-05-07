@@ -14,6 +14,7 @@ function run() {
   assert.strictEqual(typeof __test.buildMlTierPlanRows, "function");
   assert.strictEqual(typeof __test.describeEvDecisionReasonForUser, "function");
   assert.strictEqual(typeof __test.summarizeResolvedEntries, "function");
+  assert.strictEqual(typeof __test.summarizeEvTuneSourceGap, "function");
 
   const resolvedEntries = [
     { predicted: 0.54, outcome: "NO_TP1_EXITED" },
@@ -65,6 +66,28 @@ function run() {
     byStage4Source: { EV_DROP: 2, ENTRY: 1 },
   });
 
+  const sourceGap = __test.summarizeEvTuneSourceGap({
+    intentsRows: [],
+    fillsRows: [
+      { created_at: "2026-05-07T00:00:00.000Z", event: "SYNC_FILL", entry_event_id: "ENTRY__1" },
+      { created_at: "2026-05-07T00:01:00.000Z", event: "EXIT_SL_1.65P", entry_event_id: "ENTRY__1" },
+    ],
+    dropsRows: [],
+    intentsMeta: { latest_created_at: "2026-05-06T00:00:00.000Z" },
+    fillsMeta: { latest_created_at: "2026-05-07T00:01:00.000Z" },
+    dropsMeta: { latest_created_at: "2026-05-05T00:00:00.000Z" },
+    fromMs: Date.parse("2026-05-06T12:00:00.000Z"),
+    toMs: Date.parse("2026-05-07T12:00:00.000Z"),
+  });
+  assert.strictEqual(sourceGap.detected, true);
+  assert.strictEqual(sourceGap.executed_fill_entry_n, 1);
+  assert.strictEqual(sourceGap.filled_intent_entry_n, 0);
+  assert.deepStrictEqual(sourceGap.reasons, [
+    "EXECUTED_FILLS_WITHOUT_FILLED_INTENTS",
+    "INTENTS_LAG_BEHIND_FILLS",
+    "DROPS_LAG_BEHIND_FILLS",
+  ]);
+
   const markdown = __test.renderMarkdown({
     nowMeta: { kst: "2026-04-06 08:00:00 KST" },
     windowDays: 9,
@@ -100,12 +123,15 @@ function run() {
     stageLedger: { source: "LATEST", filePath: "/tmp/ledger.json" },
     bestFebtContract: null,
     bestFebtMarketGuard: null,
+    sourceGap,
   });
   assert.match(markdown, /EV Composite Threshold Tune/);
   assert.match(markdown, /resolved sample total: 2/);
   assert.match(markdown, /executed sample\(metric basis\): 0/);
   assert.match(markdown, /EV_DROP counterfactual sample: 2/);
   assert.match(markdown, /threshold 통계 기준: executed sample only/);
+  assert.match(markdown, /## Source Gap/);
+  assert.match(markdown, /detected: YES/);
 
   const thresholdRows = __test.buildTierThresholdRows({
     EARLY: {

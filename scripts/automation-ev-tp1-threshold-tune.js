@@ -748,7 +748,7 @@ async function getRawProviderSettings(provider) {
   return providers && typeof providers[provider] === "object" ? providers[provider] : {};
 }
 
-function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, currentTierThresholds, nextTierThresholds, plan, bandPlan, resolvedEntries, unresolvedOpenCount, unresolvedStaleCount, provider, tf, cacheMeta, mlPolicyReport, mlHint, stageLedger, bestFebtContract, bestFebtMarketGuard }) {
+function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, currentTierThresholds, nextTierThresholds, plan, bandPlan, resolvedEntries, unresolvedOpenCount, unresolvedStaleCount, provider, tf, cacheMeta, mlPolicyReport, mlHint, stageLedger, bestFebtContract, bestFebtMarketGuard, sourceGap }) {
   const resolvedSummary = summarizeResolvedEntries(resolvedEntries);
   const lines = [];
   lines.push(`# EV Composite Threshold Tune`);
@@ -808,6 +808,18 @@ function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, 
     lines.push("## 로컬 증분 캐시");
     lines.push(`- order_intents_paper: ${cacheMeta.intents.filePath} / cached=${cacheMeta.intents.count} / new=${cacheMeta.intents.fetched_new} / overlap=${cacheMeta.intents.overlap_fetched}`);
     lines.push(`- fills_paper: ${cacheMeta.fills.filePath} / cached=${cacheMeta.fills.count} / new=${cacheMeta.fills.fetched_new} / overlap=${cacheMeta.fills.overlap_fetched}`);
+    lines.push(`- signals_dropped: ${cacheMeta.drops.filePath} / cached=${cacheMeta.drops.count} / new=${cacheMeta.drops.fetched_new} / overlap=${cacheMeta.drops.overlap_fetched}`);
+  }
+  if (sourceGap) {
+    lines.push("");
+    lines.push("## Source Gap");
+    lines.push(`- detected: ${sourceGap.detected ? "YES" : "NO"}`);
+    lines.push(`- reasons: ${(sourceGap.reasons || []).join(", ") || "NONE"}`);
+    lines.push(`- executed fill entries(window): ${sourceGap.executed_fill_entry_n}`);
+    lines.push(`- filled intent entries(window): ${sourceGap.filled_intent_entry_n}`);
+    lines.push(`- latest fills: ${sourceGap.latest_fills_created_at || "N/A"}`);
+    lines.push(`- latest intents: ${sourceGap.latest_intents_created_at || "N/A"}`);
+    lines.push(`- latest drops: ${sourceGap.latest_drops_created_at || "N/A"}`);
   }
   if (stageLedger) {
     lines.push("");
@@ -892,6 +904,52 @@ function summarizeResolvedEntries(resolvedEntries = []) {
     }
   }
   return summary;
+}
+
+function parseIsoMs(value) {
+  const ms = Date.parse(String(value || "").trim());
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function summarizeEvTuneSourceGap({ intentsRows = [], fillsRows = [], dropsRows = [], intentsMeta = null, fillsMeta = null, dropsMeta = null, fromMs = null, toMs = null } = {}) {
+  const rowsInWindow = (rows = []) => (Array.isArray(rows) ? rows : []).filter((row) => {
+    const createdMs = parseIsoMs(row && row.created_at) ?? toNum(row && row.signal_bar_close_time_utc_ms) ?? toNum(row && row.exec_bar_close_time_utc_ms);
+    if (Number.isFinite(fromMs) && Number.isFinite(createdMs) && createdMs < fromMs) return false;
+    if (Number.isFinite(toMs) && Number.isFinite(createdMs) && createdMs >= toMs) return false;
+    return true;
+  });
+  const fillWindow = rowsInWindow(fillsRows);
+  const intentWindow = rowsInWindow(intentsRows);
+  const dropWindow = rowsInWindow(dropsRows);
+  const executedFillEntryIds = new Set(
+    fillWindow
+      .filter((row) => !String(row && row.event || "").trim().toUpperCase().startsWith("EXIT_"))
+      .map((row) => String(row && row.entry_event_id || "").trim())
+      .filter(Boolean)
+  );
+  const filledIntentEntryIds = new Set(
+    intentWindow
+      .filter((row) => String(row && row.status || "").trim().toUpperCase() === "FILLED")
+      .map((row) => String(row && row.entry_event_id || "").trim())
+      .filter(Boolean)
+  );
+  const latestFillsMs = parseIsoMs(fillsMeta && fillsMeta.latest_created_at);
+  const latestIntentsMs = parseIsoMs(intentsMeta && intentsMeta.latest_created_at);
+  const latestDropsMs = parseIsoMs(dropsMeta && dropsMeta.latest_created_at);
+  const reasons = [];
+  if (executedFillEntryIds.size > 0 && filledIntentEntryIds.size === 0) reasons.push("EXECUTED_FILLS_WITHOUT_FILLED_INTENTS");
+  if (Number.isFinite(latestFillsMs) && Number.isFinite(latestIntentsMs) && latestFillsMs > latestIntentsMs) reasons.push("INTENTS_LAG_BEHIND_FILLS");
+  if (Number.isFinite(latestFillsMs) && Number.isFinite(latestDropsMs) && latestFillsMs > latestDropsMs) reasons.push("DROPS_LAG_BEHIND_FILLS");
+  return Object.freeze({
+    detected: reasons.length > 0,
+    reasons: Object.freeze(reasons),
+    executed_fill_entry_n: executedFillEntryIds.size,
+    filled_intent_entry_n: filledIntentEntryIds.size,
+    drop_entry_like_n: dropWindow.length,
+    latest_fills_created_at: fillsMeta && fillsMeta.latest_created_at || null,
+    latest_intents_created_at: intentsMeta && intentsMeta.latest_created_at || null,
+    latest_drops_created_at: dropsMeta && dropsMeta.latest_created_at || null,
+  });
 }
 
 function isEvThresholdHardening(currentThreshold, nextThreshold) {
@@ -1027,6 +1085,16 @@ async function main() {
 
   const resolvedEntries = classified.filter((row) => row.resolvedForTune === true);
   const resolvedSummary = summarizeResolvedEntries(resolvedEntries);
+  const sourceGap = summarizeEvTuneSourceGap({
+    intentsRows: intentRes.rows,
+    fillsRows: fillRes.rows,
+    dropsRows: dropsRes.rows,
+    intentsMeta: intentRes.meta,
+    fillsMeta: fillRes.meta,
+    dropsMeta: dropsRes.meta,
+    fromMs,
+    toMs: nowMs,
+  });
   const unresolvedOpenCount = classified.filter((row) => row.outcome === "UNRESOLVED_OPEN").length;
   const unresolvedStaleCount = classified.filter((row) => row.outcome === "UNRESOLVED_STALE").length;
 
@@ -1148,6 +1216,13 @@ async function main() {
       resolved_ev_drop_counterfactual_entries: resolvedSummary.evDropCounterfactual,
       resolved_missing_entry_event_id_entries: resolvedSummary.missingEntryEventId,
       metric_sample_basis: "EXECUTED_ONLY",
+      source_gap_detected: sourceGap.detected,
+      source_gap_reasons: sourceGap.reasons,
+      source_gap_executed_fill_entry_n: sourceGap.executed_fill_entry_n,
+      source_gap_filled_intent_entry_n: sourceGap.filled_intent_entry_n,
+      source_gap_latest_fills_created_at: sourceGap.latest_fills_created_at,
+      source_gap_latest_intents_created_at: sourceGap.latest_intents_created_at,
+      source_gap_latest_drops_created_at: sourceGap.latest_drops_created_at,
       unresolved_open_entries: unresolvedOpenCount,
       unresolved_stale_entries: unresolvedStaleCount,
       current_sample: effectivePlan.current.n,
@@ -1182,6 +1257,7 @@ async function main() {
         drops: dropsRes.meta,
       },
     },
+    source_gap: sourceGap,
     ml_guidance: mlGuidance,
     best_febt_tuning_contract: bestFebtContract,
     best_febt_market_guard_contract: bestFebtMarketGuard,
@@ -1238,6 +1314,7 @@ async function main() {
     stageLedger: stageLedgerMeta,
     bestFebtContract,
     bestFebtMarketGuard,
+    sourceGap,
   }));
   copyLatest(jsonPath, path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.json"));
   copyLatest(mdPath, path.join(OPS_DAILY_DIR, "ev_composite_threshold_tune_latest.md"));
@@ -1249,10 +1326,11 @@ async function main() {
     || bandPlan.reason === "BAND_OBJECTIVE_SEARCH"
     || (report.ml_guidance && report.ml_guidance.applied)
   ) ? "INFO" : "WARN";
+  const alertSeverity = sourceGap.detected ? "WARN" : severity;
 
   await sendKoreanTelegramSummary({
     title: `[V2 기대값 게이트 자동 점검] ${PROVIDER}`,
-    severity,
+    severity: alertSeverity,
     provider: PROVIDER,
     sections: [
       {
@@ -1265,6 +1343,8 @@ async function main() {
           `resolved sample total ${resolvedSummary.total}건 / executed ${resolvedSummary.executed}건 / EV_DROP ${resolvedSummary.evDropCounterfactual}건`,
           `unresolved open ${unresolvedOpenCount}건 / stale ${unresolvedStaleCount}건`,
           `cache intents new ${intentRes.meta.fetched_new} / fills new ${fillRes.meta.fetched_new} / drops new ${dropsRes.meta.fetched_new}`,
+          `source gap ${sourceGap.detected ? "감지" : "없음"} / fills entry ${sourceGap.executed_fill_entry_n} / intents filled ${sourceGap.filled_intent_entry_n}`,
+          sourceGap.detected ? `source gap 사유 ${(sourceGap.reasons || []).join(", ")}` : "source gap 사유 없음",
           `stage ledger ${stageLedgerMeta.source} / ${stageLedgerMeta.filePath || "N/A"}`,
           `ML report ${mlPolicyReport && mlPolicyReport.filePath ? "연계" : "없음"} / hint ${mlGuidance.applied ? "적용" : "미적용"}`,
           `BEST/FEBT ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`,
@@ -1361,6 +1441,7 @@ module.exports = {
     evaluateThreshold,
     pickBandPlan,
     pickThresholdPlan,
+    summarizeEvTuneSourceGap,
     summarizeResolvedEntries,
     wilsonLowerBound,
   },
