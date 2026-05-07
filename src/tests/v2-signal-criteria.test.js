@@ -117,6 +117,40 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.entry_grade, "EARLY");
 })();
 
+(function pullbackReclaimUsesProfileVolumeThresholdInsteadOfHardcodedOne() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "range",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.78,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.79,
+      trigger_type: "RECLAIM",
+      trigger_confirmed: true,
+      reclaim_confirmed: true,
+      hold_after_reclaim: true,
+      stop_distance_sane: true,
+      volume_zscore: 0.42,
+      rsi_entry_tf: 55,
+      expected_gross_r: 1.6,
+      expected_net_r_after_cost: 0.45,
+      cost_estimate_bps: 6,
+      cost_r_equivalent: 0.08,
+      funding_penalty_bps: 1,
+      market_quality_score: 1,
+      spread_bps: 2,
+      mark_index_gap_bps: 4,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 4 } },
+  });
+  assert.ok(!criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:VOLUME_NOT_CONFIRMED"));
+  assert.strictEqual(criteria.setup_gate.setup_type, "PULLBACK_RECLAIM");
+})();
+
 (function strictProfileRejectsSameEarlySignal() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",

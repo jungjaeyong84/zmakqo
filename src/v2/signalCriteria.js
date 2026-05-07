@@ -233,6 +233,7 @@ function evaluatePullbackReclaimContract({
   htfAlignmentScore,
   setupQualityScore,
   volumeZScore,
+  minVolumeZScore,
   btcAlignment,
   mtfAlignment,
 } = {}) {
@@ -255,7 +256,8 @@ function evaluatePullbackReclaimContract({
     : (shortRecoveryEvidence !== null ? shortRecoveryEvidence === true : true);
   const explicitStopDistance = stopDistanceSane === true;
   const implicitStopDistance = stopDistanceSane === null && (toNumberOrNull(setupQualityScore) ?? 0) >= 0.75;
-  const volumeConfirmed = (toNumberOrNull(volumeZScore) ?? -Infinity) >= 1;
+  const requiredVolumeZScore = toNumberOrNull(minVolumeZScore) ?? 1;
+  const volumeConfirmed = (toNumberOrNull(volumeZScore) ?? -Infinity) >= requiredVolumeZScore;
   const alignmentKnown = btcAlignment !== "UNKNOWN" && mtfAlignment !== "UNKNOWN";
   const alignmentNotOpposed = alignmentKnown && btcAlignment !== "OPPOSED" && mtfAlignment !== "OPPOSED";
   const htfStrong = (toNumberOrNull(htfAlignmentScore) ?? 0) >= 0.75;
@@ -273,6 +275,7 @@ function evaluatePullbackReclaimContract({
     downgraded: blockers.length > 0,
     blockers: Object.freeze(blockers),
     side: normalizedSide,
+    required_volume_zscore: requiredVolumeZScore,
   });
 }
 
@@ -532,6 +535,7 @@ function buildSignalCriteria({
     htfAlignmentScore: resolvedHtfAlignmentScore,
     setupQualityScore: resolvedSetupQualityScore,
     volumeZScore: resolvedVolumeZScore,
+    minVolumeZScore: resolvedThresholds.min_volume_zscore,
     btcAlignment: resolvedBtc1hAlignment,
     mtfAlignment: resolvedMtf1hAlignment,
   });
