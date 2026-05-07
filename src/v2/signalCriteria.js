@@ -590,6 +590,12 @@ function buildSignalCriteria({
   const setupBlockers = [];
   pushMissingEvidence(setupBlockers, "SETUP_TYPE", resolvedSetupType === "NONE" ? null : resolvedSetupType);
   pushMissingEvidence(setupBlockers, "SETUP_QUALITY_SCORE", toNumberOrNull(resolvedSetupQualityScore));
+  if (
+    resolvedCriteriaProfile === SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY
+    && rawResolvedSetupType === "PULLBACK_RECLAIM"
+  ) {
+    setupBlockers.push("PULLBACK_RECLAIM:EMPIRICAL_DECAY_BLOCKED");
+  }
   if (pullbackContract.downgraded) setupBlockers.push(...pullbackContract.blockers);
   const setupPass = resolvedSetupType !== "NONE"
     && resolvedSetupType !== "PULLBACK_PROBE"
