@@ -161,6 +161,35 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.no_trade_gate.mark_index_gap_bps, 1.1);
 })();
 
+(function v6CompatDiscoveryAllowsModerateMarkIndexGapWithinDiscoveryBand() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "transition",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.55,
+      setup_type: "BREAKOUT_RETEST",
+      setup_quality_score: 0.7,
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      volume_zscore: 0.9,
+      rsi_entry_tf: 56,
+      expected_gross_r: 1.6,
+      expected_net_r_after_cost: 0.45,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1.15,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.9,
+      spread_bps: 2,
+      mark_index_gap_bps: 14.5,
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 14.5 } },
+  });
+  assert.strictEqual(criteria.no_trade_gate.ok, true);
+  assert.ok(!criteria.blockers.includes("NO_TRADE:MARK_INDEX_GAP_TOO_WIDE"));
+})();
+
 (function setupIsNotSynthesizedFromHtfAlignment() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",

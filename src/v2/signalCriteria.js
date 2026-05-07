@@ -68,7 +68,7 @@ const SIGNAL_CRITERIA_PROFILE_DEFAULTS = Object.freeze({
   }),
   [SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY]: Object.freeze({
     max_spread_bps: 14,
-    max_mark_index_gap_bps: 10,
+    max_mark_index_gap_bps: 15,
     max_funding_penalty_bps: 3,
     min_htf_alignment_score: 0.4,
     min_setup_quality_score: 0.38,
