@@ -188,6 +188,37 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.ok(criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:EMPIRICAL_DECAY_BLOCKED"));
 })();
 
+(function discoveryBlocksShortSideAfterEmpiricalDecay() {
+  const criteria = buildSignalCriteria({
+    signalSide: "SHORT",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "SHORT",
+      htf_alignment_score: 0.82,
+      setup_type: "BREAKOUT_RETEST",
+      setup_quality_score: 0.81,
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      volume_zscore: 1.1,
+      rsi_entry_tf: 44,
+      expected_gross_r: 1.8,
+      expected_net_r_after_cost: 0.4,
+      cost_estimate_bps: 6,
+      cost_r_equivalent: 0.08,
+      funding_penalty_bps: 1,
+      market_quality_score: 1,
+      spread_bps: 2,
+      mark_index_gap_bps: 3,
+      btc_1h_trend: "SHORT",
+      mtf_1h_direction: "SHORT",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 3 } },
+  });
+  assert.strictEqual(criteria.verdict, "BLOCK");
+  assert.ok(criteria.blockers.includes("SETUP:EMPIRICAL_SHORT_DECAY_BLOCKED"));
+})();
+
 (function strictProfileRejectsSameEarlySignal() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",

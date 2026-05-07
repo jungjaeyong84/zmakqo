@@ -75,6 +75,31 @@ function buildIntent(overrides = {}) {
   };
 }
 
+function buildPassIntent(overrides = {}) {
+  const { features_json: featureOverrides = {}, ...rowOverrides } = overrides || {};
+  return buildIntent({
+    features_json: {
+      setup_type: "BREAKOUT_RETEST",
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      htf_regime: "LONG",
+      htf_alignment_score: 0.62,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+      setup_quality_score: 0.72,
+      volume_ratio: 1.05,
+      rsi_entry_tf: 50.4,
+      expected_gross_r: 1.6,
+      expected_net_r_after_cost: 0.35,
+      cost_r_equivalent: 1.25,
+      funding_penalty_bps: 0,
+      score_norm: 0.67,
+      ...featureOverrides,
+    },
+    ...rowOverrides,
+  });
+}
+
 function marketDataQuality(overrides = {}) {
   return {
     ok: true,
@@ -109,7 +134,7 @@ function marketDataQuality(overrides = {}) {
 
 (function serverSignalSeedAcceptsTopLevelMarketQualityMetrics() {
   const seed = buildSignalCriteriaSeedFromIntent({
-    intentRow: buildIntent({
+    intentRow: buildPassIntent({
       features_json: {
         expected_net_r_after_cost: undefined,
         cost_r_equivalent: undefined,
@@ -132,7 +157,7 @@ function marketDataQuality(overrides = {}) {
 
 (function serverSignalSeedPrefersObservedMarketQualityOverRegimeScore() {
   const seed = buildSignalCriteriaSeedFromIntent({
-    intentRow: buildIntent({
+    intentRow: buildPassIntent({
       features_json: {
         market_quality_score: 0.6,
         market_state_score: 0.6,
@@ -184,7 +209,7 @@ function marketDataQuality(overrides = {}) {
 async function dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop() {
   const result = await buildDiscoveryCanaryLiveRequestFromIntent({
     env: buildEnv(),
-    intentRow: buildIntent({
+    intentRow: buildPassIntent({
       intent_id: "INTENT__DOGE__TEST",
       request_id: "REQ__DOGE__TEST",
       symbol_or_pair_id: "DOGEUSDT",
@@ -192,8 +217,8 @@ async function dogeLikeServerSignalRoutesDespiteReportOnlyEvDrop() {
       signal_id: "SIG__BINANCEFUT__DOGEUSDT__15m__1777017600000__LONG",
       features_json: {
         signal_family: "LONG",
-        setup_type: "PULLBACK_RECLAIM",
-        trigger_type: "RECLAIM",
+        setup_type: "BREAKOUT_RETEST",
+        trigger_type: "BREAKOUT",
         trigger_confirmed: true,
         htf_regime: "LONG",
         htf_alignment_score: 1,
@@ -245,7 +270,7 @@ async function dogeLowNotionalPassesWhenFullTpCanMeetExchangeMinimum() {
     env: buildEnv({
       DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOL_NOTIONAL_QUOTE_MAP: "DOGEUSDT:6",
     }),
-    intentRow: buildIntent({
+    intentRow: buildPassIntent({
       symbol_or_pair_id: "DOGEUSDT",
       event: "LONG",
       side: "BUY",
@@ -286,7 +311,7 @@ async function quarantinedSymbolBlocksBeforeProductionRouteRequest() {
       DONBEOLJA_V2_DISCOVERY_CANARY_REALIZED_GUARD_ENABLED: "1",
       DONBEOLJA_V2_DISCOVERY_CANARY_QUARANTINE_SYMBOLS: "BNBUSDT",
     }),
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
     referencePrice: 600,
     nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
@@ -310,7 +335,7 @@ async function quarantinedSymbolBlocksBeforeProductionRouteRequest() {
 async function serverSignalRoutesToV2ProductionEntryLiveRequest() {
   const result = await buildDiscoveryCanaryLiveRequestFromIntent({
     env: buildEnv(),
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
     referencePrice: 600,
     nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
@@ -343,7 +368,7 @@ async function bridgePersistsRouteRequiredLedgersBeforeEndpoint() {
   const built = await buildDiscoveryCanaryLiveRequestFromIntent({
     env,
     db,
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
     referencePrice: 600,
     nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
@@ -395,7 +420,7 @@ async function bridgeDoesNotReissueAlreadyClaimedPermit() {
   const built = await buildDiscoveryCanaryLiveRequestFromIntent({
     env,
     db,
-    intentRow: buildIntent({
+    intentRow: buildPassIntent({
       intent_id: "INTENT__BNB__CLAIMED",
       signal_id: "SIG__BINANCEFUT__BNBUSDT__15m__1777002300000__LONG",
       features_json: {
@@ -443,7 +468,7 @@ async function bridgeDoesNotReissueAlreadyClaimedPermit() {
 async function marketDataQualityBlockFailsClosed() {
   const result = await buildDiscoveryCanaryLiveRequestFromIntent({
     env: buildEnv(),
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
     referencePrice: 600,
     marketDataQuality: marketDataQuality({
@@ -464,7 +489,7 @@ async function marketDataQualityBlockFailsClosed() {
 async function linkStepSafeNotionalCanPassWhenTp1MinNotionalIsSatisfied() {
   const result = await buildDiscoveryCanaryLiveRequestFromIntent({
     env: buildEnv(),
-    intentRow: buildIntent({
+    intentRow: buildPassIntent({
       intent_id: "INTENT__LINK__TEST",
       request_id: "REQ__LINK__TEST",
       symbol_or_pair_id: "LINKUSDT",
@@ -509,7 +534,7 @@ async function shadowCounterfactualWireUpDerivesInputsFromBundle() {
   const built = await buildDiscoveryCanaryLiveRequestFromIntent({
     env,
     db: null,
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
     referencePrice: 600,
     nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
@@ -520,7 +545,7 @@ async function shadowCounterfactualWireUpDerivesInputsFromBundle() {
   assert.strictEqual(built.ok, true);
   const inputs = __test.deriveCounterfactualInputs({
     bundle: built.bundle,
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     request: built.request,
     body: built.request && built.request.body,
   });
@@ -562,7 +587,7 @@ async function shadowCounterfactualWireUpFiresAndForgetsWhenLedgerEnabled() {
   const built = await buildDiscoveryCanaryLiveRequestFromIntent({
     env,
     db,
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
     referencePrice: 600,
     nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
@@ -575,7 +600,7 @@ async function shadowCounterfactualWireUpFiresAndForgetsWhenLedgerEnabled() {
     db,
     env,
     built,
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     nowIso: "2026-04-24T07:16:00.000Z",
   });
   assert.strictEqual(persisted.ok, true);
@@ -598,7 +623,7 @@ async function shadowCounterfactualWireUpSkipsWhenLedgerDisabled() {
   const built = await buildDiscoveryCanaryLiveRequestFromIntent({
     env,
     db,
-    intentRow: buildIntent(),
+    intentRow: buildPassIntent(),
     liveCfg: { maxOrderQuote: 6, minOrderQuote: 5 },
     referencePrice: 600,
     nowMs: Date.parse("2026-04-24T07:16:00.000Z"),
