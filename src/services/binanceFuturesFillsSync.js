@@ -53,6 +53,7 @@ const {
 const { isFullTpExitRatio } = require("../v2/exitPolicy");
 const { normalizeV2ExitFillEvidence } = require("../v2/exitFillIngestion");
 const { getV2Doc, queryV2DocsByField } = require("../v2/storage");
+const { prepareFillSyncTradeAlertGate, markFillSyncTradeAlertGateResult } = require("../storage/fillSyncTradeAlertGate");
 const {
   COLLECTION: EXIT_AUTHORITY_STATE_COLLECTION,
   mergeStates: mergeExitAuthorityStates,
@@ -80,7 +81,6 @@ const externalCloseAlertChannelCache = new Map();
 const externalCloseAlertCooldownMap = new Map();
 const immediateProjectionAlertState = new Map();
 const fillSyncOverrideWarnState = new Map();
-const fillSyncTradeAlertCooldownMap = new Map();
 const fillsSyncLeaseHolderId = `fills_sync__${process.env.K_REVISION || process.env.HOSTNAME || "local"}__${process.pid}`;
 const FILL_SYNC_OVERRIDE_WARN_TTL_MS = 5 * 60 * 1000;
 const FILL_SYNC_TRADE_ALERT_COOLDOWN_MS = 10 * 60 * 1000;
@@ -1753,19 +1753,12 @@ function shouldSendFillSyncTradeAlert({
     orderMeta,
     payload,
   });
-  const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
-  const ttlMs = Math.max(1000, Number(cooldownMs) || FILL_SYNC_TRADE_ALERT_COOLDOWN_MS);
-  const prev = Number(fillSyncTradeAlertCooldownMap.get(key));
-  if (Number.isFinite(prev) && (now - prev) < ttlMs) {
-    return { send: false, key, lastSentAtMs: prev };
-  }
-  fillSyncTradeAlertCooldownMap.set(key, now);
-  for (const [cacheKey, sentAtMs] of fillSyncTradeAlertCooldownMap.entries()) {
-    if (!Number.isFinite(Number(sentAtMs)) || (now - Number(sentAtMs)) >= ttlMs) {
-      fillSyncTradeAlertCooldownMap.delete(cacheKey);
-    }
-  }
-  return { send: true, key, lastSentAtMs: now };
+  return prepareFillSyncTradeAlertGate({
+    key,
+    cooldownMs: Math.max(1000, Number(cooldownMs) || FILL_SYNC_TRADE_ALERT_COOLDOWN_MS),
+    nowMs,
+    source: "binanceFuturesFillsSync.flushFillSyncAlertBatches",
+  });
 }
 
 function queueFillSyncAlertBatch(batchMap, {
@@ -1859,8 +1852,9 @@ async function flushFillSyncAlertBatches(batchMap, {
   if (!(batchMap instanceof Map) || !batchMap.size) return;
   const items = Array.from(batchMap.values()).sort((a, b) => a.latestTradeMs - b.latestTradeMs);
   for (const item of items) {
+    let gate = null;
     try {
-      const gate = shouldSendAlert({
+      gate = await shouldSendAlert({
         symbol: item.payload && item.payload.symbol,
         event: item.payload && item.payload.event,
         intent: item.payload && item.payload.intent,
@@ -1888,8 +1882,28 @@ async function flushFillSyncAlertBatches(batchMap, {
           ? item.payload.idempotency_key
           : (gate.key || null),
       };
-      await sendTradeAlert(payload);
+      const result = await sendTradeAlert(payload);
+      await markFillSyncTradeAlertGateResult({
+        gateId: gate.gateId || null,
+        claimToken: gate.claimToken || null,
+        ok: true,
+        skipped: result && result.skipped === true,
+        reason: result && result.reason ? result.reason : null,
+        nowMs: item.latestTradeMs || Date.now(),
+      });
     } catch (e) {
+      if (gate && gate.gateId) {
+        try {
+          await markFillSyncTradeAlertGateResult({
+            gateId: gate.gateId,
+            claimToken: gate.claimToken || null,
+            ok: false,
+            skipped: false,
+            reason: e && e.message ? e.message : String(e),
+            nowMs: item.latestTradeMs || Date.now(),
+          });
+        } catch (_) {}
+      }
       console.warn("[TRADE_EXEC_ALERT_FAIL][FILL_SYNC_BATCH]", e && e.message ? e.message : String(e));
     }
   }
