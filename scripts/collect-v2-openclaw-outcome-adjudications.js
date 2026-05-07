@@ -82,6 +82,37 @@ function collectDecisionEvidenceLookupKeysFromFills(fills = []) {
   };
 }
 
+function collectDecisionEvidenceLookupKeysFromOutcomes(outcomes = []) {
+  const openclawDecisionIds = new Set();
+  const signalIntentIds = new Set();
+  const positionCycleIds = new Set();
+  for (const row of Array.isArray(outcomes) ? outcomes : []) {
+    const evidence = row && typeof row.evidence === "object" && row.evidence
+      ? row.evidence
+      : null;
+    const entryFeatures = evidence && typeof evidence.entry_features === "object" && evidence.entry_features
+      ? evidence.entry_features
+      : null;
+    const decisionId = trimOrNull(row && row.openclaw_decision_id)
+      || trimOrNull(evidence && evidence.openclaw_decision_id)
+      || trimOrNull(entryFeatures && entryFeatures.openclaw_decision_id);
+    const signalIntentId = trimOrNull(row && (row.signal_intent_id || row.intent_id))
+      || trimOrNull(evidence && (evidence.signal_intent_id || evidence.intent_id))
+      || trimOrNull(entryFeatures && (entryFeatures.signal_intent_id || entryFeatures.intent_id));
+    const positionCycleId = trimOrNull(row && row.position_cycle_id)
+      || trimOrNull(evidence && evidence.position_cycle_id)
+      || trimOrNull(entryFeatures && entryFeatures.position_cycle_id);
+    if (decisionId) openclawDecisionIds.add(decisionId);
+    if (signalIntentId) signalIntentIds.add(signalIntentId);
+    if (positionCycleId) positionCycleIds.add(positionCycleId);
+  }
+  return {
+    openclawDecisionIds: [...openclawDecisionIds],
+    signalIntentIds: [...signalIntentIds],
+    positionCycleIds: [...positionCycleIds],
+  };
+}
+
 function dedupeDecisionEvidenceRows(rows = []) {
   const docsById = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -139,7 +170,7 @@ async function loadFillsFromFirestore({ db = null, env = process.env } = {}) {
   };
 }
 
-async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env, fills = [] } = {}) {
+async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env, fills = [], lookupKeys = null } = {}) {
   const firestore = db || getFirestore();
   if (!firestore || typeof firestore.collection !== "function") {
     throw new Error("V2_OUTCOME_ADJUDICATION_FIRESTORE_REQUIRED");
@@ -169,24 +200,24 @@ async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env,
       ].filter(Boolean)));
   const targetedRows = [];
   const collectionStats = [];
-  const lookupKeys = collectDecisionEvidenceLookupKeysFromFills(fills);
+  const resolvedLookupKeys = lookupKeys || collectDecisionEvidenceLookupKeysFromFills(fills);
   const targetedTasks = [];
   for (const collection of collections) {
-    for (const openclawDecisionId of lookupKeys.openclawDecisionIds) {
+    for (const openclawDecisionId of resolvedLookupKeys.openclawDecisionIds) {
       targetedTasks.push(
         firestore.collection(collection).where("openclaw_decision_id", "==", openclawDecisionId).limit(5).get()
           .then((snap) => snap.docs.map((doc) => ({ id: doc.id || null, ...(typeof doc.data === "function" ? doc.data() : {}) })))
           .catch(() => [])
       );
     }
-    for (const signalIntentId of lookupKeys.signalIntentIds) {
+    for (const signalIntentId of resolvedLookupKeys.signalIntentIds) {
       targetedTasks.push(
         firestore.collection(collection).where("signal_intent_id", "==", signalIntentId).limit(5).get()
           .then((snap) => snap.docs.map((doc) => ({ id: doc.id || null, ...(typeof doc.data === "function" ? doc.data() : {}) })))
           .catch(() => [])
       );
     }
-    for (const positionCycleId of lookupKeys.positionCycleIds) {
+    for (const positionCycleId of resolvedLookupKeys.positionCycleIds) {
       targetedTasks.push(
         firestore.collection(collection).where("position_cycle_id", "==", positionCycleId).limit(5).get()
           .then((snap) => snap.docs.map((doc) => ({ id: doc.id || null, ...(typeof doc.data === "function" ? doc.data() : {}) })))
@@ -222,7 +253,7 @@ async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env,
     collection_stats: collectionStats,
     order_field: orderField,
     limit,
-    decisionEvidenceLookupKeys: lookupKeys,
+    decisionEvidenceLookupKeys: resolvedLookupKeys,
     targeted_match_n: targetedRows.length,
     decisionEvidenceRows: dedupeDecisionEvidenceRows(targetedRows),
   };
@@ -244,21 +275,21 @@ async function loadFills({ inputPath, env = process.env, db = null } = {}) {
   return loadFillsFromFirestore({ db, env });
 }
 
-async function loadDecisionEvidence({ inputPath, env = process.env, db = null, fills = [] } = {}) {
+async function loadDecisionEvidence({ inputPath, env = process.env, db = null, fills = [], lookupKeys = null } = {}) {
   const explicitSource = upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_DECISION_EVIDENCE_SOURCE);
   const inheritedSource = upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE);
   const source = explicitSource || inheritedSource || "AUTO";
   if (source === "NONE" || source === "DISABLED") {
     return { source: "DISABLED", decisionEvidenceRows: [] };
   }
-  if (source === "FIRESTORE") return loadDecisionEvidenceFromFirestore({ db, env, fills });
+  if (source === "FIRESTORE") return loadDecisionEvidenceFromFirestore({ db, env, fills, lookupKeys });
   if (!explicitSource && inputPath && fs.existsSync(inputPath)) {
     const cachePayload = {
       source: "CACHE_FILE",
       input_file: inputPath,
       decisionEvidenceRows: loadDecisionEvidenceFromFile(inputPath),
     };
-    const firestorePayload = await loadDecisionEvidenceFromFirestore({ db, env, fills }).catch(() => ({ source: "FIRESTORE", decisionEvidenceRows: [] }));
+    const firestorePayload = await loadDecisionEvidenceFromFirestore({ db, env, fills, lookupKeys }).catch(() => ({ source: "FIRESTORE", decisionEvidenceRows: [] }));
     return mergeDecisionEvidenceSources(cachePayload, firestorePayload);
   }
   if (inputPath && fs.existsSync(inputPath)) {
@@ -278,7 +309,7 @@ async function loadDecisionEvidence({ inputPath, env = process.env, db = null, f
   if (source === "CACHE" || source === "CACHE_FILE" || source === "FILE") {
     throw new Error("V2_OUTCOME_ADJUDICATION_DECISION_EVIDENCE_INPUT_FILE_MISSING");
   }
-  return loadDecisionEvidenceFromFirestore({ db, env, fills });
+  return loadDecisionEvidenceFromFirestore({ db, env, fills, lookupKeys });
 }
 
 async function runCollector({ env = process.env, db = null } = {}) {
@@ -401,6 +432,10 @@ if (require.main === module) {
       upper,
       parseFillsPayload,
       parseDecisionEvidencePayload,
+      collectDecisionEvidenceLookupKeysFromOutcomes,
+      collectDecisionEvidenceLookupKeysFromFills,
+      dedupeDecisionEvidenceRows,
+      mergeDecisionEvidenceSources,
     },
   };
 }
