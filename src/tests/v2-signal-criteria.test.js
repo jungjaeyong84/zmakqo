@@ -7,7 +7,9 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
 (function passingCriteriaBuildsPassVerdict() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",
-    signalCriteria: buildPassSignalCriteriaSeed("LONG"),
+    signalCriteria: buildPassSignalCriteriaSeed("LONG", {
+      setup_gate: { setup_type: "BREAKOUT_RETEST", setup_quality_score: 0.8 },
+    }),
     qualityScore: 0.84,
     featureValues: {
       market_regime: "trend",
@@ -52,7 +54,7 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.ok(criteria.signal_score >= 80);
   assert.strictEqual(criteria.criteria_profile, "V6_COMPAT_DISCOVERY");
   assert.strictEqual(criteria.entry_grade, "CORE");
-  assert.strictEqual(criteria.trigger_type, "NONE");
+  assert.strictEqual(criteria.trigger_type, "BREAKOUT");
 })();
 
 (function v6CompatDiscoveryAllowsEarlySignalsWithoutStrictMode() {
@@ -237,7 +239,7 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
       market_regime: "trend",
       htf_regime: "LONG",
       htf_alignment_score: 0.82,
-      setup_type: "PULLBACK_RECLAIM",
+      setup_type: "BREAKOUT_RETEST",
       setup_quality_score: 0.8,
       trigger_confirmed: true,
       volume_zscore: 1.4,
