@@ -3,12 +3,15 @@
 const assert = require("assert");
 const { __test: fillsSyncTest } = require("../services/binanceFuturesFillsSync");
 const { __test: alertTest } = require("../services/tradeExecutionAlert");
+const { __test: fillSyncTradeAlertGateTest } = require("../storage/fillSyncTradeAlertGate");
 
 function approxEqual(actual, expected, epsilon = 1e-9) {
   return Math.abs(Number(actual) - Number(expected)) <= epsilon;
 }
 
 async function run() {
+  fillSyncTradeAlertGateTest.fallbackGateState.clear();
+
   const rescueExitRules = fillsSyncTest.resolveAlertExitRules({
     position: {
       meta: {
