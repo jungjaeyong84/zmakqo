@@ -420,6 +420,14 @@ function readFreshEvResolvedLedger(nowMs = Date.now()) {
   }
 }
 
+function writeEvResolvedLedgerLatest(evLedger) {
+  if (!evLedger || typeof evLedger !== "object") return null;
+  const filePath = path.join(OPS_DAILY_DIR, "ev_resolved_ledger_latest.json");
+  const payload = wrapDisplayAndRawReport(evLedger);
+  writeJson(filePath, payload);
+  return { filePath, data: payload };
+}
+
 function applyMlEvGuidance({ plan, bandPlan, currentThreshold, currentBand, mlPolicyReport } = {}) {
   const report = mlPolicyReport && mlPolicyReport.data;
   const evRec = report && report.recommendations && report.recommendations.EV;
@@ -1154,6 +1162,15 @@ async function main() {
       decisionEvidenceRows: decisionEvidenceRes.rows,
       sysCfg: currentSys,
     });
+    const persistedLedger = writeEvResolvedLedgerLatest(evLedger);
+    if (persistedLedger && persistedLedger.filePath) {
+      stageLedgerMeta = {
+        source: "REBUILT_FROM_CACHE",
+        filePath: persistedLedger.filePath,
+        age_ms: 0,
+        fresh: true,
+      };
+    }
   }
 
   const classified = (Array.isArray(evLedger && evLedger.rows) ? evLedger.rows : [])

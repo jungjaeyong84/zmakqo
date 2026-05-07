@@ -50,6 +50,29 @@ function run() {
         signal_bar_close_time_utc_ms: 1_000,
       },
     ]],
+    ["ENTRYV2__ETH__1", [
+      {
+        id: "fill-entry-2",
+        exchange: "BINANCEFUT",
+        symbol: "ETHUSDT",
+        tf: "15m",
+        side: "SELL",
+        event: "SYNC_FILL",
+        entry_event_id: "ENTRYV2__ETH__1",
+        signal_bar_close_time_utc_ms: 2_000,
+        signal_intent_id: "SIGINTV2__SERVER_NATIVE_ML_AI__ETHUSDT__SHORT__abc",
+      },
+      {
+        id: "fill-exit-2",
+        exchange: "BINANCEFUT",
+        symbol: "ETHUSDT",
+        tf: "15m",
+        side: "BUY",
+        event: "EXIT_TP_FULL_2.5P",
+        entry_event_id: "ENTRYV2__ETH__1",
+        signal_bar_close_time_utc_ms: 2_000,
+      },
+    ]],
   ]);
 
   const tradeMap = new Map([
@@ -77,6 +100,7 @@ function run() {
   assert.strictEqual(rows[0].signal_intent_id, "SIGINTV2__SERVER_NATIVE_ML_AI__TIAUSDT__LONG__abc");
   assert.strictEqual(rows[0].predicted, 0.6421);
   assert.strictEqual(rows[0].probability, 0.6421);
+  assert.strictEqual(rows[0].lower_bound, 0.6421);
   assert.strictEqual(rows[0].outcome, "TP1_HIT");
   assert.strictEqual(rows[0].resolved_for_tune, true);
   assert.strictEqual(rows[0].realized_pnl_quote, 1210);
@@ -87,6 +111,12 @@ function run() {
     signal_bar_close_time_utc_ms: 1_000,
   }, fillsByEntryEventId, 1_000 + (13 * 60 * 60 * 1000), 12 * 60 * 60 * 1000);
   assert.strictEqual(explicitOutcome.status, "TP1_HIT");
+
+  const fullTpOutcome = __test.classifyEntryOutcome({
+    entry_event_id: "ENTRYV2__ETH__1",
+    signal_bar_close_time_utc_ms: 2_000,
+  }, fillsByEntryEventId, 2_000 + (13 * 60 * 60 * 1000), 12 * 60 * 60 * 1000);
+  assert.strictEqual(fullTpOutcome.status, "TP1_HIT");
 
   console.log("STAGE_OUTCOME_LEDGERS_V2_EXECUTED_TEST_OK");
 }

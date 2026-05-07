@@ -241,7 +241,10 @@ function buildEntryEventId({ exchange, symbol, tf, signalBarCloseMs, event } = {
 
 function isTp1Event(eventRaw) {
   const ev = String(eventRaw || "").trim().toUpperCase();
-  return ev === "EXIT_TP_P1" || ev.startsWith("EXIT_TP_P1_");
+  return ev === "EXIT_TP_P1"
+    || ev.startsWith("EXIT_TP_P1_")
+    || ev === "EXIT_TP_FULL"
+    || ev.startsWith("EXIT_TP_FULL_");
 }
 
 function isExitEvent(eventRaw) {
@@ -263,7 +266,7 @@ function extractDecisionProbability(decisionEvidence, fill = null) {
   const fillFeatures = resolveFeatures(fill);
   const criteria = extractSignalCriteriaFromDecisionEvidence(decisionEvidence);
   const proposal = extractMlAiSignalProposalFromDecisionEvidence(decisionEvidence);
-  const lowerBound = toNum(firstValue(
+  const rawLowerBound = toNum(firstValue(
     fillFeatures.ev_gate_tp1_reach_prob_lower_bound,
     getPath(criteria, ["expected_edge_gate", "tp1_reach_prob_lower_bound"]),
     getPath(criteria, ["expected_edge_model", "tp1_reach_prob_lower_bound"]),
@@ -274,6 +277,7 @@ function extractDecisionProbability(decisionEvidence, fill = null) {
     getPath(criteria, ["expected_edge_gate", "tp1_reach_probability"]),
     proposal && proposal.tp1_reach_probability,
   ));
+  const lowerBound = Number.isFinite(rawLowerBound) ? rawLowerBound : probability;
   return {
     source: decisionEvidence ? "OPENCLAW_DECISION_BUNDLE" : (Number.isFinite(probability) || Number.isFinite(lowerBound) ? "FILL_FEATURES" : null),
     lowerBound,
