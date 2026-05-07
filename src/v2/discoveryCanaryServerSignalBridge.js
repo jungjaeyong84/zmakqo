@@ -38,33 +38,29 @@ const { evaluateDiscoveryCanaryRealizedPerformanceGuard } = require("./discovery
 // fillSync's later authoritative echo lands inside the dedupe TTL and
 // doesn't double-fire to the operator.
 const { sendTradeExecutionAlert } = require("../services/tradeExecutionAlert");
-const entryAlertDedupeState = new Map();
-const ENTRY_ALERT_DEDUPE_TTL_MS = (() => {
-  const raw = Number(process.env.V2_DISCOVERY_BRIDGE_ENTRY_ALERT_DEDUPE_TTL_MS);
-  if (Number.isFinite(raw) && raw > 0) return raw;
-  return 10 * 60 * 1000;
-})();
 function buildEntryAlertDedupeKey({ symbol, signalId, intentId }) {
   const sym = String(symbol || "").trim().toUpperCase() || "?";
   const idem = String(signalId || intentId || "NA").trim();
   return `${sym}__ENTRY__${idem}`;
 }
-function shouldDispatchEntryAlert(key, nowMs = Date.now()) {
-  if (!key) return true;
-  const last = entryAlertDedupeState.get(key);
-  if (!Number.isFinite(last)) return true;
-  if (nowMs - last >= ENTRY_ALERT_DEDUPE_TTL_MS) {
-    entryAlertDedupeState.delete(key);
-    return true;
-  }
-  return false;
+
+function normalizeHtfDirection(value) {
+  const token = upper(value);
+  if (token === "LONG" || token === "SHORT") return token;
+  if (token === "BULL") return "LONG";
+  if (token === "BEAR") return "SHORT";
+  return null;
 }
-function recordEntryAlertDispatched(key, nowMs = Date.now()) {
-  if (!key) return;
-  entryAlertDedupeState.set(key, nowMs);
-}
-function clearEntryAlertDedupeForTest() {
-  entryAlertDedupeState.clear();
+
+function resolveHtfSeedRegime(features = {}) {
+  const row = asObject(features) || {};
+  return normalizeHtfDirection(
+    row.htf_regime
+    || row.htf_direction
+    || row.htf_bias
+    || row.btc_1h_trend
+    || row.mtf_1h_direction
+  ) || "NEUTRAL";
 }
 function resolveEntrySideFromIntent(intentRow = {}) {
   const explicit = String(intentRow && intentRow.side || "").trim().toUpperCase();
@@ -574,10 +570,10 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
   const features = asObject(intentRow.features_json) || {};
   const side = sideFromIntent(intentRow);
   const grossR = toNumberOrNull(features.expected_gross_r) ?? toNumberOrNull(features.rr);
-  const spreadBps = toNumberOrNull(features.spread_bps)
-    ?? metricNumber(marketDataQuality, "spread_bps", "spreadBps");
-  const markIndexGapBps = toNumberOrNull(features.mark_index_gap_bps)
-    ?? metricNumber(marketDataQuality, "mark_index_gap_bps", "mark_index_divergence_bps", "markIndexGapBps", "markIndexDivergenceBps");
+  const spreadBps = metricNumber(marketDataQuality, "spread_bps", "spreadBps")
+    ?? toNumberOrNull(features.spread_bps);
+  const markIndexGapBps = metricNumber(marketDataQuality, "mark_index_gap_bps", "mark_index_divergence_bps", "markIndexGapBps", "markIndexDivergenceBps")
+    ?? toNumberOrNull(features.mark_index_gap_bps);
   const feeBpsRoundTrip = toNumberOrNull(features.fee_bps_round_trip)
     ?? toNumberOrNull(features.fee_estimate_bps)
     ?? toNumberOrNull(features.commission_bps_round_trip)
@@ -599,10 +595,11 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
     ? explicitNetR
     : (grossR !== null && costREquivalent !== null ? Math.max(0, grossR - costREquivalent) : null);
   const fundingPenaltyBpsFromMarket = metricNumber(marketDataQuality, "funding_penalty_bps");
-  const resolvedFundingPenaltyBps = Math.abs(toNumberOrNull(features.funding_penalty_bps) ?? fundingPenaltyBpsFromMarket ?? 0);
+  const resolvedFundingPenaltyBps = Math.abs(fundingPenaltyBpsFromMarket ?? toNumberOrNull(features.funding_penalty_bps) ?? 0);
+  const resolvedHtfRegime = resolveHtfSeedRegime(features);
   return Object.freeze({
     htf_regime: {
-      regime: side,
+      regime: resolvedHtfRegime,
       alignment_score: clamp01(features.htf_alignment_score ?? features.structure_alignment ?? features.canonical_engine_field_alignment ?? features.confidence, 0),
     },
     setup_gate: {
@@ -638,12 +635,13 @@ function buildSignalCriteriaSeedFromIntent({ intentRow = {}, marketDataQuality =
 function buildStrategyFilterResultFromIntent({ intentRow = {}, nowIso = null } = {}) {
   const features = asObject(intentRow.features_json) || {};
   const side = sideFromIntent(intentRow);
+  const htfDirection = resolveHtfSeedRegime(features);
   return Object.freeze({
     filter_name: "HTF_DIRECTION_ALIGNMENT",
     verdict: "PASS",
     reason: "V6_SERVER_NATIVE_SIGNAL_EMITTED",
     signal_side: side,
-    htf_direction: side,
+    htf_direction: htfDirection,
     htf_confidence: clamp01(features.htf_alignment_score ?? features.structure_alignment ?? features.confidence, 0),
     min_confidence: 0.4,
     evaluated_at: trimOrNull(nowIso) || new Date().toISOString(),
@@ -954,8 +952,6 @@ async function runV2DiscoveryCanaryServerSignalHandoff({
         || trimOrNull(built && built.request && built.request.body && built.request.body.signalIntent && built.request.body.signalIntent.signal_intent_id);
       const intentId = trimOrNull(intentRow && intentRow.intent_id);
       const dedupeKey = buildEntryAlertDedupeKey({ symbol: intentSym, signalId, intentId });
-      if (!shouldDispatchEntryAlert(dedupeKey)) return;
-      recordEntryAlertDispatched(dedupeKey);
       const side = resolveEntrySideFromIntent(intentRow) || "LONG";
       const refPrice = Number.isFinite(Number(referencePrice)) ? Number(referencePrice) : null;
       const sizingDecision = (built && built.request && built.request.body && built.request.body.entrySizingDecision) || null;
@@ -1059,14 +1055,11 @@ module.exports = {
     toNumberOrNull,
     sideFromIntent,
     setupTypeFromFeatures,
-    // 2026-04-29 — entry α alert helpers
     buildEntryAlertDedupeKey,
-    shouldDispatchEntryAlert,
-    recordEntryAlertDispatched,
-    clearEntryAlertDedupeForTest,
+    normalizeHtfDirection,
+    resolveHtfSeedRegime,
     resolveEntrySideFromIntent,
     classifyEntryAlertReachability,
-    ENTRY_ALERT_DEDUPE_TTL_MS,
     resolveReferencePrice,
     stepSafeNotional,
     buildStrategyFilterResultFromIntent,

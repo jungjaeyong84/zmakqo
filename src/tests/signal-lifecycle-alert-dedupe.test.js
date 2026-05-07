@@ -7,6 +7,12 @@ function makeFakeDb() {
   const store = new Map();
   return {
     store,
+    async runTransaction(fn) {
+      return fn({
+        async get(ref) { return ref.get(); },
+        set(ref, payload, options = {}) { return ref.set(payload, options); },
+      });
+    },
     collection(name) {
       return {
         doc(id) {
@@ -129,6 +135,35 @@ async function run() {
     db,
   });
   assert.strictEqual(replay.skipSend, true, "already SENT lifecycle outbox row must suppress duplicate Telegram send");
+
+  const pendingDb = makeFakeDb();
+  const firstPending = await __test.prepareSignalLifecycleAlertOutbox({
+    type: "DROPPED",
+    exchange: "BINANCEFUT",
+    symbol: "LINKUSDT",
+    event: "SHORT",
+    title: "LINKUSDT 서버 신호 드롭",
+    body: "drop body",
+    channel: "telegram:ops",
+    payload: dropped,
+    dedupeKey: firstKey,
+    db: pendingDb,
+  });
+  assert.strictEqual(firstPending.skipSend, false);
+  const secondPending = await __test.prepareSignalLifecycleAlertOutbox({
+    type: "DROPPED",
+    exchange: "BINANCEFUT",
+    symbol: "LINKUSDT",
+    event: "SHORT",
+    title: "LINKUSDT 서버 신호 드롭",
+    body: "drop body",
+    channel: "telegram:ops",
+    payload: dropped,
+    dedupeKey: firstKey,
+    db: pendingDb,
+  });
+  assert.strictEqual(secondPending.skipSend, true, "active PENDING claim must suppress duplicate sender");
+  assert.strictEqual(secondPending.reason, "CLAIM_HELD");
 
   console.log("SIGNAL_LIFECYCLE_ALERT_DEDUPE_TEST_OK");
 }

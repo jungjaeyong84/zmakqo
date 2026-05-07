@@ -15,6 +15,7 @@ const ROOT = path.resolve(__dirname, "../..");
 const OPS_RUNTIME = path.join(ROOT, "ops", "runtime");
 const SIGNAL_COMPARE_STATE_PATH = path.join(OPS_RUNTIME, "signal_compare_alert_state.json");
 const SIGNAL_LIFECYCLE_ALERT_OUTBOX_COLLECTION = "signal_lifecycle_alert_outbox";
+const SIGNAL_LIFECYCLE_ALERT_CLAIM_TTL_MS = 60 * 1000;
 
 function toBool(v, def = false) {
   if (v == null) return def;
@@ -530,41 +531,66 @@ async function prepareSignalLifecycleAlertOutbox({
   });
   const db = injectedDb || getFirestore();
   const ref = db.collection(SIGNAL_LIFECYCLE_ALERT_OUTBOX_COLLECTION).doc(outboxId);
-  const snap = await ref.get();
-  const prev = snap.exists ? (snap.data() || {}) : null;
-  if (prev && upper(prev.status) === "SENT" && allowResend !== true) {
-    return { outboxId, ref, doc: prev, skipSend: true };
-  }
-  const now = nowIso();
-  const attemptCount = Math.max(0, Number(prev && prev.attempt_count) || 0) + 1;
-  const doc = {
-    signal_lifecycle_alert_outbox_id: outboxId,
-    type: upper(type),
-    exchange: normalizeExchange(exchange || payload.exchange),
-    symbol: upper(symbol || payload.symbol),
-    event: upper(event || payload.event),
-    tf: trimOrNull(payload.tf),
-    status: "PENDING",
-    dedupe_key: resolvedDedupeKey,
-    signal_id: trimOrNull(payload.signalId || payload.signal_id),
-    reason: resolveSignalLifecycleAlertReasonToken(type, payload),
-    created_at: trimOrNull(prev && prev.created_at) || now,
-    updated_at: now,
-    last_attempt_at: now,
-    attempt_count: attemptCount,
-    last_channel: trimOrNull(channel) || trimOrNull(prev && prev.last_channel),
-    last_title: trimOrNull(title) || trimOrNull(prev && prev.last_title),
-    last_body: trimOrNull(body) || trimOrNull(prev && prev.last_body),
-    last_error: null,
-    last_result: null,
-    payload: cloneJson(payload) || cloneJson(prev && prev.payload),
-  };
-  await ref.set(doc, { merge: true });
-  return { outboxId, ref, doc, skipSend: false };
+  const claimToken = crypto.randomUUID();
+  const runTx = typeof db.runTransaction === "function"
+    ? (fn) => db.runTransaction(fn)
+    : async (fn) => fn({
+      async get(docRef) { return docRef.get(); },
+      set(docRef, value, options) { return docRef.set(value, options); },
+    });
+  return runTx(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = snap.exists ? (snap.data() || {}) : null;
+    if (prev && upper(prev.status) === "SENT" && allowResend !== true) {
+      return { outboxId, ref, doc: prev, skipSend: true, claimToken: null };
+    }
+    const prevClaimToken = trimOrNull(prev && prev.dispatch_claim_token);
+    const prevClaimExpiry = Number(prev && prev.dispatch_claim_expires_at_ms);
+    if (
+      prev
+      && upper(prev.status) === "PENDING"
+      && prevClaimToken
+      && Number.isFinite(prevClaimExpiry)
+      && prevClaimExpiry > Date.now()
+      && allowResend !== true
+    ) {
+      return { outboxId, ref, doc: prev, skipSend: true, claimToken: null, reason: "CLAIM_HELD" };
+    }
+    const now = nowIso();
+    const attemptCount = Math.max(0, Number(prev && prev.attempt_count) || 0) + 1;
+    const doc = {
+      signal_lifecycle_alert_outbox_id: outboxId,
+      type: upper(type),
+      exchange: normalizeExchange(exchange || payload.exchange),
+      symbol: upper(symbol || payload.symbol),
+      event: upper(event || payload.event),
+      tf: trimOrNull(payload.tf),
+      status: "PENDING",
+      dedupe_key: resolvedDedupeKey,
+      signal_id: trimOrNull(payload.signalId || payload.signal_id),
+      reason: resolveSignalLifecycleAlertReasonToken(type, payload),
+      created_at: trimOrNull(prev && prev.created_at) || now,
+      updated_at: now,
+      last_attempt_at: now,
+      attempt_count: attemptCount,
+      last_channel: trimOrNull(channel) || trimOrNull(prev && prev.last_channel),
+      last_title: trimOrNull(title) || trimOrNull(prev && prev.last_title),
+      last_body: trimOrNull(body) || trimOrNull(prev && prev.last_body),
+      last_error: null,
+      last_result: null,
+      payload: cloneJson(payload) || cloneJson(prev && prev.payload),
+      dispatch_claim_token: claimToken,
+      dispatch_claimed_at: now,
+      dispatch_claim_expires_at_ms: Date.now() + SIGNAL_LIFECYCLE_ALERT_CLAIM_TTL_MS,
+    };
+    tx.set(ref, doc, { merge: true });
+    return { outboxId, ref, doc, skipSend: false, claimToken };
+  });
 }
 
 async function markSignalLifecycleAlertOutboxResult({
   outboxId,
+  claimToken = null,
   ok = false,
   skipped = false,
   reason = null,
@@ -577,23 +603,34 @@ async function markSignalLifecycleAlertOutboxResult({
   const id = trimOrNull(outboxId);
   if (!id) return null;
   const db = getFirestore();
-  const now = nowIso();
-  const status = skipped === true ? "SKIPPED" : (ok === true ? "SENT" : "FAILED");
-  const patch = {
-    status,
-    updated_at: now,
-    last_reason: trimOrNull(reason),
-    last_error: status === "SENT" ? null : (trimOrNull(error) || trimOrNull(reason)),
-    last_result: cloneJson(result),
-    last_channel: trimOrNull(channel),
-    last_title: trimOrNull(title),
-    last_body: trimOrNull(body),
-  };
-  if (status === "SENT") patch.sent_at = now;
-  else if (status === "SKIPPED") patch.skipped_at = now;
-  else patch.failed_at = now;
-  await db.collection(SIGNAL_LIFECYCLE_ALERT_OUTBOX_COLLECTION).doc(id).set(patch, { merge: true });
-  return { outboxId: id, status };
+  const ref = db.collection(SIGNAL_LIFECYCLE_ALERT_OUTBOX_COLLECTION).doc(id);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = snap.exists ? (snap.data() || {}) : {};
+    const activeClaim = trimOrNull(prev.dispatch_claim_token);
+    if (activeClaim && trimOrNull(claimToken) && activeClaim !== trimOrNull(claimToken)) {
+      return { outboxId: id, status: upper(prev.status) || "PENDING", skipped: true, reason: "CLAIM_TOKEN_MISMATCH" };
+    }
+    const now = nowIso();
+    const status = skipped === true ? "SKIPPED" : (ok === true ? "SENT" : "FAILED");
+    const patch = {
+      status,
+      updated_at: now,
+      last_reason: trimOrNull(reason),
+      last_error: status === "SENT" ? null : (trimOrNull(error) || trimOrNull(reason)),
+      last_result: cloneJson(result),
+      last_channel: trimOrNull(channel),
+      last_title: trimOrNull(title),
+      last_body: trimOrNull(body),
+      dispatch_claim_token: null,
+      dispatch_claim_expires_at_ms: null,
+    };
+    if (status === "SENT") patch.sent_at = now;
+    else if (status === "SKIPPED") patch.skipped_at = now;
+    else patch.failed_at = now;
+    tx.set(ref, patch, { merge: true });
+    return { outboxId: id, status };
+  });
 }
 
 function shouldNotifyType(type) {
@@ -698,6 +735,7 @@ async function sendSignalLifecycleAlert({ type, ...payload } = {}) {
     try {
       await markSignalLifecycleAlertOutboxResult({
         outboxId: outbox.outboxId,
+        claimToken: outbox.claimToken || null,
         ok: result && result.ok === true,
         reason: result && result.reason,
         error: result && result.error_message,
