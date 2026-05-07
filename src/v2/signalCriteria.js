@@ -78,8 +78,8 @@ const SIGNAL_CRITERIA_PROFILE_DEFAULTS = Object.freeze({
     max_rsi_short: 52,
     min_expected_gross_r: 1.45,
     min_expected_net_r_after_cost: 0.25,
-    min_signal_score: 55,
-    early_signal_score: 55,
+    min_signal_score: 50,
+    early_signal_score: 50,
     core_signal_score: 78,
   }),
 });

@@ -85,6 +85,38 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.trigger_type, "CONTINUATION");
 })();
 
+(function v6CompatDiscoveryAllowsBorderlineEarlyScoreAt50() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "range",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.4,
+      setup_type: "BREAKOUT_RETEST",
+      setup_quality_score: 0.72,
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      volume_zscore: 0.35,
+      rsi_entry_tf: 56,
+      expected_gross_r: 1.55,
+      expected_net_r_after_cost: 0.28,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1.27,
+      funding_penalty_bps: 1,
+      market_quality_score: 1,
+      spread_bps: 2,
+      mark_index_gap_bps: 14,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 14 } },
+  });
+  assert.strictEqual(criteria.verdict, "PASS");
+  assert.ok(criteria.signal_score >= 50);
+  assert.strictEqual(criteria.entry_grade, "EARLY");
+})();
+
 (function strictProfileRejectsSameEarlySignal() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",
