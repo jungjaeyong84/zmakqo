@@ -25,6 +25,7 @@ const { monthlyRunRateKrw } = require("./lib/objective-policy");
 const { pickSettingsSnapshot, writeStageSnapshot } = require("./lib/stage-autopilot");
 const { readBestFebtSupervisorContext } = require("./lib/best-febt-supervisor");
 const { wrapDisplayAndRawReport } = require("../src/utils/jsonDisplayFields");
+const { resolveV2CollectionName } = require("../src/v2/storage");
 const {
   isEntryTierEvent,
   resolveEntryTimingTier,
@@ -80,6 +81,11 @@ const EV_SNAPSHOT_KEYS = Object.freeze([
 function toNum(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
 }
 
 function clamp(v, min, max) {
@@ -952,6 +958,76 @@ function summarizeEvTuneSourceGap({ intentsRows = [], fillsRows = [], dropsRows 
   });
 }
 
+async function loadDecisionEvidenceRecent(limit = SCAN_LIMIT) {
+  const primaryCollection = resolveV2CollectionName("OPENCLAW_DECISION_BUNDLES");
+  const candidates = Array.from(new Set([
+    primaryCollection,
+    "v2__openclaw_decision_bundles_v2",
+    "donbeolja_v2__openclaw_decision_bundles_v2",
+    "openclaw_decision_bundles_v2",
+  ].map(trimOrNull).filter(Boolean)));
+  const mergedRows = [];
+  const mergedMeta = {
+    collection: candidates.join(","),
+    filePath: null,
+    source: "cache+refresh",
+    count: 0,
+    returned: 0,
+    fetched_new: 0,
+    overlap_fetched: 0,
+    pages: 0,
+    latest_created_at: null,
+    collection_stats: [],
+  };
+  const seenIds = new Set();
+  for (const collection of candidates) {
+    try {
+      const res = await getCachedRecentByCreatedAt(collection, {
+        limit,
+        maxDocs: limit,
+        overlapDocs: 400,
+        pageSize: 1000,
+        refresh: true,
+      });
+      mergedMeta.collection_stats.push({
+        collection,
+        ok: true,
+        count: res.meta.count,
+        latest_created_at: res.meta.latest_created_at || null,
+      });
+      mergedMeta.fetched_new += Number(res.meta.fetched_new || 0);
+      mergedMeta.overlap_fetched += Number(res.meta.overlap_fetched || 0);
+      mergedMeta.pages += Number(res.meta.pages || 0);
+      if (!mergedMeta.filePath) mergedMeta.filePath = res.meta.filePath || null;
+      if (!mergedMeta.latest_created_at || String(res.meta.latest_created_at || "") > String(mergedMeta.latest_created_at || "")) {
+        mergedMeta.latest_created_at = res.meta.latest_created_at || mergedMeta.latest_created_at;
+      }
+      for (const row of Array.isArray(res.rows) ? res.rows : []) {
+        const key = trimOrNull(row && row.id)
+          || trimOrNull(row && row.openclaw_decision_bundle_id)
+          || trimOrNull(row && row.openclaw_decision_id)
+          || trimOrNull(row && row.signal_intent_id)
+          || `${collection}:${mergedRows.length}`;
+        if (seenIds.has(key)) continue;
+        seenIds.add(key);
+        mergedRows.push(row);
+      }
+    } catch (error) {
+      mergedMeta.collection_stats.push({
+        collection,
+        ok: false,
+        error_message: String(error && error.message || error),
+      });
+    }
+  }
+  mergedMeta.count = mergedRows.length;
+  mergedMeta.returned = mergedRows.length;
+  return {
+    rows: mergedRows,
+    meta: mergedMeta,
+  };
+}
+
 function isEvThresholdHardening(currentThreshold, nextThreshold) {
   return Number(nextThreshold) > Number(currentThreshold);
 }
@@ -1023,13 +1099,24 @@ async function main() {
   const bestFebtContract = bestFebtContext.contract;
   const bestFebtMarketGuard = bestFebtContext.marketGuardContract;
 
-  const [intentRes, fillRes, dropsRes] = await Promise.all([
+  const [intentRes, fillRes, dropsRes, decisionEvidenceRes] = await Promise.all([
     getCachedRecentByCreatedAt("order_intents_paper", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("fills_paper", { limit: SCAN_LIMIT * 2, maxDocs: SCAN_LIMIT * 2, overlapDocs: 800, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("signals_dropped", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
+    loadDecisionEvidenceRecent(SCAN_LIMIT),
   ]);
   const intentRows = intentRes.rows;
   const fillRows = fillRes.rows;
+  const sourceGap = summarizeEvTuneSourceGap({
+    intentsRows: intentRes.rows,
+    fillsRows: fillRes.rows,
+    dropsRows: dropsRes.rows,
+    intentsMeta: intentRes.meta,
+    fillsMeta: fillRes.meta,
+    dropsMeta: dropsRes.meta,
+    fromMs,
+    toMs: nowMs,
+  });
   let evLedger = null;
   let stageLedgerMeta = {
     source: "REBUILT_FROM_CACHE",
@@ -1040,6 +1127,7 @@ async function main() {
   if (
     stageLedgerReport &&
     stageLedgerReport.stale === false &&
+    sourceGap.detected !== true &&
     stageLedgerReport.data &&
     String(stageLedgerReport.data.provider || "").toUpperCase() === PROVIDER &&
     String(stageLedgerReport.data.tf || "") === TF &&
@@ -1063,6 +1151,7 @@ async function main() {
       intents: intentRows,
       fills: fillRows,
       drops: dropsRes.rows,
+      decisionEvidenceRows: decisionEvidenceRes.rows,
       sysCfg: currentSys,
     });
   }
@@ -1085,16 +1174,6 @@ async function main() {
 
   const resolvedEntries = classified.filter((row) => row.resolvedForTune === true);
   const resolvedSummary = summarizeResolvedEntries(resolvedEntries);
-  const sourceGap = summarizeEvTuneSourceGap({
-    intentsRows: intentRes.rows,
-    fillsRows: fillRes.rows,
-    dropsRows: dropsRes.rows,
-    intentsMeta: intentRes.meta,
-    fillsMeta: fillRes.meta,
-    dropsMeta: dropsRes.meta,
-    fromMs,
-    toMs: nowMs,
-  });
   const unresolvedOpenCount = classified.filter((row) => row.outcome === "UNRESOLVED_OPEN").length;
   const unresolvedStaleCount = classified.filter((row) => row.outcome === "UNRESOLVED_STALE").length;
 

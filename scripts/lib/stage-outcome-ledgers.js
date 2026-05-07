@@ -23,6 +23,39 @@ function toNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function firstValue(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+}
+
+function getPath(source, path = []) {
+  let node = source;
+  for (const key of Array.isArray(path) ? path : []) {
+    if (!node || typeof node !== "object") return null;
+    node = node[key];
+  }
+  return node == null ? null : node;
+}
+
+function firstObject(...values) {
+  for (const value of values) {
+    const obj = asObject(value);
+    if (obj) return obj;
+  }
+  return null;
+}
+
 function roundTo(v, digits = 4) {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
@@ -42,6 +75,122 @@ function resolveFeatures(row) {
   if (row && row.features_json && typeof row.features_json === "object") return row.features_json;
   if (row && row.features && typeof row.features === "object") return row.features;
   return {};
+}
+
+function extractDecisionPayload(row) {
+  const source = asObject(row) || {};
+  return firstObject(
+    source.bundle_payload,
+    source.payload,
+    source.decision_bundle,
+    source.bundle,
+  ) || source;
+}
+
+function extractSignalCriteriaFromDecisionEvidence(row) {
+  const source = asObject(row) || {};
+  const payload = extractDecisionPayload(source);
+  return firstObject(
+    source.signal_criteria,
+    source.signalCriteria,
+    getPath(source, ["bundle_payload", "signalCriteria"]),
+    getPath(source, ["bundle_payload", "signal_criteria"]),
+    getPath(payload, ["signalCriteria"]),
+    getPath(payload, ["signal_criteria"]),
+    getPath(payload, ["openclawDecision", "canonical_evidence_summary", "signal_criteria"]),
+  );
+}
+
+function extractSignalIntentFromDecisionEvidence(row) {
+  const source = asObject(row) || {};
+  const payload = extractDecisionPayload(source);
+  return firstObject(
+    source.signal_intent,
+    source.signalIntent,
+    getPath(source, ["bundle_payload", "signalIntent"]),
+    getPath(source, ["bundle_payload", "signal_intent"]),
+    getPath(payload, ["signalIntent"]),
+    getPath(payload, ["signal_intent"]),
+  );
+}
+
+function extractMlAiSignalProposalFromDecisionEvidence(row) {
+  const source = asObject(row) || {};
+  const payload = extractDecisionPayload(source);
+  return firstObject(
+    source.ml_ai_signal_proposal,
+    source.mlAiSignalProposal,
+    getPath(source, ["bundle_payload", "mlAiSignalProposal"]),
+    getPath(source, ["bundle_payload", "ml_ai_signal_proposal"]),
+    getPath(payload, ["mlAiSignalProposal"]),
+    getPath(payload, ["ml_ai_signal_proposal"]),
+  );
+}
+
+function appendDecisionEvidenceKey(map, key, row) {
+  const text = trimOrNull(key);
+  if (!text || !map || !row) return;
+  if (!map.has(text)) {
+    map.set(text, row);
+    return;
+  }
+  const existing = map.get(text);
+  const existingCriteria = extractSignalCriteriaFromDecisionEvidence(existing);
+  const nextCriteria = extractSignalCriteriaFromDecisionEvidence(row);
+  if (!existingCriteria && nextCriteria) map.set(text, row);
+}
+
+function buildDecisionEvidenceIndex(rows = []) {
+  const bySignalIntentId = new Map();
+  const byOpenClawDecisionId = new Map();
+  const byEntryEventId = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const source = asObject(row);
+    if (!source) continue;
+    const signalIntent = extractSignalIntentFromDecisionEvidence(source);
+    appendDecisionEvidenceKey(bySignalIntentId, source.signal_intent_id, source);
+    appendDecisionEvidenceKey(bySignalIntentId, signalIntent && signalIntent.signal_intent_id, source);
+    appendDecisionEvidenceKey(byOpenClawDecisionId, source.openclaw_decision_id, source);
+    appendDecisionEvidenceKey(byOpenClawDecisionId, getPath(source, ["openclawDecision", "openclaw_decision_id"]), source);
+    appendDecisionEvidenceKey(byOpenClawDecisionId, getPath(source, ["bundle_payload", "openclawDecision", "openclaw_decision_id"]), source);
+    appendDecisionEvidenceKey(byEntryEventId, source.entry_event_id, source);
+  }
+  return Object.freeze({
+    row_n: Array.isArray(rows) ? rows.length : 0,
+    bySignalIntentId,
+    byOpenClawDecisionId,
+    byEntryEventId,
+  });
+}
+
+function resolveDecisionEvidenceForExecutedFill(fill, decisionEvidenceIndex = null) {
+  const row = asObject(fill) || {};
+  const features = resolveFeatures(row);
+  const index = decisionEvidenceIndex || {};
+  for (const candidate of [
+    trimOrNull(row.signal_intent_id),
+    trimOrNull(row.intent_id),
+    trimOrNull(features.signal_intent_id),
+    trimOrNull(features.intent_id),
+  ]) {
+    const hit = candidate && index.bySignalIntentId && index.bySignalIntentId.get(candidate);
+    if (hit) return hit;
+  }
+  for (const candidate of [
+    trimOrNull(row.openclaw_decision_id),
+    trimOrNull(features.openclaw_decision_id),
+  ]) {
+    const hit = candidate && index.byOpenClawDecisionId && index.byOpenClawDecisionId.get(candidate);
+    if (hit) return hit;
+  }
+  for (const candidate of [
+    trimOrNull(row.entry_event_id),
+    trimOrNull(features.entry_event_id),
+  ]) {
+    const hit = candidate && index.byEntryEventId && index.byEntryEventId.get(candidate);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 function parseIsoMs(v) {
@@ -105,6 +254,28 @@ function extractEntryProbability(row) {
   const probability = toNum(features.ev_gate_tp1_reach_prob);
   return {
     source: String(features.ev_gate_source || "").trim(),
+    lowerBound,
+    probability,
+  };
+}
+
+function extractDecisionProbability(decisionEvidence, fill = null) {
+  const fillFeatures = resolveFeatures(fill);
+  const criteria = extractSignalCriteriaFromDecisionEvidence(decisionEvidence);
+  const proposal = extractMlAiSignalProposalFromDecisionEvidence(decisionEvidence);
+  const lowerBound = toNum(firstValue(
+    fillFeatures.ev_gate_tp1_reach_prob_lower_bound,
+    getPath(criteria, ["expected_edge_gate", "tp1_reach_prob_lower_bound"]),
+    getPath(criteria, ["expected_edge_model", "tp1_reach_prob_lower_bound"]),
+  ));
+  const probability = toNum(firstValue(
+    fillFeatures.ev_gate_tp1_reach_prob,
+    getPath(criteria, ["expected_edge_model", "tp1_reach_probability"]),
+    getPath(criteria, ["expected_edge_gate", "tp1_reach_probability"]),
+    proposal && proposal.tp1_reach_probability,
+  ));
+  return {
+    source: decisionEvidence ? "OPENCLAW_DECISION_BUNDLE" : (Number.isFinite(probability) || Number.isFinite(lowerBound) ? "FILL_FEATURES" : null),
     lowerBound,
     probability,
   };
@@ -295,7 +466,7 @@ function mapEstimateToWaitFeatures(estimate = {}) {
 }
 
 function classifyEntryOutcome(entry, fillsByEntryEventId, nowMs, maturityMs) {
-  const entryEventId = buildEntryEventId({
+  const entryEventId = trimOrNull(entry && entry.entry_event_id) || buildEntryEventId({
     exchange: entry.exchange,
     symbol: entry.symbol_or_pair_id || entry.symbol,
     tf: entry.tf,
@@ -385,6 +556,75 @@ function isStage4DropCandidate(row) {
   return key === "EV" || key === "TIMING";
 }
 
+function buildExecutedEntryRowsFromV2Fills({
+  provider,
+  tf,
+  fillsByEntryEventId = new Map(),
+  tradeMap = new Map(),
+  decisionEvidenceRows = [],
+  nowMs,
+  maturityMs,
+  existingEntryEventIds = new Set(),
+} = {}) {
+  const decisionEvidenceIndex = buildDecisionEvidenceIndex(decisionEvidenceRows);
+  const rows = [];
+  for (const [entryEventId, fills] of fillsByEntryEventId.entries()) {
+    const entryId = trimOrNull(entryEventId);
+    if (!entryId || existingEntryEventIds.has(entryId)) continue;
+    const entryFill = pickEntryFill(fills);
+    if (!entryFill) continue;
+    const decisionEvidence = resolveDecisionEvidenceForExecutedFill(entryFill, decisionEvidenceIndex);
+    const ev = extractDecisionProbability(decisionEvidence, entryFill);
+    const predicted = ev.lowerBound ?? ev.probability;
+    if (!Number.isFinite(predicted)) continue;
+    const criteria = extractSignalCriteriaFromDecisionEvidence(decisionEvidence);
+    const signalIntent = extractSignalIntentFromDecisionEvidence(decisionEvidence);
+    const symbol = String((entryFill.symbol_or_pair_id || entryFill.symbol || entryFill.market) || "").trim().toUpperCase();
+    const side = String(entryFill.side || "").trim().toUpperCase() === "SELL" ? "SHORT" : "LONG";
+    const signalBarCloseMs = toNum(entryFill.signal_bar_close_time_utc_ms)
+      ?? toNum(entryFill.exec_bar_close_time_utc_ms)
+      ?? toNum(entryFill.bar_close_time_utc_ms)
+      ?? resolveFillMs(entryFill);
+    const outcome = classifyEntryOutcome({
+      exchange: provider,
+      symbol_or_pair_id: symbol,
+      tf: String(entryFill.tf || tf || "").trim(),
+      signal_bar_close_time_utc_ms: signalBarCloseMs,
+      event: String(entryFill.event || "").trim().toUpperCase() || "SYNC_FILL",
+      entry_event_id: entryId,
+    }, fillsByEntryEventId, nowMs, maturityMs);
+    const trade = tradeMap.get(entryId) || null;
+    rows.push({
+      signal_key: trimOrNull(signalIntent && signalIntent.signal_intent_id) || entryId,
+      stage4_source: "EXECUTED_ENTRY_V2",
+      actual_stage4_decision: "ENTER",
+      actual_final_decision: "ENTER",
+      symbol,
+      side,
+      tier: resolveTier(firstValue(
+        getPath(criteria, ["entry_grade"]),
+        getPath(criteria, ["timing_bucket"]),
+        getPath(signalIntent, ["timing_tier"]),
+        getPath(signalIntent, ["entry_timing_tier"]),
+      )),
+      event: String(entryFill.event || "").trim().toUpperCase() || "SYNC_FILL",
+      bar_ms: signalBarCloseMs,
+      predicted: roundTo(predicted, 6),
+      probability: roundTo(ev.probability, 6),
+      lower_bound: roundTo(ev.lowerBound, 6),
+      outcome: outcome.status,
+      resolved_for_tune: ["TP1_HIT", "NO_TP1_EXITED", "UNRESOLVED_STALE"].includes(outcome.status),
+      entry_event_id: entryId,
+      realized_pnl_quote: trade ? toNum(trade.pnl_krw) : null,
+      realized_ret_net: trade ? toNum(trade.pnl_pct) : null,
+      stage_drop_reason: null,
+      signal_intent_id: trimOrNull(firstValue(entryFill.signal_intent_id, getPath(signalIntent, ["signal_intent_id"]))),
+      openclaw_decision_id: trimOrNull(firstValue(entryFill.openclaw_decision_id, getPath(decisionEvidence, ["openclaw_decision_id"]))),
+    });
+  }
+  return rows;
+}
+
 async function buildEvResolvedLedger({
   provider,
   tf,
@@ -395,6 +635,7 @@ async function buildEvResolvedLedger({
   intents = [],
   fills = [],
   drops = [],
+  decisionEvidenceRows = [],
   sysCfg = {},
 } = {}) {
   const maturityMs = Math.max(3, Number(maturityHours) || 12) * 60 * 60 * 1000;
@@ -440,12 +681,14 @@ async function buildEvResolvedLedger({
   });
 
   const rows = [];
+  const legacyEntryEventIds = new Set();
   for (const row of intentRows) {
     const ev = extractEntryProbability(row);
     const predicted = ev.lowerBound ?? ev.probability;
     if (ev.source !== CURRENT_BAR_MODEL || !Number.isFinite(predicted)) continue;
     const outcome = classifyEntryOutcome(row, fillsByEntryEventId, nowMs, maturityMs);
     const trade = outcome.entryEventId ? tradeMap.get(outcome.entryEventId) : null;
+    if (outcome.entryEventId) legacyEntryEventIds.add(outcome.entryEventId);
     rows.push({
       signal_key: makeSignalKey(row),
       stage4_source: "EXECUTED_ENTRY",
@@ -467,6 +710,17 @@ async function buildEvResolvedLedger({
       stage_drop_reason: null,
     });
   }
+
+  rows.push(...buildExecutedEntryRowsFromV2Fills({
+    provider,
+    tf,
+    fillsByEntryEventId,
+    tradeMap,
+    decisionEvidenceRows,
+    nowMs,
+    maturityMs,
+    existingEntryEventIds: legacyEntryEventIds,
+  }));
 
   for (const row of dropRows) {
     const market = String((row.symbol_or_pair_id || row.symbol || row.market) || "").trim().toUpperCase();
@@ -516,7 +770,8 @@ async function buildEvResolvedLedger({
   const summary = {
     total_n: rows.length,
     resolved_n: resolvedRows.length,
-    executed_entry_n: rows.filter((row) => row.stage4_source === "EXECUTED_ENTRY").length,
+    executed_entry_n: rows.filter((row) => row.stage4_source === "EXECUTED_ENTRY" || row.stage4_source === "EXECUTED_ENTRY_V2").length,
+    executed_entry_v2_n: rows.filter((row) => row.stage4_source === "EXECUTED_ENTRY_V2").length,
     ev_drop_n: rows.filter((row) => row.stage4_source === "EV_DROP").length,
     wait_after_stage4_n: rows.filter((row) => row.stage4_source === "WAIT_AFTER_STAGE4").length,
     tp1_hit_n: resolvedRows.filter((row) => row.outcome === "TP1_HIT").length,
@@ -921,9 +1176,13 @@ module.exports = {
   buildProvisionalRealizedOutcomeLedger,
   buildWaitStateMachineLedger,
   __test: {
+    buildDecisionEvidenceIndex,
+    buildExecutedEntryRowsFromV2Fills,
+    extractDecisionProbability,
     mapPathOutcomeForTune,
     evaluatePathFromEntry,
     evaluateWaitStateRow,
     buildEntryEventId,
+    classifyEntryOutcome,
   },
 };
