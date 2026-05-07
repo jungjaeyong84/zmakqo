@@ -117,30 +117,41 @@ function resolveBtcAlignment({ symbol, side, btcTrend }) {
   return "OPPOSED";
 }
 
-const FULL_EVIDENCE_REQUIRED_FIELDS = Object.freeze([
+const CORE_EVIDENCE_REQUIRED_FIELDS = Object.freeze([
   "setup_type",
   "edge_cohort",
   "market_quality_score",
   "spread_bps",
   "funding_rate",
-  "open_interest_delta_pct",
-  "liquidation_notional_5m_quote",
-  "orderbook_imbalance_top5",
   "btc_1h_trend",
   "btc_1h_alignment",
   "mtf_1h_direction",
   "mtf_1h_alignment",
 ]);
 
-function missingFullEvidenceFields(context = {}) {
+const EXTENDED_MICROSTRUCTURE_EVIDENCE_FIELDS = Object.freeze([
+  "open_interest_delta_pct",
+  "liquidation_notional_5m_quote",
+  "orderbook_imbalance_top5",
+]);
+
+function missingEvidenceFields(requiredFields = [], context = {}) {
   const missing = [];
-  for (const field of FULL_EVIDENCE_REQUIRED_FIELDS) {
+  for (const field of requiredFields) {
     const value = context[field];
     if (value === null || value === undefined || value === "" || value === "UNKNOWN" || value === "NONE") {
       missing.push(field);
     }
   }
   return Object.freeze(missing);
+}
+
+function missingFullEvidenceFields(context = {}) {
+  return missingEvidenceFields(CORE_EVIDENCE_REQUIRED_FIELDS, context);
+}
+
+function missingExtendedMicrostructureEvidenceFields(context = {}) {
+  return missingEvidenceFields(EXTENDED_MICROSTRUCTURE_EVIDENCE_FIELDS, context);
 }
 
 function extractOutcomeContext(row) {
@@ -274,12 +285,21 @@ function extractOutcomeContext(row) {
     mtf_1h_direction: mtfOneHourDirection,
     mtf_1h_alignment: resolveBtcAlignment({ symbol, side, btcTrend: mtfOneHourDirection }),
   };
-  const missing = missingFullEvidenceFields(baseContext);
+  const missingCore = missingFullEvidenceFields(baseContext);
+  const missingExtended = missingExtendedMicrostructureEvidenceFields(baseContext);
+  const hasCoreEvidence = missingCore.length === 0;
+  const hasExtendedMicrostructureEvidence = missingExtended.length === 0;
   return Object.freeze({
     ...baseContext,
-    full_evidence: missing.length === 0,
-    evidence_completeness: missing.length === 0 ? "FULL_EVIDENCE" : "PARTIAL_OR_UNKNOWN_EVIDENCE",
-    missing_feature_fields: missing,
+    full_evidence: hasCoreEvidence,
+    core_evidence_complete: hasCoreEvidence,
+    extended_microstructure_evidence_complete: hasExtendedMicrostructureEvidence,
+    evidence_completeness: hasCoreEvidence
+      ? (hasExtendedMicrostructureEvidence ? "FULL_EVIDENCE" : "CORE_EVIDENCE_ONLY")
+      : "PARTIAL_OR_UNKNOWN_EVIDENCE",
+    missing_feature_fields: missingCore,
+    missing_core_feature_fields: missingCore,
+    missing_extended_microstructure_fields: missingExtended,
   });
 }
 
@@ -348,6 +368,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
   const byBtc1hAlignment = new Map();
   const byMtf1hAlignment = new Map();
   const byEvidenceCompleteness = new Map();
+  const byExtendedMicrostructureEvidenceCompleteness = new Map();
   const byFeatureLineageSource = new Map();
 
   function record(map, key, row, context) {
@@ -390,6 +411,14 @@ function summarizeOutcomeCohorts(outcomes = []) {
     record(byBtc1hAlignment, context.btc_1h_alignment, row, context);
     record(byMtf1hAlignment, context.mtf_1h_alignment, row, context);
     record(byEvidenceCompleteness, context.evidence_completeness, row, context);
+    record(
+      byExtendedMicrostructureEvidenceCompleteness,
+      context.extended_microstructure_evidence_complete === true
+        ? "EXTENDED_MICROSTRUCTURE_COMPLETE"
+        : "EXTENDED_MICROSTRUCTURE_MISSING",
+      row,
+      context
+    );
     record(byFeatureLineageSource, context.feature_lineage_source, row, context);
   }
 
@@ -416,6 +445,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
     by_btc_1h_alignment: finalizeBucketRows(byBtc1hAlignment),
     by_mtf_1h_alignment: finalizeBucketRows(byMtf1hAlignment),
     by_evidence_completeness: finalizeBucketRows(byEvidenceCompleteness),
+    by_extended_microstructure_evidence_completeness: finalizeBucketRows(byExtendedMicrostructureEvidenceCompleteness),
     by_feature_lineage_source: finalizeBucketRows(byFeatureLineageSource),
     top_positive_setup_regime: topPositiveSetupRegime,
     top_negative_setup_regime: topNegativeSetupRegime,
@@ -426,7 +456,10 @@ module.exports = {
   extractOutcomeContext,
   summarizeOutcomeCohorts,
   missingFullEvidenceFields,
-  FULL_EVIDENCE_REQUIRED_FIELDS,
+  missingExtendedMicrostructureEvidenceFields,
+  FULL_EVIDENCE_REQUIRED_FIELDS: CORE_EVIDENCE_REQUIRED_FIELDS,
+  CORE_EVIDENCE_REQUIRED_FIELDS,
+  EXTENDED_MICROSTRUCTURE_EVIDENCE_FIELDS,
   __test: {
     bucketSignalScore,
     bucketTriggerQuality,

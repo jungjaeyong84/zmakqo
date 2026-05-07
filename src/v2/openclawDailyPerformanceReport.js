@@ -1,6 +1,7 @@
 "use strict";
 
 const { summarizeOutcomeCohorts, extractOutcomeContext } = require("./signalCohortReport");
+const { buildDecisionEvidenceIndex, buildEntryFeatureEvidence } = require("./openclawOutcomeAdjudicationCollector");
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -19,6 +20,82 @@ function toNumberOrNull(value) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function hasMeaningfulValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text !== "" && text !== "UNKNOWN" && text !== "NONE";
+  }
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+function cloneJson(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function mergeRecoveredEvidence(baseEvidence = {}, recoveredEvidence = {}) {
+  const base = asObject(baseEvidence) || {};
+  const recovered = asObject(recoveredEvidence) || {};
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(recovered)) {
+    if (!hasMeaningfulValue(value)) continue;
+    if (!hasMeaningfulValue(merged[key])) {
+      merged[key] = cloneJson(value);
+    }
+  }
+  return merged;
+}
+
+function resolveDecisionEvidenceForOutcome(row, index) {
+  if (!index) return null;
+  const evidence = asObject(row && row.evidence) || {};
+  const openclawDecisionId = trimOrNull(row && row.openclaw_decision_id)
+    || trimOrNull(evidence.openclaw_decision_id);
+  const signalIntentId = trimOrNull(row && (row.signal_intent_id || row.intent_id))
+    || trimOrNull(evidence.signal_intent_id)
+    || trimOrNull(evidence.intent_id)
+    || trimOrNull(evidence.entry_features && (evidence.entry_features.signal_intent_id || evidence.entry_features.intent_id));
+  const positionCycleId = trimOrNull(row && row.position_cycle_id)
+    || trimOrNull(evidence.position_cycle_id)
+    || trimOrNull(evidence.entry_features && evidence.entry_features.position_cycle_id);
+  if (openclawDecisionId && index.byOpenClawDecisionId && index.byOpenClawDecisionId.get(openclawDecisionId)) {
+    return index.byOpenClawDecisionId.get(openclawDecisionId);
+  }
+  if (signalIntentId && index.bySignalIntentId && index.bySignalIntentId.get(signalIntentId)) {
+    return index.bySignalIntentId.get(signalIntentId);
+  }
+  if (positionCycleId && index.byPositionCycleId && index.byPositionCycleId.get(positionCycleId)) {
+    return index.byPositionCycleId.get(positionCycleId);
+  }
+  return null;
+}
+
+function enrichOutcomeRowsWithDecisionEvidence({ outcomes = [], decisionEvidenceRows = [] } = {}) {
+  const rows = asArray(outcomes).filter((row) => row && typeof row === "object");
+  const evidenceRows = asArray(decisionEvidenceRows).filter((row) => row && typeof row === "object");
+  if (!rows.length || !evidenceRows.length) return rows;
+  const index = buildDecisionEvidenceIndex(evidenceRows);
+  return rows.map((row) => {
+    const evidence = asObject(row.evidence) || {};
+    const decisionEvidence = resolveDecisionEvidenceForOutcome(row, index);
+    if (!decisionEvidence) return row;
+    const recoveredEvidence = buildEntryFeatureEvidence({
+      entryFeatures: asObject(evidence.entry_features),
+      decisionEvidence,
+    });
+    return Object.freeze({
+      ...row,
+      evidence: Object.freeze(mergeRecoveredEvidence(evidence, recoveredEvidence)),
+    });
+  });
 }
 
 function performanceExclusionReason(row) {
@@ -74,6 +151,8 @@ function summarizeOpenClawOutcomes(outcomes = []) {
   let excludedN = 0;
   let fullEvidenceSampleN = 0;
   let unknownEvidenceSampleN = 0;
+  let extendedMicrostructureEvidenceSampleN = 0;
+  let coreEvidenceOnlySampleN = 0;
   const labelCounts = {};
   const familyCounts = {};
   const exclusionReasonCounts = {};
@@ -101,6 +180,11 @@ function summarizeOpenClawOutcomes(outcomes = []) {
     } else {
       unknownEvidenceSampleN += 1;
     }
+    if (context.extended_microstructure_evidence_complete === true) {
+      extendedMicrostructureEvidenceSampleN += 1;
+    } else if (context.full_evidence === true) {
+      coreEvidenceOnlySampleN += 1;
+    }
     if (pnl != null) {
       pnlN += 1;
       netPnl += pnl;
@@ -127,6 +211,8 @@ function summarizeOpenClawOutcomes(outcomes = []) {
     performance_excluded_outcome_n: excludedN,
     full_evidence_sample_n: fullEvidenceSampleN,
     unknown_evidence_sample_n: unknownEvidenceSampleN,
+    extended_microstructure_evidence_sample_n: extendedMicrostructureEvidenceSampleN,
+    core_evidence_only_sample_n: coreEvidenceOnlySampleN,
     trade_n: tradeN,
     pnl_sample_n: pnlN,
     win_n: winN,
@@ -144,14 +230,19 @@ function summarizeOpenClawOutcomes(outcomes = []) {
   });
 }
 
-function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null, source = "OPENCLAW_OUTCOME_ADJUDICATIONS", lookbackHours = 24 } = {}) {
+function buildOpenClawDailyPerformanceReport({ outcomes = [], decisionEvidenceRows = [], generatedAt = null, source = "OPENCLAW_OUTCOME_ADJUDICATIONS", lookbackHours = 24 } = {}) {
   const generated = trimOrNull(generatedAt) || new Date().toISOString();
-  const summary = summarizeOpenClawOutcomes(outcomes);
-  const performanceEligibleOutcomes = asArray(outcomes).filter(isPerformanceEligibleOutcome);
+  const enrichedOutcomes = enrichOutcomeRowsWithDecisionEvidence({ outcomes, decisionEvidenceRows });
+  const summary = summarizeOpenClawOutcomes(enrichedOutcomes);
+  const performanceEligibleOutcomes = asArray(enrichedOutcomes).filter(isPerformanceEligibleOutcome);
   const fullEvidenceOutcomes = performanceEligibleOutcomes.filter((row) => extractOutcomeContext(row).full_evidence === true);
+  const coreEvidenceOnlyOutcomes = fullEvidenceOutcomes.filter((row) => extractOutcomeContext(row).extended_microstructure_evidence_complete !== true);
+  const extendedMicrostructureEvidenceOutcomes = performanceEligibleOutcomes.filter((row) => extractOutcomeContext(row).extended_microstructure_evidence_complete === true);
   const unknownEvidenceOutcomes = performanceEligibleOutcomes.filter((row) => extractOutcomeContext(row).full_evidence !== true);
   const cohortSummary = summarizeOutcomeCohorts(performanceEligibleOutcomes);
   const fullEvidenceSummary = summarizeOpenClawOutcomes(fullEvidenceOutcomes);
+  const coreEvidenceOnlySummary = summarizeOpenClawOutcomes(coreEvidenceOnlyOutcomes);
+  const extendedMicrostructureEvidenceSummary = summarizeOpenClawOutcomes(extendedMicrostructureEvidenceOutcomes);
   const unknownEvidenceSummary = summarizeOpenClawOutcomes(unknownEvidenceOutcomes);
   return Object.freeze({
     ok: true,
@@ -163,15 +254,20 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
     sample_n: summary.trade_n,
     full_evidence_sample_n: summary.full_evidence_sample_n,
     unknown_evidence_sample_n: summary.unknown_evidence_sample_n,
+    extended_microstructure_evidence_sample_n: summary.extended_microstructure_evidence_sample_n,
+    core_evidence_only_sample_n: summary.core_evidence_only_sample_n,
     win_rate_pct: summary.win_rate_pct,
     profit_factor: summary.profit_factor,
     expectancy: summary.expectancy,
     net_pnl_usdt: summary.net_pnl_usdt,
     summary,
     full_evidence_summary: fullEvidenceSummary,
+    core_evidence_only_summary: coreEvidenceOnlySummary,
+    extended_microstructure_evidence_summary: extendedMicrostructureEvidenceSummary,
     unknown_evidence_summary: unknownEvidenceSummary,
     cohort_summary: cohortSummary,
     by_evidence_completeness: cohortSummary.by_evidence_completeness || Object.freeze([]),
+    by_extended_microstructure_evidence_completeness: cohortSummary.by_extended_microstructure_evidence_completeness || Object.freeze([]),
     by_feature_lineage_source: cohortSummary.by_feature_lineage_source || Object.freeze([]),
     by_setup_type: cohortSummary.by_setup_type || Object.freeze([]),
     by_side: cohortSummary.by_side || Object.freeze([]),
@@ -182,7 +278,7 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
       by_timing_bucket: cohortSummary.by_timing_bucket || Object.freeze([]),
       by_entry_grade: cohortSummary.by_entry_grade || Object.freeze([]),
     }),
-    outcomes: Object.freeze(asArray(outcomes).map((row) => Object.freeze({
+    outcomes: Object.freeze(asArray(enrichedOutcomes).map((row) => Object.freeze({
       openclaw_outcome_adjudication_id: trimOrNull(row.openclaw_outcome_adjudication_id),
       openclaw_decision_id: trimOrNull(row.openclaw_decision_id),
       position_cycle_id: trimOrNull(row.position_cycle_id),
@@ -202,6 +298,7 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], generatedAt = null
 module.exports = {
   summarizeOpenClawOutcomes,
   buildOpenClawDailyPerformanceReport,
+  enrichOutcomeRowsWithDecisionEvidence,
   isPerformanceEligibleOutcome,
   performanceExclusionReason,
   __test: {

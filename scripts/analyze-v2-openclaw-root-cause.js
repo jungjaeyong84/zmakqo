@@ -3,8 +3,9 @@
 
 const fs = require("fs");
 const path = require("path");
-const { collectOutcomes } = require("./generate-v2-openclaw-daily-performance-report");
+const { collectOutcomes, collectDecisionEvidenceRowsForOutcomes } = require("./generate-v2-openclaw-daily-performance-report");
 const { isPerformanceEligibleOutcome } = require("../src/v2/openclawDailyPerformanceReport");
+const { enrichOutcomeRowsWithDecisionEvidence } = require("../src/v2/openclawDailyPerformanceReport");
 const { extractOutcomeContext } = require("../src/v2/signalCohortReport");
 
 const OUTPUT_JSON = "v2_openclaw_root_cause_analysis_latest.json";
@@ -150,7 +151,13 @@ function rootCauseFindings({ total, groups }) {
   addWorst("EDGE_LABEL_INVERSION", "Edge/grade labels are not monotonic with realized PnL", "by_edge_cohort");
   addSpecific("SCORE_INVERSION", "High score bucket does not imply higher realized edge", "by_signal_score_bucket", "QUALIFIED");
   addWorst("BTC_ALIGNMENT_UNKNOWN", "BTC 1h alignment is missing/unknown for too many outcomes", "by_btc_1h_alignment", 30, { includeUnknown: true });
-  addWorst("MICROSTRUCTURE_UNKNOWN", "Market microstructure fields are missing/unknown in outcome rows", "by_market_quality_bucket", 30, { includeUnknown: true });
+  addSpecific(
+    "EXTENDED_MICROSTRUCTURE_GAP",
+    "Extended microstructure fields are missing for too many outcomes, limiting microstructure cohort analysis",
+    "by_extended_microstructure_evidence_completeness",
+    "EXTENDED_MICROSTRUCTURE_MISSING",
+    30
+  );
 
   return findings;
 }
@@ -179,6 +186,7 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_setup_edge_side: groupRows(enriched, (row) => `${row.context.setup_type}|${row.context.edge_cohort}|${row.context.side}`, { minN: 3 }),
     by_symbol_setup: groupRows(enriched, (row) => `${row.context.symbol}|${row.context.setup_type}`, { minN: 3 }),
     by_evidence_completeness: groupRows(enriched, (row) => row.context.evidence_completeness),
+    by_extended_microstructure_evidence_completeness: groupRows(enriched, (row) => row.context.extended_microstructure_evidence_complete === true ? "EXTENDED_MICROSTRUCTURE_COMPLETE" : "EXTENDED_MICROSTRUCTURE_MISSING"),
   };
   return Object.freeze({
     ok: true,
@@ -188,6 +196,7 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     total,
     root_cause_findings: rootCauseFindings({ total, groups }),
     by_evidence_completeness: groups.by_evidence_completeness,
+    by_extended_microstructure_evidence_completeness: groups.by_extended_microstructure_evidence_completeness,
     by_feature_lineage_source: groups.by_feature_lineage_source,
     by_setup_type: groups.by_setup_type,
     by_side: groups.by_side,
@@ -236,8 +245,10 @@ function resolveRunId(env = process.env) {
 
 async function main(env = process.env) {
   const rows = await collectOutcomes({ env });
+  const decisionEvidenceRows = await collectDecisionEvidenceRowsForOutcomes({ outcomes: rows, env });
+  const enrichedRows = enrichOutcomeRowsWithDecisionEvidence({ outcomes: rows, decisionEvidenceRows });
   const runId = resolveRunId(env);
-  const baseAnalysis = buildAnalysis({ rows });
+  const baseAnalysis = buildAnalysis({ rows: enrichedRows });
   const analysis = Object.freeze({
     ...baseAnalysis,
     run_id: runId,

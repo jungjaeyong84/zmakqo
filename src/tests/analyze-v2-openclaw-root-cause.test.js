@@ -74,6 +74,8 @@ assert.strictEqual(analysis.groups.by_setup_type[0].key, "PULLBACK_RECLAIM");
 assert.strictEqual(analysis.by_setup_type[0].key, "PULLBACK_RECLAIM");
 assert.ok(Array.isArray(analysis.by_feature_lineage_source));
 assert.strictEqual(analysis.groups.by_btc_1h_alignment.some((row) => row.key === "OPPOSED"), true);
+assert.strictEqual(Array.isArray(analysis.by_extended_microstructure_evidence_completeness), true);
+assert.strictEqual(analysis.groups.by_extended_microstructure_evidence_completeness.some((row) => row.key === "EXTENDED_MICROSTRUCTURE_MISSING"), true);
 assert.ok(analysis.root_cause_findings.some((row) => row.id === "PULLBACK_RECLAIM_DECAY"));
 const markdown = renderMarkdown(analysis);
 assert.ok(markdown.includes("V2 OpenClaw Root Cause Analysis"));

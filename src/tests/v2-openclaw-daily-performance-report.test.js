@@ -51,6 +51,11 @@ const outcomes = [
         regime_profile: { structural_regime: "TRANSITION", regime_cohort: "TRANSITION__HIGH_VOL__ADEQUATE" },
         expected_edge_model: { edge_cohort: "MARGINAL_EDGE", net_r_multiple: 0.27 },
       },
+      market_quality_score: 0.78,
+      spread_bps: 3.9,
+      funding_rate: -0.00005,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
     },
     adjudicated_at: "2026-04-23T01:00:00.000Z",
   },
@@ -81,8 +86,10 @@ const outcomes = [
   assert.strictEqual(summary.outcome_n, 3);
   assert.strictEqual(summary.performance_eligible_outcome_n, 3);
   assert.strictEqual(summary.performance_excluded_outcome_n, 0);
-  assert.strictEqual(summary.full_evidence_sample_n, 1);
-  assert.strictEqual(summary.unknown_evidence_sample_n, 2);
+  assert.strictEqual(summary.full_evidence_sample_n, 2);
+  assert.strictEqual(summary.extended_microstructure_evidence_sample_n, 1);
+  assert.strictEqual(summary.core_evidence_only_sample_n, 1);
+  assert.strictEqual(summary.unknown_evidence_sample_n, 1);
   assert.strictEqual(summary.trade_n, 3);
   assert.strictEqual(summary.win_n, 2);
   assert.strictEqual(summary.loss_n, 1);
@@ -96,8 +103,10 @@ const outcomes = [
   assert.strictEqual(report.ok, true);
   assert.strictEqual(report.reason, "V2_OPENCLAW_DAILY_PERFORMANCE_REPORT_GENERATED");
   assert.strictEqual(report.sample_n, 3);
-  assert.strictEqual(report.full_evidence_sample_n, 1);
-  assert.strictEqual(report.unknown_evidence_sample_n, 2);
+  assert.strictEqual(report.full_evidence_sample_n, 2);
+  assert.strictEqual(report.extended_microstructure_evidence_sample_n, 1);
+  assert.strictEqual(report.core_evidence_only_sample_n, 1);
+  assert.strictEqual(report.unknown_evidence_sample_n, 1);
   assert.strictEqual(report.outcomes.length, 3);
   assert.strictEqual(report.summary.label_counts.MODEL_WIN, 2);
   assert.strictEqual(report.outcomes[0].context.setup_type, "PULLBACK_RECLAIM");
@@ -109,11 +118,20 @@ const outcomes = [
   assert.strictEqual(report.outcomes[0].context.btc_1h_alignment, "SELF");
   assert.strictEqual(report.outcomes[0].context.feature_lineage_source, "OPENCLAW_DECISION");
   assert.strictEqual(report.outcomes[0].context.full_evidence, true);
+  assert.strictEqual(report.outcomes[0].context.core_evidence_complete, true);
+  assert.strictEqual(report.outcomes[0].context.extended_microstructure_evidence_complete, true);
   assert.deepStrictEqual(report.outcomes[0].context.missing_feature_fields, []);
-  assert.strictEqual(report.outcomes[1].context.full_evidence, false);
-  assert.ok(report.outcomes[1].context.missing_feature_fields.includes("btc_1h_trend"));
+  assert.strictEqual(report.outcomes[1].context.full_evidence, true);
+  assert.strictEqual(report.outcomes[1].context.core_evidence_complete, true);
+  assert.strictEqual(report.outcomes[1].context.extended_microstructure_evidence_complete, false);
+  assert.strictEqual(report.outcomes[1].context.evidence_completeness, "CORE_EVIDENCE_ONLY");
+  assert.ok(report.outcomes[1].context.missing_extended_microstructure_fields.includes("open_interest_delta_pct"));
+  assert.strictEqual(report.outcomes[2].context.full_evidence, false);
+  assert.ok(report.outcomes[2].context.missing_feature_fields.includes("market_quality_score"));
   assert.strictEqual(report.full_evidence_summary.sample_n, undefined);
-  assert.strictEqual(report.full_evidence_summary.trade_n, 1);
+  assert.strictEqual(report.full_evidence_summary.trade_n, 2);
+  assert.strictEqual(report.core_evidence_only_summary.trade_n, 1);
+  assert.strictEqual(report.extended_microstructure_evidence_summary.trade_n, 1);
   assert.strictEqual(report.outcomes[0].performance_eligible, true);
   assert.strictEqual(report.outcomes[0].performance_exclusion_reason, null);
   assert.strictEqual(report.cohort_summary.by_setup_type[0].key, "PULLBACK_RECLAIM");
@@ -122,10 +140,82 @@ const outcomes = [
   assert.strictEqual(report.cohort_summary.by_market_quality_bucket[0].key, "HIGH");
   assert.strictEqual(report.cohort_summary.by_btc_1h_alignment[0].key, "SELF");
   assert.strictEqual(report.cohort_summary.by_evidence_completeness.some((row) => row.key === "FULL_EVIDENCE"), true);
+  assert.strictEqual(report.cohort_summary.by_evidence_completeness.some((row) => row.key === "CORE_EVIDENCE_ONLY"), true);
+  assert.strictEqual(report.by_extended_microstructure_evidence_completeness.some((row) => row.key === "EXTENDED_MICROSTRUCTURE_MISSING"), true);
   assert.strictEqual(report.by_evidence_completeness.some((row) => row.key === "FULL_EVIDENCE"), true);
   assert.strictEqual(report.by_feature_lineage_source.some((row) => row.key === "OPENCLAW_DECISION"), true);
   assert.strictEqual(report.by_setup_type.length > 0, true);
   assert.strictEqual(report.cohort_summary.top_positive_setup_regime.key, "PULLBACK_RECLAIM__TREND");
+}
+
+{
+  const sparseOutcome = {
+    openclaw_outcome_adjudication_id: "oa_enrich",
+    openclaw_decision_id: "OCD__ENRICH",
+    position_cycle_id: "p_enrich",
+    signal_intent_id: "SIG__ENRICH",
+    adjudication_label: "MODEL_WIN",
+    adjudication_family: "MODEL",
+    realized_pnl: 3,
+    evidence: {
+      symbol: "SOLUSDT",
+      side: "LONG",
+      entry_features: {
+        signal_intent_id: "SIG__ENRICH",
+        position_cycle_id: "p_enrich",
+      },
+      signal_criteria: null,
+      market_quality_score: null,
+      spread_bps: null,
+      funding_rate: null,
+      btc_1h_trend: null,
+      mtf_1h_direction: null,
+      setup_type: null,
+      edge_cohort: null,
+    },
+    adjudicated_at: "2026-04-23T02:30:00.000Z",
+  };
+  const decisionEvidence = {
+    openclaw_decision_id: "OCD__ENRICH",
+    signal_intent_id: "SIG__ENRICH",
+    bundle_payload: {
+      signalIntent: {
+        signal_intent_id: "SIG__ENRICH",
+      },
+      signalCriteria: {
+        signal_score: 84,
+        setup_gate: { setup_type: "BREAKOUT_RETEST" },
+        trigger_gate: { trigger_confirmed: true, volume_zscore: 1.4, trigger_type: "BREAKOUT" },
+        regime_profile: { structural_regime: "TREND", regime_cohort: "TREND__NORMAL_VOL__ADEQUATE" },
+        expected_edge_gate: { funding_penalty_bps: 0.5 },
+        expected_edge_model: { edge_cohort: "MARGINAL_EDGE", net_r_multiple: 0.31 },
+        feature_snapshot_contract: {
+          btc_1h_trend: "LONG",
+          mtf_1h_direction: "LONG",
+        },
+      },
+      marketDataQuality: {
+        metrics: {
+          market_quality_score: 0.82,
+          spread_bps: 2.6,
+          funding_rate: 0.00001,
+        },
+      },
+    },
+  };
+  const report = buildOpenClawDailyPerformanceReport({
+    outcomes: [sparseOutcome],
+    decisionEvidenceRows: [decisionEvidence],
+    generatedAt: "2026-04-23T03:30:00.000Z",
+  });
+  assert.strictEqual(report.sample_n, 1);
+  assert.strictEqual(report.full_evidence_sample_n, 1);
+  assert.strictEqual(report.core_evidence_only_sample_n, 1);
+  assert.strictEqual(report.unknown_evidence_sample_n, 0);
+  assert.strictEqual(report.outcomes[0].context.setup_type, "BREAKOUT_RETEST");
+  assert.strictEqual(report.outcomes[0].context.edge_cohort, "MARGINAL_EDGE");
+  assert.strictEqual(report.outcomes[0].context.btc_1h_alignment, "ALIGNED");
+  assert.strictEqual(report.outcomes[0].context.market_quality_bucket, "ADEQUATE");
 }
 
 {

@@ -55,6 +55,66 @@ function loadDecisionEvidenceFromFile(inputPath) {
   return parseDecisionEvidencePayload(readJson(inputPath));
 }
 
+function collectDecisionEvidenceLookupKeysFromFills(fills = []) {
+  const openclawDecisionIds = new Set();
+  const signalIntentIds = new Set();
+  const positionCycleIds = new Set();
+  for (const row of Array.isArray(fills) ? fills : []) {
+    const features = row && typeof row === "object"
+      ? (typeof row.features_json === "string"
+          ? (() => { try { return JSON.parse(row.features_json); } catch { return null; } })()
+          : (row.features && typeof row.features === "object" ? row.features : null))
+      : null;
+    const decisionId = trimOrNull(row && (row.openclaw_decision_id || row.decision_id))
+      || trimOrNull(features && features.openclaw_decision_id);
+    const signalIntentId = trimOrNull(row && (row.signal_intent_id || row.intent_id))
+      || trimOrNull(features && (features.signal_intent_id || features.intent_id));
+    const positionCycleId = trimOrNull(row && row.position_cycle_id)
+      || trimOrNull(features && features.position_cycle_id);
+    if (decisionId) openclawDecisionIds.add(decisionId);
+    if (signalIntentId) signalIntentIds.add(signalIntentId);
+    if (positionCycleId) positionCycleIds.add(positionCycleId);
+  }
+  return {
+    openclawDecisionIds: [...openclawDecisionIds],
+    signalIntentIds: [...signalIntentIds],
+    positionCycleIds: [...positionCycleIds],
+  };
+}
+
+function dedupeDecisionEvidenceRows(rows = []) {
+  const docsById = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || typeof row !== "object") continue;
+    const key = trimOrNull(row.id)
+      || trimOrNull(row.openclaw_decision_bundle_id)
+      || trimOrNull(row.openclaw_decision_bundle_hash)
+      || trimOrNull(row.openclaw_decision_id)
+      || trimOrNull(row.signal_intent_id)
+      || `row:${docsById.size}`;
+    if (!docsById.has(key)) docsById.set(key, row);
+  }
+  return Array.from(docsById.values());
+}
+
+function mergeDecisionEvidenceSources(primary = {}, secondary = {}) {
+  return {
+    source: [trimOrNull(primary.source), trimOrNull(secondary.source)].filter(Boolean).join("+") || "UNKNOWN",
+    input_file: primary.input_file || secondary.input_file || null,
+    collection: primary.collection || secondary.collection || null,
+    collections: primary.collections || secondary.collections || null,
+    collection_stats: [...(Array.isArray(primary.collection_stats) ? primary.collection_stats : []), ...(Array.isArray(secondary.collection_stats) ? secondary.collection_stats : [])],
+    order_field: primary.order_field || secondary.order_field || null,
+    limit: primary.limit || secondary.limit || null,
+    decisionEvidenceLookupKeys: secondary.decisionEvidenceLookupKeys || primary.decisionEvidenceLookupKeys || null,
+    targeted_match_n: Number(secondary.targeted_match_n || 0) + Number(primary.targeted_match_n || 0),
+    decisionEvidenceRows: dedupeDecisionEvidenceRows([
+      ...(Array.isArray(primary.decisionEvidenceRows) ? primary.decisionEvidenceRows : []),
+      ...(Array.isArray(secondary.decisionEvidenceRows) ? secondary.decisionEvidenceRows : []),
+    ]),
+  };
+}
+
 async function loadFillsFromFirestore({ db = null, env = process.env } = {}) {
   const firestore = db || getFirestore();
   if (!firestore || typeof firestore.collection !== "function") {
@@ -79,7 +139,7 @@ async function loadFillsFromFirestore({ db = null, env = process.env } = {}) {
   };
 }
 
-async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env } = {}) {
+async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env, fills = [] } = {}) {
   const firestore = db || getFirestore();
   if (!firestore || typeof firestore.collection !== "function") {
     throw new Error("V2_OUTCOME_ADJUDICATION_FIRESTORE_REQUIRED");
@@ -107,8 +167,37 @@ async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env 
         "donbeolja_v2__position_cycles_v2",
         "position_cycles_v2",
       ].filter(Boolean)));
-  const docsById = new Map();
+  const targetedRows = [];
   const collectionStats = [];
+  const lookupKeys = collectDecisionEvidenceLookupKeysFromFills(fills);
+  const targetedTasks = [];
+  for (const collection of collections) {
+    for (const openclawDecisionId of lookupKeys.openclawDecisionIds) {
+      targetedTasks.push(
+        firestore.collection(collection).where("openclaw_decision_id", "==", openclawDecisionId).limit(5).get()
+          .then((snap) => snap.docs.map((doc) => ({ id: doc.id || null, ...(typeof doc.data === "function" ? doc.data() : {}) })))
+          .catch(() => [])
+      );
+    }
+    for (const signalIntentId of lookupKeys.signalIntentIds) {
+      targetedTasks.push(
+        firestore.collection(collection).where("signal_intent_id", "==", signalIntentId).limit(5).get()
+          .then((snap) => snap.docs.map((doc) => ({ id: doc.id || null, ...(typeof doc.data === "function" ? doc.data() : {}) })))
+          .catch(() => [])
+      );
+    }
+    for (const positionCycleId of lookupKeys.positionCycleIds) {
+      targetedTasks.push(
+        firestore.collection(collection).where("position_cycle_id", "==", positionCycleId).limit(5).get()
+          .then((snap) => snap.docs.map((doc) => ({ id: doc.id || null, ...(typeof doc.data === "function" ? doc.data() : {}) })))
+          .catch(() => [])
+      );
+    }
+  }
+  if (targetedTasks.length) {
+    const targetedResults = await Promise.all(targetedTasks);
+    targetedRows.push(...targetedResults.flat());
+  }
   for (const collection of collections) {
     try {
       const snap = await firestore.collection(collection).orderBy(orderField, "desc").limit(limit).get();
@@ -117,13 +206,6 @@ async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env 
         return { id: doc.id || data.id || null, ...data };
       });
       collectionStats.push({ collection, row_n: rows.length, ok: true });
-      for (const row of rows) {
-        const key = trimOrNull(row.id)
-          || trimOrNull(row.openclaw_decision_bundle_id)
-          || trimOrNull(row.openclaw_decision_bundle_hash)
-          || `${collection}:${docsById.size}`;
-        if (!docsById.has(key)) docsById.set(key, row);
-      }
     } catch (error) {
       collectionStats.push({
         collection,
@@ -140,7 +222,9 @@ async function loadDecisionEvidenceFromFirestore({ db = null, env = process.env 
     collection_stats: collectionStats,
     order_field: orderField,
     limit,
-    decisionEvidenceRows: Array.from(docsById.values()),
+    decisionEvidenceLookupKeys: lookupKeys,
+    targeted_match_n: targetedRows.length,
+    decisionEvidenceRows: dedupeDecisionEvidenceRows(targetedRows),
   };
 }
 
@@ -160,14 +244,23 @@ async function loadFills({ inputPath, env = process.env, db = null } = {}) {
   return loadFillsFromFirestore({ db, env });
 }
 
-async function loadDecisionEvidence({ inputPath, env = process.env, db = null } = {}) {
+async function loadDecisionEvidence({ inputPath, env = process.env, db = null, fills = [] } = {}) {
   const explicitSource = upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_DECISION_EVIDENCE_SOURCE);
   const inheritedSource = upper(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_SOURCE);
   const source = explicitSource || inheritedSource || "AUTO";
   if (source === "NONE" || source === "DISABLED") {
     return { source: "DISABLED", decisionEvidenceRows: [] };
   }
-  if (source === "FIRESTORE") return loadDecisionEvidenceFromFirestore({ db, env });
+  if (source === "FIRESTORE") return loadDecisionEvidenceFromFirestore({ db, env, fills });
+  if (!explicitSource && inputPath && fs.existsSync(inputPath)) {
+    const cachePayload = {
+      source: "CACHE_FILE",
+      input_file: inputPath,
+      decisionEvidenceRows: loadDecisionEvidenceFromFile(inputPath),
+    };
+    const firestorePayload = await loadDecisionEvidenceFromFirestore({ db, env, fills }).catch(() => ({ source: "FIRESTORE", decisionEvidenceRows: [] }));
+    return mergeDecisionEvidenceSources(cachePayload, firestorePayload);
+  }
   if (inputPath && fs.existsSync(inputPath)) {
     return {
       source: "CACHE_FILE",
@@ -185,7 +278,7 @@ async function loadDecisionEvidence({ inputPath, env = process.env, db = null } 
   if (source === "CACHE" || source === "CACHE_FILE" || source === "FILE") {
     throw new Error("V2_OUTCOME_ADJUDICATION_DECISION_EVIDENCE_INPUT_FILE_MISSING");
   }
-  return loadDecisionEvidenceFromFirestore({ db, env });
+  return loadDecisionEvidenceFromFirestore({ db, env, fills });
 }
 
 async function runCollector({ env = process.env, db = null } = {}) {
@@ -199,7 +292,7 @@ async function runCollector({ env = process.env, db = null } = {}) {
   const writeEnabled = boolFromEnv(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_WRITE, false);
   const maxWrites = Math.max(0, Number(env.V2_OPENCLAW_OUTCOME_ADJUDICATION_MAX_WRITES || 450));
   const loaded = await loadFills({ inputPath, env, db });
-  const loadedDecisionEvidence = await loadDecisionEvidence({ inputPath: decisionEvidenceInputPath, env, db });
+  const loadedDecisionEvidence = await loadDecisionEvidence({ inputPath: decisionEvidenceInputPath, env, db, fills: loaded.fills });
   const result = collectOpenClawOutcomeAdjudicationsFromFills({
     fills: loaded.fills,
     decisionEvidenceRows: loadedDecisionEvidence.decisionEvidenceRows,
@@ -231,6 +324,8 @@ async function runCollector({ env = process.env, db = null } = {}) {
     decision_evidence_collection_stats: loadedDecisionEvidence.collection_stats || null,
     decision_evidence_order_field: loadedDecisionEvidence.order_field || null,
     decision_evidence_limit: loadedDecisionEvidence.limit || null,
+    decision_evidence_lookup_keys: loadedDecisionEvidence.decisionEvidenceLookupKeys || null,
+    decision_evidence_targeted_match_n: loadedDecisionEvidence.targeted_match_n || 0,
     decision_evidence_input_file: decisionEvidenceInputPath,
     input_file: inputPath,
     output_file: outputPath,
