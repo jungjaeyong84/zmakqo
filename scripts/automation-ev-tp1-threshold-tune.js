@@ -749,6 +749,7 @@ async function getRawProviderSettings(provider) {
 }
 
 function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, currentTierThresholds, nextTierThresholds, plan, bandPlan, resolvedEntries, unresolvedOpenCount, unresolvedStaleCount, provider, tf, cacheMeta, mlPolicyReport, mlHint, stageLedger, bestFebtContract, bestFebtMarketGuard }) {
+  const resolvedSummary = summarizeResolvedEntries(resolvedEntries);
   const lines = [];
   lines.push(`# EV Composite Threshold Tune`);
   lines.push("");
@@ -758,7 +759,9 @@ function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, 
   lines.push(`- 목표 월간 순수익: ${roundTo(TARGET_MONTHLY_NET_KRW, 0)} KRW`);
   lines.push(`- 평가 윈도우: 최근 ${windowDays}일`);
   lines.push(`- maturity 기준: ${maturityHours}시간`);
-  lines.push(`- resolved sample: ${resolvedEntries.length}`);
+  lines.push(`- resolved sample total: ${resolvedSummary.total}`);
+  lines.push(`- executed sample(metric basis): ${resolvedSummary.executed}`);
+  lines.push(`- EV_DROP counterfactual sample: ${resolvedSummary.evDropCounterfactual}`);
   lines.push(`- unresolved open: ${unresolvedOpenCount}`);
   lines.push(`- unresolved stale: ${unresolvedStaleCount}`);
   lines.push(`- 현재 threshold: ${pct(currentThreshold)}`);
@@ -767,6 +770,7 @@ function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, 
   lines.push(`- 현재 Wilson LB: ${pct(plan.current.wilsonLower)}`);
   lines.push(`- 현재 월간페이스: ${plan.current.monthlyRunRateKrw == null ? "N/A" : `${roundTo(plan.current.monthlyRunRateKrw, 0)} KRW`}`);
   lines.push(`- 현재 sample: ${plan.current.n}`);
+  lines.push(`- threshold 통계 기준: executed sample only (현재 executed ${resolvedSummary.executed} / EV_DROP ${resolvedSummary.evDropCounterfactual})`);
   lines.push(`- BEST/FEBT contract: ${bestFebtContract && bestFebtContract.mode || "N/A"} / replacement ${bestFebtContract && bestFebtContract.projected_replacement_ratio != null ? pct(bestFebtContract.projected_replacement_ratio) : "N/A"} / count ${bestFebtContract && bestFebtContract.projected_count_ratio_global != null ? `${Number(bestFebtContract.projected_count_ratio_global).toFixed(2)}x` : "N/A"}`);
   lines.push(`- market guard: ${bestFebtMarketGuard && bestFebtMarketGuard.market ? `${bestFebtMarketGuard.market} / ${bestFebtMarketGuard.mode}` : "N/A"}`);
   if (plan.best) {
@@ -788,6 +792,7 @@ function renderMarkdown({ nowMeta, windowDays, maturityHours, currentThreshold, 
     lines.push(`- band 순손익: ${bandPlan.current.netPnlQuote == null ? "N/A" : roundTo(bandPlan.current.netPnlQuote, 2)} -> ${bandPlan.best && bandPlan.best.netPnlQuote != null ? roundTo(bandPlan.best.netPnlQuote, 2) : "N/A"}`);
     lines.push(`- band 월간페이스: ${bandPlan.current.monthlyRunRateKrw == null ? "N/A" : `${roundTo(bandPlan.current.monthlyRunRateKrw, 0)} KRW`} -> ${bandPlan.best && bandPlan.best.monthlyRunRateKrw != null ? `${roundTo(bandPlan.best.monthlyRunRateKrw, 0)} KRW` : "N/A"}`);
     lines.push(`- band 드로우다운프록시: ${bandPlan.current.negPnlAbs == null ? "N/A" : roundTo(bandPlan.current.negPnlAbs, 2)} -> ${bandPlan.best && bandPlan.best.negPnlAbs != null ? roundTo(bandPlan.best.negPnlAbs, 2) : "N/A"}`);
+    lines.push(`- band 통계 기준: executed sample only (현재 executed ${resolvedSummary.executed} / EV_DROP ${resolvedSummary.evDropCounterfactual})`);
     lines.push(`- band 결정 사유: ${bandPlan.reason}`);
   }
   lines.push("");
@@ -864,6 +869,29 @@ function buildMlTierPlanRows(tierPlans = {}) {
       best_monthly_run_rate_krw: row.best ? row.best.monthlyRunRateKrw : null,
     };
   });
+}
+
+function summarizeResolvedEntries(resolvedEntries = []) {
+  const entries = Array.isArray(resolvedEntries) ? resolvedEntries : [];
+  const summary = {
+    total: 0,
+    executed: 0,
+    evDropCounterfactual: 0,
+    missingEntryEventId: 0,
+    byStage4Source: {},
+  };
+  for (const row of entries) {
+    summary.total += 1;
+    const stage4Source = String(row && row.stage4Source || "").trim().toUpperCase() || "UNKNOWN";
+    summary.byStage4Source[stage4Source] = (summary.byStage4Source[stage4Source] || 0) + 1;
+    if (!row || !row.entryEventId) summary.missingEntryEventId += 1;
+    if (stage4Source === "EV_DROP") {
+      summary.evDropCounterfactual += 1;
+    } else {
+      summary.executed += 1;
+    }
+  }
+  return summary;
 }
 
 function isEvThresholdHardening(currentThreshold, nextThreshold) {
@@ -998,6 +1026,7 @@ async function main() {
     .filter((row) => Number.isFinite(row.predicted));
 
   const resolvedEntries = classified.filter((row) => row.resolvedForTune === true);
+  const resolvedSummary = summarizeResolvedEntries(resolvedEntries);
   const unresolvedOpenCount = classified.filter((row) => row.outcome === "UNRESOLVED_OPEN").length;
   const unresolvedStaleCount = classified.filter((row) => row.outcome === "UNRESOLVED_STALE").length;
 
@@ -1115,6 +1144,10 @@ async function main() {
     summary: {
       entries_seen: classified.length,
       resolved_entries: resolvedEntries.length,
+      resolved_executed_entries: resolvedSummary.executed,
+      resolved_ev_drop_counterfactual_entries: resolvedSummary.evDropCounterfactual,
+      resolved_missing_entry_event_id_entries: resolvedSummary.missingEntryEventId,
+      metric_sample_basis: "EXECUTED_ONLY",
       unresolved_open_entries: unresolvedOpenCount,
       unresolved_stale_entries: unresolvedStaleCount,
       current_sample: effectivePlan.current.n,
@@ -1229,7 +1262,7 @@ async function main() {
           `목표 TP1 도달률 ${pct(TARGET_HIT_RATE)}`,
           `목표 월간 순수익 ${roundTo(TARGET_MONTHLY_NET_KRW, 0)} KRW`,
           `평가 윈도우 최근 ${LOOKBACK_DAYS}일 / maturity ${MATURITY_HOURS}시간`,
-          `resolved sample ${resolvedEntries.length}건`,
+          `resolved sample total ${resolvedSummary.total}건 / executed ${resolvedSummary.executed}건 / EV_DROP ${resolvedSummary.evDropCounterfactual}건`,
           `unresolved open ${unresolvedOpenCount}건 / stale ${unresolvedStaleCount}건`,
           `cache intents new ${intentRes.meta.fetched_new} / fills new ${fillRes.meta.fetched_new} / drops new ${dropsRes.meta.fetched_new}`,
           `stage ledger ${stageLedgerMeta.source} / ${stageLedgerMeta.filePath || "N/A"}`,
@@ -1243,6 +1276,9 @@ async function main() {
         lines: [
           `라이브 LONG/SHORT 기준 현재 ${pct(currentTierThresholds.EARLY)} -> 적용 ${pct(nextTierThresholds.EARLY)}`,
           `현재 hit_rate ${pct(effectivePlan.current.hitRate)} / wilson_lb ${pct(effectivePlan.current.wilsonLower)} / 월간페이스 ${effectivePlan.current.monthlyRunRateKrw == null ? "N/A" : `${roundTo(effectivePlan.current.monthlyRunRateKrw, 0)} KRW`} / n=${effectivePlan.current.n}`,
+          effectivePlan.current.n === 0 && resolvedSummary.total > 0
+            ? `현재 threshold 통계는 executed sample만 사용합니다 / executed ${resolvedSummary.executed}건 / EV_DROP ${resolvedSummary.evDropCounterfactual}건`
+            : `현재 threshold 통계 기준 executed sample ${effectivePlan.current.n}건`,
           effectivePlan.best
             ? `추천 ${pct(effectivePlan.best.threshold)} / hit_rate ${pct(effectivePlan.best.hitRate)} / wilson_lb ${pct(effectivePlan.best.wilsonLower)} / 월간페이스 ${effectivePlan.best.monthlyRunRateKrw == null ? "N/A" : `${roundTo(effectivePlan.best.monthlyRunRateKrw, 0)} KRW`} / n=${effectivePlan.best.n}`
             : "추천 threshold 없음",
@@ -1256,6 +1292,9 @@ async function main() {
           `현재 full ${pct(currentBand.fullThreshold)} / kill ${pct(currentBand.killThreshold)} / mid ${pct(currentBand.midScale)} / low ${pct(currentBand.lowScale)}`,
           `적용 full ${pct(bandPlan.next.fullThreshold)} / kill ${pct(bandPlan.next.killThreshold)} / mid ${pct(bandPlan.next.midScale)} / low ${pct(bandPlan.next.lowScale)}`,
           `현재 expectancy ${pct(bandPlan.current.avgRetNet)} / hit_rate ${pct(bandPlan.current.hitRate)} / net ${bandPlan.current.netPnlQuote == null ? "N/A" : roundTo(bandPlan.current.netPnlQuote, 2)} / 월간페이스 ${bandPlan.current.monthlyRunRateKrw == null ? "N/A" : `${roundTo(bandPlan.current.monthlyRunRateKrw, 0)} KRW`}`,
+          bandPlan.current.n === 0 && resolvedSummary.total > 0
+            ? `현재 band 통계도 executed sample만 사용합니다 / executed ${resolvedSummary.executed}건 / EV_DROP ${resolvedSummary.evDropCounterfactual}건`
+            : `현재 band 통계 기준 executed sample ${bandPlan.current.n}건`,
           `추천 expectancy ${pct(bandPlan.best.avgRetNet)} / hit_rate ${pct(bandPlan.best.hitRate)} / net ${bandPlan.best.netPnlQuote == null ? "N/A" : roundTo(bandPlan.best.netPnlQuote, 2)} / 월간페이스 ${bandPlan.best.monthlyRunRateKrw == null ? "N/A" : `${roundTo(bandPlan.best.monthlyRunRateKrw, 0)} KRW`}`,
           `band 결정 사유 ${bandPlan.reason}`,
         ],
@@ -1322,6 +1361,7 @@ module.exports = {
     evaluateThreshold,
     pickBandPlan,
     pickThresholdPlan,
+    summarizeResolvedEntries,
     wilsonLowerBound,
   },
 };

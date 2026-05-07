@@ -13,6 +13,7 @@ function run() {
   assert.strictEqual(typeof __test.buildTierThresholdRows, "function");
   assert.strictEqual(typeof __test.buildMlTierPlanRows, "function");
   assert.strictEqual(typeof __test.describeEvDecisionReasonForUser, "function");
+  assert.strictEqual(typeof __test.summarizeResolvedEntries, "function");
 
   const resolvedEntries = [
     { predicted: 0.54, outcome: "NO_TP1_EXITED" },
@@ -51,6 +52,19 @@ function run() {
 
   assert.strictEqual(__test.describeEvDecisionReasonForUser("INSUFFICIENT_SAMPLE"), "판단에 필요한 표본이 아직 부족합니다");
 
+  const resolvedSummary = __test.summarizeResolvedEntries([
+    { stage4Source: "EV_DROP", entryEventId: null },
+    { stage4Source: "EV_DROP", entryEventId: null },
+    { stage4Source: "ENTRY", entryEventId: "ENTRY__1" },
+  ]);
+  assert.deepStrictEqual(resolvedSummary, {
+    total: 3,
+    executed: 1,
+    evDropCounterfactual: 2,
+    missingEntryEventId: 2,
+    byStage4Source: { EV_DROP: 2, ENTRY: 1 },
+  });
+
   const markdown = __test.renderMarkdown({
     nowMeta: { kst: "2026-04-06 08:00:00 KST" },
     windowDays: 9,
@@ -72,7 +86,10 @@ function run() {
       best: { hitRate: 0.62, avgRetNet: 0.02, netPnlQuote: 1200, monthlyRunRateKrw: 6000, negPnlAbs: 100 },
       next: { fullThreshold: 0.6, killThreshold: 0.5, midScale: 0.7, lowScale: 0.4 },
     },
-    resolvedEntries: [],
+    resolvedEntries: [
+      { stage4Source: "EV_DROP", entryEventId: null },
+      { stage4Source: "EV_DROP", entryEventId: null },
+    ],
     unresolvedOpenCount: 0,
     unresolvedStaleCount: 0,
     provider: "BINANCEFUT",
@@ -85,6 +102,10 @@ function run() {
     bestFebtMarketGuard: null,
   });
   assert.match(markdown, /EV Composite Threshold Tune/);
+  assert.match(markdown, /resolved sample total: 2/);
+  assert.match(markdown, /executed sample\(metric basis\): 0/);
+  assert.match(markdown, /EV_DROP counterfactual sample: 2/);
+  assert.match(markdown, /threshold 통계 기준: executed sample only/);
 
   const thresholdRows = __test.buildTierThresholdRows({
     EARLY: {
