@@ -220,6 +220,46 @@ function buildSyntheticBars(n, opts = {}) {
   assert.strictEqual(typeof r.diagnostics.short_decision_reason, "string");
 })();
 
+(function shortLossPayloadCarriesReclaimContractEvidence() {
+  const payload = __test.buildPayload({
+    direction: "SHORT",
+    grade: "EARLY",
+    score: 0.71,
+    market_state: "TRANSITION",
+    htf_bias: "BEAR",
+    trigger_type: "LOSS",
+    risk_mode: "PASS",
+    rr: 1.8,
+    stop: 102,
+    target: 98,
+    close: 100,
+    exchange: "BINANCEFUT",
+    symbol: "ETHUSDT",
+    tf: "15m",
+    barCloseMs: 1700000000000,
+    qtyPct: 100,
+    runId: "TEST",
+    criteriaInputs: {
+      structure_alignment: 0.82,
+      pullback_quality: 0.81,
+      directional_pressure: 0.77,
+      continuation_pressure: 0.71,
+      risk_efficiency: 0.74,
+      confidence: 0.71,
+      hold_after_reclaim: true,
+      reclaim_hold_confirmed: true,
+      reclaim_level_held: true,
+      stop_distance_sane: true,
+      trigger_stop_distance_sane: true,
+      pullback_reclaim_short_recovery_confirmed: true,
+    },
+  });
+  assert.strictEqual(payload.features.hold_after_reclaim, true);
+  assert.strictEqual(payload.features.reclaim_hold_confirmed, true);
+  assert.strictEqual(payload.features.stop_distance_sane, true);
+  assert.strictEqual(payload.features.pullback_reclaim_short_recovery_confirmed, true);
+})();
+
 (function testHappyPath_StructureProducesDiagnostics() {
   const bars = buildSyntheticBars(160, { slope: 0.5 });
   const r = generateV2EntrySignals({

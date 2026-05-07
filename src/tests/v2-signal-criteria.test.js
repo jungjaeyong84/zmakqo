@@ -446,12 +446,47 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
       mark_index_gap_bps: 1,
       btc_1h_trend: "SHORT",
       mtf_1h_direction: "SHORT",
+      short_reclaim_recovery_confirmed: false,
     },
     marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 1 } },
   });
   assert.strictEqual(criteria.verdict, "BLOCK");
   assert.strictEqual(criteria.setup_gate.setup_type, "PULLBACK_PROBE");
   assert.ok(criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:SHORT_DISABLED_BY_REALIZED_DECAY"));
+})();
+
+(function shortPullbackReclaimDoesNotRequireSyntheticRecoveryOverrideWhenEvidenceMissing() {
+  const criteria = buildSignalCriteria({
+    signalSide: "SHORT",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "SHORT",
+      htf_alignment_score: 0.82,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.82,
+      trigger_type: "LOSS",
+      trigger_confirmed: true,
+      reclaim_confirmed: true,
+      hold_after_reclaim: true,
+      stop_distance_sane: true,
+      volume_zscore: 1.4,
+      rsi_entry_tf: 42,
+      expected_gross_r: 1.9,
+      expected_net_r_after_cost: 0.4,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1.5,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.9,
+      spread_bps: 2,
+      mark_index_gap_bps: 1,
+      btc_1h_trend: "SHORT",
+      mtf_1h_direction: "SHORT",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 1 } },
+  });
+  assert.strictEqual(criteria.setup_gate.ok, true);
+  assert.ok(!criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:SHORT_DISABLED_BY_REALIZED_DECAY"));
 })();
 
 (function adverseSelectionPenaltyReducesEffectiveNetRAndBlocksOpposedMtf() {

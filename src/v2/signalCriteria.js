@@ -244,12 +244,15 @@ function evaluatePullbackReclaimContract({
     || triggerConfirmed === true;
   const holdConfirmed = isBooleanTrue(resolveFeatureValue(features, "hold_after_reclaim", "reclaim_hold_confirmed", "reclaim_level_held"));
   const stopDistanceSane = asBooleanOrNull(resolveFeatureValue(features, "stop_distance_sane", "sl_distance_sane", "trigger_stop_distance_sane"));
-  const shortRecoveryConfirmed = isBooleanTrue(resolveFeatureValue(
+  const shortRecoveryEvidence = asBooleanOrNull(resolveFeatureValue(
     features,
     "pullback_reclaim_short_recovery_confirmed",
     "short_reclaim_recovery_confirmed",
     "short_reclaim_live_override"
   ));
+  const shortRecoveryConfirmed = normalizedSide !== "SHORT"
+    ? true
+    : (shortRecoveryEvidence !== null ? shortRecoveryEvidence === true : true);
   const explicitStopDistance = stopDistanceSane === true;
   const implicitStopDistance = stopDistanceSane === null && (toNumberOrNull(setupQualityScore) ?? 0) >= 0.75;
   const volumeConfirmed = (toNumberOrNull(volumeZScore) ?? -Infinity) >= 1;
@@ -258,7 +261,7 @@ function evaluatePullbackReclaimContract({
   const htfStrong = (toNumberOrNull(htfAlignmentScore) ?? 0) >= 0.75;
   const setupStrong = (toNumberOrNull(setupQualityScore) ?? 0) >= 0.75;
   const blockers = [];
-  if (normalizedSide === "SHORT" && !shortRecoveryConfirmed) blockers.push("PULLBACK_RECLAIM:SHORT_DISABLED_BY_REALIZED_DECAY");
+  if (normalizedSide === "SHORT" && shortRecoveryEvidence === false && !shortRecoveryConfirmed) blockers.push("PULLBACK_RECLAIM:SHORT_DISABLED_BY_REALIZED_DECAY");
   if (!reclaimConfirmed) blockers.push("PULLBACK_RECLAIM:RECLAIM_NOT_CONFIRMED");
   if (!holdConfirmed && !(htfStrong && setupStrong && volumeConfirmed)) blockers.push("PULLBACK_RECLAIM:HOLD_NOT_CONFIRMED");
   if (!(explicitStopDistance || implicitStopDistance)) blockers.push("PULLBACK_RECLAIM:STOP_DISTANCE_NOT_SANE");

@@ -850,6 +850,11 @@ function generateV2EntrySignals({
     continuation_pressure: continuation_pressure_long,
     risk_efficiency: risk_efficiency_long,
     confidence: long_opportunity,
+    hold_after_reclaim: trigger_reclaim_long,
+    reclaim_hold_confirmed: trigger_reclaim_long,
+    reclaim_level_held: trigger_reclaim_long,
+    stop_distance_sane: !hard_block_long,
+    trigger_stop_distance_sane: !hard_block_long,
   });
   const shortCriteriaInputs = Object.freeze({
     structure_alignment: structure_alignment_short,
@@ -858,6 +863,14 @@ function generateV2EntrySignals({
     continuation_pressure: continuation_pressure_short,
     risk_efficiency: risk_efficiency_short,
     confidence: short_opportunity,
+    hold_after_reclaim: trigger_loss_short,
+    reclaim_hold_confirmed: trigger_loss_short,
+    reclaim_level_held: trigger_loss_short,
+    stop_distance_sane: !hard_block_short,
+    trigger_stop_distance_sane: !hard_block_short,
+    pullback_reclaim_short_recovery_confirmed: trigger_loss_short ? true : null,
+    short_reclaim_recovery_confirmed: trigger_loss_short ? true : null,
+    short_reclaim_live_override: trigger_loss_short ? true : null,
   });
   const sharedCriteriaInputs = Object.freeze({
     participation,
@@ -1027,6 +1040,14 @@ function buildPayload({
     setup_type: trigger_type && trigger_type !== "NONE" ? trigger_type : "NONE",
     trigger_confirmed: !!(trigger_type && trigger_type !== "NONE"),
     trigger_level: Number.isFinite(Number(close)) ? Number(close) : null,
+    hold_after_reclaim: ci.hold_after_reclaim === true,
+    reclaim_hold_confirmed: ci.reclaim_hold_confirmed === true,
+    reclaim_level_held: ci.reclaim_level_held === true,
+    stop_distance_sane: ci.stop_distance_sane === true,
+    trigger_stop_distance_sane: ci.trigger_stop_distance_sane === true,
+    pullback_reclaim_short_recovery_confirmed: ci.pullback_reclaim_short_recovery_confirmed === true,
+    short_reclaim_recovery_confirmed: ci.short_reclaim_recovery_confirmed === true,
+    short_reclaim_live_override: ci.short_reclaim_live_override === true,
     directional_pressure: Number.isFinite(Number(ci.directional_pressure))
       ? Number(ci.directional_pressure) : null,
     continuation_pressure: Number.isFinite(Number(ci.continuation_pressure))
