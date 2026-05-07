@@ -51,6 +51,28 @@ function normalizeRollingExpectancy(value) {
   return toNumberOrNull(value);
 }
 
+function resolveEmpiricalCohortDowngrade({
+  setupType = null,
+  regimeProfile = null,
+} = {}) {
+  const normalizedSetupType = upper(setupType);
+  const structuralRegime = upper(regimeProfile && regimeProfile.structural_regime);
+  if (normalizedSetupType === "PULLBACK_RECLAIM" && structuralRegime === "TRANSITION") {
+    return Object.freeze({
+      apply: true,
+      target_cohort: "MARGINAL_EDGE",
+      authority: "ADVISORY_ONLY",
+      reason: "EMPIRICAL_COHORT_DECAY_PULLBACK_RECLAIM_TRANSITION",
+    });
+  }
+  return Object.freeze({
+    apply: false,
+    target_cohort: null,
+    authority: null,
+    reason: null,
+  });
+}
+
 function maybeDowngradeEdgeCohortForRealizedExpectancy(cohort, rollingExpectancy) {
   const expectancy = normalizeRollingExpectancy(rollingExpectancy);
   if (expectancy === null || expectancy > 0) return cohort;
@@ -58,7 +80,26 @@ function maybeDowngradeEdgeCohortForRealizedExpectancy(cohort, rollingExpectancy
   return cohort;
 }
 
-function applyEdgeCohortAuthority({ rawEdgeCohort, edgeCohortAfterRealizedExpectancy, rollingExpectancy }) {
+function applyEdgeCohortAuthority({
+  rawEdgeCohort,
+  edgeCohortAfterRealizedExpectancy,
+  rollingExpectancy,
+  empiricalCohortDowngrade = null,
+}) {
+  const empirical = empiricalCohortDowngrade && empiricalCohortDowngrade.apply === true
+    ? empiricalCohortDowngrade
+    : null;
+  if (empirical) {
+    const downgraded = rawEdgeCohort !== empirical.target_cohort || edgeCohortAfterRealizedExpectancy !== empirical.target_cohort;
+    return Object.freeze({
+      edge_cohort: empirical.target_cohort,
+      edge_cohort_authority: empirical.authority,
+      edge_cohort_downgraded: downgraded,
+      edge_cohort_downgrade_reason: empirical.reason,
+      edge_cohort_downgraded_by_realized_expectancy: edgeCohortAfterRealizedExpectancy !== rawEdgeCohort,
+      edge_cohort_downgraded_by_empirical_cohort_risk: true,
+    });
+  }
   // 2026-05-05: realized V2 outcomes showed BUILDABLE_EDGE is not
   // monotonic with realized PnL. Keep the raw label for diagnostics, but
   // remove its authority from live decisions until cohort-level recovery is
@@ -71,6 +112,7 @@ function applyEdgeCohortAuthority({ rawEdgeCohort, edgeCohortAfterRealizedExpect
       edge_cohort_downgrade_reason: "BUILDABLE_EDGE_ADVISORY_ONLY",
       edge_cohort_downgraded_by_realized_expectancy: normalizeRollingExpectancy(rollingExpectancy) !== null
         && normalizeRollingExpectancy(rollingExpectancy) <= 0,
+      edge_cohort_downgraded_by_empirical_cohort_risk: false,
     });
   }
   return Object.freeze({
@@ -81,6 +123,7 @@ function applyEdgeCohortAuthority({ rawEdgeCohort, edgeCohortAfterRealizedExpect
       ? "REALIZED_EXPECTANCY_NON_POSITIVE"
       : null,
     edge_cohort_downgraded_by_realized_expectancy: edgeCohortAfterRealizedExpectancy !== rawEdgeCohort,
+    edge_cohort_downgraded_by_empirical_cohort_risk: false,
   });
 }
 
@@ -100,6 +143,7 @@ function buildExpectedEdgeModel({
   costREquivalent = null,
   adverseSelectionPenaltyR = null,
   edgeCohortRollingExpectancy = null,
+  setupType = null,
   regimeProfile = null,
 } = {}) {
   const side = upper(signalSide);
@@ -144,10 +188,15 @@ function buildExpectedEdgeModel({
 
   const rawEdgeCohort = bucketEdgeCohort(edgeScore, effectiveNet);
   const edgeCohortAfterRealizedExpectancy = maybeDowngradeEdgeCohortForRealizedExpectancy(rawEdgeCohort, edgeCohortRollingExpectancy);
+  const empiricalCohortDowngrade = resolveEmpiricalCohortDowngrade({
+    setupType,
+    regimeProfile,
+  });
   const edgeCohortAuthority = applyEdgeCohortAuthority({
     rawEdgeCohort,
     edgeCohortAfterRealizedExpectancy,
     rollingExpectancy: edgeCohortRollingExpectancy,
+    empiricalCohortDowngrade,
   });
 
   return Object.freeze({
@@ -171,6 +220,7 @@ function buildExpectedEdgeModel({
     edge_cohort_downgraded: edgeCohortAuthority.edge_cohort_downgraded,
     edge_cohort_downgrade_reason: edgeCohortAuthority.edge_cohort_downgrade_reason,
     edge_cohort_downgraded_by_realized_expectancy: edgeCohortAuthority.edge_cohort_downgraded_by_realized_expectancy,
+    edge_cohort_downgraded_by_empirical_cohort_risk: edgeCohortAuthority.edge_cohort_downgraded_by_empirical_cohort_risk,
     trigger_strength_score: triggerStrength,
   });
 }
@@ -181,6 +231,7 @@ module.exports = {
     normalizeTriggerStrength,
     normalizeFrictionPenalty,
     bucketEdgeCohort,
+    resolveEmpiricalCohortDowngrade,
     maybeDowngradeEdgeCohortForRealizedExpectancy,
     applyEdgeCohortAuthority,
   },

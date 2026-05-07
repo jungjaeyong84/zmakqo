@@ -630,6 +630,7 @@ function buildSignalCriteria({
     costREquivalent: resolvedCostREquivalent,
     adverseSelectionPenaltyR: adverseSelection.penalty_r,
     edgeCohortRollingExpectancy,
+    setupType: resolvedSetupType,
     regimeProfile,
   });
   const shadowFilterDecision = buildSignalShadowFilters({
@@ -732,6 +733,7 @@ function buildSignalCriteria({
       edge_cohort_downgraded: expectedEdgeModel.edge_cohort_downgraded,
       edge_cohort_downgrade_reason: expectedEdgeModel.edge_cohort_downgrade_reason,
       edge_cohort_downgraded_by_realized_expectancy: expectedEdgeModel.edge_cohort_downgraded_by_realized_expectancy,
+      edge_cohort_downgraded_by_empirical_cohort_risk: expectedEdgeModel.edge_cohort_downgraded_by_empirical_cohort_risk,
       tp1_reach_probability: expectedEdgeModel.tp1_reach_probability,
       continuation_probability: expectedEdgeModel.continuation_probability,
       stop_hit_probability: expectedEdgeModel.stop_hit_probability,

@@ -81,4 +81,33 @@ const { buildExpectedEdgeModel } = require("../v2/expectedEdgeModel");
   assert.strictEqual(model.edge_cohort_downgrade_reason, "BUILDABLE_EDGE_ADVISORY_ONLY");
 })();
 
+(function pullbackReclaimTransitionIsEmpiricallyDowngraded() {
+  const model = buildExpectedEdgeModel({
+    signalSide: "LONG",
+    htfAlignmentScore: 0.86,
+    setupQualityScore: 0.84,
+    volumeZScore: 1.8,
+    rsiEntryTf: 60,
+    marketQualityScore: 0.9,
+    spreadBps: 3,
+    fundingPenaltyBps: 1,
+    expectedGrossR: 2.2,
+    expectedNetRAfterCost: 0.45,
+    costEstimateBps: 6,
+    costREquivalent: 1.75,
+    setupType: "PULLBACK_RECLAIM",
+    regimeProfile: {
+      structural_regime: "TRANSITION",
+      regime_score: 0.78,
+      liquidity_regime: "ADEQUATE",
+    },
+  });
+
+  assert.strictEqual(model.raw_edge_cohort, "BUILDABLE_EDGE");
+  assert.strictEqual(model.edge_cohort, "MARGINAL_EDGE");
+  assert.strictEqual(model.edge_cohort_authority, "ADVISORY_ONLY");
+  assert.strictEqual(model.edge_cohort_downgrade_reason, "EMPIRICAL_COHORT_DECAY_PULLBACK_RECLAIM_TRANSITION");
+  assert.strictEqual(model.edge_cohort_downgraded_by_empirical_cohort_risk, true);
+})();
+
 console.log("V2_EXPECTED_EDGE_MODEL_TEST_OK");

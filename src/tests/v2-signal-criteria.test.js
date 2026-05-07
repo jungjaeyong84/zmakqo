@@ -460,4 +460,38 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.expected_edge_model.edge_cohort, "MARGINAL_EDGE");
 })();
 
+(function pullbackReclaimTransitionDowngradesEdgeAuthority() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "transition",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.82,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.84,
+      trigger_type: "RECLAIM",
+      trigger_confirmed: true,
+      volume_zscore: 1.3,
+      rsi_entry_tf: 58,
+      expected_gross_r: 2.1,
+      expected_net_r_after_cost: 0.42,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1.68,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.9,
+      spread_bps: 2,
+      mark_index_gap_bps: 1,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 1 } },
+  });
+  assert.strictEqual(criteria.expected_edge_model.edge_cohort, "MARGINAL_EDGE");
+  assert.strictEqual(criteria.expected_edge_model.edge_cohort_authority, "ADVISORY_ONLY");
+  assert.strictEqual(criteria.expected_edge_model.edge_cohort_downgrade_reason, "EMPIRICAL_COHORT_DECAY_PULLBACK_RECLAIM_TRANSITION");
+  assert.strictEqual(criteria.expected_edge_model.edge_cohort_downgraded_by_empirical_cohort_risk, true);
+  assert.strictEqual(criteria.expected_edge_gate.edge_cohort_downgraded_by_empirical_cohort_risk, true);
+})();
+
 console.log("V2_SIGNAL_CRITERIA_TEST_OK");
