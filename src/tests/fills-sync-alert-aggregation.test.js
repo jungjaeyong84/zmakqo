@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("assert");
+const firestoreStorage = require("../storage/firestore");
 const { __test: fillsSyncTest } = require("../services/binanceFuturesFillsSync");
 const { __test: alertTest } = require("../services/tradeExecutionAlert");
 const { __test: fillSyncTradeAlertGateTest } = require("../storage/fillSyncTradeAlertGate");
@@ -1256,11 +1257,16 @@ async function run() {
 }
 
 (async () => {
+  const originalGetFirestore = firestoreStorage.getFirestore;
+  firestoreStorage.getFirestore = () => null;
   try {
     await run();
     console.log("FILL_SYNC_ALERT_AGGREGATION_TEST_OK");
   } catch (err) {
     console.error("FILL_SYNC_ALERT_AGGREGATION_TEST_FAIL", err && err.stack ? err.stack : err);
     process.exit(1);
+  } finally {
+    firestoreStorage.getFirestore = originalGetFirestore;
+    fillSyncTradeAlertGateTest.fallbackGateState.clear();
   }
 })();

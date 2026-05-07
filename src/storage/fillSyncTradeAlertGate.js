@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
-const { getFirestore } = require("./firestore");
+const firestoreStorage = require("./firestore");
 
 const fallbackGateState = new Map();
 const CLAIM_TTL_MS = 5 * 60 * 1000;
@@ -43,7 +43,7 @@ async function prepareFillSyncTradeAlertGate({
   const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
   const gateId = buildGateId(normalizedKey);
   const claimToken = buildFallbackClaimToken();
-  const db = typeof getFirestore === "function" ? getFirestore() : null;
+  const db = typeof firestoreStorage.getFirestore === "function" ? firestoreStorage.getFirestore() : null;
 
   if (!db || typeof db.runTransaction !== "function" || typeof db.collection !== "function") {
     const prev = fallbackGateState.get(gateId) || null;
@@ -122,7 +122,7 @@ async function markFillSyncTradeAlertGateResult({
 } = {}) {
   if (!gateId) return { ok: false, skipped: true, reason: "MISSING_GATE_ID" };
   const now = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
-  const db = typeof getFirestore === "function" ? getFirestore() : null;
+  const db = typeof firestoreStorage.getFirestore === "function" ? firestoreStorage.getFirestore() : null;
 
   if (!db || typeof db.runTransaction !== "function" || typeof db.collection !== "function") {
     const prev = fallbackGateState.get(gateId) || null;
