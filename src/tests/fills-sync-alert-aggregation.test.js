@@ -1053,6 +1053,8 @@ async function run() {
     },
   });
   assert.strictEqual(sentPayloads.length, 1, "same order partial fills across sync runs must emit only one alert");
+  assert.ok(sentPayloads[0].tradeAlertDedupeKey, "fill sync alerts must carry a durable outbox dedupe key");
+  assert.strictEqual(sentPayloads[0].tradeAlertDedupeKey, sentPayloads[0].idempotencyKey, "fill sync alerts must align outbox and idempotency keys");
 
   const conflictingStageBatches = new Map();
   fillsSyncTest.queueFillSyncAlertBatch(conflictingStageBatches, {

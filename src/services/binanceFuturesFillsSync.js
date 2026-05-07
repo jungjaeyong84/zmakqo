@@ -1873,7 +1873,22 @@ async function flushFillSyncAlertBatches(batchMap, {
         nowMs: item.latestTradeMs || Date.now(),
       });
       if (!gate || gate.send !== true) continue;
-      await sendTradeAlert(item.payload);
+      const payload = {
+        ...item.payload,
+        tradeAlertDedupeKey: item.payload && item.payload.tradeAlertDedupeKey
+          ? item.payload.tradeAlertDedupeKey
+          : (gate.key || null),
+        trade_alert_dedupe_key: item.payload && item.payload.trade_alert_dedupe_key
+          ? item.payload.trade_alert_dedupe_key
+          : (gate.key || null),
+        idempotencyKey: item.payload && item.payload.idempotencyKey
+          ? item.payload.idempotencyKey
+          : (gate.key || null),
+        idempotency_key: item.payload && item.payload.idempotency_key
+          ? item.payload.idempotency_key
+          : (gate.key || null),
+      };
+      await sendTradeAlert(payload);
     } catch (e) {
       console.warn("[TRADE_EXEC_ALERT_FAIL][FILL_SYNC_BATCH]", e && e.message ? e.message : String(e));
     }
