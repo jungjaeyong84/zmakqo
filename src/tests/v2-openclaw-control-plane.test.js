@@ -63,6 +63,8 @@ const { V2_SERVICE_BOUNDARIES } = require("../v2/boundaries");
       trend_bias: -0.76,
       volatility_rank: 0.61,
       volume_impulse: 0.58,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "SHORT",
     },
     proposalVerdict: "PASS",
     rankScore: 0.81,
@@ -71,6 +73,15 @@ const { V2_SERVICE_BOUNDARIES } = require("../v2/boundaries");
     featuresHash: "feat_hash_v1",
     modelVersion: "openclaw-ml-v2",
     decisionSummary: "tp1 probability above canary threshold",
+    marketDataQuality: {
+      ok: true,
+      reason: "V2_MARKET_DATA_QUALITY_PASS",
+      blockers: [],
+      metrics: {
+        spread_bps: 1.2,
+        mark_index_gap_bps: 0.8,
+      },
+    },
   });
   assert.ok(bundle.signalIntent.signal_intent_id.startsWith("SIGINTV2__SERVER_NATIVE_ML_AI__ETHUSDT__SHORT__"));
   assert.ok(bundle.featureSnapshot.feature_snapshot_id.startsWith("FSV2__"));
@@ -84,6 +95,12 @@ const { V2_SERVICE_BOUNDARIES } = require("../v2/boundaries");
   assert.strictEqual(bundle.canonicalEvidenceSummary.strategy_filter.verdict, "PASS");
   assert.strictEqual(bundle.canonicalEvidenceSummary.feature_snapshot.present, true);
   assert.strictEqual(bundle.canonicalEvidenceSummary.ml_ai_signal_proposal.present, true);
+  assert.strictEqual(bundle.signalCriteria.feature_snapshot_contract.btc_1h_trend, "LONG");
+  assert.strictEqual(bundle.signalCriteria.feature_snapshot_contract.mtf_1h_direction, "SHORT");
+  assert.strictEqual(bundle.marketDataQuality.metrics.btc_1h_trend, "LONG");
+  assert.strictEqual(bundle.marketDataQuality.metrics.mtf_1h_direction, "SHORT");
+  assert.strictEqual(bundle.canonicalEvidenceSummary.market_data_quality.metrics.btc_1h_trend, "LONG");
+  assert.strictEqual(bundle.canonicalEvidenceSummary.market_data_quality.metrics.mtf_1h_direction, "SHORT");
 })();
 
 (function webhookSignalsCanSkipMlEvidence() {

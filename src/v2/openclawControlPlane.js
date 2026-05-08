@@ -39,6 +39,82 @@ function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function upperOrNull(value) {
+  const text = trimOrNull(value);
+  return text ? text.toUpperCase() : null;
+}
+
+function firstValue(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    return value;
+  }
+  return null;
+}
+
+function normalizeFrozenMarketDataQuality({ marketDataQuality = null, signalCriteria = null, featureValues = null } = {}) {
+  const base = asObject(cloneJson(marketDataQuality)) || {};
+  const metrics = asObject(base.metrics) || {};
+  const featureContract = asObject(signalCriteria && signalCriteria.feature_snapshot_contract) || {};
+  const features = asObject(featureValues) || {};
+  return Object.freeze({
+    ...base,
+    metrics: Object.freeze({
+      ...metrics,
+      btc_1h_trend: upperOrNull(firstValue(
+        metrics.btc_1h_trend,
+        metrics.btc_1h_direction,
+        featureContract.btc_1h_trend,
+        featureContract.btc_1h_direction,
+        features.btc_1h_trend,
+        features.btc_1h_direction,
+        features.btc_htf_trend
+      )),
+      mtf_1h_direction: upperOrNull(firstValue(
+        metrics.mtf_1h_direction,
+        metrics.htf_1h_direction,
+        featureContract.mtf_1h_direction,
+        featureContract.htf_1h_direction,
+        features.mtf_1h_direction,
+        features.htf_1h_direction,
+        features.one_hour_direction
+      )),
+    }),
+  });
+}
+
+function normalizeFrozenSignalCriteria({ signalCriteria = null, marketDataQuality = null, featureValues = null } = {}) {
+  const criteria = asObject(cloneJson(signalCriteria));
+  if (!criteria) return signalCriteria;
+  const featureContract = asObject(criteria.feature_snapshot_contract) || {};
+  const metrics = asObject(marketDataQuality && marketDataQuality.metrics) || {};
+  const features = asObject(featureValues) || {};
+  return Object.freeze({
+    ...criteria,
+    feature_snapshot_contract: Object.freeze({
+      ...featureContract,
+      btc_1h_trend: upperOrNull(firstValue(
+        featureContract.btc_1h_trend,
+        featureContract.btc_1h_direction,
+        metrics.btc_1h_trend,
+        metrics.btc_1h_direction,
+        features.btc_1h_trend,
+        features.btc_1h_direction,
+        features.btc_htf_trend
+      )),
+      mtf_1h_direction: upperOrNull(firstValue(
+        featureContract.mtf_1h_direction,
+        featureContract.htf_1h_direction,
+        metrics.mtf_1h_direction,
+        metrics.htf_1h_direction,
+        features.mtf_1h_direction,
+        features.htf_1h_direction,
+        features.one_hour_direction
+      )),
+    }),
+  });
+}
+
 function buildOpenClawDecisionBundleId({ bundleHash } = {}) {
   const hash = trimOrNull(bundleHash);
   if (!hash) throw new Error("OPENCLAW_DECISION_BUNDLE_HASH_REQUIRED");
@@ -309,6 +385,17 @@ function buildOpenClawDecisionBundle({
         criteriaProfile: criteriaProfile ?? signalCriteriaProfile,
       })
     : null;
+  const frozenFeatureValues = featureSnapshot ? featureSnapshot.feature_values : featureValues;
+  const frozenMarketDataQuality = normalizeFrozenMarketDataQuality({
+    marketDataQuality,
+    signalCriteria: resolvedSignalCriteria,
+    featureValues: frozenFeatureValues,
+  });
+  const frozenSignalCriteria = normalizeFrozenSignalCriteria({
+    signalCriteria: resolvedSignalCriteria,
+    marketDataQuality: frozenMarketDataQuality,
+    featureValues: frozenFeatureValues,
+  });
 
   // 2026-04-29 — diagnostic surface for ML/AI signal criteria
   // evaluation. The downstream signalAuthorityRouter will reject
@@ -320,7 +407,7 @@ function buildOpenClawDecisionBundle({
   // operator the unambiguous "which gate is failing and what input
   // did it see" snapshot — the input the BlockedDiagnostic in
   // signalAuthorityRouter is trying to reach.
-  if (resolvedSignalCriteria) {
+  if (frozenSignalCriteria) {
     try {
       console.log(JSON.stringify({
         event: "v2_signal_criteria_evaluated",
@@ -330,19 +417,19 @@ function buildOpenClawDecisionBundle({
         signal_intent_id: signalIntent && signalIntent.signal_intent_id || null,
         signal_lineage_id: signalLineageId || null,
         source_mode: signalSourceMode || null,
-        criteria_profile: resolvedSignalCriteria.criteria_profile || null,
-        verdict: resolvedSignalCriteria.verdict || null,
-        blockers: Array.isArray(resolvedSignalCriteria.blockers) ? resolvedSignalCriteria.blockers.slice(0, 30) : null,
-        signal_score: Number.isFinite(Number(resolvedSignalCriteria.signal_score))
-          ? Number(resolvedSignalCriteria.signal_score) : null,
-        signal_score_components: resolvedSignalCriteria.signal_score_components || null,
-        thresholds: resolvedSignalCriteria.thresholds || null,
-        entry_grade: resolvedSignalCriteria.entry_grade || null,
-        no_trade_gate: resolvedSignalCriteria.no_trade_gate || null,
-        htf_regime: resolvedSignalCriteria.htf_regime || null,
-        setup_gate: resolvedSignalCriteria.setup_gate || null,
-        trigger_gate: resolvedSignalCriteria.trigger_gate || null,
-        expected_edge_gate: resolvedSignalCriteria.expected_edge_gate || null,
+        criteria_profile: frozenSignalCriteria.criteria_profile || null,
+        verdict: frozenSignalCriteria.verdict || null,
+        blockers: Array.isArray(frozenSignalCriteria.blockers) ? frozenSignalCriteria.blockers.slice(0, 30) : null,
+        signal_score: Number.isFinite(Number(frozenSignalCriteria.signal_score))
+          ? Number(frozenSignalCriteria.signal_score) : null,
+        signal_score_components: frozenSignalCriteria.signal_score_components || null,
+        thresholds: frozenSignalCriteria.thresholds || null,
+        entry_grade: frozenSignalCriteria.entry_grade || null,
+        no_trade_gate: frozenSignalCriteria.no_trade_gate || null,
+        htf_regime: frozenSignalCriteria.htf_regime || null,
+        setup_gate: frozenSignalCriteria.setup_gate || null,
+        trigger_gate: frozenSignalCriteria.trigger_gate || null,
+        expected_edge_gate: frozenSignalCriteria.expected_edge_gate || null,
       }));
     } catch (_) { /* observability only */ }
   }
@@ -352,7 +439,7 @@ function buildOpenClawDecisionBundle({
         signalIntent,
         featureSnapshot,
         strategyFilterResult: resolvedStrategyFilterResult,
-        signalCriteria: resolvedSignalCriteria,
+        signalCriteria: frozenSignalCriteria,
         decisionMode,
         proposalVerdict,
         qualityScore: signalIntent.quality_score,
@@ -370,8 +457,8 @@ function buildOpenClawDecisionBundle({
     featureSnapshot,
     mlAiSignalProposal,
     mlAiEvidence,
-    marketDataQuality,
-    signalCriteria: resolvedSignalCriteria,
+    marketDataQuality: frozenMarketDataQuality,
+    signalCriteria: frozenSignalCriteria,
   });
 
   const openclawDecision = buildOpenClawDecisionDoc({
@@ -394,8 +481,8 @@ function buildOpenClawDecisionBundle({
     mlAiEvidence,
     strategyFilterResult: resolvedStrategyFilterResult,
     canonicalEvidenceSummary,
-    marketDataQuality,
-    signalCriteria: resolvedSignalCriteria,
+    marketDataQuality: frozenMarketDataQuality,
+    signalCriteria: frozenSignalCriteria,
   });
   const openclawDecisionBundleHash = sha256Hex(stableJson(bundleHashPayload));
   const enrichedOpenClawDecision = Object.freeze({
@@ -411,8 +498,8 @@ function buildOpenClawDecisionBundle({
     mlAiEvidence,
     strategyFilterResult: resolvedStrategyFilterResult,
     canonicalEvidenceSummary,
-    marketDataQuality,
-    signalCriteria: resolvedSignalCriteria,
+    marketDataQuality: frozenMarketDataQuality,
+    signalCriteria: frozenSignalCriteria,
     openclawDecisionBundleHash,
   });
 }
