@@ -1,10 +1,13 @@
 "use strict";
 
 const crypto = require("crypto");
+const { sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
 const {
   V2_STRATEGY_FILTERS,
   V2_STRATEGY_FILTER_VERDICTS,
 } = require("./constants");
+
+let sendSignalDroppedAlertImpl = sendSignalDroppedAlert;
 
 function trimOrNull(value) {
   const text = String(value || "").trim();
@@ -21,6 +24,83 @@ function hash10(payload) {
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function normalizeExecutionModeForLifecycle() {
+  const directMode = upper(
+    process.env.DONBEOLJA_V2_EXECUTION_MODE
+    || process.env.DONBEOLJA_EXECUTION_MODE
+    || process.env.EXECUTION_MODE
+  );
+  if (directMode === "LIVE" || directMode === "LIVE_DRY_RUN") return directMode;
+  if (String(process.env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED || "").trim() === "1") {
+    return String(process.env.DONBEOLJA_V2_LIVE_DRY_RUN || "").trim() === "1" ? "LIVE_DRY_RUN" : "LIVE";
+  }
+  return null;
+}
+
+function resolveLifecycleSignalId({ signalIntent, openclawDecision } = {}) {
+  const intent = asObject(signalIntent);
+  const decision = asObject(openclawDecision);
+  const summary = asObject(decision && decision.canonical_evidence_summary);
+  return trimOrNull(
+    (intent && intent.signal_lineage_id)
+    || (summary && summary.signal_lineage_id)
+    || (decision && decision.signal_lineage_id)
+    || (intent && intent.signal_intent_id)
+  );
+}
+
+function maybeEmitServerNativeDroppedLifecycle({
+  signalIntent,
+  openclawDecision,
+  reason,
+  detail = null,
+} = {}) {
+  const intent = asObject(signalIntent);
+  const decision = asObject(openclawDecision);
+  const summary = asObject(decision && decision.canonical_evidence_summary);
+  const sourceMode = upper(
+    (intent && intent.signal_source_mode)
+    || (summary && summary.signal_source_mode)
+    || (decision && decision.signal_source_mode)
+  );
+  if (sourceMode !== "SERVER_NATIVE_ML_AI") return;
+  const executionMode = normalizeExecutionModeForLifecycle();
+  if (!executionMode) return;
+  const signalId = resolveLifecycleSignalId({ signalIntent: intent, openclawDecision: decision });
+  const payload = {
+    exchange: "BINANCEFUT",
+    symbol: upper((intent && intent.symbol) || (decision && decision.symbol) || (summary && summary.symbol)),
+    tf: trimOrNull(
+      summary && summary.feature_snapshot && summary.feature_snapshot.timeframe
+    ) || trimOrNull(intent && intent.timeframe) || "15m",
+    event: upper((intent && intent.side) || (decision && decision.side) || (summary && summary.side)),
+    side: upper((intent && intent.side) || (decision && decision.side) || (summary && summary.side)),
+    qtyPct: 1,
+    reason,
+    dropReasonCode: reason,
+    signalId,
+    executionMode,
+    source: "SERVER",
+    authoritative: true,
+    meta: {
+      routed_detail: detail,
+      signal_intent_id: trimOrNull(intent && intent.signal_intent_id),
+      openclaw_decision_id: trimOrNull(decision && decision.openclaw_decision_id),
+    },
+  };
+  if (!payload.symbol || !payload.event) return;
+  Promise.resolve(sendSignalDroppedAlertImpl(payload)).catch((err) => {
+    try {
+      console.warn("[V2_SIGNAL_AUTHORITY_ROUTER_DROPPED_ALERT_FAIL]", JSON.stringify({
+        signal_intent_id: trimOrNull(intent && intent.signal_intent_id),
+        signal_lineage_id: signalId,
+        reason,
+        error_message: err && err.message ? String(err.message) : String(err),
+      }));
+    } catch (_) {}
+  });
 }
 
 // Stage J — surveillance (Stage F) caught CANARY entry intents flowing
@@ -267,6 +347,11 @@ function resolveEntryIntentFromOpenClaw({
   const approved = decision.approved === true;
 
   if (decisionMode === "SHADOW" || decisionStatus === "SHADOW_ONLY") {
+    maybeEmitServerNativeDroppedLifecycle({
+      signalIntent: intent,
+      openclawDecision: decision,
+      reason: "SHADOW_ONLY_MODE",
+    });
     return Object.freeze({
       ok: false,
       reason: "SHADOW_ONLY_MODE",
@@ -275,6 +360,11 @@ function resolveEntryIntentFromOpenClaw({
   }
 
   if (!approved || decisionStatus !== "APPROVED" || recommendedAction !== "APPROVE_ENTRY") {
+    maybeEmitServerNativeDroppedLifecycle({
+      signalIntent: intent,
+      openclawDecision: decision,
+      reason: "OPENCLAW_NOT_APPROVED",
+    });
     return Object.freeze({
       ok: false,
       reason: "OPENCLAW_NOT_APPROVED",
@@ -283,6 +373,11 @@ function resolveEntryIntentFromOpenClaw({
   }
 
   if (budgetCheck !== "PASS") {
+    maybeEmitServerNativeDroppedLifecycle({
+      signalIntent: intent,
+      openclawDecision: decision,
+      reason: "BUDGET_GUARD_BLOCKED",
+    });
     return Object.freeze({
       ok: false,
       reason: "BUDGET_GUARD_BLOCKED",
@@ -291,6 +386,11 @@ function resolveEntryIntentFromOpenClaw({
   }
 
   if (minOrderCheck !== "PASS") {
+    maybeEmitServerNativeDroppedLifecycle({
+      signalIntent: intent,
+      openclawDecision: decision,
+      reason: "MIN_ORDER_GUARD_BLOCKED",
+    });
     return Object.freeze({
       ok: false,
       reason: "MIN_ORDER_GUARD_BLOCKED",
@@ -300,6 +400,12 @@ function resolveEntryIntentFromOpenClaw({
 
   const filterCheck = resolveStrategyFilter(strategyFilterResult || extractStrategyFilterFromDecision(decision));
   if (!filterCheck.ok) {
+    maybeEmitServerNativeDroppedLifecycle({
+      signalIntent: intent,
+      openclawDecision: decision,
+      reason: filterCheck.reason,
+      detail: filterCheck.detail,
+    });
     return Object.freeze({
       ok: false,
       reason: filterCheck.reason,
@@ -313,6 +419,12 @@ function resolveEntryIntentFromOpenClaw({
     openclawDecision: decision,
   });
   if (!mlAiProposalGate.ok) {
+    maybeEmitServerNativeDroppedLifecycle({
+      signalIntent: intent,
+      openclawDecision: decision,
+      reason: mlAiProposalGate.reason,
+      detail: mlAiProposalGate.detail,
+    });
     return Object.freeze({
       ok: false,
       reason: mlAiProposalGate.reason,
@@ -324,6 +436,12 @@ function resolveEntryIntentFromOpenClaw({
 
   const marketDataGate = resolveMarketDataQualityDecisionGate(decision);
   if (!marketDataGate.ok) {
+    maybeEmitServerNativeDroppedLifecycle({
+      signalIntent: intent,
+      openclawDecision: decision,
+      reason: marketDataGate.reason,
+      detail: marketDataGate.blockers.join(","),
+    });
     return Object.freeze({
       ok: false,
       reason: marketDataGate.reason,
@@ -335,6 +453,12 @@ function resolveEntryIntentFromOpenClaw({
 
   const signalCriteriaGate = resolveSignalCriteriaGate(decision);
   if (!signalCriteriaGate.ok) {
+    maybeEmitServerNativeDroppedLifecycle({
+      signalIntent: intent,
+      openclawDecision: decision,
+      reason: signalCriteriaGate.reason,
+      detail: signalCriteriaGate.blockers.join(","),
+    });
     return Object.freeze({
       ok: false,
       reason: signalCriteriaGate.reason,
@@ -388,4 +512,15 @@ module.exports = {
   resolveSignalCriteriaGate,
   resolveEntryIntentFromOpenClaw,
   resolveEntryIntentLeverage,
+  __test: {
+    maybeEmitServerNativeDroppedLifecycle,
+    normalizeExecutionModeForLifecycle,
+    resolveLifecycleSignalId,
+    __setSendSignalDroppedAlertForTest(fn) {
+      sendSignalDroppedAlertImpl = typeof fn === "function" ? fn : sendSignalDroppedAlert;
+    },
+    __resetSendSignalDroppedAlertForTest() {
+      sendSignalDroppedAlertImpl = sendSignalDroppedAlert;
+    },
+  },
 };

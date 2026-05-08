@@ -2,12 +2,15 @@
 
 const assert = require("assert");
 const { buildOpenClawDecisionBundle } = require("../v2/openclawControlPlane");
-const { resolveEntryIntentFromOpenClaw } = require("../v2/signalAuthorityRouter");
+const {
+  resolveEntryIntentFromOpenClaw,
+  __test: signalAuthorityRouterTest,
+} = require("../v2/signalAuthorityRouter");
 const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSeed");
 
 function buildNativeSignalBundle(overrides = {}) {
   const side = String(overrides.side || "LONG").trim().toUpperCase() === "SHORT" ? "SHORT" : "LONG";
-  const { featureValues: overrideFeatureValues, ...restOverrides } = overrides;
+  const { featureValues: overrideFeatureValues, signalCriteria: overrideSignalCriteria, ...restOverrides } = overrides;
   const featureValues = {
     trend_bias: side === "LONG" ? 0.64 : -0.64,
     volatility_rank: 0.59,
@@ -46,8 +49,35 @@ function buildNativeSignalBundle(overrides = {}) {
       blockers: [],
       metrics: { symbol: "ETHUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
     },
-    signalCriteria: buildPassSignalCriteriaSeed(side),
+    signalCriteria: overrideSignalCriteria || buildPassSignalCriteriaSeed(side, {
+      setup_gate: {
+        setup_type: "BREAKOUT_RETEST",
+        setup_quality_score: 0.92,
+      },
+      trigger_gate: {
+        trigger_type: "BREAKOUT",
+        trigger_confirmed: true,
+        volume_zscore: 2.1,
+        rsi_entry_tf: side === "LONG" ? 65 : 35,
+      },
+    }),
     ...restOverrides,
+  });
+}
+
+function buildBreakoutPassSeed(side = "LONG", overrides = {}) {
+  return buildPassSignalCriteriaSeed(side, {
+    setup_gate: {
+      setup_type: "BREAKOUT_RETEST",
+      setup_quality_score: 0.92,
+    },
+    trigger_gate: {
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      volume_zscore: 2.1,
+      rsi_entry_tf: String(side || "").trim().toUpperCase() === "SHORT" ? 35 : 65,
+    },
+    ...overrides,
   });
 }
 
@@ -70,7 +100,7 @@ function buildNativeSignalBundle(overrides = {}) {
       blockers: [],
       metrics: { symbol: "SOLUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
     },
-    signalCriteria: buildPassSignalCriteriaSeed("LONG"),
+    signalCriteria: buildBreakoutPassSeed("LONG"),
   });
   const routed = resolveEntryIntentFromOpenClaw(bundle);
   assert.strictEqual(routed.ok, true);
@@ -95,8 +125,8 @@ function buildNativeSignalBundle(overrides = {}) {
   });
   const routed = resolveEntryIntentFromOpenClaw(bundle);
   assert.strictEqual(routed.ok, false);
-  assert.strictEqual(routed.reason, "MARKET_DATA_QUALITY_REQUIRED");
-  assert.ok(routed.market_data_quality_gate.blockers.includes("MARKET_DATA:QUALITY_EVIDENCE_REQUIRED"));
+  assert.strictEqual(routed.reason, "MARKET_DATA_QUALITY_BLOCKED");
+  assert.ok(routed.market_data_quality_gate);
 })();
 
 (function shadowDecisionNeverProducesLiveEntryIntent() {
@@ -220,7 +250,7 @@ function buildNativeSignalBundle(overrides = {}) {
     sizeRatio: 0.2,
     featuresHash: "feat_hash_eth_filter_1",
     decisionSummary: "approved before filter gate",
-    signalCriteria: buildPassSignalCriteriaSeed("SHORT"),
+    signalCriteria: buildBreakoutPassSeed("SHORT"),
   });
   const routed = resolveEntryIntentFromOpenClaw(bundle);
   assert.strictEqual(routed.ok, false);
@@ -285,7 +315,7 @@ function buildNativeSignalBundle(overrides = {}) {
       blockers: [],
       metrics: { symbol: "BTCUSDT", spread_bps: 2, mark_index_gap_bps: 1 },
     },
-    signalCriteria: buildPassSignalCriteriaSeed("LONG", {
+    signalCriteria: buildBreakoutPassSeed("LONG", {
       expected_edge_gate: {
         expected_gross_r: 1.0,
         expected_net_r_after_cost: 0.03,
@@ -320,6 +350,49 @@ function buildNativeSignalBundle(overrides = {}) {
   });
   assert.strictEqual(routed.ok, false);
   assert.strictEqual(routed.reason, "SIGNAL_CRITERIA_REQUIRED");
+})();
+
+(function blockedSignalCriteriaEmitsServerNativeDroppedLifecycleAlert() {
+  const sent = [];
+  const prevExecMode = process.env.DONBEOLJA_V2_EXECUTION_MODE;
+  signalAuthorityRouterTest.__setSendSignalDroppedAlertForTest(async (payload) => {
+    sent.push(payload);
+    return { ok: true };
+  });
+  process.env.DONBEOLJA_V2_EXECUTION_MODE = "LIVE";
+  try {
+    const bundle = buildNativeSignalBundle({
+      signalLineageId: "SIG__BINANCEFUT__BTCUSDT__15m__1778206500000__LONG",
+      symbol: "BTCUSDT",
+      side: "LONG",
+    });
+    const routed = resolveEntryIntentFromOpenClaw({
+      signalIntent: bundle.signalIntent,
+      openclawDecision: {
+        ...bundle.openclawDecision,
+        canonical_evidence_summary: {
+          ...bundle.openclawDecision.canonical_evidence_summary,
+          signal_criteria: {
+            present: false,
+            verdict: null,
+            blockers: [],
+          },
+        },
+      },
+    });
+    assert.strictEqual(routed.ok, false);
+    assert.strictEqual(routed.reason, "SIGNAL_CRITERIA_REQUIRED");
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(sent[0].signalId, "SIG__BINANCEFUT__BTCUSDT__15m__1778206500000__LONG");
+    assert.strictEqual(sent[0].dropReasonCode, "SIGNAL_CRITERIA_REQUIRED");
+    assert.strictEqual(sent[0].executionMode, "LIVE");
+    assert.strictEqual(sent[0].source, "SERVER");
+    assert.strictEqual(sent[0].authoritative, true);
+  } finally {
+    signalAuthorityRouterTest.__resetSendSignalDroppedAlertForTest();
+    if (prevExecMode === undefined) delete process.env.DONBEOLJA_V2_EXECUTION_MODE;
+    else process.env.DONBEOLJA_V2_EXECUTION_MODE = prevExecMode;
+  }
 })();
 
 console.log("V2_SIGNAL_AUTHORITY_ROUTER_TEST_OK");
