@@ -103,6 +103,7 @@ function summarizeResults(results = []) {
   let signalSnapshotRefreshFailN = 0;
   const statusCounts = {};
   const directHandoffReasonCounts = {};
+  const directHandoffNestedReasonCounts = {};
   const generatorSkipReasonCounts = {};
   const generatorTriggerLongCounts = {};
   const generatorTriggerShortCounts = {};
@@ -130,8 +131,14 @@ function summarizeResults(results = []) {
     const traceReasonCounts = trace && trace.signal_drop_reason_counts && typeof trace.signal_drop_reason_counts === "object"
       ? trace.signal_drop_reason_counts
       : {};
+    const traceNestedReasonCounts = trace && trace.direct_handoff_nested_reason_counts && typeof trace.direct_handoff_nested_reason_counts === "object"
+      ? trace.direct_handoff_nested_reason_counts
+      : {};
     for (const [reason, count] of Object.entries(traceReasonCounts)) {
       directHandoffReasonCounts[reason] = Number(directHandoffReasonCounts[reason] || 0) + Number(count || 0);
+    }
+    for (const [reason, count] of Object.entries(traceNestedReasonCounts)) {
+      directHandoffNestedReasonCounts[reason] = Number(directHandoffNestedReasonCounts[reason] || 0) + Number(count || 0);
     }
     if (gen) {
       const skipReason = trimOrNull(gen.skip_reason) || "GENERATOR_NULL";
@@ -180,6 +187,7 @@ function summarizeResults(results = []) {
     newest_bar_close_time_utc_ms: newestBarCloseMs,
     signal_status_counts: statusCounts,
     direct_handoff_reason_counts: directHandoffReasonCounts,
+    direct_handoff_nested_reason_counts: directHandoffNestedReasonCounts,
     generator_skip_reason_counts: generatorSkipReasonCounts,
     generator_trigger_long_counts: generatorTriggerLongCounts,
     generator_trigger_short_counts: generatorTriggerShortCounts,

@@ -285,6 +285,7 @@ function deriveServerSignalQuality({
     runtime_direct_handoff_executed_24h_n: Number(runtimeSummary.direct_handoff_executed_24h_n || runtimeSummary.direct_handoff_executed_n || 0),
     runtime_direct_handoff_blocked_24h_n: Number(runtimeSummary.direct_handoff_blocked_24h_n || runtimeSummary.direct_handoff_blocked_n || 0),
     top_runtime_direct_handoff_block_reason: topObjectRows(runtimeSummary.direct_handoff_reason_counts || {}, 1)[0] || null,
+    top_runtime_direct_handoff_nested_block_reason: topObjectRows(runtimeSummary.direct_handoff_nested_reason_counts || {}, 1)[0] || null,
     intent_conversion_rate: rate(orderIntent24hN, authoritativeEntrySignal24hN),
     fill_conversion_rate: rate(fillsLinked.length, authoritativeEntrySignal24hN),
     latest_authoritative_entry_signal_at_kst: toKstString(latestSignalMs),

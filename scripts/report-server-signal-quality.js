@@ -62,6 +62,7 @@ async function loadRuntimeTickWindow({ nowMs = Date.now(), maxRows = 500 } = {})
     direct_handoff_executed_24h_n: 0,
     direct_handoff_blocked_24h_n: 0,
     direct_handoff_reason_counts: {},
+    direct_handoff_nested_reason_counts: {},
     run_n: 0,
   };
   if (snap.empty) return summary;
@@ -80,8 +81,14 @@ async function loadRuntimeTickWindow({ nowMs = Date.now(), maxRows = 500 } = {})
     const reasonCounts = row.direct_handoff_reason_counts && typeof row.direct_handoff_reason_counts === "object"
       ? row.direct_handoff_reason_counts
       : {};
+    const nestedReasonCounts = row.direct_handoff_nested_reason_counts && typeof row.direct_handoff_nested_reason_counts === "object"
+      ? row.direct_handoff_nested_reason_counts
+      : {};
     for (const [reason, count] of Object.entries(reasonCounts)) {
       summary.direct_handoff_reason_counts[reason] = Number(summary.direct_handoff_reason_counts[reason] || 0) + Number(count || 0);
+    }
+    for (const [reason, count] of Object.entries(nestedReasonCounts)) {
+      summary.direct_handoff_nested_reason_counts[reason] = Number(summary.direct_handoff_nested_reason_counts[reason] || 0) + Number(count || 0);
     }
   }
   return summary;

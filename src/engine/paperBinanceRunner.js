@@ -6126,6 +6126,34 @@ function deriveV2DiscoveryHandoffBlockReason(handoff = null, fallback = "V2_DISC
   return fallback;
 }
 
+function buildV2DiscoveryHandoffNestedReasonCounts(handoff = null) {
+  const detail = resolveV2DiscoveryHandoffDetail(handoff);
+  const counts = {};
+  const add = (prefix, value) => {
+    const token = String(value || "").trim().toUpperCase();
+    if (!token) return;
+    const key = `${prefix}:${token}`;
+    counts[key] = Number(counts[key] || 0) + 1;
+  };
+  const addMany = (prefix, values = []) => {
+    for (const value of Array.isArray(values) ? values : []) add(prefix, value);
+  };
+  add("BRIDGE", detail.bridge_reason);
+  add("ENDPOINT", detail.endpoint_reason);
+  add("ROUTE", detail.route_reason);
+  addMany("ROUTE_BLOCKER", detail.route_blockers);
+  add("ROUTER", detail.router_reason);
+  addMany("ROUTER_BLOCKER", detail.router_blockers);
+  add("DISCOVERY_CONTRACT", detail.discovery_contract_reason);
+  addMany("DISCOVERY_CONTRACT_BLOCKER", detail.discovery_contract_blockers);
+  add("MARKET_DATA_QUALITY", detail.market_data_quality_reason);
+  addMany("MARKET_DATA_QUALITY_BLOCKER", detail.market_data_quality_blockers);
+  add("RISK_GOVERNOR", detail.risk_governor_reason);
+  addMany("RISK_GOVERNOR_BLOCKER", detail.risk_governor_blockers);
+  add("RISK_GOVERNOR_PRIMARY", detail.risk_governor_primary_code || detail.risk_governor_primary_blocker);
+  return counts;
+}
+
 function sendV2DiscoveryPostFillHandoffProgressAlert({
   exchange = null,
   symbol = null,
@@ -14570,6 +14598,7 @@ async function runPaperBinanceForBar({
   let directHandoffExecutedN = 0;
   let directHandoffBlockedN = 0;
   const directHandoffReasonCounts = {};
+  const directHandoffNestedReasonCounts = {};
   let v2GeneratorSummary = null;
   const nativeInitialSignals = Number.isFinite(signalBarCloseMs)
     ? await loadServerNativeInitialSignals({
@@ -14751,6 +14780,10 @@ async function runPaperBinanceForBar({
               || "V2_DISCOVERY_BRIDGE_BLOCKED"
             ).trim() || "V2_DISCOVERY_BRIDGE_BLOCKED";
             directHandoffReasonCounts[reasonKey] = (directHandoffReasonCounts[reasonKey] || 0) + 1;
+            const nestedReasonCounts = buildV2DiscoveryHandoffNestedReasonCounts(handoff);
+            for (const [nestedReason, count] of Object.entries(nestedReasonCounts)) {
+              directHandoffNestedReasonCounts[nestedReason] = Number(directHandoffNestedReasonCounts[nestedReason] || 0) + Number(count || 0);
+            }
           }
 
           try {
@@ -16211,6 +16244,7 @@ async function runPaperBinanceForBar({
     direct_handoff_executed_n: directHandoffExecutedN,
     direct_handoff_blocked_n: directHandoffBlockedN,
     direct_handoff_reason_counts: directHandoffReasonCounts,
+    direct_handoff_nested_reason_counts: directHandoffNestedReasonCounts,
     v2_generator_summary: v2GeneratorSummary,
     signals_external_late: lateSignals,
     signal_drop_n: recordedSignalDrops.length,
@@ -18625,6 +18659,10 @@ async function runPaperFuturesForBar({
               || "V2_DISCOVERY_BRIDGE_BLOCKED"
             ).trim() || "V2_DISCOVERY_BRIDGE_BLOCKED";
             directHandoffReasonCounts[reasonKey] = (directHandoffReasonCounts[reasonKey] || 0) + 1;
+            const nestedReasonCounts = buildV2DiscoveryHandoffNestedReasonCounts(handoff);
+            for (const [nestedReason, count] of Object.entries(nestedReasonCounts)) {
+              directHandoffNestedReasonCounts[nestedReason] = Number(directHandoffNestedReasonCounts[nestedReason] || 0) + Number(count || 0);
+            }
           }
 
           try {
@@ -20429,6 +20467,7 @@ async function runPaperFuturesForBar({
     direct_handoff_executed_n: directHandoffExecutedN,
     direct_handoff_blocked_n: directHandoffBlockedN,
     direct_handoff_reason_counts: directHandoffReasonCounts,
+    direct_handoff_nested_reason_counts: directHandoffNestedReasonCounts,
     v2_generator_summary: v2GeneratorSummary,
     signals_external_late: lateSignals,
     signal_drop_n: recordedSignalDrops.length,
