@@ -71,6 +71,8 @@ const analysis = buildAnalysis({ rows: expanded, generatedAt: "2026-05-01T01:00:
 assert.strictEqual(analysis.ok, true);
 assert.strictEqual(analysis.sample_n, 11);
 assert.strictEqual(analysis.policy_basis_sample_n, 0);
+assert.strictEqual(Array.isArray(analysis.policy_basis_root_cause_findings), true);
+assert.strictEqual(analysis.policy_basis_root_cause_findings.length, 0);
 assert.strictEqual(analysis.groups.by_setup_type[0].key, "PULLBACK_RECLAIM");
 assert.strictEqual(analysis.by_setup_type[0].key, "PULLBACK_RECLAIM");
 assert.ok(Array.isArray(analysis.by_feature_lineage_source));
@@ -82,6 +84,7 @@ const markdown = renderMarkdown(analysis);
 assert.ok(markdown.includes("V2 OpenClaw Root Cause Analysis"));
 assert.ok(markdown.includes("PULLBACK_RECLAIM_DECAY"));
 assert.ok(markdown.includes("policy_basis_sample_n: 0"));
+assert.ok(markdown.includes("## Policy Basis Findings"));
 
 console.log("ANALYZE_V2_OPENCLAW_ROOT_CAUSE_TEST_OK");
 
@@ -187,4 +190,5 @@ console.log("ANALYZE_V2_OPENCLAW_ROOT_CAUSE_TEST_OK");
   assert.strictEqual(policyAnalysis.policy_basis_sample_n, 2);
   assert.strictEqual(policyAnalysis.policy_basis_groups.by_setup_type.some((row) => row.key === "BREAKOUT_RETEST"), true);
   assert.strictEqual(policyAnalysis.policy_basis_groups.by_edge_cohort.some((row) => row.key === "BUILDABLE_EDGE"), true);
+  assert.strictEqual(policyAnalysis.policy_basis_root_cause_findings.some((row) => row.id === "POLICY_BASIS_PULLBACK_RECLAIM_DECAY"), false);
 }
