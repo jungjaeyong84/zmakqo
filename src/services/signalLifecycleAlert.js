@@ -70,6 +70,12 @@ function normalizeExchange(exchange) {
   return "BINANCEFUT";
 }
 
+function normalizeTfToken(tf) {
+  const raw = String(tf || "").trim();
+  if (!raw) return "NA";
+  return raw.toLowerCase();
+}
+
 function isAllowedExchange(exchange) {
   const allow = parseList(process.env.SIGNAL_LIFECYCLE_ALERT_EXCHANGES || "")
     .map((x) => normalizeExchange(x));
@@ -477,7 +483,7 @@ function resolveSignalLifecycleAlertDedupeKey({ type, exchange, payload = {} } =
   const parts = [
     normalizeExchange(exchange || payload.exchange),
     symbol,
-    String(payload.tf || "NA").trim() || "NA",
+    normalizeTfToken(payload.tf),
     event,
     normalizedType,
     resolveSignalLifecycleAlertReasonToken(normalizedType, payload),
@@ -564,7 +570,7 @@ async function prepareSignalLifecycleAlertOutbox({
       exchange: normalizeExchange(exchange || payload.exchange),
       symbol: upper(symbol || payload.symbol),
       event: upper(event || payload.event),
-      tf: trimOrNull(payload.tf),
+      tf: normalizeTfToken(payload.tf),
       status: "PENDING",
       dedupe_key: resolvedDedupeKey,
       signal_id: trimOrNull(payload.signalId || payload.signal_id),

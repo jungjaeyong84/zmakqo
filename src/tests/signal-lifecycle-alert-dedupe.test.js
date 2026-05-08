@@ -72,6 +72,16 @@ async function run() {
     },
   });
   assert.strictEqual(firstKey, replayKey, "same dropped signal_id + reason must dedupe across producers/runs");
+  const casingReplayKey = __test.resolveSignalLifecycleAlertDedupeKey({
+    type: "DROPPED",
+    exchange: "BINANCEFUT",
+    payload: {
+      ...dropped,
+      tf: "15M",
+      side: "SHORT",
+    },
+  });
+  assert.strictEqual(firstKey, casingReplayKey, "tf casing drift must not fork lifecycle dedupe keys");
   assert.ok(firstKey.includes("LINKUSDT"), "dedupe key must bind to symbol");
   assert.ok(firstKey.includes("DROPPED"), "dedupe key must bind to lifecycle type");
   assert.ok(firstKey.includes("V2_PRODUCTION_ENTRY_KERNEL_BLOCKED"), "dedupe key must bind to drop reason");
