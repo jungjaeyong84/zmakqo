@@ -115,6 +115,82 @@ function normalizeFrozenSignalCriteria({ signalCriteria = null, marketDataQualit
   });
 }
 
+function upperOrNull(value) {
+  const text = trimOrNull(value);
+  return text ? text.toUpperCase() : null;
+}
+
+function firstValue(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    return value;
+  }
+  return null;
+}
+
+function normalizeFrozenMarketDataQuality({ marketDataQuality = null, signalCriteria = null, featureValues = null } = {}) {
+  const base = asObject(cloneJson(marketDataQuality)) || {};
+  const metrics = asObject(base.metrics) || {};
+  const featureContract = asObject(signalCriteria && signalCriteria.feature_snapshot_contract) || {};
+  const features = asObject(featureValues) || {};
+  return Object.freeze({
+    ...base,
+    metrics: Object.freeze({
+      ...metrics,
+      btc_1h_trend: upperOrNull(firstValue(
+        metrics.btc_1h_trend,
+        metrics.btc_1h_direction,
+        featureContract.btc_1h_trend,
+        featureContract.btc_1h_direction,
+        features.btc_1h_trend,
+        features.btc_1h_direction,
+        features.btc_htf_trend
+      )),
+      mtf_1h_direction: upperOrNull(firstValue(
+        metrics.mtf_1h_direction,
+        metrics.htf_1h_direction,
+        featureContract.mtf_1h_direction,
+        featureContract.htf_1h_direction,
+        features.mtf_1h_direction,
+        features.htf_1h_direction,
+        features.one_hour_direction
+      )),
+    }),
+  });
+}
+
+function normalizeFrozenSignalCriteria({ signalCriteria = null, marketDataQuality = null, featureValues = null } = {}) {
+  const criteria = asObject(cloneJson(signalCriteria));
+  if (!criteria) return signalCriteria;
+  const featureContract = asObject(criteria.feature_snapshot_contract) || {};
+  const metrics = asObject(marketDataQuality && marketDataQuality.metrics) || {};
+  const features = asObject(featureValues) || {};
+  return Object.freeze({
+    ...criteria,
+    feature_snapshot_contract: Object.freeze({
+      ...featureContract,
+      btc_1h_trend: upperOrNull(firstValue(
+        featureContract.btc_1h_trend,
+        featureContract.btc_1h_direction,
+        metrics.btc_1h_trend,
+        metrics.btc_1h_direction,
+        features.btc_1h_trend,
+        features.btc_1h_direction,
+        features.btc_htf_trend
+      )),
+      mtf_1h_direction: upperOrNull(firstValue(
+        featureContract.mtf_1h_direction,
+        featureContract.htf_1h_direction,
+        metrics.mtf_1h_direction,
+        metrics.htf_1h_direction,
+        features.mtf_1h_direction,
+        features.htf_1h_direction,
+        features.one_hour_direction
+      )),
+    }),
+  });
+}
+
 function buildOpenClawDecisionBundleId({ bundleHash } = {}) {
   const hash = trimOrNull(bundleHash);
   if (!hash) throw new Error("OPENCLAW_DECISION_BUNDLE_HASH_REQUIRED");
