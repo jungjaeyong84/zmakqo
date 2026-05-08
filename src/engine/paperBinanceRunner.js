@@ -317,7 +317,7 @@ const {
   resolveCanonicalExitWritePayload,
 } = require("../services/positionStateMachine");
 const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../services/tradeExecutionAlert");
-const { sendSignalReceivedAlert, sendSignalProgressAlert } = require("../services/signalLifecycleAlert");
+const { sendSignalReceivedAlert, sendSignalProgressAlert, sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
 const { runV2DiscoveryCanaryServerSignalHandoff } = require("../v2/discoveryCanaryServerSignalBridge");
 const { generateV2EntrySignals } = require("../v2/serverEntrySignalGenerator");
@@ -6193,6 +6193,93 @@ function sendV2DiscoveryPostFillHandoffProgressAlert({
   }).catch((err) => {
     console.warn("[V2_DISCOVERY_POST_FILL_HANDOFF_ALERT_FAIL]", err && err.message ? err.message : String(err));
   });
+}
+
+function resolveLifecycleExecutionMode(liveCfg = null) {
+  const mode = String(liveCfg && liveCfg.executionMode || "").trim().toUpperCase();
+  if (mode === "LIVE" || mode === "LIVE_DRY_RUN") return mode;
+  return "PAPER";
+}
+
+async function ensureV2DirectHandoffSignal({
+  exchange = null,
+  symbol = null,
+  tf = null,
+  sig = null,
+  features = null,
+  qtyFraction = null,
+  signalBarCloseUtc = null,
+  signalBarCloseMs = null,
+  executionMode = null,
+  runId = null,
+} = {}) {
+  const signal = sig && typeof sig === "object" ? sig : {};
+  const bag = features && typeof features === "object" ? features : {};
+  const existingSignalId = String(signal.signal_id || bag.signal_id || "").trim() || null;
+  const existingSignalDocId = String(signal.signal_doc_id || bag.signal_doc_id || "").trim() || null;
+  if (existingSignalDocId) {
+    if (!signal.signal_id && existingSignalId) signal.signal_id = existingSignalId;
+    return {
+      signalId: existingSignalId || existingSignalDocId,
+      signalDocId: existingSignalDocId,
+      receivedAlertSent: false,
+      savedSignal: null,
+    };
+  }
+  const savedSignal = await upsertSignal({
+    exchange,
+    symbol,
+    tf,
+    barCloseTimeUtc: signalBarCloseUtc,
+    barCloseTimeUtcMs: signalBarCloseMs,
+    event: signal.event,
+    side: signal.side,
+    qtyPct: qtyFraction,
+    reason: signal.reason || "V2_SERVER_NATIVE_GENERATOR",
+    features: bag,
+    executionMode,
+    source: "SERVER",
+    authoritative: true,
+    runId,
+    decisionReason: signal.reason || "V2_SERVER_NATIVE_GENERATOR",
+  });
+  const resolvedSignalId = savedSignal && savedSignal.signal_id
+    ? String(savedSignal.signal_id)
+    : (existingSignalId || null);
+  if (resolvedSignalId) {
+    signal.signal_id = resolvedSignalId;
+    signal.signal_doc_id = resolvedSignalId;
+    if (!bag.signal_id) bag.signal_id = resolvedSignalId;
+    if (!bag.signal_doc_id) bag.signal_doc_id = resolvedSignalId;
+  }
+  const receivedAlertSent = !!(
+    savedSignal
+    && savedSignal.signal_id
+    && (savedSignal.decision === "CREATED" || savedSignal.decision === "UPDATED_CHANGED")
+  );
+  if (receivedAlertSent) {
+    await sendSignalReceivedAlert({
+      exchange,
+      symbol,
+      tf,
+      event: signal.event,
+      side: signal.side,
+      qtyPct: qtyFraction,
+      reason: signal.reason || "V2_SERVER_NATIVE_GENERATOR",
+      signalId: savedSignal.signal_id,
+      executionMode,
+      source: "SERVER",
+      authoritative: true,
+    }).catch((err) => {
+      console.warn("[V2_DIRECT_HANDOFF_SIGNAL_RECEIVED_ALERT_FAIL]", err && err.message ? err.message : String(err));
+    });
+  }
+  return {
+    signalId: resolvedSignalId,
+    signalDocId: resolvedSignalId,
+    receivedAlertSent,
+    savedSignal,
+  };
 }
 
 function buildV2DiscoverySignalFanInIntentRow({
@@ -14713,6 +14800,7 @@ async function runPaperBinanceForBar({
           const sigBarMs = Number(sig.bar_close_time_utc_ms);
           const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
           const features = { ...(sig.features || {}) };
+          const lifecycleExecutionMode = resolveLifecycleExecutionMode(liveCfg);
           if (sig.bar_close_time_utc_ms != null) features.bar_close_time_utc_ms = sig.bar_close_time_utc_ms;
           if (sig.price != null) features.signal_price = sig.price;
           features.v2_server_native_signal_bypass = true;
@@ -14732,6 +14820,20 @@ async function runPaperBinanceForBar({
             signal_price: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
             features,
           };
+          const persistedSignal = await ensureV2DirectHandoffSignal({
+            exchange,
+            symbol,
+            tf: signalTf,
+            sig: handoffSignal,
+            features,
+            qtyFraction: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+            signalBarCloseUtc: sigBarUtc,
+            signalBarCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            executionMode: lifecycleExecutionMode,
+            runId,
+          });
+          if (persistedSignal.signalId) handoffSignal.signal_id = persistedSignal.signalId;
+          if (persistedSignal.signalDocId) handoffSignal.signal_doc_id = persistedSignal.signalDocId;
 
           const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
             exchange,
@@ -14740,14 +14842,14 @@ async function runPaperBinanceForBar({
             signal: handoffSignal,
             features,
             qtyFraction: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
-            intentExecutionMode: "PAPER",
+            intentExecutionMode: lifecycleExecutionMode,
             signalBarCloseUtcForIntent: sigBarUtc,
             signalBarCloseMsForIntent: Number.isFinite(sigBarMs) ? sigBarMs : null,
             intentSignalBarCloseUtc: sigBarUtc,
             intentSignalBarCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : null,
             execBarCloseUtcForIntent: sigBarUtc,
             execBarCloseMsForIntent: Number.isFinite(sigBarMs) ? sigBarMs : null,
-            signalDocId: null,
+            signalDocId: handoffSignal.signal_doc_id || null,
             signalPrice: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
             runId,
           });
@@ -14771,6 +14873,26 @@ async function runPaperBinanceForBar({
           }));
           if (handoff && handoff.ok === true) {
             directHandoffExecutedN += 1;
+            sendSignalProgressAlert({
+              exchange,
+              symbol,
+              tf: signalTf,
+              event: sig.event,
+              side: sig.side,
+              qtyPct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+              signalId: handoffSignal.signal_id || null,
+              executionMode: lifecycleExecutionMode,
+              source: "SERVER",
+              authoritative: true,
+              progressReason: "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE",
+              pendingReason: "IMMEDIATE_EXEC",
+              scheduledExecBarCloseUtc: sigBarUtc,
+              meta: {
+                v2_discovery_bridge_reason: handoff.reason || null,
+              },
+            }).catch((err) => {
+              console.warn("[V2_DIRECT_HANDOFF_SIGNAL_PROGRESS_ALERT_FAIL]", err && err.message ? err.message : String(err));
+            });
           } else {
             directHandoffBlockedN += 1;
             const reasonKey = String(
@@ -14783,6 +14905,41 @@ async function runPaperBinanceForBar({
             const nestedReasonCounts = buildV2DiscoveryHandoffNestedReasonCounts(handoff);
             for (const [nestedReason, count] of Object.entries(nestedReasonCounts)) {
               directHandoffNestedReasonCounts[nestedReason] = Number(directHandoffNestedReasonCounts[nestedReason] || 0) + Number(count || 0);
+            }
+            const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+            const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+            if (postFillHandoff.exchange_write_performed === true) {
+              sendV2DiscoveryPostFillHandoffProgressAlert({
+                exchange,
+                symbol,
+                event: sig.event,
+                side: sig.side,
+                tf: signalTf,
+                qtyPct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+                executionMode: lifecycleExecutionMode,
+                signalId: handoffSignal.signal_id || null,
+                scheduledExecBarCloseUtc: sigBarUtc,
+                blockReason,
+                handoff,
+                postFillHandoff,
+              });
+            } else {
+              sendSignalDroppedAlert({
+                exchange,
+                symbol,
+                tf: signalTf,
+                event: sig.event,
+                side: sig.side,
+                qtyPct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+                reason: blockReason,
+                dropReasonCode: blockReason,
+                signalId: handoffSignal.signal_id || null,
+                executionMode: lifecycleExecutionMode,
+                source: "SERVER",
+                authoritative: true,
+              }).catch((err) => {
+                console.warn("[V2_DIRECT_HANDOFF_SIGNAL_DROPPED_ALERT_FAIL]", err && err.message ? err.message : String(err));
+              });
             }
           }
 
@@ -18592,6 +18749,7 @@ async function runPaperFuturesForBar({
           const sigBarMs = Number(sig.bar_close_time_utc_ms);
           const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
           const features = { ...(sig.features || {}) };
+          const lifecycleExecutionMode = resolveLifecycleExecutionMode(liveCfg);
           if (sig.bar_close_time_utc_ms != null) features.bar_close_time_utc_ms = sig.bar_close_time_utc_ms;
           if (sig.price != null) features.signal_price = sig.price;
           features.v2_server_native_signal_bypass = true;
@@ -18611,6 +18769,20 @@ async function runPaperFuturesForBar({
             signal_price: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
             features,
           };
+          const persistedSignal = await ensureV2DirectHandoffSignal({
+            exchange,
+            symbol,
+            tf: signalTf,
+            sig: handoffSignal,
+            features,
+            qtyFraction: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+            signalBarCloseUtc: sigBarUtc,
+            signalBarCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            executionMode: lifecycleExecutionMode,
+            runId,
+          });
+          if (persistedSignal.signalId) handoffSignal.signal_id = persistedSignal.signalId;
+          if (persistedSignal.signalDocId) handoffSignal.signal_doc_id = persistedSignal.signalDocId;
 
           const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
             exchange,
@@ -18619,14 +18791,14 @@ async function runPaperFuturesForBar({
             signal: handoffSignal,
             features,
             qtyFraction: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
-            intentExecutionMode: "PAPER",
+            intentExecutionMode: lifecycleExecutionMode,
             signalBarCloseUtcForIntent: sigBarUtc,
             signalBarCloseMsForIntent: Number.isFinite(sigBarMs) ? sigBarMs : null,
             intentSignalBarCloseUtc: sigBarUtc,
             intentSignalBarCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : null,
             execBarCloseUtcForIntent: sigBarUtc,
             execBarCloseMsForIntent: Number.isFinite(sigBarMs) ? sigBarMs : null,
-            signalDocId: null,
+            signalDocId: handoffSignal.signal_doc_id || null,
             signalPrice: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
             runId,
           });
@@ -18650,6 +18822,26 @@ async function runPaperFuturesForBar({
           }));
           if (handoff && handoff.ok === true) {
             directHandoffExecutedN += 1;
+            sendSignalProgressAlert({
+              exchange,
+              symbol,
+              tf: signalTf,
+              event: sig.event,
+              side: sig.side,
+              qtyPct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+              signalId: handoffSignal.signal_id || null,
+              executionMode: lifecycleExecutionMode,
+              source: "SERVER",
+              authoritative: true,
+              progressReason: "V2_DISCOVERY_CANARY_ROUTED_TO_PRODUCTION_ENTRY_ROUTE",
+              pendingReason: "IMMEDIATE_EXEC",
+              scheduledExecBarCloseUtc: sigBarUtc,
+              meta: {
+                v2_discovery_bridge_reason: handoff.reason || null,
+              },
+            }).catch((err) => {
+              console.warn("[V2_DIRECT_HANDOFF_SIGNAL_PROGRESS_ALERT_FAIL]", err && err.message ? err.message : String(err));
+            });
           } else {
             directHandoffBlockedN += 1;
             const reasonKey = String(
@@ -18662,6 +18854,41 @@ async function runPaperFuturesForBar({
             const nestedReasonCounts = buildV2DiscoveryHandoffNestedReasonCounts(handoff);
             for (const [nestedReason, count] of Object.entries(nestedReasonCounts)) {
               directHandoffNestedReasonCounts[nestedReason] = Number(directHandoffNestedReasonCounts[nestedReason] || 0) + Number(count || 0);
+            }
+            const blockReason = deriveV2DiscoveryHandoffBlockReason(handoff);
+            const postFillHandoff = classifyV2DiscoveryPostFillHandoff(handoff);
+            if (postFillHandoff.exchange_write_performed === true) {
+              sendV2DiscoveryPostFillHandoffProgressAlert({
+                exchange,
+                symbol,
+                event: sig.event,
+                side: sig.side,
+                tf: signalTf,
+                qtyPct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+                executionMode: lifecycleExecutionMode,
+                signalId: handoffSignal.signal_id || null,
+                scheduledExecBarCloseUtc: sigBarUtc,
+                blockReason,
+                handoff,
+                postFillHandoff,
+              });
+            } else {
+              sendSignalDroppedAlert({
+                exchange,
+                symbol,
+                tf: signalTf,
+                event: sig.event,
+                side: sig.side,
+                qtyPct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+                reason: blockReason,
+                dropReasonCode: blockReason,
+                signalId: handoffSignal.signal_id || null,
+                executionMode: lifecycleExecutionMode,
+                source: "SERVER",
+                authoritative: true,
+              }).catch((err) => {
+                console.warn("[V2_DIRECT_HANDOFF_SIGNAL_DROPPED_ALERT_FAIL]", err && err.message ? err.message : String(err));
+              });
             }
           }
 
