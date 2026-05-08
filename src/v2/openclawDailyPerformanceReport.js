@@ -41,13 +41,35 @@ function cloneJson(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+function evidenceSourceRank(value) {
+  const source = trimOrNull(value);
+  if (!source) return 0;
+  if (source === "ENTRY_FEATURES_AND_OPENCLAW_DECISION") return 3;
+  if (source === "OPENCLAW_DECISION") return 2;
+  if (source === "ENTRY_FEATURES") return 1;
+  return 0;
+}
+
 function mergeRecoveredEvidence(baseEvidence = {}, recoveredEvidence = {}) {
   const base = asObject(baseEvidence) || {};
   const recovered = asObject(recoveredEvidence) || {};
   const merged = { ...base };
+  const baseSourceRank = evidenceSourceRank(base.feature_lineage_source);
+  const recoveredSourceRank = evidenceSourceRank(recovered.feature_lineage_source);
+  const strongerRecovered = recoveredSourceRank > baseSourceRank;
+  const strongerOverrideKeys = new Set([
+    "feature_lineage_source",
+    "feature_lineage_recovered",
+    "btc_1h_trend",
+    "mtf_1h_direction",
+  ]);
   for (const [key, value] of Object.entries(recovered)) {
     if (!hasMeaningfulValue(value)) continue;
     if (!hasMeaningfulValue(merged[key])) {
+      merged[key] = cloneJson(value);
+      continue;
+    }
+    if (strongerRecovered && strongerOverrideKeys.has(key)) {
       merged[key] = cloneJson(value);
     }
   }

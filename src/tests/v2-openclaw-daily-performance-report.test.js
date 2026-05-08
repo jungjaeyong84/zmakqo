@@ -278,4 +278,47 @@ const outcomes = [
   assert.strictEqual(report.outcomes[3].performance_exclusion_reason, "FAMILY_OPERATOR");
 }
 
+{
+  const staleOutcome = {
+    openclaw_outcome_adjudication_id: "oa_override",
+    openclaw_decision_id: "OCD__OVERRIDE",
+    position_cycle_id: "p_override",
+    signal_intent_id: "SIG__OVERRIDE",
+    adjudication_label: "MODEL_WIN",
+    adjudication_family: "MODEL",
+    realized_pnl: 1,
+    evidence: {
+      symbol: "ETHUSDT",
+      side: "SHORT",
+      feature_lineage_source: "ENTRY_FEATURES",
+      btc_1h_trend: "SHORT",
+      mtf_1h_direction: "SHORT",
+      entry_features: {
+        signal_intent_id: "SIG__OVERRIDE",
+        position_cycle_id: "p_override",
+      },
+    },
+    adjudicated_at: "2026-04-23T06:00:00.000Z",
+  };
+  const decisionEvidence = {
+    openclaw_decision_id: "OCD__OVERRIDE",
+    signal_intent_id: "SIG__OVERRIDE",
+    bundle_payload: {
+      signalCriteria: {
+        feature_snapshot_contract: {
+          btc_1h_trend: "LONG",
+          mtf_1h_direction: "LONG",
+        },
+      },
+    },
+  };
+  const report = buildOpenClawDailyPerformanceReport({
+    outcomes: [staleOutcome],
+    decisionEvidenceRows: [decisionEvidence],
+  });
+  assert.strictEqual(report.outcomes[0].context.btc_1h_trend, "LONG");
+  assert.strictEqual(report.outcomes[0].context.mtf_1h_direction, "LONG");
+  assert.strictEqual(report.outcomes[0].context.feature_lineage_source, "ENTRY_FEATURES_AND_OPENCLAW_DECISION");
+}
+
 console.log("V2_OPENCLAW_DAILY_PERFORMANCE_REPORT_TEST_OK");

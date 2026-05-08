@@ -534,12 +534,6 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
     canonical && canonical.signal_regime_profile,
     canonical && canonical.regime_profile,
   ) || {};
-  const htfRegime = extractGateObject(criteria, "htf_regime");
-  const strategyFilter = firstObject(
-    canonical && canonical.strategy_filter,
-    getPath(decisionEvidence, ["strategyFilterResult"]),
-    getPath(decisionEvidence, ["bundle_payload", "strategyFilterResult"])
-  ) || {};
   const expectedEdgeModel = firstObject(
     criteria && criteria.expected_edge_model,
     canonical && canonical.expected_edge_model,
@@ -582,8 +576,6 @@ function buildEntryFeatureEvidence({ entryFeatures = null, decisionEvidence = nu
       features && (features.mtf_1h_direction || features.htf_1h_direction || features.one_hour_direction),
       featureSnapshotContract.mtf_1h_direction,
       canonical && (canonical.mtf_1h_direction || canonical.htf_1h_direction || canonical.one_hour_direction),
-      htfRegime.regime,
-      strategyFilter.htf_direction,
       getPath(marketDataQuality, ["metrics", "mtf_1h_direction"]),
       getPath(marketDataQuality, ["metrics", "htf_1h_direction"]),
     )),
