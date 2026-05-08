@@ -71,7 +71,7 @@ const SIGNAL_CRITERIA_PROFILE_DEFAULTS = Object.freeze({
     max_mark_index_gap_bps: 15,
     max_funding_penalty_bps: 3,
     min_htf_alignment_score: 0.4,
-    min_setup_quality_score: 0.38,
+    min_setup_quality_score: 0.3,
     min_market_quality_score: 0.7,
     min_volume_zscore: 0.3,
     min_rsi_long: 48,

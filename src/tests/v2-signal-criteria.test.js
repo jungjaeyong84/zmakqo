@@ -120,6 +120,38 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.entry_grade, "EARLY");
 })();
 
+(function v6CompatDiscoveryAllowsBorderlineSetupQualityAtPoint30ForLongBreakout() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.76,
+      setup_type: "BREAKOUT_RETEST",
+      setup_quality_score: 0.305,
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      volume_zscore: 0.9,
+      rsi_entry_tf: 59,
+      expected_gross_r: 1.62,
+      expected_net_r_after_cost: 0.29,
+      cost_estimate_bps: 7,
+      cost_r_equivalent: 0.11,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.92,
+      spread_bps: 2,
+      mark_index_gap_bps: 8,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 8 } },
+  });
+  assert.strictEqual(criteria.setup_gate.ok, true);
+  assert.ok(!criteria.blockers.includes("SETUP:QUALITY_REQUIRED"));
+  assert.ok(criteria.blockers.includes("EXPECTED_EDGE:NET_R_REQUIRED"));
+})();
+
 (function pullbackReclaimUsesProfileVolumeThresholdInsteadOfHardcodedOne() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",
