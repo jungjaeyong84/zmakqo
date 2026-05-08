@@ -71,7 +71,7 @@ const SIGNAL_CRITERIA_PROFILE_DEFAULTS = Object.freeze({
     max_mark_index_gap_bps: 15,
     max_funding_penalty_bps: 3,
     min_htf_alignment_score: 0.4,
-    min_setup_quality_score: 0.3,
+    min_setup_quality_score: 0.29,
     min_market_quality_score: 0.7,
     min_volume_zscore: 0.3,
     min_rsi_long: 48,
@@ -695,7 +695,10 @@ function buildSignalCriteria({
   if (htfBlockers.length) blockers.push(...htfBlockers.map((code) => `HTF_REGIME:${code}`));
   if (!htfPass) blockers.push("HTF_REGIME:ALIGNMENT_REQUIRED");
   if (setupBlockers.length) blockers.push(...setupBlockers.map((code) => `SETUP:${code}`));
-  if (!setupPass) blockers.push("SETUP:QUALITY_REQUIRED");
+  if (!setupPass) {
+    if (resolvedSetupType === "PULLBACK_PROBE") blockers.push("SETUP:PROBE_NOT_EXECUTABLE");
+    else blockers.push("SETUP:QUALITY_REQUIRED");
+  }
   if (triggerBlockers.length) blockers.push(...triggerBlockers.map((code) => `TRIGGER:${code}`));
   if (!triggerPass) blockers.push("TRIGGER:CONFIRMATION_REQUIRED");
   if (edgeBlockers.length) blockers.push(...edgeBlockers.map((code) => `EXPECTED_EDGE:${code}`));

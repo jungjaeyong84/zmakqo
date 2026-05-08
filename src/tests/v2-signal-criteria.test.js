@@ -152,6 +152,37 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.ok(criteria.blockers.includes("EXPECTED_EDGE:NET_R_REQUIRED"));
 })();
 
+(function v6CompatDiscoveryAllowsBorderlineSetupQualityAtPoint291ForLongContinuation() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.9,
+      setup_type: "MOMENTUM_CONTINUATION",
+      setup_quality_score: 0.291,
+      trigger_type: "CONTINUATION",
+      trigger_confirmed: true,
+      volume_zscore: 0.9,
+      rsi_entry_tf: 58,
+      expected_gross_r: 1.7,
+      expected_net_r_after_cost: 0.29,
+      cost_estimate_bps: 7,
+      cost_r_equivalent: 0.11,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.92,
+      spread_bps: 2,
+      mark_index_gap_bps: 8,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 8 } },
+  });
+  assert.strictEqual(criteria.setup_gate.ok, true);
+  assert.ok(!criteria.blockers.includes("SETUP:QUALITY_REQUIRED"));
+})();
+
 (function pullbackReclaimUsesProfileVolumeThresholdInsteadOfHardcodedOne() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",
@@ -184,6 +215,41 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   });
   assert.ok(!criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:VOLUME_NOT_CONFIRMED"));
   assert.strictEqual(criteria.setup_gate.setup_type, "PULLBACK_RECLAIM");
+})();
+
+(function pullbackProbeUsesExplicitProbeBlockerInsteadOfQualityRequired() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.82,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.91,
+      trigger_type: "RECLAIM",
+      trigger_confirmed: true,
+      reclaim_confirmed: true,
+      hold_after_reclaim: false,
+      stop_distance_sane: true,
+      volume_zscore: 0.1,
+      rsi_entry_tf: 58,
+      expected_gross_r: 1.8,
+      expected_net_r_after_cost: 0.4,
+      cost_estimate_bps: 6,
+      cost_r_equivalent: 0.08,
+      funding_penalty_bps: 1,
+      market_quality_score: 1,
+      spread_bps: 2,
+      mark_index_gap_bps: 3,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 3 } },
+  });
+  assert.strictEqual(criteria.setup_gate.setup_type, "PULLBACK_PROBE");
+  assert.ok(criteria.blockers.includes("SETUP:PROBE_NOT_EXECUTABLE"));
+  assert.ok(!criteria.blockers.includes("SETUP:QUALITY_REQUIRED"));
 })();
 
 (function discoveryBlocksPullbackReclaimAfterEmpiricalDecay() {
