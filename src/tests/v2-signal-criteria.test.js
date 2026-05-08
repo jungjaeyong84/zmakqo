@@ -252,7 +252,7 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.ok(!criteria.blockers.includes("SETUP:QUALITY_REQUIRED"));
 })();
 
-(function discoveryBlocksPullbackReclaimAfterEmpiricalDecay() {
+(function discoveryKeepsLongPullbackTrendBuildableCoreWhenExactDecayRuleDoesNotMatch() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",
     criteriaProfile: "V6_COMPAT_DISCOVERY",
@@ -261,29 +261,31 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
       htf_regime: "LONG",
       htf_alignment_score: 0.82,
       setup_type: "PULLBACK_RECLAIM",
-      setup_quality_score: 0.81,
+      setup_quality_score: 0.84,
       trigger_type: "RECLAIM",
       trigger_confirmed: true,
       reclaim_confirmed: true,
       hold_after_reclaim: true,
       stop_distance_sane: true,
-      volume_zscore: 1.1,
+      volume_zscore: 1.0,
       rsi_entry_tf: 58,
       expected_gross_r: 1.8,
-      expected_net_r_after_cost: 0.4,
-      cost_estimate_bps: 6,
-      cost_r_equivalent: 0.08,
+      expected_net_r_after_cost: 0.8,
+      cost_estimate_bps: 4,
+      cost_r_equivalent: 1.0,
       funding_penalty_bps: 1,
       market_quality_score: 1,
-      spread_bps: 2,
-      mark_index_gap_bps: 3,
+      spread_bps: 1,
+      mark_index_gap_bps: 1,
       btc_1h_trend: "LONG",
       mtf_1h_direction: "LONG",
     },
-    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 3 } },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 1, mark_index_gap_bps: 1 } },
   });
-  assert.strictEqual(criteria.verdict, "BLOCK");
-  assert.ok(criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:EMPIRICAL_DECAY_BLOCKED"));
+  assert.strictEqual(criteria.verdict, "PASS");
+  assert.strictEqual(criteria.entry_grade, "CORE");
+  assert.strictEqual(criteria.expected_edge_model.raw_edge_cohort, "BUILDABLE_EDGE");
+  assert.ok(!criteria.blockers.some((code) => code.includes("DECAY_BLOCKED")));
 })();
 
 (function discoveryAllowsShortBreakoutWhenOtherGatesPass() {
@@ -793,26 +795,26 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.expected_edge_gate.edge_cohort_downgraded_by_empirical_cohort_risk, true);
 })();
 
-(function breakoutRetestTransitionLongIsEmpiricallyBlockedInDiscovery() {
+(function breakoutRetestTransitionLongMarginalEarlyIsEmpiricallyBlockedInDiscovery() {
   const criteria = buildSignalCriteria({
     signalSide: "LONG",
     criteriaProfile: "V6_COMPAT_DISCOVERY",
     featureValues: {
       market_regime: "transition",
       htf_regime: "LONG",
-      htf_alignment_score: 0.82,
+      htf_alignment_score: 0.65,
       setup_type: "BREAKOUT_RETEST",
-      setup_quality_score: 0.84,
+      setup_quality_score: 0.55,
       trigger_type: "BREAKOUT",
       trigger_confirmed: true,
-      volume_zscore: 1.5,
-      rsi_entry_tf: 58,
-      expected_gross_r: 2.0,
-      expected_net_r_after_cost: 0.42,
-      cost_estimate_bps: 8,
-      cost_r_equivalent: 1.58,
+      volume_zscore: 0.4,
+      rsi_entry_tf: 50,
+      expected_gross_r: 1.6,
+      expected_net_r_after_cost: 0.35,
+      cost_estimate_bps: 3,
+      cost_r_equivalent: 1.25,
       funding_penalty_bps: 1,
-      market_quality_score: 0.9,
+      market_quality_score: 0.85,
       spread_bps: 2,
       mark_index_gap_bps: 1,
       btc_1h_trend: "LONG",
@@ -821,7 +823,111 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
     marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 1 } },
   });
   assert.strictEqual(criteria.verdict, "BLOCK");
-  assert.ok(criteria.blockers.includes("SETUP:BREAKOUT_RETEST:TRANSITION_LONG_EMPIRICAL_DECAY_BLOCKED"));
+  assert.strictEqual(criteria.entry_grade, "EARLY");
+  assert.strictEqual(criteria.expected_edge_model.raw_edge_cohort, "MARGINAL_EDGE");
+  assert.ok(criteria.blockers.includes("SETUP:BREAKOUT_RETEST:LONG_TRANSITION_MARGINAL_EARLY_DECAY_BLOCKED"));
+})();
+
+(function breakoutRetestTransitionLongBuildableEarlyIsNotEmpiricallyBlockedInDiscovery() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "transition",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.65,
+      setup_type: "BREAKOUT_RETEST",
+      setup_quality_score: 0.62,
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      volume_zscore: 0.4,
+      rsi_entry_tf: 50,
+      expected_gross_r: 1.7,
+      expected_net_r_after_cost: 0.8,
+      cost_estimate_bps: 4,
+      cost_r_equivalent: 0.9,
+      funding_penalty_bps: 1,
+      market_quality_score: 1,
+      spread_bps: 1,
+      mark_index_gap_bps: 1,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 1, mark_index_gap_bps: 1 } },
+  });
+  assert.strictEqual(criteria.verdict, "PASS");
+  assert.strictEqual(criteria.entry_grade, "EARLY");
+  assert.strictEqual(criteria.expected_edge_model.raw_edge_cohort, "BUILDABLE_EDGE");
+  assert.ok(!criteria.blockers.includes("SETUP:BREAKOUT_RETEST:LONG_TRANSITION_MARGINAL_EARLY_DECAY_BLOCKED"));
+})();
+
+(function shortBreakoutTrendBuildableCoreIsEmpiricallyBlockedInDiscovery() {
+  const criteria = buildSignalCriteria({
+    signalSide: "SHORT",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "SHORT",
+      htf_alignment_score: 0.82,
+      setup_type: "BREAKOUT_RETEST",
+      setup_quality_score: 0.82,
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      volume_zscore: 1.0,
+      rsi_entry_tf: 41,
+      expected_gross_r: 1.8,
+      expected_net_r_after_cost: 0.8,
+      cost_estimate_bps: 4,
+      cost_r_equivalent: 1.0,
+      funding_penalty_bps: 1,
+      market_quality_score: 1,
+      spread_bps: 1,
+      mark_index_gap_bps: 1,
+      btc_1h_trend: "SHORT",
+      mtf_1h_direction: "SHORT",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 1, mark_index_gap_bps: 1 } },
+  });
+  assert.strictEqual(criteria.verdict, "BLOCK");
+  assert.strictEqual(criteria.entry_grade, "CORE");
+  assert.strictEqual(criteria.expected_edge_model.raw_edge_cohort, "BUILDABLE_EDGE");
+  assert.ok(criteria.blockers.includes("SETUP:BREAKOUT_RETEST:SHORT_TREND_BUILDABLE_CORE_DECAY_BLOCKED"));
+})();
+
+(function shortPullbackTrendBuildableCoreIsEmpiricallyBlockedInDiscovery() {
+  const criteria = buildSignalCriteria({
+    signalSide: "SHORT",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "trend",
+      htf_regime: "SHORT",
+      htf_alignment_score: 0.82,
+      setup_type: "PULLBACK_RECLAIM",
+      setup_quality_score: 0.84,
+      trigger_type: "RECLAIM",
+      trigger_confirmed: true,
+      reclaim_confirmed: true,
+      hold_after_reclaim: true,
+      stop_distance_sane: true,
+      volume_zscore: 1.0,
+      rsi_entry_tf: 42,
+      expected_gross_r: 1.8,
+      expected_net_r_after_cost: 0.8,
+      cost_estimate_bps: 4,
+      cost_r_equivalent: 1.0,
+      funding_penalty_bps: 1,
+      market_quality_score: 1,
+      spread_bps: 1,
+      mark_index_gap_bps: 1,
+      btc_1h_trend: "SHORT",
+      mtf_1h_direction: "SHORT",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 1, mark_index_gap_bps: 1 } },
+  });
+  assert.strictEqual(criteria.verdict, "BLOCK");
+  assert.strictEqual(criteria.entry_grade, "CORE");
+  assert.strictEqual(criteria.expected_edge_model.raw_edge_cohort, "BUILDABLE_EDGE");
+  assert.ok(criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:SHORT_TREND_BUILDABLE_DECAY_BLOCKED"));
 })();
 
 console.log("V2_SIGNAL_CRITERIA_TEST_OK");

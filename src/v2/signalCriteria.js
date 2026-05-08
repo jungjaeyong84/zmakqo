@@ -156,6 +156,116 @@ function normalizeRegime(value) {
   return "NEUTRAL";
 }
 
+function resolveDiscoveryEmpiricalCohortBlocker({
+  criteriaProfile = null,
+  side = null,
+  setupType = null,
+  triggerType = null,
+  structuralRegime = null,
+  rawEdgeCohort = null,
+  entryGrade = null,
+} = {}) {
+  if (normalizeSignalCriteriaProfile(criteriaProfile) !== SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY) {
+    return null;
+  }
+  const normalizedSide = upper(side);
+  const normalizedSetupType = normalizeSetupType(setupType);
+  const normalizedTriggerType = normalizeTriggerType(triggerType);
+  const normalizedStructuralRegime = upper(structuralRegime);
+  const normalizedRawEdgeCohort = upper(rawEdgeCohort);
+  const normalizedEntryGrade = upper(entryGrade);
+
+  if (
+    normalizedSide === "LONG"
+    && normalizedSetupType === "BREAKOUT_RETEST"
+    && normalizedTriggerType === "BREAKOUT"
+    && normalizedStructuralRegime === "TRANSITION"
+    && normalizedRawEdgeCohort === "MARGINAL_EDGE"
+    && normalizedEntryGrade === "EARLY"
+  ) {
+    return "BREAKOUT_RETEST:LONG_TRANSITION_MARGINAL_EARLY_DECAY_BLOCKED";
+  }
+
+  if (
+    normalizedSide === "LONG"
+    && normalizedSetupType === "PULLBACK_RECLAIM"
+    && normalizedTriggerType === "RECLAIM"
+    && normalizedStructuralRegime === "RANGE"
+    && normalizedRawEdgeCohort === "MARGINAL_EDGE"
+    && normalizedEntryGrade === "EARLY"
+  ) {
+    return "PULLBACK_RECLAIM:LONG_RANGE_MARGINAL_EARLY_DECAY_BLOCKED";
+  }
+
+  if (
+    normalizedSide === "LONG"
+    && normalizedSetupType === "PULLBACK_RECLAIM"
+    && normalizedTriggerType === "RECLAIM"
+    && normalizedStructuralRegime === "TRANSITION"
+    && normalizedRawEdgeCohort === "MARGINAL_EDGE"
+    && (normalizedEntryGrade === "EARLY" || normalizedEntryGrade === "CORE")
+  ) {
+    return "PULLBACK_RECLAIM:LONG_TRANSITION_MARGINAL_DECAY_BLOCKED";
+  }
+
+  if (
+    normalizedSide === "SHORT"
+    && normalizedSetupType === "BREAKOUT_RETEST"
+    && normalizedTriggerType === "BREAKOUT"
+    && normalizedStructuralRegime === "RANGE"
+    && normalizedRawEdgeCohort === "MARGINAL_EDGE"
+    && normalizedEntryGrade === "EARLY"
+  ) {
+    return "BREAKOUT_RETEST:SHORT_RANGE_MARGINAL_EARLY_DECAY_BLOCKED";
+  }
+
+  if (
+    normalizedSide === "SHORT"
+    && normalizedSetupType === "BREAKOUT_RETEST"
+    && normalizedTriggerType === "BREAKOUT"
+    && normalizedStructuralRegime === "TREND"
+    && normalizedRawEdgeCohort === "BUILDABLE_EDGE"
+    && normalizedEntryGrade === "CORE"
+  ) {
+    return "BREAKOUT_RETEST:SHORT_TREND_BUILDABLE_CORE_DECAY_BLOCKED";
+  }
+
+  if (
+    normalizedSide === "SHORT"
+    && normalizedSetupType === "PULLBACK_RECLAIM"
+    && normalizedTriggerType === "RECLAIM"
+    && normalizedStructuralRegime === "TRANSITION"
+    && normalizedRawEdgeCohort === "BUILDABLE_EDGE"
+    && normalizedEntryGrade === "CORE"
+  ) {
+    return "PULLBACK_RECLAIM:SHORT_TRANSITION_BUILDABLE_CORE_DECAY_BLOCKED";
+  }
+
+  if (
+    normalizedSide === "SHORT"
+    && normalizedSetupType === "PULLBACK_RECLAIM"
+    && normalizedTriggerType === "RECLAIM"
+    && normalizedStructuralRegime === "TRANSITION"
+    && normalizedRawEdgeCohort === "MARGINAL_EDGE"
+    && normalizedEntryGrade === "EARLY"
+  ) {
+    return "PULLBACK_RECLAIM:SHORT_TRANSITION_MARGINAL_EARLY_DECAY_BLOCKED";
+  }
+
+  if (
+    normalizedSide === "SHORT"
+    && normalizedSetupType === "PULLBACK_RECLAIM"
+    && normalizedTriggerType === "RECLAIM"
+    && normalizedStructuralRegime === "TREND"
+    && normalizedRawEdgeCohort === "BUILDABLE_EDGE"
+    && (normalizedEntryGrade === "EARLY" || normalizedEntryGrade === "CORE")
+  ) {
+    return "PULLBACK_RECLAIM:SHORT_TREND_BUILDABLE_DECAY_BLOCKED";
+  }
+
+  return null;
+}
+
 function pushMissingEvidence(blockers, field, value) {
   if (value === null || value === undefined || value === "NONE") {
     blockers.push(`NO_EVIDENCE:${field}`);
@@ -590,20 +700,6 @@ function buildSignalCriteria({
   const setupBlockers = [];
   pushMissingEvidence(setupBlockers, "SETUP_TYPE", resolvedSetupType === "NONE" ? null : resolvedSetupType);
   pushMissingEvidence(setupBlockers, "SETUP_QUALITY_SCORE", toNumberOrNull(resolvedSetupQualityScore));
-  if (
-    resolvedCriteriaProfile === SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY
-    && rawResolvedSetupType === "PULLBACK_RECLAIM"
-  ) {
-    setupBlockers.push("PULLBACK_RECLAIM:EMPIRICAL_DECAY_BLOCKED");
-  }
-  if (
-    resolvedCriteriaProfile === SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY
-    && side === "LONG"
-    && rawResolvedSetupType === "BREAKOUT_RETEST"
-    && upper(regimeProfile && regimeProfile.structural_regime) === "TRANSITION"
-  ) {
-    setupBlockers.push("BREAKOUT_RETEST:TRANSITION_LONG_EMPIRICAL_DECAY_BLOCKED");
-  }
   if (pullbackContract.downgraded) setupBlockers.push(...pullbackContract.blockers);
   const setupPass = resolvedSetupType !== "NONE"
     && resolvedSetupType !== "PULLBACK_PROBE"
@@ -689,6 +785,16 @@ function buildSignalCriteria({
   const entryGrade = finalSignalScore >= resolvedThresholds.core_signal_score
     ? "CORE"
     : (finalSignalScore >= resolvedThresholds.early_signal_score ? "EARLY" : "NONE");
+  const empiricalCohortBlocker = resolveDiscoveryEmpiricalCohortBlocker({
+    criteriaProfile: resolvedCriteriaProfile,
+    side,
+    setupType: resolvedSetupType,
+    triggerType: resolvedTriggerType,
+    structuralRegime: regimeProfile && regimeProfile.structural_regime,
+    rawEdgeCohort: expectedEdgeModel.raw_edge_cohort,
+    entryGrade,
+  });
+  if (empiricalCohortBlocker) setupBlockers.push(empiricalCohortBlocker);
 
   const blockers = [];
   if (noTradeBlockers.length) blockers.push(...noTradeBlockers.map((code) => `NO_TRADE:${code}`));
@@ -794,5 +900,6 @@ module.exports = {
     evaluatePullbackReclaimContract,
     computeAdverseSelectionPenaltyR,
     resolveDirectionalAlignment,
+    resolveDiscoveryEmpiricalCohortBlocker,
   },
 };
