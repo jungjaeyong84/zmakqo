@@ -25,6 +25,7 @@ const DEFAULT_PARAMS = Object.freeze({
   panic_atr_min: 0.0350,
   thr_early: 0.56,
   thr_core: 0.68,
+  continuation_early_threshold_long: 0.54,
   thr_diag_c: 0.82,
   same_dir_cooldown_bars: 8,
   min_rr: 1.45,
@@ -361,6 +362,29 @@ function deriveDirectionDecision({
     path: `${prefix}_OTHER`,
     reason: `${prefix}_UNCLASSIFIED_BLOCKED`,
   };
+}
+
+function shouldUseLongContinuationEarlyPath({
+  triggerContinuationLong,
+  opportunity,
+  continuationEarlyThresholdLong,
+  riskOkLongCore,
+  structureAlignmentLong,
+  participation,
+  participationFloorCore,
+  continuationPressureLong,
+  continuationPressureFloor,
+  antiChopGate,
+  transitionCoreQualityLong,
+} = {}) {
+  return triggerContinuationLong === true
+    && Number(opportunity) >= Number(continuationEarlyThresholdLong)
+    && riskOkLongCore === true
+    && Number(structureAlignmentLong) >= 0.62
+    && Number(participation) >= Number(participationFloorCore)
+    && Number(continuationPressureLong) >= Number(continuationPressureFloor)
+    && antiChopGate === true
+    && transitionCoreQualityLong === true;
 }
 
 // ───────────────────────────────────────────────────────────
@@ -743,6 +767,19 @@ function generateV2EntrySignals({
     && structure_alignment_long >= 0.40
     && directional_pressure_long >= p.reclaim_trigger_directional_pressure_min
     && anti_chop_gate;
+  const long_continuation_early_raw = shouldUseLongContinuationEarlyPath({
+    triggerContinuationLong: trigger_continuation_long,
+    opportunity: long_opportunity,
+    continuationEarlyThresholdLong: p.continuation_early_threshold_long,
+    riskOkLongCore: risk_ok_long_core,
+    structureAlignmentLong: structure_alignment_long,
+    participation,
+    participationFloorCore: 0.42,
+    continuationPressureLong: continuation_pressure_long,
+    continuationPressureFloor: p.continuation_pressure_min,
+    antiChopGate: anti_chop_gate,
+    transitionCoreQualityLong: transition_core_quality_long,
+  });
   const long_core_raw = long_opportunity >= p.thr_core
     && (trigger_continuation_long || trigger_breakout_long)
     && risk_ok_long_core
@@ -783,7 +820,7 @@ function generateV2EntrySignals({
 
   const long_core_pulse  = long_core_raw  && long_can_fire;
   const short_core_pulse = short_core_raw && short_can_fire;
-  const long_early_pulse  = long_early_raw  && !long_core_pulse  && long_can_fire;
+  const long_early_pulse  = (long_early_raw || long_continuation_early_raw) && !long_core_pulse  && long_can_fire;
   const short_early_pulse = short_early_raw && !short_core_pulse && short_can_fire;
 
   const longDecision = deriveDirectionDecision({
@@ -793,7 +830,7 @@ function generateV2EntrySignals({
     signalFired: long_core_pulse || long_early_pulse,
     signalGrade: long_core_pulse ? "CORE" : (long_early_pulse ? "EARLY" : null),
     canFire: long_can_fire,
-    earlyEligible: trigger_reclaim_long || trigger_breakout_long,
+    earlyEligible: trigger_reclaim_long || trigger_breakout_long || trigger_continuation_long,
     coreEligible: trigger_continuation_long || trigger_breakout_long,
     opportunity: long_opportunity,
     thrEarly: p.thr_early,
@@ -978,6 +1015,7 @@ function generateV2EntrySignals({
     short_can_fire,
     long_core_raw,
     long_early_raw,
+    long_continuation_early_raw,
     short_core_raw,
     short_early_raw,
     long_decision_path: longDecision.path,
@@ -1146,5 +1184,6 @@ module.exports = {
     tfStringToMs,
     buildPayload,
     deriveDirectionDecision,
+    shouldUseLongContinuationEarlyPath,
   },
 };

@@ -21,7 +21,20 @@ const {
   __test,
 } = require("../v2/serverEntrySignalGenerator");
 
-const { sma, ema, rsi, macd, atr, highest, lowest, clamp01, safeDiv, tfStringToMs, deriveDirectionDecision } = __test;
+const {
+  sma,
+  ema,
+  rsi,
+  macd,
+  atr,
+  highest,
+  lowest,
+  clamp01,
+  safeDiv,
+  tfStringToMs,
+  deriveDirectionDecision,
+  shouldUseLongContinuationEarlyPath,
+} = __test;
 
 // ───── helpers ─────────────────────────────────────────────
 
@@ -401,6 +414,7 @@ function buildSyntheticBars(n, opts = {}) {
 (function testDefaultParams() {
   assert.ok(approx(DEFAULT_PARAMS.thr_early, 0.56));
   assert.ok(approx(DEFAULT_PARAMS.thr_core, 0.68));
+  assert.ok(approx(DEFAULT_PARAMS.continuation_early_threshold_long, 0.54));
   assert.strictEqual(DEFAULT_PARAMS.same_dir_cooldown_bars, 8);
   assert.ok(approx(DEFAULT_PARAMS.continuation_close_pos_long_min, 0.48));
   assert.ok(approx(DEFAULT_PARAMS.continuation_close_pos_short_max, 0.52));
@@ -440,6 +454,37 @@ function buildSyntheticBars(n, opts = {}) {
   assert.ok(Number.isFinite(Number(out.diagnostics.continuation_pressure_short)));
   assert.ok(Number.isFinite(Number(out.diagnostics.close_pos_in_bar)));
   assert.ok(Number.isFinite(Number(out.diagnostics.price_position)));
+  assert.strictEqual(typeof out.diagnostics.long_continuation_early_raw, "boolean");
+})();
+
+(function testLongContinuationEarlyPathHelper() {
+  assert.strictEqual(shouldUseLongContinuationEarlyPath({
+    triggerContinuationLong: true,
+    opportunity: 0.58,
+    continuationEarlyThresholdLong: 0.54,
+    riskOkLongCore: true,
+    structureAlignmentLong: 0.82,
+    participation: 0.61,
+    participationFloorCore: 0.42,
+    continuationPressureLong: 0.78,
+    continuationPressureFloor: 0.56,
+    antiChopGate: true,
+    transitionCoreQualityLong: true,
+  }), true);
+
+  assert.strictEqual(shouldUseLongContinuationEarlyPath({
+    triggerContinuationLong: true,
+    opportunity: 0.53,
+    continuationEarlyThresholdLong: 0.54,
+    riskOkLongCore: true,
+    structureAlignmentLong: 0.82,
+    participation: 0.61,
+    participationFloorCore: 0.42,
+    continuationPressureLong: 0.78,
+    continuationPressureFloor: 0.56,
+    antiChopGate: true,
+    transitionCoreQualityLong: true,
+  }), false);
 })();
 
 (function testDecisionReason_NoTrigger() {
