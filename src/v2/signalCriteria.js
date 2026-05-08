@@ -602,6 +602,14 @@ function buildSignalCriteria({
   ) {
     setupBlockers.push("PULLBACK_RECLAIM:EMPIRICAL_DECAY_BLOCKED");
   }
+  if (
+    resolvedCriteriaProfile === SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY
+    && side === "LONG"
+    && rawResolvedSetupType === "BREAKOUT_RETEST"
+    && upper(regimeProfile && regimeProfile.structural_regime) === "TRANSITION"
+  ) {
+    setupBlockers.push("BREAKOUT_RETEST:TRANSITION_LONG_EMPIRICAL_DECAY_BLOCKED");
+  }
   if (pullbackContract.downgraded) setupBlockers.push(...pullbackContract.blockers);
   const setupPass = resolvedSetupType !== "NONE"
     && resolvedSetupType !== "PULLBACK_PROBE"

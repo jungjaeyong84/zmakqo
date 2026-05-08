@@ -692,4 +692,35 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.strictEqual(criteria.expected_edge_gate.edge_cohort_downgraded_by_empirical_cohort_risk, true);
 })();
 
+(function breakoutRetestTransitionLongIsEmpiricallyBlockedInDiscovery() {
+  const criteria = buildSignalCriteria({
+    signalSide: "LONG",
+    criteriaProfile: "V6_COMPAT_DISCOVERY",
+    featureValues: {
+      market_regime: "transition",
+      htf_regime: "LONG",
+      htf_alignment_score: 0.82,
+      setup_type: "BREAKOUT_RETEST",
+      setup_quality_score: 0.84,
+      trigger_type: "BREAKOUT",
+      trigger_confirmed: true,
+      volume_zscore: 1.5,
+      rsi_entry_tf: 58,
+      expected_gross_r: 2.0,
+      expected_net_r_after_cost: 0.42,
+      cost_estimate_bps: 8,
+      cost_r_equivalent: 1.58,
+      funding_penalty_bps: 1,
+      market_quality_score: 0.9,
+      spread_bps: 2,
+      mark_index_gap_bps: 1,
+      btc_1h_trend: "LONG",
+      mtf_1h_direction: "LONG",
+    },
+    marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 1 } },
+  });
+  assert.strictEqual(criteria.verdict, "BLOCK");
+  assert.ok(criteria.blockers.includes("SETUP:BREAKOUT_RETEST:TRANSITION_LONG_EMPIRICAL_DECAY_BLOCKED"));
+})();
+
 console.log("V2_SIGNAL_CRITERIA_TEST_OK");
