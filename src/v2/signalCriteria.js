@@ -592,12 +592,6 @@ function buildSignalCriteria({
   pushMissingEvidence(setupBlockers, "SETUP_QUALITY_SCORE", toNumberOrNull(resolvedSetupQualityScore));
   if (
     resolvedCriteriaProfile === SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY
-    && side === "SHORT"
-  ) {
-    setupBlockers.push("EMPIRICAL_SHORT_DECAY_BLOCKED");
-  }
-  if (
-    resolvedCriteriaProfile === SIGNAL_CRITERIA_PROFILE_V6_COMPAT_DISCOVERY
     && rawResolvedSetupType === "PULLBACK_RECLAIM"
   ) {
     setupBlockers.push("PULLBACK_RECLAIM:EMPIRICAL_DECAY_BLOCKED");

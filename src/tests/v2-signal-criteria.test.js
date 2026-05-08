@@ -188,7 +188,7 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
   assert.ok(criteria.blockers.includes("SETUP:PULLBACK_RECLAIM:EMPIRICAL_DECAY_BLOCKED"));
 })();
 
-(function discoveryBlocksShortSideAfterEmpiricalDecay() {
+(function discoveryAllowsShortBreakoutWhenOtherGatesPass() {
   const criteria = buildSignalCriteria({
     signalSide: "SHORT",
     criteriaProfile: "V6_COMPAT_DISCOVERY",
@@ -216,7 +216,10 @@ const { buildPassSignalCriteriaSeed } = require("./helpers/passSignalCriteriaSee
     marketDataQuality: { ok: true, metrics: { spread_bps: 2, mark_index_gap_bps: 3 } },
   });
   assert.strictEqual(criteria.verdict, "BLOCK");
-  assert.ok(criteria.blockers.includes("SETUP:EMPIRICAL_SHORT_DECAY_BLOCKED"));
+  assert.ok(!criteria.blockers.includes("SETUP:EMPIRICAL_SHORT_DECAY_BLOCKED"));
+  assert.strictEqual(criteria.setup_gate.ok, true);
+  assert.strictEqual(criteria.trigger_gate.ok, true);
+  assert.ok(criteria.blockers.includes("EXPECTED_EDGE:NET_R_REQUIRED"));
 })();
 
 (function strictProfileRejectsSameEarlySignal() {
