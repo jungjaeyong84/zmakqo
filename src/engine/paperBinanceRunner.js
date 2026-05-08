@@ -18603,6 +18603,7 @@ async function runPaperFuturesForBar({
   let directHandoffExecutedN = 0;
   let directHandoffBlockedN = 0;
   const directHandoffReasonCounts = {};
+  const directHandoffNestedReasonCounts = {};
   let v2GeneratorSummary = null;
   const nativeInitialSignals = Number.isFinite(signalBarCloseMs)
     ? await loadServerNativeInitialSignals({
