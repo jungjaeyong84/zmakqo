@@ -55,5 +55,21 @@ const {
   assert.strictEqual(dailyPass.pass, true);
   assert.strictEqual(dailyPass.target_pass, true);
 
+  const noNewEntryButNegativeRealized = buildPeriodObjectiveVerdict("DAILY", {
+    executed_n: 0,
+    realized_n: 2,
+    win_rate: 0.5,
+    avg_ret_net: -0.01,
+    net_pnl_quote: -1200,
+  }, {
+    observedDays: 1,
+    targetNetKrw: 5000,
+    minMonthlyNetKrw: 150000,
+    tradeCount: 0,
+    realizedMinSample: 1,
+  });
+  assert.strictEqual(noNewEntryButNegativeRealized.failed_checks.includes("ZERO_KRW_IDLE"), false);
+  assert.strictEqual(noNewEntryButNegativeRealized.failed_checks.includes("NET_NOT_POSITIVE"), true);
+
   console.log("OBJECTIVE_POLICY_TEST_OK");
 })();

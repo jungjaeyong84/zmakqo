@@ -50,6 +50,7 @@ const TELEGRAM_KO_EXACT_MAP = Object.freeze({
   RETROSPECTIVE_MONTHLY_FAIL: "월간 회고 기준으로 목표 미달 상태입니다",
   DAILY_NO_TRADE_ACTIVITY: "오늘 거래가 한 번도 없었습니다",
   ZERO_KRW_IDLE: "실현 손익이 0원이라 목표를 충족하지 못했습니다",
+  NET_NOT_POSITIVE: "실현 손익이 음수라 목표를 충족하지 못했습니다",
   CHANGE_CONTROL_HOLD: "안전 장치 때문에 변경을 보류했습니다",
   EXTERNAL_AUTHORITY_REQUIRED_PROMOTION: "자동 승격 전에 외부 권위 심사가 필요합니다",
   EXTERNAL_AUTHORITY_BLOCK_PROMOTION: "외부 권위 심사 결과 이번 승격은 보류입니다",

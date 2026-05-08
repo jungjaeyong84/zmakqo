@@ -81,7 +81,10 @@ function buildObjectiveVerdict(overall = {}, {
   if (!activityPass) failedChecks.push("NO_TRADE_ACTIVITY");
   if (!enoughSample) failedChecks.push("INSUFFICIENT_SAMPLE");
   if (realizedN > 0 && !winPass) failedChecks.push("WIN_RATE_BELOW_TARGET");
-  if (!netPass) failedChecks.push(executedN === 0 ? "ZERO_KRW_IDLE" : "NET_NOT_POSITIVE");
+  if (!netPass) {
+    const zeroIdle = executedN === 0 && (!Number.isFinite(netPnlKrw) || netPnlKrw === 0);
+    failedChecks.push(zeroIdle ? "ZERO_KRW_IDLE" : "NET_NOT_POSITIVE");
+  }
   if (realizedN > 0 && !evPass) failedChecks.push("EXPECTANCY_NOT_POSITIVE");
   if (!monthlyPass) failedChecks.push("MONTHLY_TARGET_NOT_MET");
   return {

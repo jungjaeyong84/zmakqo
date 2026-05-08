@@ -129,6 +129,15 @@ function normalizeTradesToKrw(trades = [], normalizer = {}) {
   });
 }
 
+function resolveTradeAlertMs(row = {}) {
+  return (
+    toNum(row && row.created_at_ms)
+    ?? toNum(row && row.created_at_utc_ms)
+    ?? Date.parse(row && (row.created_at || row.created_at_utc) || "")
+    ?? 0
+  );
+}
+
 function shouldSendPrimaryRetrospectiveAlert(meta) {
   if (String(process.env.FORCE_RETROSPECTIVE_ALERT || "").trim() === "1") return true;
   return String(meta && meta.hhmm || "").trim() === RETROSPECTIVE_PRIMARY_SEND_HHMM;
@@ -198,12 +207,75 @@ function summarizeRealizedTrades(trades = [], { fromMs, toMs } = {}) {
     const closeMs = Number(row && row.close_ms);
     return Number.isFinite(closeMs) && closeMs >= fromMs && closeMs < toMs;
   });
-  const realizedN = rows.length;
-  const winN = rows.filter((row) => Number(row && (row.pnl_krw_normalized != null ? row.pnl_krw_normalized : row.pnl_krw)) > 0).length;
-  const netPnl = rows.reduce((acc, row) => acc + (Number(row && (row.pnl_krw_normalized != null ? row.pnl_krw_normalized : row.pnl_krw)) || 0), 0);
-  const netPnlRawQuote = rows.reduce((acc, row) => acc + (Number(row && (row.pnl_quote_raw != null ? row.pnl_quote_raw : row.pnl_krw)) || 0), 0);
+  const grouped = new Map();
+  for (const row of rows) {
+    const features = row && row.features_json && typeof row.features_json === "object" ? row.features_json : {};
+    const key = String(
+      row && (
+        row.entry_event_id
+        || features.entry_event_id
+        || features.position_cycle_id
+        || row.source_trade_id
+        || row.fill_id
+        || row.trade_id
+      )
+      || ""
+    ).trim();
+    const groupKey = key || String(row && row.fill_id || `ROW_${grouped.size}`);
+    const current = grouped.get(groupKey) || {
+      symbol: inferTradeSymbol(row),
+      source_trade_id: row && row.source_trade_id || null,
+      source_trade_ids: new Set(),
+      source_fill_ids: new Set(),
+      features_json: features,
+      entry_event_id: row && row.entry_event_id || features.entry_event_id || null,
+      open_ms: Number.isFinite(Number(row && row.open_ms)) ? Number(row.open_ms) : null,
+      close_ms: Number.isFinite(Number(row && row.close_ms)) ? Number(row.close_ms) : null,
+      pnl_krw: 0,
+      pnl_quote_raw: 0,
+      pnl_pct_sum: 0,
+      pnl_pct_n: 0,
+    };
+    if (row && row.source_trade_id) current.source_trade_ids.add(String(row.source_trade_id));
+    for (const fillId of Array.isArray(row && row.source_fill_ids) ? row.source_fill_ids : []) {
+      if (fillId) current.source_fill_ids.add(String(fillId));
+    }
+    if (row && row.fill_id) current.source_fill_ids.add(String(row.fill_id));
+    const openMs = Number(row && row.open_ms);
+    const closeMs = Number(row && row.close_ms);
+    if (Number.isFinite(openMs)) current.open_ms = current.open_ms == null ? openMs : Math.min(current.open_ms, openMs);
+    if (Number.isFinite(closeMs)) current.close_ms = current.close_ms == null ? closeMs : Math.max(current.close_ms, closeMs);
+    current.pnl_krw += Number(row && (row.pnl_krw_normalized != null ? row.pnl_krw_normalized : row.pnl_krw)) || 0;
+    current.pnl_quote_raw += Number(row && (row.pnl_quote_raw != null ? row.pnl_quote_raw : row.pnl_krw)) || 0;
+    const pnlPct = Number(row && row.pnl_pct);
+    if (Number.isFinite(pnlPct)) {
+      current.pnl_pct_sum += pnlPct;
+      current.pnl_pct_n += 1;
+    }
+    grouped.set(groupKey, current);
+  }
+  const logicalTrades = Array.from(grouped.values()).map((row, index) => ({
+    trade_id: index + 1,
+    source_trade_id: row.source_trade_id,
+    source_trade_ids: Array.from(row.source_trade_ids),
+    source_fill_ids: Array.from(row.source_fill_ids),
+    symbol: row.symbol,
+    entry_event_id: row.entry_event_id,
+    open_ms: row.open_ms,
+    close_ms: row.close_ms,
+    pnl_pct: row.pnl_pct_n > 0 ? (row.pnl_pct_sum / row.pnl_pct_n) : null,
+    pnl_krw: row.pnl_krw,
+    pnl_quote_raw: row.pnl_quote_raw,
+    pnl_quote_currency: "USDT",
+    pnl_krw_normalized: row.pnl_krw,
+    features_json: row.features_json,
+  }));
+  const realizedN = logicalTrades.length;
+  const winN = logicalTrades.filter((row) => Number(row && (row.pnl_krw_normalized != null ? row.pnl_krw_normalized : row.pnl_krw)) > 0).length;
+  const netPnl = logicalTrades.reduce((acc, row) => acc + (Number(row && (row.pnl_krw_normalized != null ? row.pnl_krw_normalized : row.pnl_krw)) || 0), 0);
+  const netPnlRawQuote = logicalTrades.reduce((acc, row) => acc + (Number(row && (row.pnl_quote_raw != null ? row.pnl_quote_raw : row.pnl_krw)) || 0), 0);
   const avgRet = realizedN > 0
-    ? rows.reduce((acc, row) => acc + (Number(row && row.pnl_pct) || 0), 0) / realizedN
+    ? logicalTrades.reduce((acc, row) => acc + (Number(row && row.pnl_pct) || 0), 0) / realizedN
     : null;
   return {
     realized_n: realizedN,
@@ -213,9 +285,68 @@ function summarizeRealizedTrades(trades = [], { fromMs, toMs } = {}) {
     net_pnl_quote: netPnl,
     net_pnl_krw_normalized: netPnl,
     net_pnl_raw_quote: netPnlRawQuote,
-    quote_currency: rows[0] && rows[0].pnl_quote_currency ? rows[0].pnl_quote_currency : "KRW",
-    trades: rows,
+    quote_currency: logicalTrades[0] && logicalTrades[0].pnl_quote_currency ? logicalTrades[0].pnl_quote_currency : "KRW",
+    trades: logicalTrades,
   };
+}
+
+function filterTradeExecutionEntryAlerts(rows = [], { fromMs, toMs, provider, tf } = {}) {
+  const providerKey = String(provider || "").trim().toUpperCase();
+  const tfKey = String(tf || "").trim();
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    const type = String(row && row.type || "").trim().toUpperCase();
+    const event = String(row && row.event || "").trim().toUpperCase();
+    if (type !== "TRADE_EXECUTION_ALERT") return false;
+    if (event !== "ENTRY_LONG" && event !== "ENTRY_SHORT") return false;
+    const createdMs = resolveTradeAlertMs(row);
+    if (!Number.isFinite(createdMs) || createdMs < fromMs || createdMs >= toMs) return false;
+    const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
+    const intentId = String(payload.intentId || payload.intent_id || row.intent_id || "").trim().toUpperCase();
+    if (providerKey && intentId && !intentId.includes(`__${providerKey}__`)) return false;
+    if (tfKey && intentId && !intentId.includes(`__${tfKey.toUpperCase()}__`) && !intentId.includes(`__${tfKey}__`)) return false;
+    return true;
+  });
+}
+
+function summarizeExecutedEntriesFromTradeAlerts(rows = []) {
+  const byIntent = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const payload = row && row.payload && typeof row.payload === "object" ? row.payload : {};
+    const intentId = String(payload.intentId || payload.intent_id || row.intent_id || "").trim();
+    const symbol = String(row && row.symbol || payload.symbol || "").trim().toUpperCase();
+    const key = intentId || `${String(row && row.event || "").trim().toUpperCase()}__${symbol}__${String(row && row.created_at || "").trim()}`;
+    if (!byIntent.has(key)) {
+      byIntent.set(key, {
+        key,
+        symbol,
+        event: String(row && row.event || "").trim().toUpperCase(),
+        created_at: row && (row.created_at || row.created_at_utc) || null,
+      });
+    }
+  }
+  const entries = Array.from(byIntent.values());
+  return {
+    executed_n: entries.length,
+    entry_markets: Array.from(new Set(entries.map((row) => row.symbol).filter(Boolean))).sort(),
+    entries,
+  };
+}
+
+function inferRowSymbol(row = {}) {
+  const direct = [
+    row.symbol,
+    row.market,
+    row.asset,
+    row.ticker,
+  ].map((v) => String(v || "").trim().toUpperCase()).find(Boolean);
+  if (direct) return direct;
+  const features = row && row.features_json && typeof row.features_json === "object" ? row.features_json : {};
+  const signalId = String(features.signal_id || features.signal_doc_id || "").trim().toUpperCase();
+  const sourceTradeId = String(row && row.source_trade_id || "").trim().toUpperCase();
+  const fillId = String(row && row.fill_id || "").trim().toUpperCase();
+  const joined = `${signalId} ${sourceTradeId} ${fillId}`;
+  const match = joined.match(/(?:^|__|\s)([A-Z0-9]+USDT)(?:__|\s|$)/);
+  return match ? match[1] : "UNKNOWN";
 }
 
 function filterSignals(rows = [], { fromMs, toMs, provider, tf } = {}) {
@@ -292,13 +423,17 @@ function summarizeExecutionMicrostructure({ fills = [], signals = [], drops = []
   const signalRows = Array.isArray(signals) ? signals : [];
   const dropRows = Array.isArray(drops) ? drops : [];
   const entryChains = new Set();
+  const entryMarkets = new Set();
   const tp0Chains = new Set();
   const tp1Chains = new Set();
   const preTp1TimeStopChains = new Set();
   for (const row of fillRows) {
     const event = String(row && row.event || "").trim().toUpperCase();
     const chainKey = resolveChainKey(row);
-    if (isEntryTierEvent(event) && chainKey) entryChains.add(chainKey);
+    if (isEntryTierEvent(event) && chainKey) {
+      entryChains.add(chainKey);
+      entryMarkets.add(inferRowSymbol(row));
+    }
     if ((event === "EXIT_TP_P0" || event.startsWith("EXIT_TP_P0_")) && chainKey) tp0Chains.add(chainKey);
     if ((event === "EXIT_TP_P1" || event.startsWith("EXIT_TP_P1_")) && chainKey) tp1Chains.add(chainKey);
     const scope = String(row && row.time_stop_scope || row && row.reason || "").trim().toUpperCase();
@@ -321,6 +456,7 @@ function summarizeExecutionMicrostructure({ fills = [], signals = [], drops = []
   const tp0AndTp1Chains = [...tp0Chains].filter((key) => tp1Chains.has(key)).length;
   return {
     entry_chain_n: entryChains.size,
+    entry_markets: Array.from(entryMarkets).filter(Boolean).sort(),
     tp0_exit_n: tp0Chains.size,
     tp1_exit_n: tp1Chains.size,
     tp0_hit_rate: entryChains.size > 0 ? (tp0Chains.size / entryChains.size) : null,
@@ -398,18 +534,27 @@ function buildDailyTradeEvaluation({ daily, weekly, monthly } = {}) {
   const byMarket = summarizeTradesByMarket(trades);
   const bestMarket = byMarket[0] || null;
   const worstMarket = byMarket.length ? byMarket.slice().sort((a, b) => Number(a.net_pnl_krw || 0) - Number(b.net_pnl_krw || 0) || a.symbol.localeCompare(b.symbol))[0] : null;
-  const activeMarkets = byMarket.filter((row) => Number(row.trade_n || 0) > 0).map((row) => row.symbol);
+  const realizedMarkets = byMarket.filter((row) => Number(row.trade_n || 0) > 0).map((row) => row.symbol);
+  const entryMarkets = Array.isArray(daily && daily.execution_microstructure && daily.execution_microstructure.entry_markets)
+    ? daily.execution_microstructure.entry_markets.filter(Boolean)
+    : [];
   const topDrop = Array.isArray(daily && daily.drops && daily.drops.top_reasons) ? daily.drops.top_reasons[0] || null : null;
   const lines = [
     `오늘 실현 거래는 ${daily && daily.realized_trades && daily.realized_trades.trade_n || 0}건, 순손익은 ${signedKrw(daily && daily.realized_trades && daily.realized_trades.net_pnl_quote, 0)} 입니다.`,
     `오늘 서버 신호는 ${daily && daily.entry_cohort && daily.entry_cohort.signals_n || 0}건, 실제 진입은 ${daily && daily.entry_cohort && daily.entry_cohort.executed_n || 0}건, 실행률은 ${pct(daily && daily.entry_cohort && daily.entry_cohort.execution_rate)} 입니다.`,
-    activeMarkets.length ? `오늘 실제 거래한 시장은 ${activeMarkets.join(", ")} 입니다.` : "오늘 실제 거래된 시장은 없습니다.",
   ];
+  if (entryMarkets.length > 0) {
+    lines.push(`오늘 신규 진입 시장은 ${entryMarkets.join(", ")} 입니다.`);
+  } else if (realizedMarkets.length > 0) {
+    lines.push(`오늘 신규 진입 시장은 없었고, 실현 손익이 발생한 시장은 ${realizedMarkets.join(", ")} 입니다.`);
+  } else {
+    lines.push("오늘 신규 진입과 실현 손익이 발생한 시장은 없습니다.");
+  }
   if (bestMarket) {
-    lines.push(`가장 좋았던 시장은 ${bestMarket.symbol} (${signedKrw(bestMarket.net_pnl_krw, 0)}, 승률 ${pct(bestMarket.win_rate)}) 입니다.`);
+    lines.push(`실현 손익 기준 가장 좋았던 시장은 ${bestMarket.symbol} (${signedKrw(bestMarket.net_pnl_krw, 0)}, 승률 ${pct(bestMarket.win_rate)}) 입니다.`);
   }
   if (worstMarket) {
-    lines.push(`가장 아쉬웠던 시장은 ${worstMarket.symbol} (${signedKrw(worstMarket.net_pnl_krw, 0)}, 승률 ${pct(worstMarket.win_rate)}) 입니다.`);
+    lines.push(`실현 손익 기준 가장 아쉬웠던 시장은 ${worstMarket.symbol} (${signedKrw(worstMarket.net_pnl_krw, 0)}, 승률 ${pct(worstMarket.win_rate)}) 입니다.`);
   }
   if (topDrop) {
     lines.push(`가장 많이 막힌 이유는 ${topDrop.reason} ${topDrop.n}건이며, 계층은 ${stageLabel(topDrop.stage)} 입니다.`);
@@ -418,7 +563,9 @@ function buildDailyTradeEvaluation({ daily, weekly, monthly } = {}) {
   return {
     best_market: bestMarket,
     worst_market: worstMarket,
-    active_markets: activeMarkets,
+    entry_markets: entryMarkets,
+    active_markets: realizedMarkets,
+    realized_markets: realizedMarkets,
     by_market: byMarket.slice(0, 5),
     lines,
   };
@@ -445,10 +592,19 @@ function buildReflection({ periodLabel, objective, entryOverall, realizedOverall
   const worstTier = resolveWorstTier(quality && quality.by_tier);
 
   if (failed.includes("NO_TRADE_ACTIVITY")) {
-    lines.push(`${periodLabel}에는 신규 진입이 ${entryOverall && entryOverall.executed_n || 0}건이었습니다. 0원은 안전이 아니라 기회 손실이므로 실패로 간주합니다.`);
+    const executedN = Number(entryOverall && entryOverall.executed_n || 0);
+    const realizedN = Number(realizedOverall && realizedOverall.realized_n || 0);
+    if (executedN === 0 && realizedN > 0) {
+      lines.push(`${periodLabel}에는 신규 진입이 0건이었고 기존 포지션 청산만 ${realizedN}건 있었습니다. 신규 진입 관점에서는 실패입니다.`);
+    } else {
+      lines.push(`${periodLabel}에는 신규 진입이 ${executedN}건이었습니다. 0원은 안전이 아니라 기회 손실이므로 실패로 간주합니다.`);
+    }
   }
   if (failed.includes("ZERO_KRW_IDLE")) {
     lines.push(`${periodLabel} 실현 순수익이 0 KRW였습니다. 무거래 또는 실현 지연 상태로 목표 관점에서는 미달입니다.`);
+  }
+  if (failed.includes("NET_NOT_POSITIVE")) {
+    lines.push(`${periodLabel} 실현 순손익 ${signedKrw(realizedOverall && realizedOverall.net_pnl_quote, 0)}가 양수가 아니었습니다.`);
   }
   if (failed.includes("PERIOD_TARGET_NOT_MET")) {
     lines.push(`${periodLabel} 순수익 ${signedKrw(realizedOverall && realizedOverall.net_pnl_quote, 0)}가 기간 목표 ${signedKrw(objective && objective.period_target_krw, 0)}를 넘지 못했습니다.`);
@@ -505,13 +661,13 @@ function buildSelfCritique({ failedPeriods = [], daily, weekly, monthly } = {}) 
     lines.push(`월간 기준도 목표 ${signedKrw(monthly && monthly.objective && monthly.objective.period_target_krw, 0)} 대비 아직 부족합니다.`);
   }
   if (worstMarket) {
-    lines.push(`오늘 가장 아쉬운 시장은 ${worstMarket.symbol}였고, 이 시장의 서버 정책과 실행 품질을 다시 봐야 합니다.`);
+    lines.push(`오늘 실현 손익 기준 가장 아쉬운 시장은 ${worstMarket.symbol}였고, 이 시장의 서버 정책과 실행 품질을 다시 봐야 합니다.`);
   }
   if (topDrop) {
     lines.push(`가장 많이 막은 구간은 ${stageLabel(topDrop.stage)}였고, ${topDrop.reason} ${topDrop.n}건이 과보수였는지 다시 검증해야 합니다.`);
   }
   if (bestMarket) {
-    lines.push(`반대로 ${bestMarket.symbol}는 가장 좋은 기여를 냈는데, 승자 시장을 더 적극적으로 활용하지 못했습니다.`);
+    lines.push(`반대로 ${bestMarket.symbol}는 실현 손익 기준 가장 좋은 기여를 냈는데, 승자 시장을 더 적극적으로 활용하지 못했습니다.`);
   }
   lines.push("내 판단 기준은 서버 신호이며, 목표 미달 원인은 시장별 정책 강도와 실행 품질에서 다시 찾겠습니다.");
   return lines;
@@ -642,6 +798,7 @@ async function buildPeriodReport(period, range, context = {}) {
   const filteredSignals = filterSignals(context.signals, { ...range, provider: PROVIDER, tf: TF });
   const filteredDrops = filterDrops(context.drops, { ...range, provider: PROVIDER, tf: TF });
   const filteredFills = filterFills(context.fills, { ...range, provider: PROVIDER, tf: TF });
+  const filteredTradeEntryAlerts = filterTradeExecutionEntryAlerts(context.tradeAlerts, { ...range, provider: PROVIDER, tf: TF });
   const quality = await summarizePineSignalQuality({
     signals: filteredSignals,
     fills: context.fills,
@@ -651,12 +808,30 @@ async function buildPeriodReport(period, range, context = {}) {
     toMs: range.toMs,
   });
   const entryOverall = aggregateOverallFromQuality(quality);
+  const tradeAlertEntrySummary = summarizeExecutedEntriesFromTradeAlerts(filteredTradeEntryAlerts);
+  const executedN = Math.max(Number(entryOverall.executed_n || 0), Number(tradeAlertEntrySummary.executed_n || 0));
+  const entryMarkets = Array.from(new Set([
+    ...(Array.isArray(entryOverall.entry_markets) ? entryOverall.entry_markets : []),
+    ...(Array.isArray(tradeAlertEntrySummary.entry_markets) ? tradeAlertEntrySummary.entry_markets : []),
+  ])).filter(Boolean).sort();
+  entryOverall.executed_n = executedN;
+  entryOverall.execution_rate = Number(entryOverall.signals_n || 0) > 0 ? (executedN / Number(entryOverall.signals_n || 0)) : null;
+  entryOverall.entry_markets = entryMarkets;
+  entryOverall.execution_source = tradeAlertEntrySummary.executed_n > Number(quality && quality.chain_rows && quality.chain_rows.length || 0)
+    ? "TRADE_ALERT_OUTBOX"
+    : "PINE_SIGNAL_QUALITY";
   const realizedOverall = summarizeRealizedTrades(context.trades, { fromMs: range.fromMs, toMs: range.toMs });
   const executionMicrostructure = summarizeExecutionMicrostructure({
     fills: filteredFills,
     signals: filteredSignals,
     drops: filteredDrops,
   });
+  if (Number(executionMicrostructure.entry_chain_n || 0) < executedN) {
+    executionMicrostructure.entry_chain_n = executedN;
+  }
+  if ((!Array.isArray(executionMicrostructure.entry_markets) || executionMicrostructure.entry_markets.length === 0) && entryMarkets.length > 0) {
+    executionMicrostructure.entry_markets = entryMarkets.slice();
+  }
   const objective = buildPeriodObjectiveVerdict(period, {
     executed_n: entryOverall.executed_n,
     realized_n: realizedOverall.realized_n,
@@ -765,21 +940,22 @@ async function main() {
   const ranges = cadence.ranges;
   const usdKrw = await fetchUsdKrwRate();
   const pnlNormalizer = buildPnlNormalizer(PROVIDER, usdKrw.rate);
-  const [signalsRes, dropsRes, fillsRes] = await Promise.all([
+  const [signalsRes, dropsRes, fillsRes, tradeAlertsRes] = await Promise.all([
     getCachedRecentByCreatedAt("signals", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("signals_dropped", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 400, pageSize: 1000, refresh: true }),
     getCachedRecentByCreatedAt("fills_paper", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 800, pageSize: 1000, refresh: true }),
+    getCachedRecentByCreatedAt("trade_alert_outbox", { limit: SCAN_LIMIT, maxDocs: SCAN_LIMIT, overlapDocs: 200, pageSize: 1000, refresh: true }),
   ]);
 
   const signals = signalsRes.rows;
   const drops = dropsRes.rows;
   const fills = fillsRes.rows.filter((row) => isLiveDocForExchange(PROVIDER, row));
+  const tradeAlertRows = tradeAlertsRes.rows;
   const { trades: rawTrades } = await buildTradesFromFillsWithFunding(fills, { exchange: PROVIDER });
   const trades = normalizeTradesToKrw(rawTrades, pnlNormalizer);
-
-  const daily = await buildPeriodReport("DAILY", ranges.DAILY, { signals, drops, fills, trades });
-  const weekly = await buildPeriodReport("WEEKLY", ranges.WEEKLY, { signals, drops, fills, trades });
-  const monthly = await buildPeriodReport("MONTHLY", ranges.MONTHLY, { signals, drops, fills, trades });
+  const daily = await buildPeriodReport("DAILY", ranges.DAILY, { signals, drops, fills, trades, tradeAlerts: tradeAlertRows });
+  const weekly = await buildPeriodReport("WEEKLY", ranges.WEEKLY, { signals, drops, fills, trades, tradeAlerts: tradeAlertRows });
+  const monthly = await buildPeriodReport("MONTHLY", ranges.MONTHLY, { signals, drops, fills, trades, tradeAlerts: tradeAlertRows });
 
   const failedPeriods = cadence.active_periods
     .map((period) => ({ period, row: period === "DAILY" ? daily : (period === "WEEKLY" ? weekly : monthly) }))
@@ -995,6 +1171,8 @@ if (require.main === module) {
       normalizePnlToKrw,
       normalizeTradesToKrw,
       summarizeRealizedTrades,
+      filterTradeExecutionEntryAlerts,
+      summarizeExecutedEntriesFromTradeAlerts,
       buildReflection,
       summarizeTradesByMarket,
       buildDailyTradeEvaluation,
