@@ -70,6 +70,7 @@ const expanded = Array.from({ length: 5 }, (_, idx) => outcomes.slice(0, 2).map(
 const analysis = buildAnalysis({ rows: expanded, generatedAt: "2026-05-01T01:00:00.000Z" });
 assert.strictEqual(analysis.ok, true);
 assert.strictEqual(analysis.sample_n, 11);
+assert.strictEqual(analysis.policy_basis_sample_n, 0);
 assert.strictEqual(analysis.groups.by_setup_type[0].key, "PULLBACK_RECLAIM");
 assert.strictEqual(analysis.by_setup_type[0].key, "PULLBACK_RECLAIM");
 assert.ok(Array.isArray(analysis.by_feature_lineage_source));
@@ -80,6 +81,7 @@ assert.ok(analysis.root_cause_findings.some((row) => row.id === "PULLBACK_RECLAI
 const markdown = renderMarkdown(analysis);
 assert.ok(markdown.includes("V2 OpenClaw Root Cause Analysis"));
 assert.ok(markdown.includes("PULLBACK_RECLAIM_DECAY"));
+assert.ok(markdown.includes("policy_basis_sample_n: 0"));
 
 console.log("ANALYZE_V2_OPENCLAW_ROOT_CAUSE_TEST_OK");
 
@@ -134,4 +136,55 @@ console.log("ANALYZE_V2_OPENCLAW_ROOT_CAUSE_TEST_OK");
   assert.strictEqual(lineageGapAnalysis.by_full_lineage_gap.some((row) => row.key === "FULL_LINEAGE_GAP"), false);
   assert.strictEqual(lineageGapAnalysis.by_evidence_gap_reason.some((row) => row.key === "FULL_LINEAGE_GAP"), false);
   assert.ok(lineageGapAnalysis.root_cause_findings.some((row) => row.id === "FULL_LINEAGE_GAP") === false);
+}
+
+{
+  const policyBasisRows = [
+    {
+      openclaw_outcome_adjudication_id: "oa_policy_1",
+      openclaw_decision_id: "d_policy_1",
+      position_cycle_id: "p_policy_1",
+      signal_intent_id: "s_policy_1",
+      adjudication_label: "MODEL_WIN",
+      adjudication_family: "MODEL",
+      realized_pnl: 1.2,
+      evidence: {
+        symbol: "SOLUSDT",
+        side: "LONG",
+        setup_type: "BREAKOUT_RETEST",
+        edge_cohort: "BUILDABLE_EDGE",
+        market_quality_score: 0.9,
+        spread_bps: 2,
+        funding_rate: 0.00001,
+        btc_1h_trend: "LONG",
+        mtf_1h_direction: "LONG",
+      },
+      adjudicated_at: "2026-05-08T00:00:00.000Z",
+    },
+    {
+      openclaw_outcome_adjudication_id: "oa_policy_2",
+      openclaw_decision_id: "d_policy_2",
+      position_cycle_id: "p_policy_2",
+      signal_intent_id: "s_policy_2",
+      adjudication_label: "MODEL_ERROR",
+      adjudication_family: "MODEL",
+      realized_pnl: -0.8,
+      evidence: {
+        symbol: "SOLUSDT",
+        side: "SHORT",
+        setup_type: "PULLBACK_RECLAIM",
+        edge_cohort: "MARGINAL_EDGE",
+        market_quality_score: 0.82,
+        spread_bps: 3,
+        funding_rate: 0.00002,
+        btc_1h_trend: "SHORT",
+        mtf_1h_direction: "SHORT",
+      },
+      adjudicated_at: "2026-05-08T00:15:00.000Z",
+    },
+  ];
+  const policyAnalysis = buildAnalysis({ rows: policyBasisRows, generatedAt: "2026-05-08T01:00:00.000Z" });
+  assert.strictEqual(policyAnalysis.policy_basis_sample_n, 2);
+  assert.strictEqual(policyAnalysis.policy_basis_groups.by_setup_type.some((row) => row.key === "BREAKOUT_RETEST"), true);
+  assert.strictEqual(policyAnalysis.policy_basis_groups.by_edge_cohort.some((row) => row.key === "BUILDABLE_EDGE"), true);
 }

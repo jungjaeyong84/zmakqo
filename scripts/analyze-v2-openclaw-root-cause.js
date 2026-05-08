@@ -180,6 +180,8 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
   const eligible = rows.filter(isPerformanceEligibleOutcome);
   const enriched = eligible.map((row) => ({ ...row, context: extractOutcomeContext(row) }));
   const total = stats(enriched);
+  const policyBasis = enriched.filter((row) => row.context && row.context.full_evidence === true);
+  const policyBasisTotal = stats(policyBasis);
   const groups = {
     by_symbol: groupRows(enriched, (row) => row.context.symbol),
     by_side: groupRows(enriched, (row) => row.context.side),
@@ -205,6 +207,12 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_evidence_completeness: groupRows(enriched, (row) => row.context.evidence_completeness),
     by_extended_microstructure_evidence_completeness: groupRows(enriched, (row) => row.context.extended_microstructure_evidence_complete === true ? "EXTENDED_MICROSTRUCTURE_COMPLETE" : "EXTENDED_MICROSTRUCTURE_MISSING"),
   };
+  const policyBasisGroups = {
+    by_setup_type: groupRows(policyBasis, (row) => row.context.setup_type),
+    by_side: groupRows(policyBasis, (row) => row.context.side),
+    by_edge_cohort: groupRows(policyBasis, (row) => row.context.edge_cohort),
+    by_setup_edge_side: groupRows(policyBasis, (row) => `${row.context.setup_type}|${row.context.edge_cohort}|${row.context.side}`, { minN: 3 }),
+  };
   return Object.freeze({
     ok: true,
     reason: "V2_OPENCLAW_ROOT_CAUSE_ANALYSIS_GENERATED",
@@ -223,6 +231,9 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_edge_cohort: groups.by_edge_cohort,
     by_btc_1h_alignment: groups.by_btc_1h_alignment,
     by_market_quality_bucket: groups.by_market_quality_bucket,
+    policy_basis_sample_n: policyBasisTotal.n,
+    policy_basis_total: policyBasisTotal,
+    policy_basis_groups: policyBasisGroups,
     groups,
   });
 }
@@ -233,10 +244,13 @@ function renderMarkdown(analysis) {
   lines.push("");
   lines.push(`generated_at: ${analysis.generated_at}`);
   lines.push(`sample_n: ${analysis.sample_n}`);
+  lines.push(`policy_basis_sample_n: ${analysis.policy_basis_sample_n}`);
   lines.push(`win_rate_pct: ${round(analysis.total.win_rate_pct, 2)}`);
   lines.push(`profit_factor: ${round(analysis.total.profit_factor, 4)}`);
   lines.push(`expectancy_usdt: ${round(analysis.total.expectancy_usdt, 4)}`);
   lines.push(`net_pnl_usdt: ${round(analysis.total.net_pnl_usdt, 4)}`);
+  lines.push(`policy_basis_profit_factor: ${round(analysis.policy_basis_total.profit_factor, 4)}`);
+  lines.push(`policy_basis_expectancy_usdt: ${round(analysis.policy_basis_total.expectancy_usdt, 4)}`);
   lines.push("");
   lines.push("## Findings");
   for (const finding of analysis.root_cause_findings) {
@@ -247,6 +261,11 @@ function renderMarkdown(analysis) {
   for (const [name, rows] of Object.entries(analysis.groups)) {
     lines.push("");
     lines.push(`## ${name}`);
+    lines.push(markdownTable(rows.slice(0, 20)));
+  }
+  for (const [name, rows] of Object.entries(analysis.policy_basis_groups || {})) {
+    lines.push("");
+    lines.push(`## policy_basis_${name}`);
     lines.push(markdownTable(rows.slice(0, 20)));
   }
   lines.push("");
