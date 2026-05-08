@@ -145,6 +145,47 @@ function buildFilterResult({ id, status, reason, observed = null, threshold = nu
   });
 }
 
+function normalizeSetupType(value) {
+  const token = upper(value);
+  if (!token) return "NONE";
+  if (token === "BREAKOUT" || token === "BREAKDOWN") return "BREAKOUT_RETEST";
+  if (token === "RECLAIM" || token === "LOSS") return "PULLBACK_RECLAIM";
+  if (token === "CONTINUATION") return "MOMENTUM_CONTINUATION";
+  if (token === "PULLBACK_RECLAIM" || token === "PULLBACK_PROBE" || token === "BREAKOUT_RETEST" || token === "MOMENTUM_CONTINUATION" || token === "NONE") {
+    return token;
+  }
+  return "NONE";
+}
+
+function shouldSoftenDirectionalFiltersForDiscovery({ context = null, signalCriteria = null } = {}) {
+  const criteria = asObject(signalCriteria);
+  const ctx = asObject(context);
+  const criteriaProfile = upper(criteria && criteria.criteria_profile);
+  const verdict = upper(criteria && criteria.verdict);
+  const entryGrade = upper(criteria && criteria.entry_grade);
+  const setupType = normalizeSetupType(
+    criteria && criteria.setup_gate && criteria.setup_gate.setup_type
+  );
+  const side = upper(ctx && ctx.side);
+  if (criteriaProfile !== "V6_COMPAT_DISCOVERY") return false;
+  if (verdict !== "PASS") return false;
+  if (side !== "LONG") return false;
+  if (entryGrade !== "CORE") return false;
+  return setupType === "BREAKOUT_RETEST" || setupType === "MOMENTUM_CONTINUATION";
+}
+
+function softenDirectionalFilter(filter, reasonSuffix) {
+  const row = asObject(filter);
+  if (!row) return filter;
+  return Object.freeze({
+    ...row,
+    status: "WARNING_ONLY",
+    reason: `${row.reason}${reasonSuffix ? `:${reasonSuffix}` : ""}`,
+    would_block: false,
+    softened_by_discovery_long_core_policy: true,
+  });
+}
+
 function resolvePolicy(env = process.env) {
   return Object.freeze({
     enabled: readEnvBool(env, "DONBEOLJA_V2_OPENCLAW_DECISION_GATE_ENABLED", true),
@@ -311,6 +352,10 @@ function evaluateV2OpenClawDecisionGate({
   const features = resolveFeatureValues(bundle);
   const marketDataQuality = resolveMarketDataQuality(bundle);
   const signalCriteria = resolveSignalCriteria(bundle);
+  const softenDirectionalFilters = shouldSoftenDirectionalFiltersForDiscovery({
+    context,
+    signalCriteria,
+  });
   const shadowFilterDecision = buildSignalShadowFilters({
     symbol: context.symbol,
     signalSide: context.side,
@@ -325,24 +370,40 @@ function evaluateV2OpenClawDecisionGate({
       min_cost_adjusted_net_r: policy.min_cost_adjusted_net_r,
     },
   });
-  const microstructureFilters = Object.freeze([
+  const directionalFilterIds = new Set(["BTC_1H_TREND_ALT_LONG", "MULTI_TF_1H_ALIGNMENT"]);
+  const rawFilters = [
     evaluateFundingFilter({ side: context.side, features, marketDataQuality, policy }),
     evaluateLiquidationChaosFilter({ features, marketDataQuality, policy }),
     evaluateOpenInterestFilter({ side: context.side, features, policy }),
     evaluateOrderbookImbalanceFilter({ side: context.side, features, marketDataQuality, policy }),
-  ]);
+  ];
+  const microstructureFilters = Object.freeze(rawFilters);
   const filters = Object.freeze([
     ...Array.from(shadowFilterDecision.filters || []),
     ...microstructureFilters,
-  ]);
+  ].map((row) => {
+    if (
+      softenDirectionalFilters
+      && row
+      && row.would_block === true
+      && directionalFilterIds.has(row.id)
+    ) {
+      return softenDirectionalFilter(row, "DISCOVERY_LONG_CORE_WARNING_ONLY");
+    }
+    return row;
+  }));
   const wouldBlockFilters = filters.filter((row) => row && row.would_block === true);
   const insufficientFilters = filters.filter((row) => row && row.status === "INSUFFICIENT_EVIDENCE");
+  const softenedWarningFilters = filters.filter((row) => row && row.softened_by_discovery_long_core_policy === true);
   const blockers = Object.freeze(wouldBlockFilters.map((row) => `OPENCLAW_DECISION_GATE:${row.id}:${row.reason}`));
   const evidenceBlockers = policy.require_evidence === true
     ? insufficientFilters.map((row) => `OPENCLAW_DECISION_GATE:${row.id}:${row.reason}`)
     : [];
   const allBlockers = Object.freeze([...blockers, ...evidenceBlockers]);
-  const warnings = Object.freeze(insufficientFilters.map((row) => `OPENCLAW_DECISION_GATE:${row.id}:${row.reason}`));
+  const warnings = Object.freeze([
+    ...insufficientFilters.map((row) => `OPENCLAW_DECISION_GATE:${row.id}:${row.reason}`),
+    ...softenedWarningFilters.map((row) => `OPENCLAW_DECISION_GATE:${row.id}:${row.reason}`),
+  ]);
   const hardBlock = policy.mode === "BLOCK_ONLY" && allBlockers.length > 0;
   return Object.freeze({
     ok: !hardBlock,
@@ -380,5 +441,6 @@ module.exports = {
     evaluateLiquidationChaosFilter,
     evaluateOpenInterestFilter,
     evaluateOrderbookImbalanceFilter,
+    shouldSoftenDirectionalFiltersForDiscovery,
   },
 };

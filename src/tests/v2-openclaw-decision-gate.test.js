@@ -3,7 +3,7 @@
 const assert = require("assert");
 const { evaluateV2OpenClawDecisionGate } = require("../v2/openclawDecisionGate");
 
-function buildBundle({ symbol = "SOLUSDT", side = "LONG", featureValues = {}, marketMetrics = {} } = {}) {
+function buildBundle({ symbol = "SOLUSDT", side = "LONG", featureValues = {}, marketMetrics = {}, signalCriteria = {} } = {}) {
   return {
     signalIntent: {
       symbol,
@@ -36,12 +36,16 @@ function buildBundle({ symbol = "SOLUSDT", side = "LONG", featureValues = {}, ma
     signalCriteria: {
       present: true,
       verdict: "PASS",
+      criteria_profile: "V6_COMPAT_DISCOVERY",
+      entry_grade: "EARLY",
       htf_regime: { regime: side },
+      setup_gate: { setup_type: "BREAKOUT_RETEST" },
       expected_edge_gate: {
         expected_net_r_after_cost: 0.3,
         cost_estimate_bps: 10,
       },
       feature_snapshot_contract: {},
+      ...signalCriteria,
     },
   };
 }
@@ -141,6 +145,50 @@ function assertBlocked(result, fragment) {
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.reason, "V2_OPENCLAW_DECISION_GATE_PASS");
   assert.ok(result.blockers.some((row) => row.includes("BTC_1H_TREND_ALT_LONG")));
+})();
+
+(function discoveryLongCoreBreakoutSoftensDirectionalFiltersToWarnings() {
+  const result = evaluateV2OpenClawDecisionGate({
+    bundle: buildBundle({
+      symbol: "WLDUSDT",
+      side: "LONG",
+      featureValues: { btc_1h_trend: "SHORT", mtf_1h_direction: "SHORT" },
+      signalCriteria: {
+        criteria_profile: "V6_COMPAT_DISCOVERY",
+        verdict: "PASS",
+        entry_grade: "CORE",
+        setup_gate: { setup_type: "BREAKOUT_RETEST" },
+      },
+    }),
+  });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.reason, "V2_OPENCLAW_DECISION_GATE_PASS");
+  assert.ok(result.warnings.some((row) => row.includes("BTC_1H_TREND_ALT_LONG")));
+  assert.ok(result.warnings.some((row) => row.includes("MULTI_TF_1H_ALIGNMENT")));
+  assert.ok(!result.blockers.some((row) => row.includes("BTC_1H_TREND_ALT_LONG")));
+})();
+
+(function discoveryLongCoreStillBlocksWhenCostAdjustedEdgeFails() {
+  const result = evaluateV2OpenClawDecisionGate({
+    bundle: buildBundle({
+      symbol: "TIAUSDT",
+      side: "LONG",
+      featureValues: {
+        btc_1h_trend: "SHORT",
+        mtf_1h_direction: "SHORT",
+        expected_alpha_bps: 8,
+        total_cost_bps: 10,
+      },
+      signalCriteria: {
+        criteria_profile: "V6_COMPAT_DISCOVERY",
+        verdict: "PASS",
+        entry_grade: "CORE",
+        setup_gate: { setup_type: "MOMENTUM_CONTINUATION" },
+      },
+    }),
+  });
+  assertBlocked(result, "COST_ADJUSTED_EDGE");
+  assert.ok(!result.blockers.some((row) => row.includes("BTC_1H_TREND_ALT_LONG")));
 })();
 
 (function disabledGateIsExplicitPass() {
