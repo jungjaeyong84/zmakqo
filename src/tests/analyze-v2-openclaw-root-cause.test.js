@@ -82,3 +82,31 @@ assert.ok(markdown.includes("V2 OpenClaw Root Cause Analysis"));
 assert.ok(markdown.includes("PULLBACK_RECLAIM_DECAY"));
 
 console.log("ANALYZE_V2_OPENCLAW_ROOT_CAUSE_TEST_OK");
+
+{
+  const historicalBlindWindowRows = Array.from({ length: 25 }, (_, idx) => ({
+    openclaw_outcome_adjudication_id: `oa_hist_${idx}`,
+    openclaw_decision_id: `d_hist_${idx}`,
+    position_cycle_id: `p_hist_${idx}`,
+    signal_intent_id: `s_hist_${idx}`,
+    adjudication_label: "MODEL_ERROR",
+    adjudication_family: "MODEL",
+    realized_pnl: -0.2,
+    evidence: {
+      symbol: "ETHUSDT",
+      side: "LONG",
+      setup_type: "BREAKOUT_RETEST",
+      edge_cohort: "MARGINAL_EDGE",
+      market_quality_score: 0.82,
+      spread_bps: 2.5,
+      funding_rate: 0.00001,
+      mtf_1h_direction: "LONG",
+      btc_1h_trend: null,
+    },
+    adjudicated_at: "2026-05-01T00:00:00.000Z",
+  }));
+  const blindWindowAnalysis = buildAnalysis({ rows: historicalBlindWindowRows, generatedAt: "2026-05-01T01:30:00.000Z" });
+  assert.strictEqual(blindWindowAnalysis.by_historical_blind_window.some((row) => row.key === "HISTORICAL_BLIND_WINDOW"), true);
+  assert.strictEqual(blindWindowAnalysis.by_evidence_gap_reason.some((row) => row.key === "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW"), true);
+  assert.ok(blindWindowAnalysis.root_cause_findings.some((row) => row.id === "HISTORICAL_BLIND_WINDOW"));
+}

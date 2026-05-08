@@ -175,6 +175,7 @@ function summarizeOpenClawOutcomes(outcomes = []) {
   let unknownEvidenceSampleN = 0;
   let extendedMicrostructureEvidenceSampleN = 0;
   let coreEvidenceOnlySampleN = 0;
+  let historicalBlindWindowSampleN = 0;
   const labelCounts = {};
   const familyCounts = {};
   const exclusionReasonCounts = {};
@@ -201,6 +202,7 @@ function summarizeOpenClawOutcomes(outcomes = []) {
       fullEvidenceSampleN += 1;
     } else {
       unknownEvidenceSampleN += 1;
+      if (context.historical_blind_window === true) historicalBlindWindowSampleN += 1;
     }
     if (context.extended_microstructure_evidence_complete === true) {
       extendedMicrostructureEvidenceSampleN += 1;
@@ -233,6 +235,7 @@ function summarizeOpenClawOutcomes(outcomes = []) {
     performance_excluded_outcome_n: excludedN,
     full_evidence_sample_n: fullEvidenceSampleN,
     unknown_evidence_sample_n: unknownEvidenceSampleN,
+    historical_blind_window_sample_n: historicalBlindWindowSampleN,
     extended_microstructure_evidence_sample_n: extendedMicrostructureEvidenceSampleN,
     core_evidence_only_sample_n: coreEvidenceOnlySampleN,
     trade_n: tradeN,
@@ -276,6 +279,7 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], decisionEvidenceRo
     sample_n: summary.trade_n,
     full_evidence_sample_n: summary.full_evidence_sample_n,
     unknown_evidence_sample_n: summary.unknown_evidence_sample_n,
+    historical_blind_window_sample_n: summary.historical_blind_window_sample_n,
     extended_microstructure_evidence_sample_n: summary.extended_microstructure_evidence_sample_n,
     core_evidence_only_sample_n: summary.core_evidence_only_sample_n,
     win_rate_pct: summary.win_rate_pct,
@@ -289,6 +293,8 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], decisionEvidenceRo
     unknown_evidence_summary: unknownEvidenceSummary,
     cohort_summary: cohortSummary,
     by_evidence_completeness: cohortSummary.by_evidence_completeness || Object.freeze([]),
+    by_evidence_gap_reason: cohortSummary.by_evidence_gap_reason || Object.freeze([]),
+    by_historical_blind_window: cohortSummary.by_historical_blind_window || Object.freeze([]),
     by_extended_microstructure_evidence_completeness: cohortSummary.by_extended_microstructure_evidence_completeness || Object.freeze([]),
     by_feature_lineage_source: cohortSummary.by_feature_lineage_source || Object.freeze([]),
     by_setup_type: cohortSummary.by_setup_type || Object.freeze([]),

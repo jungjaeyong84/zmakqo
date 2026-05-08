@@ -135,6 +135,12 @@ const EXTENDED_MICROSTRUCTURE_EVIDENCE_FIELDS = Object.freeze([
   "orderbook_imbalance_top5",
 ]);
 
+const HISTORICAL_BLIND_WINDOW_CUTOFF_MS = Date.parse("2026-05-08T00:00:00.000Z");
+const BTC_CONTEXT_ONLY_GAP_FIELDS = Object.freeze([
+  "btc_1h_trend",
+  "btc_1h_alignment",
+]);
+
 function missingEvidenceFields(requiredFields = [], context = {}) {
   const missing = [];
   for (const field of requiredFields) {
@@ -152,6 +158,18 @@ function missingFullEvidenceFields(context = {}) {
 
 function missingExtendedMicrostructureEvidenceFields(context = {}) {
   return missingEvidenceFields(EXTENDED_MICROSTRUCTURE_EVIDENCE_FIELDS, context);
+}
+
+function isBtcContextOnlyGap(missingCore = []) {
+  const fields = asArray(missingCore);
+  if (!fields.length) return false;
+  return fields.every((field) => BTC_CONTEXT_ONLY_GAP_FIELDS.includes(field));
+}
+
+function isHistoricalBlindWindow({ row, missingCore = [] } = {}) {
+  if (!isBtcContextOnlyGap(missingCore)) return false;
+  const adjudicatedAtMs = Date.parse(trimOrNull(row && row.adjudicated_at) || "");
+  return Number.isFinite(adjudicatedAtMs) && adjudicatedAtMs < HISTORICAL_BLIND_WINDOW_CUTOFF_MS;
 }
 
 function extractOutcomeContext(row) {
@@ -289,6 +307,10 @@ function extractOutcomeContext(row) {
   const missingExtended = missingExtendedMicrostructureEvidenceFields(baseContext);
   const hasCoreEvidence = missingCore.length === 0;
   const hasExtendedMicrostructureEvidence = missingExtended.length === 0;
+  const historicalBlindWindow = isHistoricalBlindWindow({ row, missingCore });
+  const evidenceGapReason = hasCoreEvidence
+    ? null
+    : (historicalBlindWindow ? "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW" : "OTHER_CORE_FIELDS_MISSING");
   return Object.freeze({
     ...baseContext,
     full_evidence: hasCoreEvidence,
@@ -297,6 +319,8 @@ function extractOutcomeContext(row) {
     evidence_completeness: hasCoreEvidence
       ? (hasExtendedMicrostructureEvidence ? "FULL_EVIDENCE" : "CORE_EVIDENCE_ONLY")
       : "PARTIAL_OR_UNKNOWN_EVIDENCE",
+    evidence_gap_reason: evidenceGapReason,
+    historical_blind_window: historicalBlindWindow,
     missing_feature_fields: missingCore,
     missing_core_feature_fields: missingCore,
     missing_extended_microstructure_fields: missingExtended,
@@ -325,6 +349,8 @@ function createBucketRow(key, context) {
     btc_1h_alignment: context.btc_1h_alignment,
     mtf_1h_alignment: context.mtf_1h_alignment,
     evidence_completeness: context.evidence_completeness,
+    evidence_gap_reason: context.evidence_gap_reason || "NONE",
+    historical_blind_window: context.historical_blind_window === true ? "HISTORICAL_BLIND_WINDOW" : "NOT_HISTORICAL_BLIND_WINDOW",
     feature_lineage_source: context.feature_lineage_source,
     outcome_n: 0,
     trade_n: 0,
@@ -369,6 +395,8 @@ function summarizeOutcomeCohorts(outcomes = []) {
   const byMtf1hAlignment = new Map();
   const byEvidenceCompleteness = new Map();
   const byExtendedMicrostructureEvidenceCompleteness = new Map();
+  const byEvidenceGapReason = new Map();
+  const byHistoricalBlindWindow = new Map();
   const byFeatureLineageSource = new Map();
 
   function record(map, key, row, context) {
@@ -411,6 +439,8 @@ function summarizeOutcomeCohorts(outcomes = []) {
     record(byBtc1hAlignment, context.btc_1h_alignment, row, context);
     record(byMtf1hAlignment, context.mtf_1h_alignment, row, context);
     record(byEvidenceCompleteness, context.evidence_completeness, row, context);
+    record(byEvidenceGapReason, context.evidence_gap_reason || "NONE", row, context);
+    record(byHistoricalBlindWindow, context.historical_blind_window === true ? "HISTORICAL_BLIND_WINDOW" : "NOT_HISTORICAL_BLIND_WINDOW", row, context);
     record(
       byExtendedMicrostructureEvidenceCompleteness,
       context.extended_microstructure_evidence_complete === true
@@ -445,6 +475,8 @@ function summarizeOutcomeCohorts(outcomes = []) {
     by_btc_1h_alignment: finalizeBucketRows(byBtc1hAlignment),
     by_mtf_1h_alignment: finalizeBucketRows(byMtf1hAlignment),
     by_evidence_completeness: finalizeBucketRows(byEvidenceCompleteness),
+    by_evidence_gap_reason: finalizeBucketRows(byEvidenceGapReason),
+    by_historical_blind_window: finalizeBucketRows(byHistoricalBlindWindow),
     by_extended_microstructure_evidence_completeness: finalizeBucketRows(byExtendedMicrostructureEvidenceCompleteness),
     by_feature_lineage_source: finalizeBucketRows(byFeatureLineageSource),
     top_positive_setup_regime: topPositiveSetupRegime,
@@ -457,6 +489,8 @@ module.exports = {
   summarizeOutcomeCohorts,
   missingFullEvidenceFields,
   missingExtendedMicrostructureEvidenceFields,
+  isBtcContextOnlyGap,
+  isHistoricalBlindWindow,
   FULL_EVIDENCE_REQUIRED_FIELDS: CORE_EVIDENCE_REQUIRED_FIELDS,
   CORE_EVIDENCE_REQUIRED_FIELDS,
   EXTENDED_MICROSTRUCTURE_EVIDENCE_FIELDS,

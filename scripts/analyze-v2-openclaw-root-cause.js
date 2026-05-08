@@ -158,6 +158,13 @@ function rootCauseFindings({ total, groups }) {
     "EXTENDED_MICROSTRUCTURE_MISSING",
     30
   );
+  addSpecific(
+    "HISTORICAL_BLIND_WINDOW",
+    "Historical outcomes are missing only BTC context, so part of the unknown sample is legacy blind-window debt rather than current runtime drift",
+    "by_historical_blind_window",
+    "HISTORICAL_BLIND_WINDOW",
+    20
+  );
 
   return findings;
 }
@@ -183,6 +190,8 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_open_interest_delta_bucket: groupRows(enriched, (row) => row.context.open_interest_delta_bucket),
     by_liquidation_notional_5m_bucket: groupRows(enriched, (row) => row.context.liquidation_notional_5m_bucket),
     by_feature_lineage_source: groupRows(enriched, (row) => row.context.feature_lineage_source),
+    by_evidence_gap_reason: groupRows(enriched, (row) => row.context.evidence_gap_reason || "NONE"),
+    by_historical_blind_window: groupRows(enriched, (row) => row.context.historical_blind_window === true ? "HISTORICAL_BLIND_WINDOW" : "NOT_HISTORICAL_BLIND_WINDOW"),
     by_setup_edge_side: groupRows(enriched, (row) => `${row.context.setup_type}|${row.context.edge_cohort}|${row.context.side}`, { minN: 3 }),
     by_symbol_setup: groupRows(enriched, (row) => `${row.context.symbol}|${row.context.setup_type}`, { minN: 3 }),
     by_evidence_completeness: groupRows(enriched, (row) => row.context.evidence_completeness),
@@ -198,6 +207,8 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_evidence_completeness: groups.by_evidence_completeness,
     by_extended_microstructure_evidence_completeness: groups.by_extended_microstructure_evidence_completeness,
     by_feature_lineage_source: groups.by_feature_lineage_source,
+    by_evidence_gap_reason: groups.by_evidence_gap_reason,
+    by_historical_blind_window: groups.by_historical_blind_window,
     by_setup_type: groups.by_setup_type,
     by_side: groups.by_side,
     by_edge_cohort: groups.by_edge_cohort,

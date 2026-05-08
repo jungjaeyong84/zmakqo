@@ -107,6 +107,7 @@ const outcomes = [
   assert.strictEqual(report.extended_microstructure_evidence_sample_n, 1);
   assert.strictEqual(report.core_evidence_only_sample_n, 1);
   assert.strictEqual(report.unknown_evidence_sample_n, 1);
+  assert.strictEqual(report.historical_blind_window_sample_n, 0);
   assert.strictEqual(report.outcomes.length, 3);
   assert.strictEqual(report.summary.label_counts.MODEL_WIN, 2);
   assert.strictEqual(report.outcomes[0].context.setup_type, "PULLBACK_RECLAIM");
@@ -146,6 +147,37 @@ const outcomes = [
   assert.strictEqual(report.by_feature_lineage_source.some((row) => row.key === "OPENCLAW_DECISION"), true);
   assert.strictEqual(report.by_setup_type.length > 0, true);
   assert.strictEqual(report.cohort_summary.top_positive_setup_regime.key, "PULLBACK_RECLAIM__TREND");
+}
+
+{
+  const historicalBlindWindowOutcome = {
+    openclaw_outcome_adjudication_id: "oa_hist",
+    openclaw_decision_id: "d_hist",
+    position_cycle_id: "p_hist",
+    signal_intent_id: "s_hist",
+    adjudication_label: "MODEL_ERROR",
+    adjudication_family: "MODEL",
+    realized_pnl: -2,
+    evidence: {
+      symbol: "ETHUSDT",
+      side: "LONG",
+      setup_type: "BREAKOUT_RETEST",
+      edge_cohort: "MARGINAL_EDGE",
+      market_quality_score: 0.81,
+      spread_bps: 2.1,
+      funding_rate: 0.00001,
+      mtf_1h_direction: "LONG",
+      btc_1h_trend: null,
+    },
+    adjudicated_at: "2026-05-01T03:00:00.000Z",
+  };
+  const report = buildOpenClawDailyPerformanceReport({ outcomes: [historicalBlindWindowOutcome] });
+  assert.strictEqual(report.unknown_evidence_sample_n, 1);
+  assert.strictEqual(report.historical_blind_window_sample_n, 1);
+  assert.strictEqual(report.outcomes[0].context.evidence_gap_reason, "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW");
+  assert.strictEqual(report.outcomes[0].context.historical_blind_window, true);
+  assert.strictEqual(report.by_historical_blind_window.some((row) => row.key === "HISTORICAL_BLIND_WINDOW"), true);
+  assert.strictEqual(report.by_evidence_gap_reason.some((row) => row.key === "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW"), true);
 }
 
 {
