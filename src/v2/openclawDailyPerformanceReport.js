@@ -41,6 +41,13 @@ function cloneJson(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+function firstValue(...candidates) {
+  for (const candidate of candidates) {
+    if (candidate !== null && candidate !== undefined && candidate !== "") return candidate;
+  }
+  return null;
+}
+
 function evidenceSourceRank(value) {
   const source = trimOrNull(value);
   if (!source) return 0;
@@ -136,6 +143,11 @@ function performanceExclusionReason(row) {
   const intentId = trimOrNull(row && (row.signal_intent_id || row.intent_id || (row.evidence && row.evidence.signal_intent_id)));
   const decisionId = trimOrNull(row && row.openclaw_decision_id);
   const positionCycleId = trimOrNull(row && row.position_cycle_id);
+  const context = extractOutcomeContext(row);
+  const featureLineageSource = upper(firstValue(evidence.feature_lineage_source, context.feature_lineage_source));
+  const featureLineageRecovered = evidence.feature_lineage_recovered === true;
+  const brokerSyncReconciled = evidence.broker_sync_reconciled === true;
+  const fullLineageGap = context.full_lineage_gap === true;
 
   if (family === "OPERATOR" || family === "SYSTEM") return `FAMILY_${family}`;
   if (evidenceFamily === "OPERATOR" || evidenceFamily === "SYSTEM") return `EVIDENCE_FAMILY_${evidenceFamily}`;
@@ -153,6 +165,12 @@ function performanceExclusionReason(row) {
   if (exitReasons.some((reason) => reason.includes("MISSING_CANONICAL_EXIT_TRANSITION") || reason.includes("LINEAGE_GAP"))) return "EXIT_REASON_LINEAGE_GAP";
   if (fillSource === "EXTERNAL" || fillSource === "MANUAL") return `FILL_SOURCE_${fillSource}`;
   if (evidence.manual_recovery === true || evidence.operator_recovery === true || evidence.external_reconciliation === true) return "MANUAL_OR_EXTERNAL_RECOVERY";
+  if (fullLineageGap && (featureLineageSource === "MISSING" || featureLineageSource === "UNKNOWN")) {
+    return "FULL_LINEAGE_GAP_UNMEASURABLE";
+  }
+  if (brokerSyncReconciled && !featureLineageRecovered && (featureLineageSource === "MISSING" || featureLineageSource === "UNKNOWN")) {
+    return "BROKER_SYNC_LINEAGE_UNRECOVERED";
+  }
   if (!intentId || !decisionId || !positionCycleId) return "MISSING_OPENCLAW_LINEAGE";
   return null;
 }
@@ -295,6 +313,7 @@ function buildOpenClawDailyPerformanceReport({ outcomes = [], decisionEvidenceRo
     by_evidence_completeness: cohortSummary.by_evidence_completeness || Object.freeze([]),
     by_evidence_gap_reason: cohortSummary.by_evidence_gap_reason || Object.freeze([]),
     by_historical_blind_window: cohortSummary.by_historical_blind_window || Object.freeze([]),
+    by_full_lineage_gap: cohortSummary.by_full_lineage_gap || Object.freeze([]),
     by_extended_microstructure_evidence_completeness: cohortSummary.by_extended_microstructure_evidence_completeness || Object.freeze([]),
     by_feature_lineage_source: cohortSummary.by_feature_lineage_source || Object.freeze([]),
     by_setup_type: cohortSummary.by_setup_type || Object.freeze([]),

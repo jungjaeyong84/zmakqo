@@ -165,6 +165,13 @@ function rootCauseFindings({ total, groups }) {
     "HISTORICAL_BLIND_WINDOW",
     20
   );
+  addSpecific(
+    "FULL_LINEAGE_GAP",
+    "A subset of outcomes is missing the entire core strategy context, indicating a true lineage preservation failure rather than a simple BTC context blind spot",
+    "by_full_lineage_gap",
+    "FULL_LINEAGE_GAP",
+    10
+  );
 
   return findings;
 }
@@ -192,6 +199,7 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_feature_lineage_source: groupRows(enriched, (row) => row.context.feature_lineage_source),
     by_evidence_gap_reason: groupRows(enriched, (row) => row.context.evidence_gap_reason || "NONE"),
     by_historical_blind_window: groupRows(enriched, (row) => row.context.historical_blind_window === true ? "HISTORICAL_BLIND_WINDOW" : "NOT_HISTORICAL_BLIND_WINDOW"),
+    by_full_lineage_gap: groupRows(enriched, (row) => row.context.full_lineage_gap === true ? "FULL_LINEAGE_GAP" : "NOT_FULL_LINEAGE_GAP"),
     by_setup_edge_side: groupRows(enriched, (row) => `${row.context.setup_type}|${row.context.edge_cohort}|${row.context.side}`, { minN: 3 }),
     by_symbol_setup: groupRows(enriched, (row) => `${row.context.symbol}|${row.context.setup_type}`, { minN: 3 }),
     by_evidence_completeness: groupRows(enriched, (row) => row.context.evidence_completeness),
@@ -209,6 +217,7 @@ function buildAnalysis({ rows, generatedAt = null } = {}) {
     by_feature_lineage_source: groups.by_feature_lineage_source,
     by_evidence_gap_reason: groups.by_evidence_gap_reason,
     by_historical_blind_window: groups.by_historical_blind_window,
+    by_full_lineage_gap: groups.by_full_lineage_gap,
     by_setup_type: groups.by_setup_type,
     by_side: groups.by_side,
     by_edge_cohort: groups.by_edge_cohort,

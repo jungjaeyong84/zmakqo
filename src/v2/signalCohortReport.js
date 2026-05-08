@@ -172,6 +172,14 @@ function isHistoricalBlindWindow({ row, missingCore = [] } = {}) {
   return Number.isFinite(adjudicatedAtMs) && adjudicatedAtMs < HISTORICAL_BLIND_WINDOW_CUTOFF_MS;
 }
 
+function isFullLineageGap({ context = {}, missingCore = [] } = {}) {
+  const fields = asArray(missingCore);
+  if (!fields.length) return false;
+  if (fields.length !== CORE_EVIDENCE_REQUIRED_FIELDS.length) return false;
+  const source = upper(context.feature_lineage_source);
+  return source === "MISSING" || source === "UNKNOWN";
+}
+
 function extractOutcomeContext(row) {
   const evidence = asObject(row && row.evidence) || {};
   const criteria = asObject(firstValue(
@@ -308,9 +316,12 @@ function extractOutcomeContext(row) {
   const hasCoreEvidence = missingCore.length === 0;
   const hasExtendedMicrostructureEvidence = missingExtended.length === 0;
   const historicalBlindWindow = isHistoricalBlindWindow({ row, missingCore });
+  const fullLineageGap = isFullLineageGap({ context: baseContext, missingCore });
   const evidenceGapReason = hasCoreEvidence
     ? null
-    : (historicalBlindWindow ? "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW" : "OTHER_CORE_FIELDS_MISSING");
+    : (historicalBlindWindow
+      ? "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW"
+      : (fullLineageGap ? "FULL_LINEAGE_GAP" : "OTHER_CORE_FIELDS_MISSING"));
   return Object.freeze({
     ...baseContext,
     full_evidence: hasCoreEvidence,
@@ -321,6 +332,7 @@ function extractOutcomeContext(row) {
       : "PARTIAL_OR_UNKNOWN_EVIDENCE",
     evidence_gap_reason: evidenceGapReason,
     historical_blind_window: historicalBlindWindow,
+    full_lineage_gap: fullLineageGap,
     missing_feature_fields: missingCore,
     missing_core_feature_fields: missingCore,
     missing_extended_microstructure_fields: missingExtended,
@@ -351,6 +363,7 @@ function createBucketRow(key, context) {
     evidence_completeness: context.evidence_completeness,
     evidence_gap_reason: context.evidence_gap_reason || "NONE",
     historical_blind_window: context.historical_blind_window === true ? "HISTORICAL_BLIND_WINDOW" : "NOT_HISTORICAL_BLIND_WINDOW",
+    full_lineage_gap: context.full_lineage_gap === true ? "FULL_LINEAGE_GAP" : "NOT_FULL_LINEAGE_GAP",
     feature_lineage_source: context.feature_lineage_source,
     outcome_n: 0,
     trade_n: 0,
@@ -397,6 +410,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
   const byExtendedMicrostructureEvidenceCompleteness = new Map();
   const byEvidenceGapReason = new Map();
   const byHistoricalBlindWindow = new Map();
+  const byFullLineageGap = new Map();
   const byFeatureLineageSource = new Map();
 
   function record(map, key, row, context) {
@@ -441,6 +455,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
     record(byEvidenceCompleteness, context.evidence_completeness, row, context);
     record(byEvidenceGapReason, context.evidence_gap_reason || "NONE", row, context);
     record(byHistoricalBlindWindow, context.historical_blind_window === true ? "HISTORICAL_BLIND_WINDOW" : "NOT_HISTORICAL_BLIND_WINDOW", row, context);
+    record(byFullLineageGap, context.full_lineage_gap === true ? "FULL_LINEAGE_GAP" : "NOT_FULL_LINEAGE_GAP", row, context);
     record(
       byExtendedMicrostructureEvidenceCompleteness,
       context.extended_microstructure_evidence_complete === true
@@ -477,6 +492,7 @@ function summarizeOutcomeCohorts(outcomes = []) {
     by_evidence_completeness: finalizeBucketRows(byEvidenceCompleteness),
     by_evidence_gap_reason: finalizeBucketRows(byEvidenceGapReason),
     by_historical_blind_window: finalizeBucketRows(byHistoricalBlindWindow),
+    by_full_lineage_gap: finalizeBucketRows(byFullLineageGap),
     by_extended_microstructure_evidence_completeness: finalizeBucketRows(byExtendedMicrostructureEvidenceCompleteness),
     by_feature_lineage_source: finalizeBucketRows(byFeatureLineageSource),
     top_positive_setup_regime: topPositiveSetupRegime,
@@ -491,6 +507,7 @@ module.exports = {
   missingExtendedMicrostructureEvidenceFields,
   isBtcContextOnlyGap,
   isHistoricalBlindWindow,
+  isFullLineageGap,
   FULL_EVIDENCE_REQUIRED_FIELDS: CORE_EVIDENCE_REQUIRED_FIELDS,
   CORE_EVIDENCE_REQUIRED_FIELDS,
   EXTENDED_MICROSTRUCTURE_EVIDENCE_FIELDS,

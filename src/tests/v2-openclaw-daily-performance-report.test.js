@@ -176,8 +176,38 @@ const outcomes = [
   assert.strictEqual(report.historical_blind_window_sample_n, 1);
   assert.strictEqual(report.outcomes[0].context.evidence_gap_reason, "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW");
   assert.strictEqual(report.outcomes[0].context.historical_blind_window, true);
+  assert.strictEqual(report.outcomes[0].context.full_lineage_gap, false);
   assert.strictEqual(report.by_historical_blind_window.some((row) => row.key === "HISTORICAL_BLIND_WINDOW"), true);
   assert.strictEqual(report.by_evidence_gap_reason.some((row) => row.key === "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW"), true);
+}
+
+{
+  const fullLineageGapOutcome = {
+    openclaw_outcome_adjudication_id: "oa_lineage",
+    openclaw_decision_id: "d_lineage",
+    position_cycle_id: "p_lineage",
+    signal_intent_id: "s_lineage",
+    adjudication_label: "MODEL_ERROR",
+    adjudication_family: "MODEL",
+    realized_pnl: -1,
+    evidence: {
+      symbol: "LINKUSDT",
+      side: "LONG",
+      feature_lineage_source: "MISSING",
+      broker_sync_reconciled: true,
+      feature_lineage_recovered: false,
+    },
+    adjudicated_at: "2026-05-04T06:32:49.627Z",
+  };
+  const report = buildOpenClawDailyPerformanceReport({ outcomes: [fullLineageGapOutcome] });
+  assert.strictEqual(report.sample_n, 0);
+  assert.strictEqual(report.unknown_evidence_sample_n, 0);
+  assert.strictEqual(report.historical_blind_window_sample_n, 0);
+  assert.strictEqual(report.outcomes[0].performance_eligible, false);
+  assert.strictEqual(report.outcomes[0].performance_exclusion_reason, "FULL_LINEAGE_GAP_UNMEASURABLE");
+  assert.strictEqual(report.outcomes[0].context.evidence_gap_reason, "FULL_LINEAGE_GAP");
+  assert.strictEqual(report.outcomes[0].context.full_lineage_gap, true);
+  assert.strictEqual(report.by_full_lineage_gap.some((row) => row.key === "FULL_LINEAGE_GAP"), false);
 }
 
 {

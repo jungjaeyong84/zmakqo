@@ -110,3 +110,28 @@ console.log("ANALYZE_V2_OPENCLAW_ROOT_CAUSE_TEST_OK");
   assert.strictEqual(blindWindowAnalysis.by_evidence_gap_reason.some((row) => row.key === "HISTORICAL_BTC_CONTEXT_BLIND_WINDOW"), true);
   assert.ok(blindWindowAnalysis.root_cause_findings.some((row) => row.id === "HISTORICAL_BLIND_WINDOW"));
 }
+
+{
+  const fullLineageGapRows = Array.from({ length: 12 }, (_, idx) => ({
+    openclaw_outcome_adjudication_id: `oa_lineage_${idx}`,
+    openclaw_decision_id: `d_lineage_${idx}`,
+    position_cycle_id: `p_lineage_${idx}`,
+    signal_intent_id: `s_lineage_${idx}`,
+    adjudication_label: "MODEL_ERROR",
+    adjudication_family: "MODEL",
+    realized_pnl: -0.3,
+    evidence: {
+      symbol: "LINKUSDT",
+      side: "LONG",
+      feature_lineage_source: "MISSING",
+      broker_sync_reconciled: true,
+      feature_lineage_recovered: false,
+    },
+    adjudicated_at: "2026-05-04T06:32:49.627Z",
+  }));
+  const lineageGapAnalysis = buildAnalysis({ rows: fullLineageGapRows, generatedAt: "2026-05-04T07:00:00.000Z" });
+  assert.strictEqual(lineageGapAnalysis.sample_n, 0);
+  assert.strictEqual(lineageGapAnalysis.by_full_lineage_gap.some((row) => row.key === "FULL_LINEAGE_GAP"), false);
+  assert.strictEqual(lineageGapAnalysis.by_evidence_gap_reason.some((row) => row.key === "FULL_LINEAGE_GAP"), false);
+  assert.ok(lineageGapAnalysis.root_cause_findings.some((row) => row.id === "FULL_LINEAGE_GAP") === false);
+}
