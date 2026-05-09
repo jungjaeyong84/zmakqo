@@ -25,11 +25,90 @@ function buildPositionReadModelLatestId(exchange, symbol) {
   return `POSITION_READ_MODEL_LATEST__${upper(exchange) || "UNKNOWN"}__${upper(symbol) || "UNKNOWN"}`;
 }
 
+function extractAfterSnapshot(doc = null) {
+  return doc && typeof doc.after_snapshot === "object" && doc.after_snapshot
+    ? doc.after_snapshot
+    : {};
+}
+
+function extractAfterSummary(doc = null) {
+  return doc && typeof doc.after_summary === "object" && doc.after_summary
+    ? doc.after_summary
+    : {};
+}
+
+function extractMeta(doc = null) {
+  const snapshot = extractAfterSnapshot(doc);
+  return snapshot && typeof snapshot.meta === "object" && snapshot.meta
+    ? snapshot.meta
+    : {};
+}
+
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function extractState(doc = null) {
+  const summary = extractAfterSummary(doc);
+  const snapshot = extractAfterSnapshot(doc);
+  return upper(
+    summary.state
+    || summary.position_state
+    || snapshot.state
+    || snapshot.position_state
+  );
+}
+
+function hasProtectedEntryMarkers(doc = null) {
+  const meta = extractMeta(doc);
+  return meta.v2_protected_entry_read_model === true
+    || trimOrNull(meta.protection_runtime_id) != null
+    || trimOrNull(meta.position_cycle_id) != null
+    || trimOrNull(meta.native_protection_stop_order_id) != null
+    || trimOrNull(meta.native_protection_tp_order_id) != null;
+}
+
+function isProtectedActiveLatest(doc = null) {
+  if (extractState(doc) !== "ACTIVE") return false;
+  return upper(doc && doc.mutation_kind) === "V2_PROTECTED_ENTRY_ACTIVATED"
+    || upper(doc && doc.source) === "V2_PRODUCTION_ENTRY"
+    || hasProtectedEntryMarkers(doc);
+}
+
+function isWeakObservationalFlat(doc = null) {
+  if (extractState(doc) !== "FLAT") return false;
+  const source = upper(doc && doc.source);
+  const mutationKind = upper(doc && doc.mutation_kind);
+  if (source === "BAR_LOOP_OBSERVATION") return true;
+  if (source === "INTENT_FILL" && mutationKind === "POSITION_META_UPSERT") return true;
+  return false;
+}
+
+function isAuthoritativeFlatConfirmation(doc = null) {
+  if (extractState(doc) !== "FLAT") return false;
+  const source = upper(doc && doc.source);
+  return source === "BINANCE_FUTURES_POSITION_SYNC"
+    || source === "BINANCE_TICK_EXIT"
+    || source === "ACTIVE_POSITION_EXIT_RUNTIME_REPAIR"
+    || source === "BINANCE_ACTIVE_EXIT_WATCHDOG"
+    || source === "FILL_SYNC_RECONCILE"
+    || source === "BINANCE_NATIVE_PROTECTION_REFRESH";
+}
+
+function isProtectedActiveRegression(previous = null, next = null) {
+  if (!isProtectedActiveLatest(previous)) return false;
+  if (!isWeakObservationalFlat(next)) return false;
+  if (isAuthoritativeFlatConfirmation(next)) return false;
+  return true;
+}
+
 function shouldReplaceLatestPositionReadModel(previous = null, next = null) {
   const prevTs = Number(previous && previous.ts_ms);
   const nextTs = Number(next && next.ts_ms);
   if (!Number.isFinite(nextTs)) return false;
   if (!Number.isFinite(prevTs)) return true;
+  if (isProtectedActiveRegression(previous, next)) return false;
   if (nextTs > prevTs) return true;
   if (nextTs < prevTs) return false;
   const prevCreatedAt = Date.parse(String(previous && previous.created_at || ""));
@@ -166,5 +245,11 @@ module.exports = {
     buildPositionReadModelLatestId,
     buildLatestPositionReadModelDoc,
     shouldReplaceLatestPositionReadModel,
+    extractState,
+    hasProtectedEntryMarkers,
+    isProtectedActiveLatest,
+    isWeakObservationalFlat,
+    isAuthoritativeFlatConfirmation,
+    isProtectedActiveRegression,
   },
 };

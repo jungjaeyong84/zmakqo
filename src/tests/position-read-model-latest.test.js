@@ -24,6 +24,107 @@ function run() {
     ),
     false
   );
+  assert.strictEqual(
+    latestTest.shouldReplaceLatestPositionReadModel(
+      {
+        ts_ms: 100,
+        created_at: "2026-05-09T02:03:27.000Z",
+        mutation_kind: "V2_PROTECTED_ENTRY_ACTIVATED",
+        source: "V2_PRODUCTION_ENTRY",
+        after_summary: { state: "ACTIVE", position_state: "ACTIVE" },
+        after_snapshot: {
+          state: "ACTIVE",
+          position_state: "ACTIVE",
+          meta: {
+            position_cycle_id: "PCY__SOL",
+            protection_runtime_id: "PRT__SOL",
+            v2_protected_entry_read_model: true,
+          },
+        },
+      },
+      {
+        ts_ms: 200,
+        created_at: "2026-05-09T02:03:33.636Z",
+        mutation_kind: "POSITION_UPSERT",
+        source: "BAR_LOOP_OBSERVATION",
+        after_summary: { state: "FLAT", position_state: "FLAT" },
+        after_snapshot: {
+          state: "FLAT",
+          position_state: "FLAT",
+          meta: {},
+        },
+      }
+    ),
+    false
+  );
+  assert.strictEqual(
+    latestTest.shouldReplaceLatestPositionReadModel(
+      {
+        ts_ms: 100,
+        created_at: "2026-05-09T02:03:27.000Z",
+        mutation_kind: "V2_PROTECTED_ENTRY_ACTIVATED",
+        source: "V2_PRODUCTION_ENTRY",
+        after_summary: { state: "ACTIVE", position_state: "ACTIVE" },
+        after_snapshot: {
+          state: "ACTIVE",
+          position_state: "ACTIVE",
+          meta: {
+            position_cycle_id: "PCY__SOL",
+            protection_runtime_id: "PRT__SOL",
+            v2_protected_entry_read_model: true,
+          },
+        },
+      },
+      {
+        ts_ms: 300,
+        created_at: "2026-05-09T02:05:00.000Z",
+        mutation_kind: "POSITION_UPSERT",
+        source: "BINANCE_FUTURES_POSITION_SYNC",
+        after_summary: { state: "FLAT", position_state: "FLAT" },
+        after_snapshot: {
+          state: "FLAT",
+          position_state: "FLAT",
+          meta: {},
+        },
+      }
+    ),
+    true
+  );
+  assert.strictEqual(
+    latestTest.shouldReplaceLatestPositionReadModel(
+      {
+        ts_ms: 100,
+        created_at: "2026-05-09T02:03:27.000Z",
+        mutation_kind: "V2_PROTECTED_ENTRY_ACTIVATED",
+        source: "V2_PRODUCTION_ENTRY",
+        after_summary: { state: "ACTIVE", position_state: "ACTIVE" },
+        after_snapshot: {
+          state: "ACTIVE",
+          position_state: "ACTIVE",
+          meta: {
+            position_cycle_id: "PCY__LINK",
+            protection_runtime_id: "PRT__LINK",
+            v2_protected_entry_read_model: true,
+          },
+        },
+      },
+      {
+        ts_ms: 250,
+        created_at: "2026-05-09T02:04:43.000Z",
+        mutation_kind: "POSITION_META_UPSERT",
+        source: "INTENT_FILL",
+        after_summary: { state: "FLAT", position_state: "FLAT" },
+        after_snapshot: {
+          state: "FLAT",
+          position_state: "FLAT",
+          meta: {
+            entry_order_id: "123",
+          },
+        },
+      }
+    ),
+    false
+  );
 
   const reduced = backfillTest.reduceLatestPositionEvents([
     { exchange: "BINANCEFUT", symbol: "XRPUSDT", sequence_ms: 100 },
