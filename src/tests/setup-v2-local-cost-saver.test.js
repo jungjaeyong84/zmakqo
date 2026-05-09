@@ -76,9 +76,10 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
   assert.strictEqual(result.ok, true);
   assert.ok(result.job_n >= 10);
   assert.strictEqual(result.jobs.every((row) => row.target_plist && row.wrapper), true);
-  assert.strictEqual(result.keepalive_agent_n, 1);
-  assert.strictEqual(result.keepalive_agents.length, 1);
-  assert.strictEqual(result.keepalive_agents[0].label, "com.jeongjaeyong.donbeolja.exitworker");
+  assert.strictEqual(result.keepalive_agent_n, 2);
+  assert.strictEqual(result.keepalive_agents.length, 2);
+  assert.strictEqual(result.keepalive_agents.some((row) => row.label === "com.jeongjaeyong.donbeolja.server"), true);
+  assert.strictEqual(result.keepalive_agents.some((row) => row.label === "com.jeongjaeyong.donbeolja.exitworker"), true);
   assert.ok(result.cloud_scheduler_pause_targets.includes("v2-fill-sync"));
 })();
 
@@ -275,6 +276,25 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
     assert.ok(contents.includes("<key>KeepAlive</key>"));
     assert.ok(contents.includes("/tmp/run_exit_worker_server.sh"));
   });
+})();
+
+(function verifyLocalPrimaryHealthProbesServerAndExitWorker() {
+  const calls = [];
+  const result = setup.__test.verifyLocalPrimaryHealth({
+    checks: [
+      { role: "SERVER", url: "http://127.0.0.1:3000/health" },
+      { role: "EXIT_WORKER", url: "http://127.0.0.1:8080/health" },
+    ],
+    execFileSyncFn(cmd, args) {
+      calls.push([cmd, args]);
+      if (String(args[args.length - 1]).includes(":3000/health")) return '{"ok":true,"service":"donbeolja"}\n';
+      if (String(args[args.length - 1]).includes(":8080/health")) return '{"ok":true,"service":"donbeolja-exit-worker"}\n';
+      throw new Error("unexpected url");
+    },
+  });
+  assert.strictEqual(result.length, 2);
+  assert.strictEqual(result.every((row) => row.ok === true), true);
+  assert.strictEqual(calls.length, 2);
 })();
 
 console.log("SETUP_V2_LOCAL_COST_SAVER_TEST_OK");

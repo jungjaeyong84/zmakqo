@@ -17,6 +17,16 @@ const DEFAULT_RUNTIME_ENV_PROJECT = "donbeolja-dev";
 const LOCAL_PRIMARY_BASE_URL = "http://127.0.0.1:3000";
 const LOCAL_EXIT_WORKER_PORT = 8080;
 const LOCAL_EXIT_WORKER_URL = `http://127.0.0.1:${LOCAL_EXIT_WORKER_PORT}`;
+const LOCAL_PRIMARY_HEALTH_CHECKS = Object.freeze([
+  Object.freeze({
+    role: "SERVER",
+    url: `${LOCAL_PRIMARY_BASE_URL}/health`,
+  }),
+  Object.freeze({
+    role: "EXIT_WORKER",
+    url: `${LOCAL_EXIT_WORKER_URL}/health`,
+  }),
+]);
 const LOCAL_COST_SAVER_RUNTIME_OVERRIDES = Object.freeze({
   BASE_URL: LOCAL_PRIMARY_BASE_URL,
   EXIT_WORKER_LOCAL_PORT: String(LOCAL_EXIT_WORKER_PORT),
@@ -28,6 +38,15 @@ const LOCAL_COST_SAVER_RUNTIME_OVERRIDES = Object.freeze({
   EGRESS_PROXY_BINANCE_PRIVATE_URL: "",
 });
 const LOCAL_COST_SAVER_KEEPALIVE_AGENTS = Object.freeze([
+  Object.freeze({
+    label: "com.jeongjaeyong.donbeolja.server",
+    wrapper: `${REPO_ROOT}/ops/launchd/run_server.sh`,
+    log_basename: "server",
+    runAtLoad: true,
+    keepAlive: true,
+    criticality: "HIGH",
+    role: "SERVER",
+  }),
   Object.freeze({
     label: "com.jeongjaeyong.donbeolja.exitworker",
     wrapper: `${REPO_ROOT}/ops/launchd/run_exit_worker_server.sh`,
@@ -172,6 +191,62 @@ function runLaunchctl(args) {
       stderr: String(error && error.stderr || error && error.message || ""),
     });
   }
+}
+
+function sleepBlockingMs(ms) {
+  const waitMs = Math.max(0, Number(ms) || 0);
+  if (waitMs <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+}
+
+function probeLocalHealthCheck(check, {
+  execFileSyncFn = execFileSync,
+  maxAttempts = 10,
+  delayMs = 500,
+} = {}) {
+  const role = String(check && check.role || "UNKNOWN");
+  const url = String(check && check.url || "");
+  let lastError = null;
+  for (let attempt = 1; attempt <= Math.max(1, Number(maxAttempts) || 1); attempt += 1) {
+    try {
+      const stdout = execFileSyncFn("curl", [
+        "-fsS",
+        "--max-time",
+        "2",
+        url,
+      ], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      return Object.freeze({
+        ok: true,
+        role,
+        url,
+        attempts: attempt,
+        body: String(stdout || "").trim(),
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) sleepBlockingMs(delayMs);
+    }
+  }
+  return Object.freeze({
+    ok: false,
+    role,
+    url,
+    attempts: Math.max(1, Number(maxAttempts) || 1),
+    error: String(lastError && (lastError.stderr || lastError.message) || lastError || "HEALTH_CHECK_FAILED").trim(),
+  });
+}
+
+function verifyLocalPrimaryHealth({
+  checks = LOCAL_PRIMARY_HEALTH_CHECKS,
+  execFileSyncFn = execFileSync,
+} = {}) {
+  return Object.freeze((Array.isArray(checks) ? checks : []).map((check) => probeLocalHealthCheck(check, {
+    execFileSyncFn,
+  })));
 }
 
 function shellQuote(value) {
@@ -505,6 +580,7 @@ function main({
     keepalive_agent_n: LOCAL_COST_SAVER_KEEPALIVE_AGENTS.length,
     cloud_scheduler_pause_targets: OPENCLAW_LOCAL_COST_SAVER_JOBS.map((job) => job.scheduler_name),
     runtime_env_sync: null,
+    local_primary_health: [],
     keepalive_agents: [],
     jobs: [],
   };
@@ -561,11 +637,17 @@ function main({
       uid,
       runner,
       enable: args.enable,
-      kickstart: args.kickstart,
+      kickstart: args.kickstart || args.enable,
     }));
   }
+  if (!args.dryRun && (args.enable || args.kickstart)) {
+    payload.local_primary_health = verifyLocalPrimaryHealth({
+      execFileSyncFn: deps.execFileSync || execFileSync,
+    });
+  }
   payload.ok = payload.jobs.every((row) => row.ok !== false)
-    && payload.keepalive_agents.every((row) => row.ok !== false);
+    && payload.keepalive_agents.every((row) => row.ok !== false)
+    && payload.local_primary_health.every((row) => row.ok !== false);
   return Object.freeze(payload);
 }
 
@@ -590,6 +672,8 @@ if (require.main === module) {
       plistPathForLabel,
       installJob,
       installKeepAliveAgent,
+      probeLocalHealthCheck,
+      verifyLocalPrimaryHealth,
     },
   };
 }
