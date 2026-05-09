@@ -154,6 +154,43 @@ const tickExitSrc = fs.readFileSync(
   assert.ok(generic.event && generic.event.startsWith("EXIT_GENERIC"), "(D6) unknown trigger → EXIT_GENERIC");
 })();
 
+// (D2-BROKER) broker-flat alert pricing must be derivable from local
+// protection/meta truth without depending on the later tick priceMap
+// fetch. This prevents the broker-flat pre-filter from reading a TDZ
+// local while still giving the operator a meaningful exit price hint.
+(function testResolveBrokerFlatAlertExecPrice() {
+  delete require.cache[require.resolve("../services/binanceTickExit")];
+  const { __test } = require("../services/binanceTickExit");
+  const resolvePrice = __test.resolveBrokerFlatAlertExecPrice;
+
+  const tpPrice = resolvePrice({
+    pos: { avg_price: 100 },
+    posMeta: {
+      native_protection_tp_price: 102.5,
+      native_protection_stop_price: 98.3,
+    },
+    alertMap: { stage: "TP1" },
+  });
+  assert.strictEqual(tpPrice, 102.5, "(D2-B1) TP1 broker-flat alert should prefer native TP price");
+
+  const slPrice = resolvePrice({
+    pos: { avg_price: 100 },
+    posMeta: {
+      native_protection_tp_price: 102.5,
+      native_protection_stop_price: 98.3,
+    },
+    alertMap: { stage: "SL" },
+  });
+  assert.strictEqual(slPrice, 98.3, "(D2-B2) SL broker-flat alert should prefer native stop price");
+
+  const fallbackAvg = resolvePrice({
+    pos: { avg_price: 100.25 },
+    posMeta: {},
+    alertMap: { stage: "EXTERNAL_SYNC" },
+  });
+  assert.strictEqual(fallbackAvg, 100.25, "(D2-B3) broker-flat alert should fall back to avg price when no native target exists");
+})();
+
 // (D-BUFFER) computeBreakEvenRaiseDecision honours bufferPct so BE
 //     stop sits at entry × (1 + (floor + buffer)/leverage), not at the
 //     bare cost-recovery floor that gets hit by post-TP1 micro-noise.

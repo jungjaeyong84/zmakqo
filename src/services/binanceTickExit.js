@@ -787,6 +787,31 @@ function resolveBrokerFlatAlertEvent({ posMeta = null } = {}) {
   return { event: "EXIT_SL_100P", stage: "SL", transitionEvent: "SL_HIT" };
 }
 
+function resolveBrokerFlatAlertExecPrice({ pos = null, posMeta = null, alertMap = null } = {}) {
+  const meta = (posMeta && typeof posMeta === "object") ? posMeta : {};
+  const stage = String(alertMap && alertMap.stage || "").trim().toUpperCase();
+  if (stage === "TP1") {
+    const tpPrice = Number(
+      meta.native_protection_tp_price
+      ?? meta.tp_p1_target_price
+      ?? meta.tp1_target_price
+      ?? meta.take_profit_price
+    );
+    if (Number.isFinite(tpPrice) && tpPrice > 0) return tpPrice;
+  }
+  if (stage === "SL" || stage === "TRAIL") {
+    const stopPrice = Number(
+      meta.native_protection_stop_price
+      ?? meta.stop_price
+      ?? meta.stopPrice
+    );
+    if (Number.isFinite(stopPrice) && stopPrice > 0) return stopPrice;
+  }
+  const avgPrice = Number(pos && (pos.avg_price ?? pos.avgPrice));
+  if (Number.isFinite(avgPrice) && avgPrice > 0) return avgPrice;
+  return null;
+}
+
 const pendingIntentState = new Map();
 const pendingIntentLogState = new Map();
 const tpP1PendingTerminalAlertState = new Map();
@@ -2832,7 +2857,11 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
             // second alert ships for the same fill.
             try {
               const alertMap = resolveBrokerFlatAlertEvent({ posMeta: p && p.meta });
-              const closePrice = priceMap[sym] || null;
+              const closePrice = resolveBrokerFlatAlertExecPrice({
+                pos: p,
+                posMeta: p && p.meta,
+                alertMap,
+              });
               // No client order id we originated → fall back to a
               // 1-minute bar bucket so a re-entry within the bar still
               // produces a single alert, while a re-entry on a later
@@ -4865,6 +4894,7 @@ module.exports = {
     // 2026-04-29 — V2 direct exit alert dispatch (α/β) helpers
     resolveV2DirectDispatchAlertEvent,
     resolveBrokerFlatAlertEvent,
+    resolveBrokerFlatAlertExecPrice,
     buildTradeExecutionAlertDedupeKey,
     shouldDispatchTradeExecutionAlert,
     recordTradeExecutionAlertSent,
