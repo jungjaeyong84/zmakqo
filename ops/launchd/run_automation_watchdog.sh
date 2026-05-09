@@ -3,13 +3,13 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/google-cloud-sdk/bin"
 export CLOUDSDK_CONFIG="/Users/jeongjaeyong/Projects/donbeolja/.gcloud"
 . /Users/jeongjaeyong/Projects/donbeolja/ops/launchd/load_ai_cli_env.sh
+# shellcheck disable=SC1091
+. /Users/jeongjaeyong/Projects/donbeolja/ops/launchd/load_gcp_env.sh
 
-# 2026-04-18: production runtime moved from local server (127.0.0.1:3000)
-# to the donbeolja Cloud Run service. Point the watchdog at Cloud Run so
-# its scheduler SLA probe reaches the right endpoint; otherwise every
-# run reports SCHEDULER_STATUS_UNREACHABLE because the local server is
-# no longer running.
-export AUTOMATION_WATCHDOG_SCHEDULER_BASE_URL="${AUTOMATION_WATCHDOG_SCHEDULER_BASE_URL:-https://donbeolja-350958953672.asia-northeast3.run.app}"
+# Local-primary hybrid: the watchdog must probe the local scheduler
+# surface first. Falling back to Cloud Run here reintroduces residual
+# cloud traffic and hides local runtime failures.
+export AUTOMATION_WATCHDOG_SCHEDULER_BASE_URL="${AUTOMATION_WATCHDOG_SCHEDULER_BASE_URL:-${BASE_URL:-http://127.0.0.1:3000}}"
 
 # Scheduler token — resolved from Secret Manager at run time so it stays
 # in sync with what Cloud Run uses. Safe to export inline for the child

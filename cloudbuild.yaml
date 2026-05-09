@@ -205,8 +205,10 @@ steps:
   - name: "gcr.io/cloud-builders/docker"
     args: ["push", "gcr.io/$PROJECT_ID/$_SERVICE:$_TAG"]
 
-  # 2026-04-29 P0-1 — `donbeolja` is pinned to a single instance below
-  # (--min-instances=1 --max-instances=1). The Binance user-data
+  # 2026-05-09 cost-baseline RCA — local-primary hybrid now owns the hot
+  # path. Cloud Run main is retained only as cold standby / remote
+  # control-plane surface, so min-instances must stay at 0. We still keep
+  # max-instances=1 because the Binance user-data
   # WebSocket stream (src/services/binanceUserDataStream.js) uses a
   # Firestore-backed single-leader lease so only one instance opens
   # the WS connection. With max-instances>1, cron + tick_exit + signal
@@ -215,10 +217,8 @@ steps:
   # 30–60 s. During each ping-pong window ORDER_TRADE_UPDATE /
   # ACCOUNT_UPDATE events from Binance dropped on the floor, which is
   # why operator-visible ENTRY/EXIT alerts fell behind by 3+ minutes.
-  # The 5-min fixed cron cadence + 15-s tick_exit interval + webhook
-  # trickle traffic is well within a single 2 GiB instance. If load
-  # ever forces a re-evaluation, the correct answer is to extract the
-  # WS streamer into its own always-on tiny service (NOT to raise
+  # If cloud standby is ever re-promoted, the correct answer is still to
+  # extract the WS streamer into its own tiny service (NOT to raise
   # max-instances here) — lease ping-pong is an architectural fault
   # that horizontal scaling can't fix.
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
@@ -229,7 +229,7 @@ steps:
         "--image", "gcr.io/$PROJECT_ID/$_SERVICE:$_TAG",
         "--region", "$_REGION",
         "--platform", "managed",
-        "--min-instances", "1",
+        "--min-instances", "0",
         "--max-instances", "1",
         "--cpu-throttling",
         # 2026-04-30 P0 production verification — the server-primary tick now
@@ -273,9 +273,9 @@ steps:
         "--image", "gcr.io/$PROJECT_ID/$_SERVICE:$_TAG",
         "--region", "$_REGION",
         "--platform", "managed",
-        "--min-instances", "1",
-        "--vpc-connector", "donbeolja-connector",
-        "--vpc-egress", "all-traffic",
+        "--min-instances", "0",
+        "--clear-vpc-connector",
+        "--vpc-egress", "private-ranges-only",
         "--cpu-throttling",
         "--timeout", "120s",
         "--max-instances", "2",
@@ -298,7 +298,7 @@ steps:
         "--cpu", "1",
         "--memory", "2Gi",
         "--concurrency", "1",
-        "--min-instances", "1",
+        "--min-instances", "0",
         "--max-instances", "1",
         "--cpu-throttling",
         "--timeout", "120s",

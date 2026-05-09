@@ -14,6 +14,30 @@ const LOCAL_RUNTIME_ENV_OUTPUT = path.join(REPO_ROOT, "ops", "runtime", "local_c
 const DEFAULT_RUNTIME_ENV_SERVICE = "donbeolja";
 const DEFAULT_RUNTIME_ENV_REGION = "asia-northeast3";
 const DEFAULT_RUNTIME_ENV_PROJECT = "donbeolja-dev";
+const LOCAL_PRIMARY_BASE_URL = "http://127.0.0.1:3000";
+const LOCAL_EXIT_WORKER_PORT = 8080;
+const LOCAL_EXIT_WORKER_URL = `http://127.0.0.1:${LOCAL_EXIT_WORKER_PORT}`;
+const LOCAL_COST_SAVER_RUNTIME_OVERRIDES = Object.freeze({
+  BASE_URL: LOCAL_PRIMARY_BASE_URL,
+  EXIT_WORKER_LOCAL_PORT: String(LOCAL_EXIT_WORKER_PORT),
+  EXIT_WORKER_SELF_URL: LOCAL_EXIT_WORKER_URL,
+  EXIT_WORKER_URL: LOCAL_EXIT_WORKER_URL,
+  AUTOMATION_WATCHDOG_SCHEDULER_BASE_URL: LOCAL_PRIMARY_BASE_URL,
+  EGRESS_PROXY_MODE: "",
+  EGRESS_PROXY_URL: "",
+  EGRESS_PROXY_BINANCE_PRIVATE_URL: "",
+});
+const LOCAL_COST_SAVER_KEEPALIVE_AGENTS = Object.freeze([
+  Object.freeze({
+    label: "com.jeongjaeyong.donbeolja.exitworker",
+    wrapper: `${REPO_ROOT}/ops/launchd/run_exit_worker_server.sh`,
+    log_basename: "exit_worker_server",
+    runAtLoad: true,
+    keepAlive: true,
+    criticality: "HIGH",
+    role: "EXIT_WORKER",
+  }),
+]);
 
 function parseSecretRef(row) {
   const ref = row && (row.valueSource?.secretKeyRef || row.valueFrom?.secretKeyRef);
@@ -86,6 +110,42 @@ function renderPlist(job) {
     "",
     "    <key>RunAtLoad</key>",
     job.runAtLoad ? "    <true/>" : "    <false/>",
+    "",
+    "    <key>StandardOutPath</key>",
+    `    <string>${stdout}</string>`,
+    "    <key>StandardErrorPath</key>",
+    `    <string>${stderr}</string>`,
+    "  </dict>",
+    "</plist>",
+    "",
+  ].join("\n");
+}
+
+function renderKeepAlivePlist(agent) {
+  const stdout = path.join(REPO_ROOT, "ops", "runtime", `${agent.log_basename}.out.log`);
+  const stderr = path.join(REPO_ROOT, "ops", "runtime", `${agent.log_basename}.err.log`);
+  return [
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
+    "<plist version=\"1.0\">",
+    "  <dict>",
+    "    <key>Label</key>",
+    `    <string>${agent.label}</string>`,
+    "",
+    "    <key>ProgramArguments</key>",
+    "    <array>",
+    "      <string>/bin/zsh</string>",
+    `      <string>${agent.wrapper}</string>`,
+    "    </array>",
+    "",
+    "    <key>WorkingDirectory</key>",
+    `    <string>${REPO_ROOT}</string>`,
+    "",
+    "    <key>RunAtLoad</key>",
+    agent.runAtLoad ? "    <true/>" : "    <false/>",
+    "",
+    "    <key>KeepAlive</key>",
+    agent.keepAlive ? "    <true/>" : "    <false/>",
     "",
     "    <key>StandardOutPath</key>",
     `    <string>${stdout}</string>`,
@@ -255,6 +315,26 @@ function resolveRuntimeEnvRows(rows = [], {
   });
 }
 
+function applyLocalCostSaverRuntimeOverrides(rows = []) {
+  const merged = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || !row.name) continue;
+    merged.set(String(row.name), Object.freeze({
+      name: String(row.name),
+      value: String(row.value == null ? "" : row.value),
+      source: row.source || "literal",
+    }));
+  }
+  for (const [name, value] of Object.entries(LOCAL_COST_SAVER_RUNTIME_OVERRIDES)) {
+    merged.set(name, Object.freeze({
+      name,
+      value: String(value == null ? "" : value),
+      source: "local_cost_saver_override",
+    }));
+  }
+  return Object.freeze(Array.from(merged.values()));
+}
+
 function renderRuntimeEnvFile(rows = [], {
   generatedAt = new Date().toISOString(),
   service = DEFAULT_RUNTIME_ENV_SERVICE,
@@ -266,6 +346,7 @@ function renderRuntimeEnvFile(rows = [], {
     "#!/bin/zsh",
     `# generated_at=${generatedAt}`,
     `# source=cloud-run service=${service} region=${region} project=${project}`,
+    "# mode=local-primary-cloud-cold-standby",
   ];
   safeRows.forEach((row) => {
     lines.push(`export ${String(row.name)}=${shellQuote(row.value)}`);
@@ -295,8 +376,9 @@ function writeRuntimeEnvSnapshot({
     project,
     execFileSyncFn,
   });
+  const overriddenRows = applyLocalCostSaverRuntimeOverrides(resolved.rows);
   ensureDir(fsApi, path.dirname(outputFile));
-  const rendered = renderRuntimeEnvFile(resolved.rows, {
+  const rendered = renderRuntimeEnvFile(overriddenRows, {
     generatedAt: now(),
     service,
     region,
@@ -314,7 +396,8 @@ function writeRuntimeEnvSnapshot({
     secret_env_n: resolved.secret_env_n,
     synced_secret_env_n: resolved.synced_secret_env_n,
     skipped_unset_env_n: resolved.skipped_unset_env_n,
-    total_env_n: resolved.rows.length,
+    local_override_env_n: Object.keys(LOCAL_COST_SAVER_RUNTIME_OVERRIDES).length,
+    total_env_n: overriddenRows.length,
   });
 }
 
@@ -362,6 +445,46 @@ function installJob(job, {
   return Object.freeze(result);
 }
 
+function installKeepAliveAgent(agent, {
+  fsApi = fs,
+  uid = process.getuid(),
+  runner = runLaunchctl,
+  enable = false,
+  kickstart = false,
+  targetPlistOverride = null,
+} = {}) {
+  const targetPlist = targetPlistOverride || plistPathForLabel(agent.label);
+  ensureDir(fsApi, path.dirname(targetPlist));
+  ensureDir(fsApi, path.join(REPO_ROOT, "ops", "runtime"));
+  fsApi.writeFileSync(targetPlist, renderKeepAlivePlist(agent), "utf8");
+  if (typeof fsApi.chmodSync === "function") fsApi.chmodSync(targetPlist, 0o644);
+  const result = {
+    ok: true,
+    label: agent.label,
+    role: agent.role || null,
+    target_plist: targetPlist,
+    loaded_before: isLoaded(agent.label, uid, runner),
+    bootstrap: null,
+    enable: null,
+    kickstart: null,
+    loaded_after: false,
+  };
+  if (enable && !result.loaded_before) {
+    result.bootstrap = runner(["bootstrap", `gui/${uid}`, targetPlist]);
+  }
+  if (enable) {
+    result.enable = runner(["enable", `gui/${uid}/${agent.label}`]);
+  }
+  if (kickstart) {
+    result.kickstart = runner(["kickstart", "-k", `gui/${uid}/${agent.label}`]);
+  }
+  result.loaded_after = isLoaded(agent.label, uid, runner);
+  result.ok = enable
+    ? result.loaded_after === true && (!result.bootstrap || result.bootstrap.ok === true) && (!result.enable || result.enable.ok === true)
+    : true;
+  return Object.freeze(result);
+}
+
 function main({
   argv = process.argv.slice(2),
   now = () => new Date().toISOString(),
@@ -379,8 +502,10 @@ function main({
     enable_requested: args.enable,
     kickstart_requested: args.kickstart,
     job_n: OPENCLAW_LOCAL_COST_SAVER_JOBS.length,
+    keepalive_agent_n: LOCAL_COST_SAVER_KEEPALIVE_AGENTS.length,
     cloud_scheduler_pause_targets: OPENCLAW_LOCAL_COST_SAVER_JOBS.map((job) => job.scheduler_name),
     runtime_env_sync: null,
+    keepalive_agents: [],
     jobs: [],
   };
   if (!args.dryRun) {
@@ -420,7 +545,27 @@ function main({
       kickstart: args.kickstart,
     }));
   }
-  payload.ok = payload.jobs.every((row) => row.ok !== false);
+  for (const agent of LOCAL_COST_SAVER_KEEPALIVE_AGENTS) {
+    if (args.dryRun) {
+      payload.keepalive_agents.push({
+        label: agent.label,
+        role: agent.role || null,
+        target_plist: plistPathForLabel(agent.label),
+        wrapper: agent.wrapper,
+        criticality: agent.criticality,
+      });
+      continue;
+    }
+    payload.keepalive_agents.push(installKeepAliveAgent(agent, {
+      fsApi,
+      uid,
+      runner,
+      enable: args.enable,
+      kickstart: args.kickstart,
+    }));
+  }
+  payload.ok = payload.jobs.every((row) => row.ok !== false)
+    && payload.keepalive_agents.every((row) => row.ok !== false);
   return Object.freeze(payload);
 }
 
@@ -436,12 +581,15 @@ if (require.main === module) {
       parseArgs,
       renderPlist,
       renderRuntimeEnvFile,
+      renderKeepAlivePlist,
       fetchCloudRunLiteralEnv,
       fetchSecretValue,
       resolveRuntimeEnvRows,
+      applyLocalCostSaverRuntimeOverrides,
       writeRuntimeEnvSnapshot,
       plistPathForLabel,
       installJob,
+      installKeepAliveAgent,
     },
   };
 }

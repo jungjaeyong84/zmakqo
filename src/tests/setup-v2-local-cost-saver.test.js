@@ -76,6 +76,9 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
   assert.strictEqual(result.ok, true);
   assert.ok(result.job_n >= 10);
   assert.strictEqual(result.jobs.every((row) => row.target_plist && row.wrapper), true);
+  assert.strictEqual(result.keepalive_agent_n, 1);
+  assert.strictEqual(result.keepalive_agents.length, 1);
+  assert.strictEqual(result.keepalive_agents[0].label, "com.jeongjaeyong.donbeolja.exitworker");
   assert.ok(result.cloud_scheduler_pause_targets.includes("v2-fill-sync"));
 })();
 
@@ -94,6 +97,27 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
   assert.ok(rendered.includes("export DONBEOLJA_V2_ENABLED='1'"));
   assert.ok(rendered.includes("export DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED='1'"));
   assert.ok(rendered.includes("export DONBEOLJA_V2_DISCOVERY_CANARY_SYMBOLS='BTCUSDT|AAVEUSDT'"));
+})();
+
+(function localCostSaverRuntimeOverridesPreferLocalPrimary() {
+  const rows = setup.__test.applyLocalCostSaverRuntimeOverrides([
+    { name: "BASE_URL", value: "https://donbeolja-4ljfegivrq-du.a.run.app", source: "literal" },
+    { name: "EXIT_WORKER_URL", value: "https://donbeolja-exit-worker-4ljfegivrq-du.a.run.app", source: "literal" },
+    { name: "EGRESS_PROXY_URL", value: "https://donbeolja-egress-4ljfegivrq-du.a.run.app", source: "literal" },
+    { name: "EGRESS_PROXY_BINANCE_PRIVATE_URL", value: "https://donbeolja-egress-private-4ljfegivrq-du.a.run.app", source: "literal" },
+    { name: "EGRESS_PROXY_MODE", value: "client", source: "literal" },
+    { name: "DONBEOLJA_V2_ENABLED", value: "1", source: "literal" },
+  ]);
+  const byName = new Map(rows.map((row) => [row.name, row]));
+  assert.strictEqual(byName.get("BASE_URL").value, "http://127.0.0.1:3000");
+  assert.strictEqual(byName.get("EXIT_WORKER_URL").value, "http://127.0.0.1:8080");
+  assert.strictEqual(byName.get("EXIT_WORKER_SELF_URL").value, "http://127.0.0.1:8080");
+  assert.strictEqual(byName.get("EXIT_WORKER_LOCAL_PORT").value, "8080");
+  assert.strictEqual(byName.get("AUTOMATION_WATCHDOG_SCHEDULER_BASE_URL").value, "http://127.0.0.1:3000");
+  assert.strictEqual(byName.get("EGRESS_PROXY_URL").value, "");
+  assert.strictEqual(byName.get("EGRESS_PROXY_BINANCE_PRIVATE_URL").value, "");
+  assert.strictEqual(byName.get("EGRESS_PROXY_MODE").value, "");
+  assert.strictEqual(byName.get("DONBEOLJA_V2_ENABLED").value, "1");
 })();
 
 (function runtimeEnvSnapshotWritesOutputFile() {
@@ -130,11 +154,19 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
     assert.strictEqual(result.literal_env_n, 2);
     assert.strictEqual(result.secret_env_n, 2);
     assert.strictEqual(result.synced_secret_env_n, 2);
+    assert.strictEqual(result.local_override_env_n, 8);
     const contents = fs.readFileSync(outputFile, "utf8");
     assert.ok(contents.includes("export DONBEOLJA_V2_ENABLED='1'"));
     assert.ok(contents.includes("export DONBEOLJA_V2_DISCOVERY_CANARY_ENABLED='1'"));
     assert.ok(contents.includes("export SCHEDULER_TOKEN='local-scheduler-token'"));
     assert.ok(contents.includes("export SESSION_SECRET='secret-from-secret-manager'"));
+    assert.ok(contents.includes("mode=local-primary-cloud-cold-standby"));
+    assert.ok(contents.includes("export BASE_URL='http://127.0.0.1:3000'"));
+    assert.ok(contents.includes("export EXIT_WORKER_URL='http://127.0.0.1:8080'"));
+    assert.ok(contents.includes("export EGRESS_PROXY_MODE=''"));
+    assert.ok(contents.includes("export EGRESS_PROXY_URL=''"));
+    assert.ok(contents.includes("export EGRESS_PROXY_BINANCE_PRIVATE_URL=''"));
+    assert.ok(!contents.includes("https://donbeolja-exit-worker-4ljfegivrq-du.a.run.app"));
   });
 })();
 
@@ -200,6 +232,48 @@ function makeLaunchctlStub({ loadedBefore = false, loadedAfter = true } = {}) {
     ]);
     const contents = fs.readFileSync(plistTarget, "utf8");
     assert.ok(contents.includes("/tmp/run.sh"));
+  });
+})();
+
+(function installKeepAliveAgentWritesPlistAndLaunchctlCalls() {
+  withTempDir("dbj-local-cost-saver-agent-", (dir) => {
+    const plistTarget = path.join(dir, "LaunchAgents", "agent.plist");
+    const launchctl = makeLaunchctlStub({ loadedBefore: false, loadedAfter: true });
+    const memoryFs = {
+      ...fs,
+      writeFileSync(filePath, data, encoding) {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        return fs.writeFileSync(filePath, data, encoding);
+      },
+    };
+    const result = setup.__test.installKeepAliveAgent({
+      label: "com.test.exitworker",
+      wrapper: "/tmp/run_exit_worker_server.sh",
+      log_basename: "exit_worker_server",
+      runAtLoad: true,
+      keepAlive: true,
+      role: "EXIT_WORKER",
+    }, {
+      fsApi: memoryFs,
+      uid: 501,
+      runner: launchctl.runLaunchctl,
+      enable: true,
+      kickstart: true,
+      targetPlistOverride: plistTarget,
+    });
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.target_plist, plistTarget);
+    assert.strictEqual(result.role, "EXIT_WORKER");
+    assert.deepStrictEqual(launchctl.calls, [
+      ["print", "gui/501/com.test.exitworker"],
+      ["bootstrap", "gui/501", plistTarget],
+      ["enable", "gui/501/com.test.exitworker"],
+      ["kickstart", "-k", "gui/501/com.test.exitworker"],
+      ["print", "gui/501/com.test.exitworker"],
+    ]);
+    const contents = fs.readFileSync(plistTarget, "utf8");
+    assert.ok(contents.includes("<key>KeepAlive</key>"));
+    assert.ok(contents.includes("/tmp/run_exit_worker_server.sh"));
   });
 })();
 

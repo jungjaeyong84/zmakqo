@@ -5,5 +5,7 @@ export CLOUDSDK_CONFIG="/Users/jeongjaeyong/Projects/donbeolja/.gcloud"
 export GOOGLE_APPLICATION_CREDENTIALS="/Users/jeongjaeyong/Projects/donbeolja/.gcloud/application_default_credentials.json"
 export GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-donbeolja-dev}"
 export GCLOUD_PROJECT="${GCLOUD_PROJECT:-donbeolja-dev}"
+# shellcheck disable=SC1091
+. /Users/jeongjaeyong/Projects/donbeolja/ops/launchd/load_gcp_env.sh
 cd /Users/jeongjaeyong/Projects/donbeolja
 node scripts/run-binance-active-exit-control-plane.js
