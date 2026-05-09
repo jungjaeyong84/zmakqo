@@ -168,7 +168,7 @@ async function run() {
       source: "INTENT_FILL",
       reason: "INTENT_FILL_FORCE_LIVE_RECONCILE",
       maxAttempts: 2,
-      retryDelayMs: 0,
+      retryDelayMs: 1,
       readPosition: async () => {
         readCount += 1;
         return freshPos;

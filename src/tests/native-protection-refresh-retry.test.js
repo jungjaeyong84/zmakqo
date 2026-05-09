@@ -94,6 +94,72 @@ async function run() {
   assert.strictEqual(updated.meta.native_protection_refresh_status, "OK");
   assert.strictEqual(updated.meta.native_protection_side, "SHORT");
 
+  {
+    let readCount = 0;
+    let writeCount = 0;
+    const retried = await __test.syncNativeProtectionMetaAfterRefresh({
+      exchange: "BINANCEFUT",
+      symbol: "ETHUSDT",
+      runId: "RUN__TEST__NATIVE_META_SYNC_RETRY",
+      executionMode: "LIVE",
+      posMeta: {
+        simplified_exit_v2_enabled: true,
+        entry_exec_bar_ms: 1776500000000,
+      },
+      nativeProtection: {
+        ok: true,
+        attempts: 1,
+        max_attempts: 1,
+        stop_order_id: "STOP456",
+        tp_order_id: "TP456",
+        stop_price: 2500.5,
+        tp_price: 2470.1,
+        tp_qty_base: 0.25,
+        tp_qty_ratio: 0.5,
+        tp_status: "OK",
+        position_side: "SHORT",
+        entry_price: 2490.0,
+      },
+      retryDelayMs: 1,
+      readPosition: async () => {
+        readCount += 1;
+        return {
+          exchange: "BINANCEFUT",
+          symbol: "ETHUSDT",
+          state: "OPEN",
+          qty_base: 0.5,
+          size_pct: 1,
+          position_write_token: `lease-token-${readCount}`,
+          meta: {
+            simplified_exit_v2_enabled: true,
+          },
+        };
+      },
+      writePositionMeta: async ({ meta, expectedWriteToken }) => {
+        writeCount += 1;
+        if (writeCount === 1) {
+          const err = new Error("POSITION_WRITE_LEASE_HELD BINANCEFUT ETHUSDT holder=positions_paper_writer__test__1");
+          err.code = "POSITION_WRITE_LEASE_HELD";
+          throw err;
+        }
+        return {
+          exchange: "BINANCEFUT",
+          symbol: "ETHUSDT",
+          state: "OPEN",
+          qty_base: 0.5,
+          size_pct: 1,
+          expectedWriteToken,
+          meta,
+        };
+      },
+    });
+    assert.strictEqual(readCount, 2, "lease-held retry must reload the latest position token");
+    assert.strictEqual(writeCount, 2, "lease-held retry must attempt the meta write again");
+    assert.ok(retried && retried.meta, "lease-held retry must still return the updated position");
+    assert.strictEqual(retried.meta.native_protection_stop_order_id, "STOP456");
+    assert.strictEqual(retried.meta.native_protection_tp_order_id, "TP456");
+  }
+
   console.log("NATIVE_PROTECTION_REFRESH_RETRY_TEST_OK");
 }
 

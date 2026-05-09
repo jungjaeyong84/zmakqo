@@ -5060,7 +5060,7 @@ async function upsertPositionMetaOnlyWithLatestRetry({
       const retryDelayResolvedMs = code === "POSITION_WRITE_TOKEN_MISMATCH"
         ? baseDelayMs
         : Math.min(1500, baseDelayMs * attempt);
-      if (retryDelayResolvedMs > 0) await sleep(retryDelayResolvedMs);
+      if (retryDelayResolvedMs > 0) await sleepMs(retryDelayResolvedMs);
       currentPos = await readPosition({ exchange, symbol });
     }
   }
@@ -5130,7 +5130,7 @@ async function upsertPositionWithLatestRetry({
       const retryDelayResolvedMs = code === "POSITION_WRITE_TOKEN_MISMATCH"
         ? baseDelayMs
         : Math.min(1500, baseDelayMs * attempt);
-      if (retryDelayResolvedMs > 0) await sleep(retryDelayResolvedMs);
+      if (retryDelayResolvedMs > 0) await sleepMs(retryDelayResolvedMs);
       currentPos = await readPosition({ exchange, symbol });
     }
   }
@@ -10838,7 +10838,7 @@ async function syncNativeProtectionMetaAfterRefresh({
       const retryDelayResolvedMs = code === "POSITION_WRITE_TOKEN_MISMATCH"
         ? baseDelayMs
         : Math.min(1500, baseDelayMs * attempt);
-      if (retryDelayResolvedMs > 0) await sleep(retryDelayResolvedMs);
+      if (retryDelayResolvedMs > 0) await sleepMs(retryDelayResolvedMs);
       currentPos = await readPosition({ exchange, symbol });
     }
   }
