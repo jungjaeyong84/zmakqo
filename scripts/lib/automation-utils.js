@@ -262,7 +262,11 @@ function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return out;
   const raw = fs.readFileSync(filePath, "utf8");
   for (const line of raw.split(/\r?\n/)) {
-    const trimmed = String(line || "").trim();
+    let trimmed = String(line || "").trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (/^export\s+/i.test(trimmed)) {
+      trimmed = trimmed.replace(/^export\s+/i, "").trim();
+    }
     if (!trimmed || trimmed.startsWith("#")) continue;
     const eq = trimmed.indexOf("=");
     if (eq < 1) continue;
@@ -276,19 +280,29 @@ function parseEnvFile(filePath) {
   return out;
 }
 
-function loadLocalEnv() {
-  const home = String(process.env.HOME || "").trim();
+function resolveLocalEnvPaths(home = process.env.HOME) {
+  const normalizedHome = String(home || "").trim();
   const paths = [
     path.join(REPO_ROOT, ".env"),
     path.join(REPO_ROOT, "ops", ".env.runtime.local"),
-    home ? path.join(home, ".openclaw", ".env") : "",
+    normalizedHome ? path.join(normalizedHome, ".env.openclaw") : "",
+    normalizedHome ? path.join(normalizedHome, ".openclaw", ".env") : "",
+    path.join(REPO_ROOT, "ops", "runtime", "local_cost_saver_runtime.env"),
   ].filter(Boolean);
-  for (const filePath of paths) {
-    const parsed = parseEnvFile(filePath);
-    for (const [key, value] of Object.entries(parsed)) {
-      if (process.env[key] == null || process.env[key] === "") {
-        process.env[key] = value;
-      }
+  return Array.from(new Set(paths));
+}
+
+function loadLocalEnv({ env = process.env, paths = null } = {}) {
+  const resolvedPaths = Array.isArray(paths) && paths.length > 0
+    ? paths.filter(Boolean)
+    : resolveLocalEnvPaths(String(env && env.HOME != null ? env.HOME : process.env.HOME || "").trim());
+  const merged = {};
+  for (const filePath of resolvedPaths) {
+    Object.assign(merged, parseEnvFile(filePath));
+  }
+  for (const [key, value] of Object.entries(merged)) {
+    if (env[key] == null || env[key] === "") {
+      env[key] = value;
     }
   }
 }
@@ -687,6 +701,8 @@ module.exports = {
   copySelfEvolutionLatest,
   selfEvolutionSnapshotLatestPath,
   shouldWriteSelfEvolutionLatest,
+  parseEnvFile,
+  resolveLocalEnvPaths,
   loadLocalEnv,
   nowKstMeta,
   resolveAutomationCycleMeta,

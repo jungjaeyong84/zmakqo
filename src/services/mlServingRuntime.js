@@ -12,6 +12,7 @@ warnIfFailClosedDisabled("ML_SERVING_FAIL_CLOSED", { context: "mlServingRuntime"
 const REPO_ROOT = path.resolve(__dirname, "../..");
 const OPS_DAILY_DIR = path.join(REPO_ROOT, "ops", "daily");
 const LOCAL_LATEST_PATH = path.join(OPS_DAILY_DIR, "ml_serving_state_latest.json");
+const V3_LEARNING_STATE_PATH = path.join(OPS_DAILY_DIR, "v3_openclaw_learning_state_latest.json");
 const CACHE_TTL_MS = Math.max(5000, Number(process.env.ML_SERVING_RUNTIME_CACHE_TTL_MS || 30000));
 const runtimeCache = new Map();
 
@@ -38,10 +39,70 @@ function safeReadJson(filePath) {
   }
 }
 
+function resolvePrimaryLearningLane(env = process.env) {
+  const explicit = upper(env.OPENCLAW_PRIMARY_LEARNING_LANE);
+  if (explicit) return explicit;
+  const scope = upper(env.DONBEOLJA_OPENCLAW_LEARNING_SCOPE);
+  if (scope === "V3_PAPER_ONLY") return "V3_PAPER";
+  return "V2_OPENCLAW";
+}
+
 function unwrapServingState(input = null) {
   if (!input || typeof input !== "object") return null;
   if (input.state && typeof input.state === "object") return input.state;
   return input;
+}
+
+function buildMlServingStateFromV3LearningState(state = null, nowMs = Date.now()) {
+  const raw = state && typeof state === "object" ? state : {};
+  const generatedAtMs = toTimeMs(raw.generated_at_ms || raw.generated_at || null);
+  const maxAgeMs = Math.max(60 * 1000, Number(process.env.ML_SERVING_STATE_MAX_AGE_MS || (6 * 60 * 60 * 1000)));
+  const failClosed = String(process.env.ML_SERVING_FAIL_CLOSED || "1").trim() !== "0";
+  const stale = Number.isFinite(generatedAtMs) ? (Math.max(0, nowMs - generatedAtMs) > maxAgeMs) : true;
+  const shadowObservationReady = raw.shadow_observation_ready === true;
+  const shadowEvaluationReady = raw.shadow_evaluation_ready === true
+    || (raw.shadow_evaluation_ready == null && raw.shadow_ready === true);
+  const enoughSamples = raw.validation_gate && raw.validation_gate.paper_sample_ok === true;
+  let status = upper(raw.status) || "HOLD";
+  let reason = upper(raw.reason) || "V3_PAPER_LEARNING_STATE_MISSING";
+  if (stale) {
+    status = failClosed ? "BLOCK" : "WARN";
+    reason = "ML_V3_LEARNING_STATE_STALE";
+  }
+  return {
+    exchange: null,
+    status,
+    reason,
+    serving_mode: "SHADOW_ONLY",
+    live_serving_armed: false,
+    live_serving_allowed: false,
+    block_new_entries: false,
+    fail_closed: failClosed,
+    gate_available: true,
+    gate_status: status,
+    gate_reason: reason,
+    promotion_blocked: false,
+    enough_samples: enoughSamples,
+    shadow_observation_ready: shadowObservationReady,
+    shadow_evaluation_ready: shadowEvaluationReady,
+    shadow_ready: shadowEvaluationReady,
+    policy_candidate_ready_for_shadow: shadowEvaluationReady,
+    shadow_future_effective_meets_target: raw.bootstrap_metrics && raw.bootstrap_metrics.target_hit === true,
+    shadow_raw_retained_meets_target: raw.bootstrap_metrics && raw.bootstrap_metrics.target_hit === true,
+    runtime_blocked_historical_debt_sample_n: 0,
+    stale,
+    generated_at_ms: generatedAtMs,
+    max_age_ms: maxAgeMs,
+    preferred_model_artifact_id: null,
+    preferred_train_run_id: null,
+    contract_shadow_ready: shadowEvaluationReady,
+    contract_live_serving_allowed: false,
+    model_canary_ready: false,
+    learning_scope: upper(raw.learning_scope),
+    v1_learning_blocked: raw.v1_learning_blocked === true,
+    v2_learning_blocked: raw.v2_learning_blocked === true,
+    source_lane: upper(raw.source_lane),
+  };
 }
 
 function normalizeLoadedServingState(state = null, nowMs = Date.now()) {
@@ -115,6 +176,10 @@ function buildMlServingState({
   const gateAvailable = !!gate;
   const promotionBlocked = gate && gate.promotion_blocked === true;
   const enoughSamples = gate && gate.enough_samples === true;
+  const policyCandidateReadyForShadow = gate && gate.policy_candidate_ready_for_shadow === true;
+  const shadowFutureEffectiveMeetsTarget = gate && gate.shadow_future_effective_meets_target === true;
+  const shadowRawRetainedMeetsTarget = gate && gate.shadow_raw_retained_meets_target === true;
+  const runtimeBlockedHistoricalDebtSampleN = Math.max(0, Number(gate && gate.runtime_blocked_historical_debt_sample_n) || 0);
   const shadowReady = gateAvailable && !stale && promotionBlocked !== true;
   const contractShadowReady = contractSummary.shadow_ready === true;
   const contractLiveAllowed = contractSummary.live_serving_allowed === true;
@@ -145,8 +210,15 @@ function buildMlServingState({
     liveServingAllowed = true;
   } else if (shadowReady && contractShadowReady) {
     servingMode = "SHADOW_ONLY";
-    status = "PASS";
-    reason = enoughSamples ? "ML_SHADOW_READY" : "ML_SHADOW_OBSERVING";
+    if (policyCandidateReadyForShadow && !shadowFutureEffectiveMeetsTarget) {
+      status = "WARN";
+      reason = "ML_SHADOW_READY_UNDER_TARGET";
+    } else {
+      status = "PASS";
+      reason = shadowFutureEffectiveMeetsTarget
+        ? (enoughSamples ? "ML_SHADOW_READY_TARGET_MET" : "ML_SHADOW_OBSERVING_TARGET_MET")
+        : (enoughSamples ? "ML_SHADOW_READY" : "ML_SHADOW_OBSERVING");
+    }
   } else if (shadowReady) {
     servingMode = "SHADOW_ONLY";
     status = "WARN";
@@ -168,6 +240,10 @@ function buildMlServingState({
     promotion_blocked: promotionBlocked,
     enough_samples: enoughSamples,
     shadow_ready: shadowReady,
+    policy_candidate_ready_for_shadow: policyCandidateReadyForShadow,
+    shadow_future_effective_meets_target: shadowFutureEffectiveMeetsTarget,
+    shadow_raw_retained_meets_target: shadowRawRetainedMeetsTarget,
+    runtime_blocked_historical_debt_sample_n: runtimeBlockedHistoricalDebtSampleN,
     stale,
     generated_at_ms: generatedAtMs,
     max_age_ms: resolvedMaxAgeMs,
@@ -185,11 +261,18 @@ async function loadMlServingRuntime({
   force = false,
 } = {}) {
   const ex = upper(exchange);
-  const cacheKey = `${ex || "ALL"}|${allowArtifactFallback ? "ART" : "NOART"}`;
+  const learningLane = resolvePrimaryLearningLane(process.env);
+  const cacheKey = `${learningLane}|${ex || "ALL"}|${allowArtifactFallback ? "ART" : "NOART"}`;
   const nowMs = Date.now();
   if (!force) {
     const cached = runtimeCache.get(cacheKey);
     if (cached && (nowMs - cached.ts_ms) <= CACHE_TTL_MS) return JSON.parse(JSON.stringify(cached.value));
+  }
+  if (learningLane === "V3_PAPER") {
+    const artifact = safeReadJson(V3_LEARNING_STATE_PATH);
+    const value = buildMlServingStateFromV3LearningState(artifact, nowMs);
+    runtimeCache.set(cacheKey, { ts_ms: nowMs, value });
+    return JSON.parse(JSON.stringify(value));
   }
   const stateDoc = await getMlServingState({ exchange: ex }).catch(() => null);
   if (stateDoc && stateDoc.state && typeof stateDoc.state === "object") {
@@ -227,5 +310,7 @@ module.exports = {
   __test: {
     normalizeLoadedServingState,
     unwrapServingState,
+    resolvePrimaryLearningLane,
+    buildMlServingStateFromV3LearningState,
   },
 };

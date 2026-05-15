@@ -200,9 +200,28 @@ function resolveExpectedNativeTrigger({ meta, fallbackExpected } = {}) {
   return Number.isFinite(Number(fallbackExpected)) ? Number(fallbackExpected) : null;
 }
 
+function isExpectedInternalOnlyNoExchangePosition(meta = {}, position = null) {
+  const ctx = meta && typeof meta === "object" ? meta : {};
+  const pos = position && typeof position === "object" ? position : {};
+  const livePaperMode = toBool(
+    ctx.live_paper_mode != null ? ctx.live_paper_mode : pos.live_paper_mode,
+    false,
+  );
+  const exchangeWritePerformedRaw = ctx.exchange_write_performed != null
+    ? ctx.exchange_write_performed
+    : pos.exchange_write_performed;
+  const exchangeWritePerformed = exchangeWritePerformedRaw == null
+    ? null
+    : toBool(exchangeWritePerformedRaw, false);
+  const canaryMode = String(ctx.canary_mode || pos.canary_mode || "").trim().toUpperCase();
+  return livePaperMode === true
+    && (exchangeWritePerformed === false || canaryMode.includes("NO_EXCHANGE"));
+}
+
 function isV2LiveWriteRuntime(env = process.env) {
   return toBool(env && env.DONBEOLJA_V2_ENABLED, false)
     && toBool(env && env.DONBEOLJA_V2_DRY_RUN, false) !== true
+    && toBool(env && env.DONBEOLJA_V2_LIVE_PAPER_MODE, false) !== true
     && toBool(env && env.DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED, false) === true;
 }
 
@@ -295,6 +314,7 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = nu
     const external = externalPositions.get(sym) || null;
     const internalActive = isInternalActive(internal);
     const externalActive = !!external;
+    const expectedInternalOnly = internalActive && isExpectedInternalOnlyNoExchangePosition(meta, internal);
 
     if (!includeFlat && !internalActive && !externalActive) continue;
 
@@ -313,7 +333,7 @@ async function auditBinanceExitIntegrity({ symbols, includeFlat = false, db = nu
       ? resolveExitRulesForPosition({ exchange: "BINANCEFUT", position: internal })
       : null;
 
-    if (internalActive && !externalActive) {
+    if (internalActive && !externalActive && !expectedInternalOnly) {
       marketIssues.push(makeIssue({
         symbol: sym,
         code: "INTERNAL_ACTIVE_EXTERNAL_FLAT",
@@ -659,6 +679,7 @@ module.exports = {
     isStrictTp1OrderCandidate,
     selectNativeTp1OrderCandidate,
     isV2LiveWriteRuntime,
+    isExpectedInternalOnlyNoExchangePosition,
     resolveExpectedNativeTrigger,
     isValidTrailReference,
     resolveTp1PendingState,

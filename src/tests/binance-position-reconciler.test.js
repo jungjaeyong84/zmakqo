@@ -157,6 +157,40 @@ async function run() {
   assert.strictEqual(simplifiedV2Patch.meta.tp_p0_source, null);
   assert.ok(!simplifiedV2Patch.invariants.includes("SIMPLIFIED_EXIT_V2_MULTIPLE_TP_ORDERS"));
 
+  const livePaperNoExchangePreserved = reconcileBinancePositionMetaWithExchange({
+    active: true,
+    meta: {
+      simplified_exit_v2_enabled: true,
+      live_paper_mode: true,
+      exchange_write_performed: false,
+      canary_mode: "LIVE_PAPER_NO_EXCHANGE",
+      native_protection_stop_order_id: "SL__NO_EXCHANGE__LIVE_PAPER__sl1",
+      native_protection_stop_price: 98.35,
+      native_protection_tp_order_id: "TP1__NO_EXCHANGE__LIVE_PAPER__tp1",
+      native_protection_tp_price: 101.68,
+      native_protection_tp_qty_base: 5,
+      native_protection_tp_qty_ratio: 0.5,
+      native_protection_tp_status: "OK",
+    },
+    positionSide: "LONG",
+    qtyBase: 10,
+    entryPrice: 100,
+    leverage: 2,
+    openOrders: [],
+    algoOrders: [],
+  });
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_refresh_status, "OK");
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_refresh_reason, null);
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_refresh_context, "INTERNAL_NO_EXCHANGE_RECONCILE");
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_stale, false);
+  assert.strictEqual(livePaperNoExchangePreserved.meta.exchange_projection_in_sync, true);
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_stop_order_id, "SL__NO_EXCHANGE__LIVE_PAPER__sl1");
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_tp_order_id, "TP1__NO_EXCHANGE__LIVE_PAPER__tp1");
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_tp_price, 101.68);
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_tp_qty_base, 5);
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_tp_qty_ratio, 0.5);
+  assert.strictEqual(livePaperNoExchangePreserved.meta.native_protection_tp_status, "OK");
+
   const simplifiedV2LegacyLeakPatch = reconcileBinancePositionMetaWithExchange({
     active: true,
     meta: {

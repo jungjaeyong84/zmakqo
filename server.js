@@ -54,7 +54,10 @@ try {
   process.exit(1);
 }
 
-const { createApp } = require("./src/server/app");
+const isDesktopMode = String(process.env.DESKTOP_MODE || "0") === "1";
+const { createApp } = isDesktopMode
+  ? require("./src/server/localDashboardApp")
+  : require("./src/server/app");
 
 const app = createApp();
 
@@ -71,28 +74,32 @@ app.listen(PORT, "0.0.0.0", () => {
     console.log("[WARN] dev change log failed:", e && e.message ? e.message : String(e));
   }
 
-  try {
-    const { startBinanceTickExitLoop } = require("./src/services/binanceTickExit");
-    const result = startBinanceTickExitLoop();
-    if (result && result.running) {
-      console.log(`[BOOT] Binance tick exit loop started (${result.intervalMs}ms)`);
-    } else if (result && result.skipped) {
-      console.log(`[BOOT] Binance tick exit loop skipped (${result.reason || "DISABLED"})`);
-    }
-  } catch (e) {
-    console.log("[WARN] Binance tick exit start failed:", e && e.message ? e.message : String(e));
-  }
-
-  try {
-    const { startBinanceUserDataStream } = require("./src/services/binanceUserDataStream");
-    startBinanceUserDataStream({ enabled: true }).then((result) => {
-      if (result && result.ok) {
-        console.log("[BOOT] Binance user-data stream started");
+  if (isDesktopMode) {
+    console.log("[BOOT] Desktop mode detected; runtime trading loops skipped");
+  } else {
+    try {
+      const { startBinanceTickExitLoop } = require("./src/services/binanceTickExit");
+      const result = startBinanceTickExitLoop();
+      if (result && result.running) {
+        console.log(`[BOOT] Binance tick exit loop started (${result.intervalMs}ms)`);
       } else if (result && result.skipped) {
-        console.log(`[BOOT] Binance user-data stream skipped (${result.reason || "DISABLED"})`);
+        console.log(`[BOOT] Binance tick exit loop skipped (${result.reason || "DISABLED"})`);
       }
-    }).catch(() => {});
-  } catch (e) {
-    console.log("[WARN] Binance user-data stream start failed:", e && e.message ? e.message : String(e));
+    } catch (e) {
+      console.log("[WARN] Binance tick exit start failed:", e && e.message ? e.message : String(e));
+    }
+
+    try {
+      const { startBinanceUserDataStream } = require("./src/services/binanceUserDataStream");
+      startBinanceUserDataStream({ enabled: true }).then((result) => {
+        if (result && result.ok) {
+          console.log("[BOOT] Binance user-data stream started");
+        } else if (result && result.skipped) {
+          console.log(`[BOOT] Binance user-data stream skipped (${result.reason || "DISABLED"})`);
+        }
+      }).catch(() => {});
+    } catch (e) {
+      console.log("[WARN] Binance user-data stream start failed:", e && e.message ? e.message : String(e));
+    }
   }
 });

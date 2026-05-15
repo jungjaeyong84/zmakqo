@@ -5,6 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const { getFirestore } = require("../src/storage/firestore");
+const { resolveV2CollectionName } = require("../src/v2/storage");
 const { deriveServerSignalQuality } = require("../src/utils/serverSignalQuality");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -94,10 +95,26 @@ async function loadRuntimeTickWindow({ nowMs = Date.now(), maxRows = 500 } = {})
   return summary;
 }
 
+async function loadV2Outcomes24h({ nowMs = Date.now(), maxRows = 1000 } = {}) {
+  const db = getFirestore();
+  const sinceMs = Number(nowMs) - (24 * 60 * 60 * 1000);
+  const collection = resolveV2CollectionName("OPENCLAW_OUTCOME_ADJUDICATIONS", process.env);
+  const snap = await db.collection(collection).orderBy("adjudicated_at", "desc").limit(maxRows).get();
+  const rows = [];
+  snap.forEach((doc) => {
+    const row = doc.data() || {};
+    const atMs = Date.parse(String(row.adjudicated_at || row.created_at || ""));
+    if (!Number.isFinite(atMs) || atMs < sinceMs) return;
+    rows.push({ id: doc.id || null, ...row });
+  });
+  return rows;
+}
+
 async function main() {
   const meta = nowMeta();
   const parityReport = readJsonSafe(PATHS.parity, null);
   const runtimeTickWindow = await loadRuntimeTickWindow({ nowMs: Date.now() });
+  const v2OutcomesRecent = await loadV2Outcomes24h({ nowMs: Date.now() }).catch(() => []);
   const output = {
     ok: true,
     generated_at: meta.iso,
@@ -109,6 +126,7 @@ async function main() {
       intentsRecent: readJsonSafe(PATHS.intents, null),
       fillsRecent: readJsonSafe(PATHS.fills, null),
       tradesRecent: readJsonSafe(PATHS.trades, null),
+      v2OutcomesRecent,
       parityReport,
       runtimeTickWindow,
       nowMs: Date.now(),

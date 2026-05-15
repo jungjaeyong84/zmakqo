@@ -10,6 +10,14 @@ function pickDocs(input) {
   return [];
 }
 
+function isModelOutcomeRow(row) {
+  const family = upper(row && row.adjudication_family);
+  const label = upper(row && row.adjudication_label);
+  if (family === "MODEL") return true;
+  if (label === "MODEL_WIN" || label === "MODEL_ERROR") return true;
+  return false;
+}
+
 function toMs(value) {
   if (value == null || value === "") return null;
   const n = Number(value);
@@ -156,6 +164,7 @@ function deriveServerSignalQuality({
   intentsRecent = null,
   fillsRecent = null,
   tradesRecent = null,
+  v2OutcomesRecent = null,
   parityReport = null,
   runtimeTickWindow = null,
   nowMs = Date.now(),
@@ -164,6 +173,7 @@ function deriveServerSignalQuality({
   const intents = pickDocs(intentsRecent);
   const fills = pickDocs(fillsRecent);
   const trades = pickDocs(tradesRecent);
+  const v2Outcomes = pickDocs(v2OutcomesRecent);
   const runtimeSummary = runtimeTickWindow && typeof runtimeTickWindow === "object"
     ? (runtimeTickWindow.summary && typeof runtimeTickWindow.summary === "object" ? runtimeTickWindow.summary : runtimeTickWindow)
     : {};
@@ -201,6 +211,16 @@ function deriveServerSignalQuality({
   const fillsLinked = dedupeRows([...fillsDirectFromSignals, ...fillsFromIntents], ["fill_id", "id", "intent_id", "trade_id"]);
   const tradeIds = new Set(fillsLinked.map((row) => normalizeKey(row.trade_id)).filter(Boolean));
   const tradesFromFills = trades.filter((row) => tradeIds.has(row.trade_id));
+  const modelOutcomes24h = v2Outcomes.filter((row) => {
+    const atMs = toMs(row && (row.adjudicated_at || row.created_at));
+    if (!(Number.isFinite(atMs) && atMs >= dayAgoMs)) return false;
+    return isModelOutcomeRow(row);
+  });
+  const legacyFillN = fillsLinked.length;
+  const legacyTradeN = tradesFromFills.length;
+  const v2ModelOutcomeN = modelOutcomes24h.length;
+  const effectiveFillN = Math.max(legacyFillN, v2ModelOutcomeN);
+  const effectiveTradeN = Math.max(legacyTradeN, v2ModelOutcomeN);
 
   const reasonCounts = new Map();
   const marketCounts = new Map();
@@ -278,8 +298,11 @@ function deriveServerSignalQuality({
   const summary = {
     authoritative_entry_signal_24h_n: authoritativeEntrySignal24hN,
     order_intent_24h_n: orderIntent24hN,
-    fill_24h_n: fillsLinked.length,
-    trade_24h_n: tradesFromFills.length,
+    fill_24h_n: effectiveFillN,
+    trade_24h_n: effectiveTradeN,
+    legacy_fill_24h_n: legacyFillN,
+    legacy_trade_24h_n: legacyTradeN,
+    v2_model_outcome_24h_n: v2ModelOutcomeN,
     runtime_server_signal_created_24h_n: Number(runtimeSummary.server_signal_created_24h_n || runtimeSummary.server_signal_created_n || 0),
     runtime_direct_handoff_generated_24h_n: Number(runtimeSummary.direct_handoff_generated_24h_n || runtimeSummary.direct_handoff_generated_n || 0),
     runtime_direct_handoff_executed_24h_n: Number(runtimeSummary.direct_handoff_executed_24h_n || runtimeSummary.direct_handoff_executed_n || 0),
@@ -287,7 +310,7 @@ function deriveServerSignalQuality({
     top_runtime_direct_handoff_block_reason: topObjectRows(runtimeSummary.direct_handoff_reason_counts || {}, 1)[0] || null,
     top_runtime_direct_handoff_nested_block_reason: topObjectRows(runtimeSummary.direct_handoff_nested_reason_counts || {}, 1)[0] || null,
     intent_conversion_rate: rate(orderIntent24hN, authoritativeEntrySignal24hN),
-    fill_conversion_rate: rate(fillsLinked.length, authoritativeEntrySignal24hN),
+    fill_conversion_rate: rate(effectiveFillN, authoritativeEntrySignal24hN),
     latest_authoritative_entry_signal_at_kst: toKstString(latestSignalMs),
     parity_mismatch_rate: Number.isFinite(Number(paritySummary.parity_mismatch_rate)) ? Number(paritySummary.parity_mismatch_rate) : null,
     parity_mismatch_n: Number(paritySummary.parity_mismatch_n) || 0,

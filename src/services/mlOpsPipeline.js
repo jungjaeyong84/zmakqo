@@ -78,6 +78,10 @@ function norm(value) {
   return text || null;
 }
 
+function asObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
 function boolSetting(raw, fallback = true) {
   if (raw == null) return fallback;
   const text = String(raw).trim().toLowerCase();
@@ -412,12 +416,18 @@ function summarizeShadowInferenceCanary(rows = []) {
   };
 }
 
-function buildShadowCanaryGate(summary = {}) {
+function buildShadowCanaryGate(summary = {}, { policyCandidate = null } = {}) {
   const comparedN = Math.max(0, Number(summary.compared_n) || 0);
   const disagreementRate = Math.max(0, Number(summary.disagreement_rate) || 0);
   const minSamples = Math.max(1, Number(summary.min_samples) || 20);
   const rollbackThreshold = Math.max(0, Math.min(1, Number(summary.rollback_threshold) || 0.15));
   const warnThreshold = Math.max(0, Math.min(rollbackThreshold, Number(process.env.SHADOW_INFERENCE_CANARY_WARN_THRESHOLD || (rollbackThreshold / 2))));
+  const candidate = asObject(policyCandidate) || {};
+  const candidateReadiness = asObject(candidate.readiness) || {};
+  const policyCandidateReadyForShadow = candidate.ok === true && upper(candidate.decision) === "SHADOW_EVALUATE_ONLY";
+  const shadowFutureEffectiveMeetsTarget = candidateReadiness.future_effective_meets_target === true;
+  const shadowRawRetainedMeetsTarget = candidateReadiness.raw_retained_meets_target === true;
+  const runtimeBlockedHistoricalDebtSampleN = Math.max(0, Number(candidateReadiness.runtime_blocked_historical_debt_sample_n) || 0);
   const enoughSamples = comparedN >= minSamples;
   const block = summary.rollback_triggered === true;
   const warn = !block && ((!enoughSamples) || disagreementRate >= warnThreshold);
@@ -429,6 +439,11 @@ function buildShadowCanaryGate(summary = {}) {
   } else if (warn) {
     status = "WARN";
     reason = !enoughSamples ? "INSUFFICIENT_SAMPLES" : "DISAGREEMENT_RATE_ELEVATED";
+  } else if (policyCandidateReadyForShadow && shadowFutureEffectiveMeetsTarget) {
+    reason = "CANARY_STABLE_SHADOW_TARGET_MET";
+  } else if (policyCandidateReadyForShadow && !shadowFutureEffectiveMeetsTarget) {
+    status = "WARN";
+    reason = "CANARY_STABLE_SHADOW_UNDER_TARGET";
   }
   return {
     status,
@@ -440,6 +455,11 @@ function buildShadowCanaryGate(summary = {}) {
     warn_threshold: warnThreshold,
     enough_samples: enoughSamples,
     promotion_blocked: block,
+    policy_candidate_id: norm(candidate.policy_candidate_id),
+    policy_candidate_ready_for_shadow: policyCandidateReadyForShadow,
+    shadow_future_effective_meets_target: shadowFutureEffectiveMeetsTarget,
+    shadow_raw_retained_meets_target: shadowRawRetainedMeetsTarget,
+    runtime_blocked_historical_debt_sample_n: runtimeBlockedHistoricalDebtSampleN,
   };
 }
 
@@ -453,6 +473,8 @@ function renderShadowCanaryGateMarkdown(payload = {}) {
     `- exchange: ${payload.exchange || "ALL"}`,
     `- gate_status: ${gate.status || "N/A"} / reason: ${gate.reason || "N/A"}`,
     `- promotion_blocked: ${gate.promotion_blocked === true ? "YES" : "NO"} / enough_samples: ${gate.enough_samples === true ? "YES" : "NO"}`,
+    `- policy_candidate_ready_for_shadow: ${gate.policy_candidate_ready_for_shadow === true ? "YES" : "NO"} / future_effective_target_met: ${gate.shadow_future_effective_meets_target === true ? "YES" : "NO"} / raw_retained_target_met: ${gate.shadow_raw_retained_meets_target === true ? "YES" : "NO"}`,
+    `- runtime_blocked_historical_debt_sample_n: ${gate.runtime_blocked_historical_debt_sample_n != null ? gate.runtime_blocked_historical_debt_sample_n : "N/A"}`,
     `- compared_n: ${summary.compared_n != null ? summary.compared_n : "N/A"} / disagreement_rate: ${summary.disagreement_rate != null ? Number(summary.disagreement_rate).toFixed(4) : "N/A"}`,
     `- thresholds: warn ${gate.warn_threshold != null ? gate.warn_threshold : "N/A"} / rollback ${gate.rollback_threshold != null ? gate.rollback_threshold : "N/A"} / min_samples ${gate.min_samples != null ? gate.min_samples : "N/A"}`,
   ].join("\n") + "\n";
@@ -469,6 +491,7 @@ function renderMlServingStateMarkdown(payload = {}) {
     `- status: ${state.status || "N/A"} / reason: ${state.reason || "N/A"}`,
     `- serving_mode: ${state.serving_mode || "N/A"} / live_allowed: ${state.live_serving_allowed === true ? "YES" : "NO"} / block_new_entries: ${state.block_new_entries === true ? "YES" : "NO"}`,
     `- gate_status: ${state.gate_status || "N/A"} / gate_reason: ${state.gate_reason || "N/A"} / stale: ${state.stale === true ? "YES" : "NO"}`,
+    `- future_effective_target_met: ${state.shadow_future_effective_meets_target === true ? "YES" : "NO"} / raw_retained_target_met: ${state.shadow_raw_retained_meets_target === true ? "YES" : "NO"} / runtime_blocked_historical_debt_sample_n: ${state.runtime_blocked_historical_debt_sample_n != null ? state.runtime_blocked_historical_debt_sample_n : "N/A"}`,
     `- preferred_model_artifact_id: ${state.preferred_model_artifact_id || "N/A"}`,
     `- promotion_action: ${promotionAction.action || "N/A"} / rollback_triggered: ${promotionAction.rollback_triggered === true ? "YES" : "NO"} / target_artifact_id: ${promotionAction.target_artifact_id || "N/A"}`,
   ].join("\n") + "\n";
@@ -594,6 +617,7 @@ async function runShadowInferenceCanaryJob({
   const latestServingMd = path.join(OPS_DAILY_DIR, "ml_serving_state_latest.md");
   const executionServingContract = safeReadJson(path.join(OPS_DAILY_DIR, "best_self_evolution_execution_serving_contract_latest.json"));
   const mlModelContract = safeReadJson(path.join(OPS_DAILY_DIR, "best_self_evolution_ml_model_contract_latest.json"));
+  const policyCandidate = safeReadJson(path.join(OPS_DAILY_DIR, "v2_openclaw_policy_candidate_from_root_cause_latest.json"));
   const latestMtimeMs = statMtimeMs(latestJson);
   if (force !== true && Number.isFinite(latestMtimeMs) && (nowMeta.nowMs - latestMtimeMs) < minIntervalMs) {
     return {
@@ -630,7 +654,7 @@ async function runShadowInferenceCanaryJob({
       normalized: normalizeShadowInference(row),
     })),
   };
-  payload.gate = buildShadowCanaryGate(payload.summary);
+  payload.gate = buildShadowCanaryGate(payload.summary, { policyCandidate });
   payload.serving_state = buildMlServingState({
     exchange: exchangeUpper,
     shadowCanaryGate: {

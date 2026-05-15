@@ -319,7 +319,11 @@ const {
 const { sendTradeExecutionAlert, sendTradeExecutionFailureAlert } = require("../services/tradeExecutionAlert");
 const { sendSignalReceivedAlert, sendSignalProgressAlert, sendSignalDroppedAlert } = require("../services/signalLifecycleAlert");
 const { sendAlert } = require("../utils/alerts");
-const { runV2DiscoveryCanaryServerSignalHandoff } = require("../v2/discoveryCanaryServerSignalBridge");
+const {
+  runV2DiscoveryCanaryServerSignalHandoff,
+  collectMarketDataQuality,
+  buildDiscoveryCanaryLiveRequestFromIntent,
+} = require("../v2/discoveryCanaryServerSignalBridge");
 const { generateV2EntrySignals } = require("../v2/serverEntrySignalGenerator");
 const {
   getV2ServerEntryCooldownState,
@@ -2641,23 +2645,6 @@ async function repairActivePositionExitRuntimeState({
     const ageMs = Date.now() - recentRefMs;
     if (ageMs >= 0 && ageMs < RECENT_ENTRY_GRACE_MS) {
       try {
-        v2GeneratorSummary = {
-          skipped: v2GenResult ? v2GenResult.skipped === true : true,
-          skip_reason: v2GenResult ? (v2GenResult.skipReason || "GENERATOR_NULL") : "GENERATOR_NULL",
-          signals_n: v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals.length : 0,
-          diagnostics: v2GenResult && v2GenResult.diagnostics
-            ? {
-              market_state: v2GenResult.diagnostics.market_state,
-              htf_bias: v2GenResult.diagnostics.htf_bias,
-              long_opportunity: v2GenResult.diagnostics.long_opportunity,
-              short_opportunity: v2GenResult.diagnostics.short_opportunity,
-              trigger_type_long: v2GenResult.diagnostics.trigger_type_long,
-              trigger_type_short: v2GenResult.diagnostics.trigger_type_short,
-              long_can_fire: v2GenResult.diagnostics.long_can_fire,
-              short_can_fire: v2GenResult.diagnostics.short_can_fire,
-            }
-            : null,
-        };
         console.log(JSON.stringify({
           event: "active_position_exit_runtime_repair_grace_skip",
           ts: new Date().toISOString(),
@@ -6057,6 +6044,76 @@ function buildV2DiscoveryHandoffFeaturePatch(handoff = null) {
   };
 }
 
+function buildV2ServerEntryHandoffLogPayload({
+  exchange = null,
+  symbol = null,
+  tf = null,
+  runId = null,
+  signalId = null,
+  signal = null,
+  routedDecisionReason = null,
+  builtReason = null,
+  endpointResultReason = null,
+  sizingNotApprovedReason = null,
+  ledgerPersistenceReason = null,
+  handoff = null,
+} = {}) {
+  const routedDecisionDetail = handoff && handoff.routedDecision && handoff.routedDecision.detail
+    ? handoff.routedDecision.detail
+    : null;
+  const criteriaBlockers = routedDecisionDetail && Array.isArray(routedDecisionDetail.blockers)
+    ? routedDecisionDetail.blockers.slice(0, 20)
+    : null;
+  const criteriaSignalScore = routedDecisionDetail && Number.isFinite(Number(routedDecisionDetail.signal_score))
+    ? Number(routedDecisionDetail.signal_score)
+    : null;
+  const criteriaThresholds = routedDecisionDetail && routedDecisionDetail.thresholds
+    ? routedDecisionDetail.thresholds
+    : null;
+  const builtBundle = handoff && handoff.body && handoff.body.bundle
+    ? handoff.body.bundle
+    : (handoff && handoff.request && handoff.request.body && handoff.request.body.bundle
+      ? handoff.request.body.bundle
+      : null);
+  const bundleSignalCriteria = builtBundle && builtBundle.canonical_evidence_summary
+    && builtBundle.canonical_evidence_summary.signal_criteria
+    ? builtBundle.canonical_evidence_summary.signal_criteria
+    : null;
+  const bundleCriteriaBlockers = bundleSignalCriteria && Array.isArray(bundleSignalCriteria.blockers)
+    ? bundleSignalCriteria.blockers.slice(0, 20)
+    : null;
+  const bundleCriteriaScore = bundleSignalCriteria && Number.isFinite(Number(bundleSignalCriteria.signal_score))
+    ? Number(bundleSignalCriteria.signal_score)
+    : null;
+  const detail = resolveV2DiscoveryHandoffDetail(handoff);
+  return {
+    event: "v2_server_entry_signal_handoff_dispatched",
+    ts: new Date().toISOString(),
+    exchange,
+    symbol,
+    tf,
+    run_id: runId,
+    signal_id: signalId,
+    direction: signal && signal.event,
+    entry_grade: signal && signal.entry_grade,
+    handoff_ok: handoff && handoff.ok === true,
+    handoff_reason: handoff && handoff.reason ? String(handoff.reason) : null,
+    handoff_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
+    routed_decision_reason: routedDecisionReason || builtReason,
+    endpoint_result_reason: endpointResultReason,
+    sizing_not_approved_reason: sizingNotApprovedReason,
+    ledger_persistence_reason: ledgerPersistenceReason,
+    criteria_blockers: criteriaBlockers || bundleCriteriaBlockers,
+    criteria_signal_score: criteriaSignalScore != null ? criteriaSignalScore : bundleCriteriaScore,
+    criteria_thresholds: criteriaThresholds,
+    risk_governor_reason: detail.risk_governor_reason,
+    risk_governor_blockers: detail.risk_governor_blockers,
+    risk_governor_primary_code: detail.risk_governor_primary_code,
+    risk_governor_primary_blocker: detail.risk_governor_primary_blocker,
+    handoff_keys: handoff ? Object.keys(handoff) : null,
+  };
+}
+
 function resolveV2DiscoveryPostFillSideEffect(handoff = null) {
   const endpointResult = handoff && handoff.endpoint_result && typeof handoff.endpoint_result === "object"
     ? handoff.endpoint_result
@@ -6201,6 +6258,35 @@ function resolveLifecycleExecutionMode(liveCfg = null) {
   return "PAPER";
 }
 
+function logV2ServerEntrySignalHandoffFailure({
+  exchange = null,
+  symbol = null,
+  tf = null,
+  runId = null,
+  signalId = null,
+  signalDocId = null,
+  event = null,
+  entryGrade = null,
+  error = null,
+} = {}) {
+  const err = error instanceof Error ? error : null;
+  console.warn("[V2_SERVER_ENTRY_SIGNAL_HANDOFF_FAIL]", {
+    exchange,
+    symbol,
+    tf,
+    run_id: runId || null,
+    signal_id: signalId || null,
+    signal_doc_id: signalDocId || null,
+    direction: event || null,
+    entry_grade: entryGrade || null,
+    error_name: err && err.name ? String(err.name) : (error && error.name ? String(error.name) : "Error"),
+    error_message: err && err.message
+      ? String(err.message)
+      : (error && error.message ? String(error.message) : String(error)),
+    stack: err && err.stack ? String(err.stack).slice(0, 4000) : null,
+  });
+}
+
 async function ensureV2DirectHandoffSignal({
   exchange = null,
   symbol = null,
@@ -6280,6 +6366,221 @@ async function ensureV2DirectHandoffSignal({
     receivedAlertSent,
     savedSignal,
   };
+}
+
+function resolveV2ServerNativeSignalDirection({ signal = null, features = null } = {}) {
+  const sig = signal && typeof signal === "object" ? signal : {};
+  const bag = features && typeof features === "object" ? features : {};
+  const event = String(sig.event || bag.signal_family || "").trim().toUpperCase();
+  if (event === "LONG" || event === "SHORT") return event;
+  const side = String(sig.side || bag.side || "").trim().toUpperCase();
+  if (side === "BUY") return "LONG";
+  if (side === "SELL") return "SHORT";
+  return null;
+}
+
+function parseV2ServerNativePreflightBlockerSource(source) {
+  if (Array.isArray(source)) return source;
+  if (typeof source === "string") {
+    return source.split(",").map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function resolveV2ServerNativePreflightSignalCriteria(built = null) {
+  const row = built && typeof built === "object" ? built : null;
+  const candidates = [
+    row && row.request && row.request.body && row.request.body.bundle
+      && row.request.body.bundle.canonical_evidence_summary
+      && row.request.body.bundle.canonical_evidence_summary.signal_criteria,
+    row && row.bundle && row.bundle.canonical_evidence_summary
+      && row.bundle.canonical_evidence_summary.signal_criteria,
+    row && row.routedDecision && row.routedDecision.signal_criteria,
+    row && row.request && row.request.routedDecision && row.request.routedDecision.signal_criteria,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object") return candidate;
+  }
+  return null;
+}
+
+function resolveV2ServerNativePreflightReason({ built = null, blockers = [] } = {}) {
+  const row = built && typeof built === "object" ? built : null;
+  const request = row && row.request && typeof row.request === "object" ? row.request : null;
+  const directRoutedDecision = row && row.routedDecision && typeof row.routedDecision === "object"
+    ? row.routedDecision
+    : null;
+  const requestRoutedDecision = request && request.routedDecision && typeof request.routedDecision === "object"
+    ? request.routedDecision
+    : null;
+  const reasonCandidates = [
+    directRoutedDecision && directRoutedDecision.reason,
+    requestRoutedDecision && requestRoutedDecision.reason,
+    request && request.reason,
+    row && row.reason,
+  ];
+  for (const candidate of reasonCandidates) {
+    const token = String(candidate || "").trim().toUpperCase();
+    if (token) return token;
+  }
+  if (Array.isArray(blockers) && blockers.length > 0) {
+    const fallback = String(blockers[0] || "").trim().toUpperCase();
+    if (fallback) return fallback;
+  }
+  return "V2_SERVER_NATIVE_PREFLIGHT_BLOCKED";
+}
+
+function resolveV2ServerNativePreflightNestedReasonKey(reason = null) {
+  const token = String(reason || "").trim().toUpperCase();
+  if (!token) return null;
+  if (token.startsWith("V2_DISCOVERY_CANARY_REALIZED_")) return `BRIDGE:${token}`;
+  if (token.startsWith("V2_DISCOVERY_BRIDGE_MARKET_DATA_QUALITY_")) return `MARKET_DATA_QUALITY:${token}`;
+  if (token === "SIGNAL_CRITERIA_BLOCKED" || token === "SIGNAL_CRITERIA_REQUIRED") return `ROUTER:${token}`;
+  if (token.startsWith("V2_PRODUCTION_ENTRY_LIVE_ROUTER_")) return `ROUTER:${token}`;
+  if (token.startsWith("V2_PRODUCTION_ENTRY_LIVE_")) return `ENDPOINT:${token}`;
+  return `BRIDGE:${token}`;
+}
+
+function resolveV2ServerNativePreflightSignalScore(preflight = null) {
+  const raw = preflight && preflight.signalCriteria && preflight.signalCriteria.signal_score;
+  if (raw == null || raw === "") return null;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+async function evaluateV2ServerNativeSignalPreflight({
+  env = process.env,
+  db = null,
+  liveCfg = null,
+  exchangeInfo = null,
+  discoveryState = null,
+  exchange = null,
+  symbol = null,
+  tf = null,
+  signal = null,
+  features = null,
+  qtyFraction = null,
+  signalBarCloseUtc = null,
+  signalBarCloseMs = null,
+  marketDataQuality = null,
+  referencePrice = null,
+  nowMs = null,
+} = {}) {
+  const quality = marketDataQuality && typeof marketDataQuality === "object" ? marketDataQuality : null;
+  if (!quality || quality.ok !== true) {
+    return Object.freeze({
+      ok: true,
+      preflight_skipped: true,
+      reason: "PRECHECK_SKIPPED_MARKET_DATA_QUALITY_UNAVAILABLE",
+      blockers: Object.freeze([]),
+      signalCriteria: null,
+      intentRow: null,
+      signalSide: resolveV2ServerNativeSignalDirection({ signal, features }),
+    });
+  }
+
+  const signalSide = resolveV2ServerNativeSignalDirection({ signal, features });
+  if (signalSide !== "LONG" && signalSide !== "SHORT") {
+    return Object.freeze({
+      ok: true,
+      preflight_skipped: true,
+      reason: "PRECHECK_SKIPPED_SIGNAL_SIDE_UNKNOWN",
+      blockers: Object.freeze([]),
+      signalCriteria: null,
+      intentRow: null,
+      signalSide,
+    });
+  }
+
+  const sig = signal && typeof signal === "object" ? signal : {};
+  const bag = features && typeof features === "object" ? features : {};
+  const intentRow = buildV2DiscoverySignalFanInIntentRow({
+    exchange,
+    symbol,
+    tf,
+    signal: sig,
+    features: bag,
+    qtyFraction,
+    intentExecutionMode: "LIVE",
+    signalBarCloseUtcForIntent: signalBarCloseUtc,
+    signalBarCloseMsForIntent: signalBarCloseMs,
+    intentSignalBarCloseUtc: signalBarCloseUtc,
+    intentSignalBarCloseMs: signalBarCloseMs,
+    execBarCloseUtcForIntent: signalBarCloseUtc,
+    execBarCloseMsForIntent: signalBarCloseMs,
+    signalDocId: sig.signal_doc_id || null,
+    signalPrice: Number.isFinite(Number(sig.signal_price)) ? Number(sig.signal_price) : null,
+  });
+  const resolvedNowMs = Number.isFinite(Number(nowMs))
+    ? Number(nowMs)
+    : resolveDiscoveryHandoffNowMs({
+      execBarCloseMs: signalBarCloseMs,
+      signalBarCloseMs,
+    });
+  const built = await buildDiscoveryCanaryLiveRequestFromIntent({
+    env,
+    db,
+    intentRow,
+    liveCfg,
+    exchangeInfo,
+    discoveryState,
+    referencePrice: Number.isFinite(Number(referencePrice))
+      ? Number(referencePrice)
+      : (Number.isFinite(Number(sig.signal_price)) ? Number(sig.signal_price) : null),
+    nowMs: resolvedNowMs,
+    marketDataQuality: quality,
+  });
+  const signalCriteria = resolveV2ServerNativePreflightSignalCriteria(built);
+  const blockers = Object.freeze(collectReasonBlockers(
+    parseV2ServerNativePreflightBlockerSource(built && built.blockers),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.realized_performance_guard && built.realized_performance_guard.blockers
+    ),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.market_data_quality && built.market_data_quality.blockers
+    ),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.routedDecision && built.routedDecision.blockers
+    ),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.routedDecision && built.routedDecision.signal_criteria_gate
+      && built.routedDecision.signal_criteria_gate.blockers
+    ),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.routedDecision && built.routedDecision.market_data_quality_gate
+      && built.routedDecision.market_data_quality_gate.blockers
+    ),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.routedDecision && built.routedDecision.detail
+    ),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.request && built.request.routedDecision
+      && built.request.routedDecision.signal_criteria_gate
+      && built.request.routedDecision.signal_criteria_gate.blockers
+    ),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.request && built.request.routedDecision
+      && built.request.routedDecision.market_data_quality_gate
+      && built.request.routedDecision.market_data_quality_gate.blockers
+    ),
+    parseV2ServerNativePreflightBlockerSource(
+      built && built.request && built.request.routedDecision && built.request.routedDecision.detail
+    ),
+    parseV2ServerNativePreflightBlockerSource(signalCriteria && signalCriteria.blockers)
+  ));
+  const ok = built && built.ok === true;
+  return Object.freeze({
+    ok,
+    preflight_skipped: false,
+    reason: ok
+      ? String((built && built.reason) || "V2_DISCOVERY_BRIDGE_REQUEST_READY").trim().toUpperCase()
+      : resolveV2ServerNativePreflightReason({ built, blockers }),
+    blockers,
+    signalCriteria,
+    intentRow,
+    signalSide,
+    built,
+  });
 }
 
 function buildV2DiscoverySignalFanInIntentRow({
@@ -7187,8 +7488,8 @@ async function maybeWriteV2ShadowEntryBootstrap({
     });
   } catch (error) {
     console.warn("[V2_SHADOW_ENTRY_BOOTSTRAP_FAIL]", {
-      exchange: upper(exchange),
-      symbol: upper(symbol),
+      exchange: String(exchange || "").trim().toUpperCase(),
+      symbol: String(symbol || "").trim().toUpperCase(),
       reason: error && error.message ? error.message : String(error),
     });
     return { ok: false, written: false, skipped: false, reason: error && error.message ? error.message : String(error) };
@@ -13212,6 +13513,7 @@ async function runPaperBinanceForBar({
   backfillExitOnly,
   backfillAllowEntry,
 } = {}) {
+  const db = getFirestore();
   const signalTf = String(tf || defaultExecTfFromEnv() || "15m");
   const execTfFinal = String(execTf || signalTf);
   const signalTfMs = tfToMs(signalTf);
@@ -13364,6 +13666,12 @@ async function runPaperBinanceForBar({
         v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
       };
       await patchIntent(it.intent_id, { features_json: it.features_json }).catch(() => {});
+      const legacyExecBarCloseMs = Number.isFinite(Number(it.scheduled_exec_bar_close_time_utc_ms))
+        ? Number(it.scheduled_exec_bar_close_time_utc_ms)
+        : Number(execBarCloseMs);
+      const legacyIntentSignalBarCloseMs = Number.isFinite(Number(it.signal_bar_close_time_utc_ms))
+        ? Number(it.signal_bar_close_time_utc_ms)
+        : legacyExecBarCloseMs;
       const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
         env: process.env,
         intentRow: it,
@@ -13372,8 +13680,8 @@ async function runPaperBinanceForBar({
         requestId: it.request_id || it.intent_id || it.signal_id || (it.features_json && it.features_json.signal_id),
         nowMs: resolveDiscoveryHandoffNowMs({
           intentRow: it,
-          execBarCloseMs: execBarCloseMsForIntent,
-          signalBarCloseMs: intentSignalBarCloseMs,
+          execBarCloseMs: legacyExecBarCloseMs,
+          signalBarCloseMs: legacyIntentSignalBarCloseMs,
         }),
       }).catch((error) => ({
         ok: false,
@@ -13906,7 +14214,7 @@ async function runPaperBinanceForBar({
           tf: signalTf,
           intent,
           event: it.event,
-          side: actionSide,
+          side: it.side,
           features: it.features_json,
           nowMs: Number(execBarCloseMs),
           manualProfileMode: liveCfg && liveCfg.exitProfileMode,
@@ -14106,6 +14414,10 @@ async function runPaperBinanceForBar({
     }
 
     const newState = newSize <= 0 ? "FLAT" : "ACTIVE";
+    const qtyBaseDelta = Number.isFinite(execQtyBase) && execQtyBase > 0
+      ? Number(execQtyBase)
+      : (Number.isFinite(notionalKrw) && Number.isFinite(fillPrice) && fillPrice > 0 ? (notionalKrw / fillPrice) : null);
+    const nextPosSide = newState === "ACTIVE" ? "LONG" : null;
 
     notionalKrw = useBudget ? (riskBudget.maxKrw * qtyFraction) : notionalKrw;
     if (!Number.isFinite(notionalKrw) || notionalKrw <= 0) {
@@ -14661,14 +14973,14 @@ async function runPaperBinanceForBar({
   // ✅ fill 이후 포지션 재조회
   pos = await getPositionReadView({ exchange, symbol });
   posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : posMeta;
-  posSide = normalizePositionSide(
-    pos.position_side ||
-    pos.side ||
-    (pos.meta && (pos.meta.position_side || pos.meta.external_side || pos.meta.external_position_side))
-  ) || posSide;
-  posQtyBase = resolvePosQtyBase(pos) || posQtyBase;
-  posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : posMeta;
-  posQtyBase = resolvePosQtyBase(pos);
+    const refreshedPosSide = normalizePositionSide(
+      pos.position_side ||
+      pos.side ||
+      (pos.meta && (pos.meta.position_side || pos.meta.external_side || pos.meta.external_position_side))
+    ) || "LONG";
+    posQtyBase = resolvePosQtyBase(pos) || posQtyBase;
+    posMeta = (pos && typeof pos.meta === "object") ? { ...pos.meta } : posMeta;
+    posQtyBase = resolvePosQtyBase(pos);
 
   // 3) (B) signals 생성/수집 → 다음 봉 intent 예약
   const nextExecMs = Number.isFinite(execTfMs) ? addMs(barCloseMs, execTfMs) : addMs(barCloseMs, 60 * 60 * 1000);
@@ -14684,8 +14996,10 @@ async function runPaperBinanceForBar({
   let directHandoffGeneratedN = 0;
   let directHandoffExecutedN = 0;
   let directHandoffBlockedN = 0;
+  let directHandoffPreflightBlockedN = 0;
   const directHandoffReasonCounts = {};
   const directHandoffNestedReasonCounts = {};
+  const directHandoffPreflightReasonCounts = {};
   let v2GeneratorSummary = null;
   const nativeInitialSignals = Number.isFinite(signalBarCloseMs)
     ? await loadServerNativeInitialSignals({
@@ -14766,17 +15080,21 @@ async function runPaperBinanceForBar({
               short_can_fire: v2GenResult.diagnostics.short_can_fire,
               long_decision_path: v2GenResult.diagnostics.long_decision_path,
               long_decision_reason: v2GenResult.diagnostics.long_decision_reason,
+              long_decision_detail: v2GenResult.diagnostics.long_decision_detail || null,
               short_decision_path: v2GenResult.diagnostics.short_decision_path,
               short_decision_reason: v2GenResult.diagnostics.short_decision_reason,
+              short_decision_detail: v2GenResult.diagnostics.short_decision_detail || null,
               trigger_breakout_long: v2GenResult.diagnostics.trigger_breakout_long,
               trigger_reclaim_long: v2GenResult.diagnostics.trigger_reclaim_long,
               trigger_continuation_long: v2GenResult.diagnostics.trigger_continuation_long,
+              trigger_continuation_long_relaxed: v2GenResult.diagnostics.trigger_continuation_long_relaxed,
               trigger_breakdown_short: v2GenResult.diagnostics.trigger_breakdown_short,
               trigger_loss_short: v2GenResult.diagnostics.trigger_loss_short,
               trigger_continuation_short: v2GenResult.diagnostics.trigger_continuation_short,
               pullback_depth_ok_long: v2GenResult.diagnostics.pullback_depth_ok_long,
               pullback_depth_ok_short: v2GenResult.diagnostics.pullback_depth_ok_short,
               continuation_bar_bias_long: v2GenResult.diagnostics.continuation_bar_bias_long,
+              continuation_bar_bias_long_relaxed: v2GenResult.diagnostics.continuation_bar_bias_long_relaxed,
               continuation_bar_bias_short: v2GenResult.diagnostics.continuation_bar_bias_short,
               continuation_pressure_long: v2GenResult.diagnostics.continuation_pressure_long,
               continuation_pressure_short: v2GenResult.diagnostics.continuation_pressure_short,
@@ -14794,8 +15112,12 @@ async function runPaperBinanceForBar({
       } catch (_) { /* observability only */ }
 
       const v2GenSignals = v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [];
+      let v2GeneratorMarketPack = null;
+      let v2GeneratorPreflightBlockedN = 0;
+      const v2GeneratorPreflightBlockedReasonCounts = {};
       for (const sig of v2GenSignals) {
-        directHandoffGeneratedN += 1;
+        let handoffFailureSignalId = null;
+        let handoffFailureSignalDocId = null;
         try {
           const sigBarMs = Number(sig.bar_close_time_utc_ms);
           const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
@@ -14820,6 +15142,48 @@ async function runPaperBinanceForBar({
             signal_price: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
             features,
           };
+          handoffFailureSignalId = v2SignalId;
+          if (v2GeneratorMarketPack === null) {
+            try {
+              v2GeneratorMarketPack = await collectMarketDataQuality({
+                env: process.env,
+                db,
+                symbol,
+                candleCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : signalBarCloseMs,
+                nowMs: resolveDiscoveryHandoffNowMs({
+                  execBarCloseMs: sigBarMs,
+                  signalBarCloseMs: sigBarMs,
+                }),
+              });
+            } catch (_) {
+              v2GeneratorMarketPack = { quality: null };
+            }
+          }
+          const preflight = await evaluateV2ServerNativeSignalPreflight({
+            env: process.env,
+            db,
+            liveCfg,
+            exchange,
+            symbol,
+            tf: signalTf,
+            signal: handoffSignal,
+            features,
+            qtyFraction: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+            signalBarCloseUtc: sigBarUtc,
+            signalBarCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            marketDataQuality: v2GeneratorMarketPack && v2GeneratorMarketPack.quality,
+            referencePrice: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
+            nowMs: resolveDiscoveryHandoffNowMs({
+              execBarCloseMs: sigBarMs,
+              signalBarCloseMs: sigBarMs,
+            }),
+          });
+          if (preflight && preflight.preflight_skipped !== true) {
+            features.v2_server_native_preflight_checked = true;
+            features.v2_server_native_preflight_reason = preflight.reason || null;
+            features.v2_server_native_preflight_blockers = Array.isArray(preflight.blockers) ? preflight.blockers.slice() : [];
+            features.v2_server_native_preflight_signal_score = resolveV2ServerNativePreflightSignalScore(preflight);
+          }
           const persistedSignal = await ensureV2DirectHandoffSignal({
             exchange,
             symbol,
@@ -14834,6 +15198,68 @@ async function runPaperBinanceForBar({
           });
           if (persistedSignal.signalId) handoffSignal.signal_id = persistedSignal.signalId;
           if (persistedSignal.signalDocId) handoffSignal.signal_doc_id = persistedSignal.signalDocId;
+          handoffFailureSignalId = handoffSignal.signal_id || handoffFailureSignalId;
+          handoffFailureSignalDocId = handoffSignal.signal_doc_id || null;
+
+          if (preflight && preflight.ok === false) {
+            directHandoffBlockedN += 1;
+            directHandoffPreflightBlockedN += 1;
+            v2GeneratorPreflightBlockedN += 1;
+            const preflightReason = String(preflight.reason || "V2_SERVER_NATIVE_PREFLIGHT_BLOCKED").trim().toUpperCase();
+            directHandoffReasonCounts[preflightReason] = (directHandoffReasonCounts[preflightReason] || 0) + 1;
+            const preflightNestedReasonKey = resolveV2ServerNativePreflightNestedReasonKey(preflightReason);
+            if (preflightNestedReasonKey) {
+              directHandoffNestedReasonCounts[preflightNestedReasonKey] = Number(
+                directHandoffNestedReasonCounts[preflightNestedReasonKey] || 0
+              ) + 1;
+            }
+            for (const blocker of Array.isArray(preflight.blockers) ? preflight.blockers : []) {
+              const blockerCode = String(blocker).trim().toUpperCase();
+              const key = `ROUTER_BLOCKER:${blockerCode}`;
+              directHandoffNestedReasonCounts[key] = Number(directHandoffNestedReasonCounts[key] || 0) + 1;
+              v2GeneratorPreflightBlockedReasonCounts[blockerCode] = Number(
+                v2GeneratorPreflightBlockedReasonCounts[blockerCode] || 0
+              ) + 1;
+              directHandoffPreflightReasonCounts[blockerCode] = Number(
+                directHandoffPreflightReasonCounts[blockerCode] || 0
+              ) + 1;
+            }
+            sendSignalDroppedAlert({
+              exchange,
+              symbol,
+              tf: signalTf,
+              event: sig.event,
+              side: sig.side,
+              qtyPct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+              reason: preflightReason,
+              dropReasonCode: preflightReason,
+              signalId: handoffSignal.signal_id || null,
+              executionMode: lifecycleExecutionMode,
+              source: "SERVER",
+              authoritative: true,
+            }).catch((err) => {
+              console.warn("[V2_DIRECT_HANDOFF_SIGNAL_DROPPED_ALERT_FAIL]", err && err.message ? err.message : String(err));
+            });
+            try {
+              console.log(JSON.stringify({
+                event: "v2_server_entry_signal_preflight_blocked",
+                ts: new Date().toISOString(),
+                exchange,
+                symbol,
+                tf: signalTf,
+                run_id: runId,
+                signal_id: handoffSignal.signal_id || v2SignalId,
+                direction: sig.event,
+                entry_grade: sig.entry_grade,
+                reason: preflightReason,
+                criteria_blockers: preflight.blockers,
+                criteria_signal_score: resolveV2ServerNativePreflightSignalScore(preflight),
+              }));
+            } catch (_) { /* observability only */ }
+            continue;
+          }
+
+          directHandoffGeneratedN += 1;
 
           const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
             exchange,
@@ -14858,6 +15284,7 @@ async function runPaperBinanceForBar({
             env: process.env,
             intentRow: handoffIntentRow,
             liveCfg,
+            marketDataQuality: v2GeneratorMarketPack && v2GeneratorMarketPack.quality,
             referencePrice: Number.isFinite(Number(sig.price)) ? Number(sig.price)
               : Number(bar && (bar.close ?? bar.c)),
             requestId: handoffIntentRow.request_id,
@@ -14964,53 +15391,38 @@ async function runPaperBinanceForBar({
             const ledgerPersistenceReason = handoff && handoff.ledger_persistence
               && handoff.ledger_persistence.reason
               ? String(handoff.ledger_persistence.reason) : null;
-            // Drill into the actual signalCriteria/strategy-filter
-            // sub-blockers when the OpenClaw decision validation gate
-            // rejects (handoff.reason = ROUTER_NOT_EXECUTABLE,
-            // routedDecision.reason = SIGNAL_CRITERIA_BLOCKED, etc.).
-            const routedDecisionDetail = handoff && handoff.routedDecision && handoff.routedDecision.detail
-              ? handoff.routedDecision.detail : null;
-            const criteriaBlockers = routedDecisionDetail && Array.isArray(routedDecisionDetail.blockers)
-              ? routedDecisionDetail.blockers.slice(0, 20) : null;
-            const criteriaSignalScore = routedDecisionDetail && Number.isFinite(Number(routedDecisionDetail.signal_score))
-              ? Number(routedDecisionDetail.signal_score) : null;
-            const criteriaThresholds = routedDecisionDetail && routedDecisionDetail.thresholds
-              ? routedDecisionDetail.thresholds : null;
-            const builtBundle = handoff && handoff.body && handoff.body.bundle
-              ? handoff.body.bundle : (handoff && handoff.request && handoff.request.body && handoff.request.body.bundle ? handoff.request.body.bundle : null);
-            const bundleSignalCriteria = builtBundle && builtBundle.canonical_evidence_summary
-              && builtBundle.canonical_evidence_summary.signal_criteria
-              ? builtBundle.canonical_evidence_summary.signal_criteria : null;
-            const bundleCriteriaBlockers = bundleSignalCriteria && Array.isArray(bundleSignalCriteria.blockers)
-              ? bundleSignalCriteria.blockers.slice(0, 20) : null;
-            const bundleCriteriaScore = bundleSignalCriteria && Number.isFinite(Number(bundleSignalCriteria.signal_score))
-              ? Number(bundleSignalCriteria.signal_score) : null;
-            console.log(JSON.stringify({
-              event: "v2_server_entry_signal_handoff_dispatched",
-              ts: new Date().toISOString(),
+            console.log(JSON.stringify(buildV2ServerEntryHandoffLogPayload({
               exchange,
               symbol,
               tf: signalTf,
-              run_id: runId,
-              signal_id: v2SignalId,
-              direction: sig.event,
-              entry_grade: sig.entry_grade,
-              handoff_ok: handoff && handoff.ok === true,
-              handoff_reason: handoff && handoff.reason ? String(handoff.reason) : null,
-              handoff_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
-              routed_decision_reason: routedDecisionReason || builtReason,
-              endpoint_result_reason: endpointResultReason,
-              sizing_not_approved_reason: sizingNotApprovedReason,
-              ledger_persistence_reason: ledgerPersistenceReason,
-              criteria_blockers: criteriaBlockers || bundleCriteriaBlockers,
-              criteria_signal_score: criteriaSignalScore != null ? criteriaSignalScore : bundleCriteriaScore,
-              criteria_thresholds: criteriaThresholds,
-              handoff_keys: handoff ? Object.keys(handoff) : null,
-            }));
+              runId,
+              signalId: v2SignalId,
+              signal: sig,
+              routedDecisionReason,
+              builtReason,
+              endpointResultReason,
+              sizingNotApprovedReason,
+              ledgerPersistenceReason,
+              handoff,
+            })));
           } catch (_) { /* observability only */ }
         } catch (handoffErr) {
-          console.warn("[V2_SERVER_ENTRY_SIGNAL_HANDOFF_FAIL]", handoffErr?.message || handoffErr);
+          logV2ServerEntrySignalHandoffFailure({
+            exchange,
+            symbol,
+            tf: signalTf,
+            runId,
+            signalId: handoffFailureSignalId,
+            signalDocId: handoffFailureSignalDocId,
+            event: sig.event,
+            entryGrade: sig.entry_grade,
+            error: handoffErr,
+          });
         }
+      }
+      if (v2GeneratorSummary && v2GeneratorPreflightBlockedN > 0) {
+        v2GeneratorSummary.preflight_blocked_n = v2GeneratorPreflightBlockedN;
+        v2GeneratorSummary.preflight_blocked_reason_counts = v2GeneratorPreflightBlockedReasonCounts;
       }
     }
   } catch (v2GenErr) {
@@ -16400,8 +16812,10 @@ async function runPaperBinanceForBar({
     direct_handoff_generated_n: directHandoffGeneratedN,
     direct_handoff_executed_n: directHandoffExecutedN,
     direct_handoff_blocked_n: directHandoffBlockedN,
+    direct_handoff_preflight_blocked_n: directHandoffPreflightBlockedN,
     direct_handoff_reason_counts: directHandoffReasonCounts,
     direct_handoff_nested_reason_counts: directHandoffNestedReasonCounts,
+    direct_handoff_preflight_reason_counts: directHandoffPreflightReasonCounts,
     v2_generator_summary: v2GeneratorSummary,
     signals_external_late: lateSignals,
     signal_drop_n: recordedSignalDrops.length,
@@ -16435,6 +16849,7 @@ async function runPaperFuturesForBar({
   backfillExitOnly,
   backfillAllowEntry,
 } = {}) {
+  const db = getFirestore();
   const signalTf = String(tf || defaultExecTfFromEnv() || "15m");
   const execTfFinal = String(execTf || signalTf);
   const signalTfMs = tfToMs(signalTf);
@@ -16633,6 +17048,12 @@ async function runPaperFuturesForBar({
         v2_discovery_entry_filter_authority: "PRODUCTION_ENTRY_ROUTE",
       };
       await patchIntent(it.intent_id, { features_json: it.features_json }).catch(() => {});
+      const legacyExecBarCloseMs = Number.isFinite(Number(it.scheduled_exec_bar_close_time_utc_ms))
+        ? Number(it.scheduled_exec_bar_close_time_utc_ms)
+        : Number(execBarCloseMs);
+      const legacyIntentSignalBarCloseMs = Number.isFinite(Number(it.signal_bar_close_time_utc_ms))
+        ? Number(it.signal_bar_close_time_utc_ms)
+        : legacyExecBarCloseMs;
       const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
         env: process.env,
         intentRow: it,
@@ -16641,8 +17062,8 @@ async function runPaperFuturesForBar({
         requestId: it.request_id || it.intent_id || it.signal_id || (it.features_json && it.features_json.signal_id),
         nowMs: resolveDiscoveryHandoffNowMs({
           intentRow: it,
-          execBarCloseMs: execBarCloseMsForIntent,
-          signalBarCloseMs: intentSignalBarCloseMs,
+          execBarCloseMs: legacyExecBarCloseMs,
+          signalBarCloseMs: legacyIntentSignalBarCloseMs,
         }),
       }).catch((error) => ({
         ok: false,
@@ -17473,6 +17894,12 @@ async function runPaperFuturesForBar({
           : liveQtyFraction;
       }
       if (isV2DiscoveryCanaryLegacyEntryWriteBlocked({ liveCfg, intent })) {
+        const legacyExecBarCloseMs = Number.isFinite(Number(it.scheduled_exec_bar_close_time_utc_ms))
+          ? Number(it.scheduled_exec_bar_close_time_utc_ms)
+          : Number(execBarCloseMs);
+        const legacyIntentSignalBarCloseMs = Number.isFinite(Number(it.signal_bar_close_time_utc_ms))
+          ? Number(it.signal_bar_close_time_utc_ms)
+          : legacyExecBarCloseMs;
         const handoff = await runV2DiscoveryCanaryServerSignalHandoff({
           env: process.env,
           intentRow: it,
@@ -17481,8 +17908,8 @@ async function runPaperFuturesForBar({
           requestId: it.request_id || it.intent_id || liveSignalId,
           nowMs: resolveDiscoveryHandoffNowMs({
             intentRow: it,
-            execBarCloseMs: execBarCloseMsForIntent,
-            signalBarCloseMs: intentSignalBarCloseMs,
+            execBarCloseMs: legacyExecBarCloseMs,
+            signalBarCloseMs: legacyIntentSignalBarCloseMs,
           }),
         }).catch((error) => ({
           ok: false,
@@ -18602,8 +19029,10 @@ async function runPaperFuturesForBar({
   let directHandoffGeneratedN = 0;
   let directHandoffExecutedN = 0;
   let directHandoffBlockedN = 0;
+  let directHandoffPreflightBlockedN = 0;
   const directHandoffReasonCounts = {};
   const directHandoffNestedReasonCounts = {};
+  const directHandoffPreflightReasonCounts = {};
   let v2GeneratorSummary = null;
   const nativeInitialSignals = Number.isFinite(signalBarCloseMs)
     ? await loadServerNativeInitialSignals({
@@ -18688,8 +19117,12 @@ async function runPaperFuturesForBar({
               short_can_fire: v2GenResult.diagnostics.short_can_fire,
               long_decision_path: v2GenResult.diagnostics.long_decision_path,
               long_decision_reason: v2GenResult.diagnostics.long_decision_reason,
+              long_decision_detail: v2GenResult.diagnostics.long_decision_detail || null,
+              long_trigger_detail: v2GenResult.diagnostics.long_trigger_detail || null,
               short_decision_path: v2GenResult.diagnostics.short_decision_path,
               short_decision_reason: v2GenResult.diagnostics.short_decision_reason,
+              short_decision_detail: v2GenResult.diagnostics.short_decision_detail || null,
+              short_trigger_detail: v2GenResult.diagnostics.short_trigger_detail || null,
             }
             : null,
         };
@@ -18715,17 +19148,21 @@ async function runPaperFuturesForBar({
               short_can_fire: v2GenResult.diagnostics.short_can_fire,
               long_decision_path: v2GenResult.diagnostics.long_decision_path,
               long_decision_reason: v2GenResult.diagnostics.long_decision_reason,
+              long_decision_detail: v2GenResult.diagnostics.long_decision_detail || null,
               short_decision_path: v2GenResult.diagnostics.short_decision_path,
               short_decision_reason: v2GenResult.diagnostics.short_decision_reason,
+              short_decision_detail: v2GenResult.diagnostics.short_decision_detail || null,
               trigger_breakout_long: v2GenResult.diagnostics.trigger_breakout_long,
               trigger_reclaim_long: v2GenResult.diagnostics.trigger_reclaim_long,
               trigger_continuation_long: v2GenResult.diagnostics.trigger_continuation_long,
+              trigger_continuation_long_relaxed: v2GenResult.diagnostics.trigger_continuation_long_relaxed,
               trigger_breakdown_short: v2GenResult.diagnostics.trigger_breakdown_short,
               trigger_loss_short: v2GenResult.diagnostics.trigger_loss_short,
               trigger_continuation_short: v2GenResult.diagnostics.trigger_continuation_short,
               pullback_depth_ok_long: v2GenResult.diagnostics.pullback_depth_ok_long,
               pullback_depth_ok_short: v2GenResult.diagnostics.pullback_depth_ok_short,
               continuation_bar_bias_long: v2GenResult.diagnostics.continuation_bar_bias_long,
+              continuation_bar_bias_long_relaxed: v2GenResult.diagnostics.continuation_bar_bias_long_relaxed,
               continuation_bar_bias_short: v2GenResult.diagnostics.continuation_bar_bias_short,
               continuation_pressure_long: v2GenResult.diagnostics.continuation_pressure_long,
               continuation_pressure_short: v2GenResult.diagnostics.continuation_pressure_short,
@@ -18744,8 +19181,12 @@ async function runPaperFuturesForBar({
 
       // Direct-batch handoff per generated signal.
       const v2GenSignals = v2GenResult && Array.isArray(v2GenResult.signals) ? v2GenResult.signals : [];
+      let v2GeneratorMarketPack = null;
+      let v2GeneratorPreflightBlockedN = 0;
+      const v2GeneratorPreflightBlockedReasonCounts = {};
       for (const sig of v2GenSignals) {
-        directHandoffGeneratedN += 1;
+        let handoffFailureSignalId = null;
+        let handoffFailureSignalDocId = null;
         try {
           const sigBarMs = Number(sig.bar_close_time_utc_ms);
           const sigBarUtc = Number.isFinite(sigBarMs) ? msToUtcZ(sigBarMs) : null;
@@ -18770,6 +19211,48 @@ async function runPaperFuturesForBar({
             signal_price: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
             features,
           };
+          handoffFailureSignalId = v2SignalId;
+          if (v2GeneratorMarketPack === null) {
+            try {
+              v2GeneratorMarketPack = await collectMarketDataQuality({
+                env: process.env,
+                db,
+                symbol,
+                candleCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : signalBarCloseMs,
+                nowMs: resolveDiscoveryHandoffNowMs({
+                  execBarCloseMs: sigBarMs,
+                  signalBarCloseMs: sigBarMs,
+                }),
+              });
+            } catch (_) {
+              v2GeneratorMarketPack = { quality: null };
+            }
+          }
+          const preflight = await evaluateV2ServerNativeSignalPreflight({
+            env: process.env,
+            db,
+            liveCfg,
+            exchange,
+            symbol,
+            tf: signalTf,
+            signal: handoffSignal,
+            features,
+            qtyFraction: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+            signalBarCloseUtc: sigBarUtc,
+            signalBarCloseMs: Number.isFinite(sigBarMs) ? sigBarMs : null,
+            marketDataQuality: v2GeneratorMarketPack && v2GeneratorMarketPack.quality,
+            referencePrice: Number.isFinite(Number(sig.price)) ? Number(sig.price) : null,
+            nowMs: resolveDiscoveryHandoffNowMs({
+              execBarCloseMs: sigBarMs,
+              signalBarCloseMs: sigBarMs,
+            }),
+          });
+          if (preflight && preflight.preflight_skipped !== true) {
+            features.v2_server_native_preflight_checked = true;
+            features.v2_server_native_preflight_reason = preflight.reason || null;
+            features.v2_server_native_preflight_blockers = Array.isArray(preflight.blockers) ? preflight.blockers.slice() : [];
+            features.v2_server_native_preflight_signal_score = resolveV2ServerNativePreflightSignalScore(preflight);
+          }
           const persistedSignal = await ensureV2DirectHandoffSignal({
             exchange,
             symbol,
@@ -18784,6 +19267,68 @@ async function runPaperFuturesForBar({
           });
           if (persistedSignal.signalId) handoffSignal.signal_id = persistedSignal.signalId;
           if (persistedSignal.signalDocId) handoffSignal.signal_doc_id = persistedSignal.signalDocId;
+          handoffFailureSignalId = handoffSignal.signal_id || handoffFailureSignalId;
+          handoffFailureSignalDocId = handoffSignal.signal_doc_id || null;
+
+          if (preflight && preflight.ok === false) {
+            directHandoffBlockedN += 1;
+            directHandoffPreflightBlockedN += 1;
+            v2GeneratorPreflightBlockedN += 1;
+            const preflightReason = String(preflight.reason || "V2_SERVER_NATIVE_PREFLIGHT_BLOCKED").trim().toUpperCase();
+            directHandoffReasonCounts[preflightReason] = (directHandoffReasonCounts[preflightReason] || 0) + 1;
+            const preflightNestedReasonKey = resolveV2ServerNativePreflightNestedReasonKey(preflightReason);
+            if (preflightNestedReasonKey) {
+              directHandoffNestedReasonCounts[preflightNestedReasonKey] = Number(
+                directHandoffNestedReasonCounts[preflightNestedReasonKey] || 0
+              ) + 1;
+            }
+            for (const blocker of Array.isArray(preflight.blockers) ? preflight.blockers : []) {
+              const blockerCode = String(blocker).trim().toUpperCase();
+              const key = `ROUTER_BLOCKER:${blockerCode}`;
+              directHandoffNestedReasonCounts[key] = Number(directHandoffNestedReasonCounts[key] || 0) + 1;
+              v2GeneratorPreflightBlockedReasonCounts[blockerCode] = Number(
+                v2GeneratorPreflightBlockedReasonCounts[blockerCode] || 0
+              ) + 1;
+              directHandoffPreflightReasonCounts[blockerCode] = Number(
+                directHandoffPreflightReasonCounts[blockerCode] || 0
+              ) + 1;
+            }
+            sendSignalDroppedAlert({
+              exchange,
+              symbol,
+              tf: signalTf,
+              event: sig.event,
+              side: sig.side,
+              qtyPct: Number(sig.qtyPct ?? sig.qty_pct ?? 1.0),
+              reason: preflightReason,
+              dropReasonCode: preflightReason,
+              signalId: handoffSignal.signal_id || null,
+              executionMode: lifecycleExecutionMode,
+              source: "SERVER",
+              authoritative: true,
+            }).catch((err) => {
+              console.warn("[V2_DIRECT_HANDOFF_SIGNAL_DROPPED_ALERT_FAIL]", err && err.message ? err.message : String(err));
+            });
+            try {
+              console.log(JSON.stringify({
+                event: "v2_server_entry_signal_preflight_blocked",
+                ts: new Date().toISOString(),
+                exchange,
+                symbol,
+                tf: signalTf,
+                run_id: runId,
+                signal_id: handoffSignal.signal_id || v2SignalId,
+                direction: sig.event,
+                entry_grade: sig.entry_grade,
+                reason: preflightReason,
+                criteria_blockers: preflight.blockers,
+                criteria_signal_score: resolveV2ServerNativePreflightSignalScore(preflight),
+              }));
+            } catch (_) { /* observability only */ }
+            continue;
+          }
+
+          directHandoffGeneratedN += 1;
 
           const handoffIntentRow = buildV2DiscoverySignalFanInIntentRow({
             exchange,
@@ -18808,6 +19353,7 @@ async function runPaperFuturesForBar({
             env: process.env,
             intentRow: handoffIntentRow,
             liveCfg,
+            marketDataQuality: v2GeneratorMarketPack && v2GeneratorMarketPack.quality,
             referencePrice: Number.isFinite(Number(sig.price)) ? Number(sig.price)
               : Number(bar && (bar.close ?? bar.c)),
             requestId: handoffIntentRow.request_id,
@@ -18914,53 +19460,38 @@ async function runPaperFuturesForBar({
             const ledgerPersistenceReason = handoff && handoff.ledger_persistence
               && handoff.ledger_persistence.reason
               ? String(handoff.ledger_persistence.reason) : null;
-            // Drill into the actual signalCriteria/strategy-filter
-            // sub-blockers when the OpenClaw decision validation gate
-            // rejects (handoff.reason = ROUTER_NOT_EXECUTABLE,
-            // routedDecision.reason = SIGNAL_CRITERIA_BLOCKED, etc.).
-            const routedDecisionDetail = handoff && handoff.routedDecision && handoff.routedDecision.detail
-              ? handoff.routedDecision.detail : null;
-            const criteriaBlockers = routedDecisionDetail && Array.isArray(routedDecisionDetail.blockers)
-              ? routedDecisionDetail.blockers.slice(0, 20) : null;
-            const criteriaSignalScore = routedDecisionDetail && Number.isFinite(Number(routedDecisionDetail.signal_score))
-              ? Number(routedDecisionDetail.signal_score) : null;
-            const criteriaThresholds = routedDecisionDetail && routedDecisionDetail.thresholds
-              ? routedDecisionDetail.thresholds : null;
-            const builtBundle = handoff && handoff.body && handoff.body.bundle
-              ? handoff.body.bundle : (handoff && handoff.request && handoff.request.body && handoff.request.body.bundle ? handoff.request.body.bundle : null);
-            const bundleSignalCriteria = builtBundle && builtBundle.canonical_evidence_summary
-              && builtBundle.canonical_evidence_summary.signal_criteria
-              ? builtBundle.canonical_evidence_summary.signal_criteria : null;
-            const bundleCriteriaBlockers = bundleSignalCriteria && Array.isArray(bundleSignalCriteria.blockers)
-              ? bundleSignalCriteria.blockers.slice(0, 20) : null;
-            const bundleCriteriaScore = bundleSignalCriteria && Number.isFinite(Number(bundleSignalCriteria.signal_score))
-              ? Number(bundleSignalCriteria.signal_score) : null;
-            console.log(JSON.stringify({
-              event: "v2_server_entry_signal_handoff_dispatched",
-              ts: new Date().toISOString(),
+            console.log(JSON.stringify(buildV2ServerEntryHandoffLogPayload({
               exchange,
               symbol,
               tf: signalTf,
-              run_id: runId,
-              signal_id: v2SignalId,
-              direction: sig.event,
-              entry_grade: sig.entry_grade,
-              handoff_ok: handoff && handoff.ok === true,
-              handoff_reason: handoff && handoff.reason ? String(handoff.reason) : null,
-              handoff_error: handoff && handoff.error_message ? String(handoff.error_message) : null,
-              routed_decision_reason: routedDecisionReason || builtReason,
-              endpoint_result_reason: endpointResultReason,
-              sizing_not_approved_reason: sizingNotApprovedReason,
-              ledger_persistence_reason: ledgerPersistenceReason,
-              criteria_blockers: criteriaBlockers || bundleCriteriaBlockers,
-              criteria_signal_score: criteriaSignalScore != null ? criteriaSignalScore : bundleCriteriaScore,
-              criteria_thresholds: criteriaThresholds,
-              handoff_keys: handoff ? Object.keys(handoff) : null,
-            }));
+              runId,
+              signalId: v2SignalId,
+              signal: sig,
+              routedDecisionReason,
+              builtReason,
+              endpointResultReason,
+              sizingNotApprovedReason,
+              ledgerPersistenceReason,
+              handoff,
+            })));
           } catch (_) { /* observability only */ }
         } catch (handoffErr) {
-          console.warn("[V2_SERVER_ENTRY_SIGNAL_HANDOFF_FAIL]", handoffErr?.message || handoffErr);
+          logV2ServerEntrySignalHandoffFailure({
+            exchange,
+            symbol,
+            tf: signalTf,
+            runId,
+            signalId: handoffFailureSignalId,
+            signalDocId: handoffFailureSignalDocId,
+            event: sig.event,
+            entryGrade: sig.entry_grade,
+            error: handoffErr,
+          });
         }
+      }
+      if (v2GeneratorSummary && v2GeneratorPreflightBlockedN > 0) {
+        v2GeneratorSummary.preflight_blocked_n = v2GeneratorPreflightBlockedN;
+        v2GeneratorSummary.preflight_blocked_reason_counts = v2GeneratorPreflightBlockedReasonCounts;
       }
     }
   } catch (v2GenErr) {
@@ -20694,8 +21225,10 @@ async function runPaperFuturesForBar({
     direct_handoff_generated_n: directHandoffGeneratedN,
     direct_handoff_executed_n: directHandoffExecutedN,
     direct_handoff_blocked_n: directHandoffBlockedN,
+    direct_handoff_preflight_blocked_n: directHandoffPreflightBlockedN,
     direct_handoff_reason_counts: directHandoffReasonCounts,
     direct_handoff_nested_reason_counts: directHandoffNestedReasonCounts,
+    direct_handoff_preflight_reason_counts: directHandoffPreflightReasonCounts,
     v2_generator_summary: v2GeneratorSummary,
     signals_external_late: lateSignals,
     signal_drop_n: recordedSignalDrops.length,
@@ -20873,6 +21406,9 @@ module.exports = {
     resolveInitialStopSource,
     sendRescueAddRepriceAlert,
     notifyNativeProtectionResult,
+    resolveV2ServerNativeSignalDirection,
+    resolveV2ServerNativePreflightSignalScore,
+    evaluateV2ServerNativeSignalPreflight,
     normalizeSignalStateToken,
     splitRuntimeList,
     evaluateV2DiscoveryCanaryLiveBridge,
@@ -20883,6 +21419,7 @@ module.exports = {
     shouldBypassLegacyEntryFiltersForV2Discovery,
     resolveV2DiscoveryHandoffDetail,
     buildV2DiscoveryHandoffFeaturePatch,
+    buildV2ServerEntryHandoffLogPayload,
     resolveV2DiscoveryPostFillSideEffect,
     classifyV2DiscoveryPostFillHandoff,
     deriveV2DiscoveryHandoffBlockReason,

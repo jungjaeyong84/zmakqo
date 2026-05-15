@@ -52,8 +52,31 @@ function run() {
   });
   assert.strictEqual(gate.status, "BLOCK");
   assert.strictEqual(gate.promotion_blocked, true);
+  const shadowReadyGate = __test.buildShadowCanaryGate({
+    ...canarySummary,
+    compared_n: 25,
+    disagreement_n: 0,
+    disagreement_rate: 0,
+    rollback_triggered: false,
+  }, {
+    policyCandidate: {
+      ok: true,
+      decision: "SHADOW_EVALUATE_ONLY",
+      policy_candidate_id: "pc_1",
+      readiness: {
+        raw_retained_meets_target: false,
+        future_effective_meets_target: true,
+        runtime_blocked_historical_debt_sample_n: 5,
+      },
+    },
+  });
+  assert.strictEqual(shadowReadyGate.status, "PASS");
+  assert.strictEqual(shadowReadyGate.reason, "CANARY_STABLE_SHADOW_TARGET_MET");
+  assert.strictEqual(shadowReadyGate.policy_candidate_ready_for_shadow, true);
+  assert.strictEqual(shadowReadyGate.shadow_future_effective_meets_target, true);
+  assert.strictEqual(shadowReadyGate.runtime_blocked_historical_debt_sample_n, 5);
   assert.ok(__test.renderShadowInferenceCanaryMarkdown({ generated_at_kst: "2026-04-11 12:00:00 KST", exchange: "BINANCEFUT", summary: canarySummary }).includes("Shadow Inference Canary"));
-  assert.ok(__test.renderShadowCanaryGateMarkdown({ generated_at_kst: "2026-04-11 12:00:00 KST", exchange: "BINANCEFUT", summary: canarySummary, gate }).includes("Shadow Canary Gate"));
+  assert.ok(__test.renderShadowCanaryGateMarkdown({ generated_at_kst: "2026-04-11 12:00:00 KST", exchange: "BINANCEFUT", summary: canarySummary, gate: shadowReadyGate }).includes("future_effective_target_met"));
   const rollbackAction = __test.buildShadowPromotionAction({
     gate,
     servingState: {

@@ -52,6 +52,12 @@ const { resolveExitStageAbsoluteContractQtyRatio } = require("../utils/exitQtyCo
 
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
 const FEBT_PHASE0_LATEST_PATH = path.join(OPS_DAILY_DIR, "febt_phase0_baseline_latest.json");
+const V3_PAPER_BOOTSTRAP_LATEST_PATH = path.join(OPS_DAILY_DIR, "v3_paper_bootstrap_latest.json");
+const V3_PAPER_LANE_LATEST_PATH = path.join(OPS_DAILY_DIR, "v3_paper_lane_latest.json");
+const V3_PAPER_ENTRY_LATEST_PATH = path.join(OPS_DAILY_DIR, "v3_paper_entry_ledger_latest.json");
+const V3_PAPER_EXIT_LATEST_PATH = path.join(OPS_DAILY_DIR, "v3_paper_exit_ledger_latest.json");
+const V3_PAPER_PERFORMANCE_LATEST_PATH = path.join(OPS_DAILY_DIR, "v3_paper_performance_latest.json");
+const V3_PAPER_CYCLE_LOG_PATH = path.resolve(__dirname, "../../ops/runtime/v3_paper_cycle.out.log");
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function pad2(n) {
@@ -121,6 +127,50 @@ function readJsonSafe(filePath, fallback = null) {
   } catch (_err) {
     return fallback;
   }
+}
+
+function readJsonLinesSafe(filePath, limit = 200) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    return raw
+      .split(/\r?\n/)
+      .map((line) => String(line || "").trim())
+      .filter(Boolean)
+      .slice(limit * -1)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch (_err) {
+          return null;
+        }
+      })
+      .filter((row) => row && typeof row === "object");
+  } catch (_err) {
+    return [];
+  }
+}
+
+function buildV3PaperDashboardView() {
+  const bootstrap = readJsonSafe(V3_PAPER_BOOTSTRAP_LATEST_PATH, null);
+  const lane = readJsonSafe(V3_PAPER_LANE_LATEST_PATH, null);
+  const entry = readJsonSafe(V3_PAPER_ENTRY_LATEST_PATH, null);
+  const exit = readJsonSafe(V3_PAPER_EXIT_LATEST_PATH, null);
+  const performance = readJsonSafe(V3_PAPER_PERFORMANCE_LATEST_PATH, null);
+  const cycleRows = readJsonLinesSafe(V3_PAPER_CYCLE_LOG_PATH, 100);
+  const recentSteps = cycleRows.filter((row) => row && row.step).slice(-8);
+  const latestCycle = [...cycleRows].reverse().find((row) => row && row.event === "V3_PAPER_CYCLE_DONE") || null;
+  return {
+    bootstrap,
+    lane,
+    entry,
+    exit,
+    performance,
+    cycle: {
+      latest: latestCycle,
+      recent_steps: recentSteps,
+      updated_at: latestCycle && latestCycle.ts ? latestCycle.ts : null,
+    },
+  };
 }
 
 function maxCreatedAt(arr) {
@@ -716,7 +766,12 @@ router.get("/dashboard/home", async (req, res) => {
     const cached = getHomeCache(cacheKey);
     if (cached) {
       const systemRuntimeGuards = await loadSystemRuntimeGuardView({ exchange }).catch(() => null);
-      const cachedPayload = { ...cached, mission_control: buildMissionControlViewModel(), system_runtime_guards: systemRuntimeGuards };
+      const cachedPayload = {
+        ...cached,
+        mission_control: buildMissionControlViewModel(),
+        system_runtime_guards: systemRuntimeGuards,
+        v3_paper: buildV3PaperDashboardView(),
+      };
       setHomeCache(cacheKey, cachedPayload);
       return res.render("home", cachedPayload);
     }
@@ -1635,6 +1690,7 @@ router.get("/dashboard/home", async (req, res) => {
       mission_control: buildMissionControlViewModel(),
       active_positions: activePositions,
       system_runtime_guards: systemRuntimeGuards,
+      v3_paper: buildV3PaperDashboardView(),
     };
     setHomeCache(cacheKey, payload);
     return res.render("home", payload);
@@ -1688,6 +1744,7 @@ router.get("/dashboard/home", async (req, res) => {
         intent_failures: [],
         mission_control: null,
         system_runtime_guards: null,
+        v3_paper: buildV3PaperDashboardView(),
         _error: { code: errorRef, message: '데이터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.' },
       });
     } catch (renderErr) {

@@ -70,7 +70,6 @@ const STAGE_BUDGET_SCOPES = Object.freeze({
   SOURCE_MODE: "CANONICAL_ENGINE",
   PINE: "PINE_OVERLAY",
 });
-const PINE_REVIEW_MAX_AGE_HOURS = Math.max(6, Number(process.env.STAGE_AUTOPILOT_PINE_REVIEW_MAX_AGE_HOURS || 36));
 const FRESHNESS_HOURS = Object.freeze({
   objective: Math.max(6, Number(process.env.STAGE_AUTOPILOT_OBJECTIVE_MAX_AGE_HOURS || 18)),
   ml: Math.max(6, Number(process.env.STAGE_AUTOPILOT_ML_MAX_AGE_HOURS || 18)),
@@ -1460,22 +1459,6 @@ function buildPineCandidate(objectiveArtifact, codexArtifact, changeArtifact) {
   };
 }
 
-function runWeeklyPinePreparation() {
-  const res = spawnSync("node", ["scripts/automation-weekly-pine-upgrade.js"], {
-    cwd: path.resolve(__dirname, ".."),
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: PINE_REVIEW_MAX_AGE_HOURS * 60 * 60 * 1000,
-  });
-  return {
-    ok: !res.error && Number(res.status) === 0,
-    status: Number(res.status),
-    error: res.error ? String(res.error.message || res.error) : null,
-    stdout: String(res.stdout || "").trim(),
-    stderr: String(res.stderr || "").trim(),
-  };
-}
-
 function resolveStageRollbackInputs({
   stage,
   candidate = {},
@@ -1912,66 +1895,24 @@ async function processPineStage({
       action: null,
     };
   }
-  const stageAlreadyPrepared = Boolean(
-    stageState.prepared_file_path
-    || stageState.latest_generated_file_path
-    || stageState.rollback_source_file_path
-  );
-  if (stageState.applied_signature === candidate.signature && stageState.machine_state === STATE_MACHINE.READY && stageAlreadyPrepared) {
-    const latestWeeklyHistory = readWeeklyPineLatestHistoryRow() || {};
-    const preparedFilePath = candidate.kind === "ROLLBACK"
-      ? (String(latestWeeklyHistory.rollback_source_file_path || "").trim() || stageState.prepared_file_path || String(candidate.detail || "").trim() || null)
-      : (String(latestWeeklyHistory.created_file_path || "").trim() || stageState.prepared_file_path || null);
-    const preparedStrategyId = candidate.kind === "ROLLBACK"
-      ? null
-      : (String(latestWeeklyHistory.created_strategy_id || "").trim() || stageState.prepared_strategy_id || null);
-    const latestGeneratedFilePath = String(latestWeeklyHistory.latest_generated_file_path || "").trim() || stageState.latest_generated_file_path || null;
-    const rollbackSourceFilePath = String(latestWeeklyHistory.rollback_source_file_path || "").trim() || stageState.rollback_source_file_path || null;
-    return {
-      stageState: {
-        ...stageState,
-        last_signature: candidate.signature,
-        display_signature: candidate.display_signature || stageState.display_signature || null,
-        prepared_file_path: preparedFilePath,
-        prepared_strategy_id: preparedStrategyId,
-        latest_generated_file_path: latestGeneratedFilePath,
-        rollback_source_file_path: rollbackSourceFilePath,
-      },
-      history,
-      action: null,
-    };
-  }
-
-  const prep = runWeeklyPinePreparation();
   const latestWeeklyHistory = readWeeklyPineLatestHistoryRow() || {};
-  const preparedAligned = isPreparedPineAligned(latestWeeklyHistory, candidate);
   const preparedFilePath = candidate.kind === "ROLLBACK"
-    ? (String(latestWeeklyHistory.rollback_source_file_path || "").trim() || String(candidate.detail || "").trim() || null)
-    : (String(latestWeeklyHistory.created_file_path || "").trim() || null);
+    ? (String(latestWeeklyHistory.rollback_source_file_path || "").trim() || stageState.rollback_source_file_path || String(candidate.detail || "").trim() || null)
+    : (String(latestWeeklyHistory.created_file_path || "").trim() || stageState.prepared_file_path || null);
   const preparedStrategyId = candidate.kind === "ROLLBACK"
     ? null
-    : (String(latestWeeklyHistory.created_strategy_id || "").trim() || null);
-  const latestGeneratedFilePath = String(latestWeeklyHistory.latest_generated_file_path || "").trim() || null;
-  const rollbackSourceFilePath = String(latestWeeklyHistory.rollback_source_file_path || "").trim() || null;
-  const preparedArtifactAvailable = Boolean(preparedFilePath || latestGeneratedFilePath || rollbackSourceFilePath)
-    && preparedAligned;
+    : (String(latestWeeklyHistory.created_strategy_id || "").trim() || stageState.prepared_strategy_id || null);
+  const latestGeneratedFilePath = String(latestWeeklyHistory.latest_generated_file_path || "").trim() || stageState.latest_generated_file_path || null;
+  const rollbackSourceFilePath = String(latestWeeklyHistory.rollback_source_file_path || "").trim() || stageState.rollback_source_file_path || null;
   const nextState = {
     ...stageState,
     stage,
-    machine_state: prep.ok && preparedArtifactAvailable ? STATE_MACHINE.READY : STATE_MACHINE.HOLD,
+    machine_state: STATE_MACHINE.HOLD,
     last_signature: candidate.signature,
-    last_action: "PINE_PREPARE",
-    last_reason: prep.ok
-      ? (preparedArtifactAvailable ? `${candidate.kind}_PREPARED` : (preparedAligned ? "PINE_PREPARE_PENDING" : "PINE_TARGET_MISMATCH"))
-      : `PINE_PREPARE_FAILED:${prep.error || prep.status || "UNKNOWN"}`,
+    last_action: "PINE_AUTOMATION_DISABLED",
+    last_reason: "PINE_AUTOMATION_DISABLED",
     streak_current: candidate.signature ? computeSignatureStreak(history, stage, candidate.signature) : 0,
-    applied_signature: candidate.signature,
-    applied_at_kst: nowMeta.kst,
-    blockers: prep.ok
-      ? (preparedArtifactAvailable ? [] : [preparedAligned ? "PINE_PREPARE_PENDING" : "PINE_TARGET_MISMATCH"])
-      : ["PINE_PREPARE_FAILED"],
-    prep_stdout: prep.stdout ? prep.stdout.slice(-4000) : "",
-    prep_stderr: prep.stderr ? prep.stderr.slice(-4000) : "",
+    blockers: ["PINE_AUTOMATION_DISABLED"],
     prepared_file_path: preparedFilePath,
     prepared_strategy_id: preparedStrategyId,
     latest_generated_file_path: latestGeneratedFilePath,
@@ -1982,17 +1923,13 @@ async function processPineStage({
     stageState: nextState,
     history: appendStageHistory(history, {
       stage,
-      run_key: `${nowMeta.kst}__PINE_PREPARE`,
+      run_key: `${nowMeta.kst}__PINE_DISABLED`,
       signature: candidate.signature,
-      action: "PINE_PREPARE",
+      action: "PINE_AUTOMATION_DISABLED",
       reason: nextState.last_reason,
       ts_ms: nowMs,
     }),
-    action: {
-      stage,
-      type: "PINE_PREPARE",
-      detail: `${candidate.kind} / ${candidate.detail} / file ${preparedFilePath || latestGeneratedFilePath || "N/A"}`,
-    },
+    action: null,
   };
 }
 

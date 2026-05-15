@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>DONBEOLJA V2 Mission Control</title>
+  <title>DONBEOLJA Local Mission Control</title>
   <style>
     :root {
       --bg:#f6f3ea; --panel:#fffaf0; --ink:#181511; --muted:#6f675b; --line:#ded4c2;
@@ -17,16 +17,16 @@
   <main class="wrap">
     <section class="hero">
       <div class="panel">
-        <div class="eyebrow">DONBEOLJA V2 · OpenClaw Control Plane</div>
+        <div class="eyebrow">DONBEOLJA Local · Paper Control Plane</div>
         <h1>Mission Control</h1>
-        <div class="sub">V2의 기준 화면입니다. LIVE 가능 여부는 감이 아니라 canary 24h, performance gate, Firestore cost guard, OpenClaw lineage 증거로만 판단합니다.</div>
+        <div class="sub">로컬 기준 화면입니다. 자동화 상태는 감이 아니라 최근 cycle, performance gate, cost guard, signal lineage 증거로만 판단합니다.</div>
         <div class="actions">
-          <a class="btn primary" href="/dashboard/home">운영 홈</a>
+          <a class="btn primary" href="/dashboard/home">로컬 홈</a>
           <a class="btn" href="/dashboard/audit">감사</a>
           <a class="btn" href="/dashboard/protection/view">보호주문</a>
-          <a class="btn" href="/dashboard/openclaw/view">OpenClaw</a>
+          <a class="btn" href="/dashboard/recovery">자동화</a>
         </div>
-        <div class="danger-zone">V1 scheduler start/stop/tick force 버튼은 이 화면에서 제거했습니다. V2 운영은 OpenClaw cron, promotion gate, protected entry endpoint만 사용합니다.</div>
+        <div class="danger-zone">레거시 start/stop 강제 버튼은 이 화면에서 제거했습니다. 로컬 운영은 launchd cycle, paper gate, 보호주문 상태만 기준으로 읽습니다.</div>
       </div>
       <div class="panel verdict">
         <div class="k">대표 판정</div>

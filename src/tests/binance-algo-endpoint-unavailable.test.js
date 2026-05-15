@@ -17,6 +17,8 @@ const exitAudit = require("../services/exitIntegrityAudit");
   assert.strictEqual(typeof auditTest.isStrictTp1OrderCandidate, "function", "isStrictTp1OrderCandidate export missing");
   assert.strictEqual(typeof auditTest.selectNativeTp1OrderCandidate, "function", "selectNativeTp1OrderCandidate export missing");
   assert.strictEqual(typeof auditTest.isV2LiveWriteRuntime, "function", "isV2LiveWriteRuntime export missing");
+  assert.strictEqual(typeof auditTest.isExpectedInternalOnlyNoExchangePosition, "function",
+    "isExpectedInternalOnlyNoExchangePosition export missing");
 
   const unavailableErr = {
     status: 404,
@@ -106,6 +108,21 @@ const exitAudit = require("../services/exitIntegrityAudit");
     DONBEOLJA_V2_ENABLED: "1",
     DONBEOLJA_V2_DRY_RUN: "1",
     DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
+  }), false);
+  assert.strictEqual(auditTest.isV2LiveWriteRuntime({
+    DONBEOLJA_V2_ENABLED: "1",
+    DONBEOLJA_V2_DRY_RUN: "0",
+    DONBEOLJA_V2_LIVE_PAPER_MODE: "1",
+    DONBEOLJA_V2_PRODUCTION_ENTRY_LIVE_ENDPOINT_ENABLED: "1",
+  }), false);
+  assert.strictEqual(auditTest.isExpectedInternalOnlyNoExchangePosition({
+    live_paper_mode: true,
+    exchange_write_performed: false,
+    canary_mode: "LIVE_PAPER_NO_EXCHANGE",
+  }), true);
+  assert.strictEqual(auditTest.isExpectedInternalOnlyNoExchangePosition({
+    live_paper_mode: false,
+    exchange_write_performed: false,
   }), false);
 
   assert.strictEqual(auditTest.hasTrackedNativeProtectionMeta({

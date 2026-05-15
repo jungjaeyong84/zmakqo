@@ -14,6 +14,16 @@ function toNum(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function trimOrNull(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
+function upperOrNull(value) {
+  const text = trimOrNull(value);
+  return text ? text.toUpperCase() : null;
+}
+
 function isSimplifiedExitV2Enabled(meta = {}) {
   return isSimplifiedExitV2Active(meta);
 }
@@ -76,6 +86,16 @@ function normalizeBool(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) return false;
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function isExpectedInternalOnlyNoExchangeMeta(meta = {}) {
+  const row = meta && typeof meta === "object" ? meta : {};
+  const livePaperMode = row.live_paper_mode != null ? normalizeBool(row.live_paper_mode) : false;
+  const exchangeWriteRaw = row.exchange_write_performed;
+  const exchangeWritePerformed = exchangeWriteRaw == null ? null : normalizeBool(exchangeWriteRaw);
+  const canaryMode = upperOrNull(row.canary_mode) || "";
+  return livePaperMode === true
+    && (exchangeWritePerformed === false || canaryMode.includes("NO_EXCHANGE"));
 }
 
 function profitableTpComparator(positionSide, a, b) {
@@ -727,6 +747,7 @@ function reconcileBinancePositionMetaWithExchange({
 } = {}) {
   const baseMeta = meta && typeof meta === "object" ? meta : {};
   const fullTpOnly = isFullTpOnlyExitContractMeta(baseMeta);
+  const internalOnlyNoExchange = isExpectedInternalOnlyNoExchangeMeta(baseMeta);
   if (!active) {
     return {
       meta: buildFlatMetaProjection(baseMeta),
@@ -751,19 +772,29 @@ function reconcileBinancePositionMetaWithExchange({
     qtyBase,
     meta: baseMeta,
   });
+  const preservedNoExchangeStopOrderId = internalOnlyNoExchange ? trimOrNull(baseMeta.native_protection_stop_order_id) : null;
+  const preservedNoExchangeTp0OrderId = internalOnlyNoExchange ? trimOrNull(baseMeta.native_protection_tp0_order_id) : null;
+  const preservedNoExchangeTp1OrderId = internalOnlyNoExchange ? trimOrNull(baseMeta.native_protection_tp_order_id) : null;
+  const effectiveStopPresent = !!stop || !!preservedNoExchangeStopOrderId;
 
   const nextMeta = {
     ...baseMeta,
-    native_protection_refresh_status: stop ? "OK" : "MISSING",
-    native_protection_refresh_reason: stop ? null : "STOP_ORDER_NOT_FOUND",
-    native_protection_refresh_context: "EXCHANGE_RECONCILE",
-    native_protection_stale: !stop,
-    native_protection_stop_order_id: stop ? stop.orderId : null,
-    native_protection_stop_price: stop && Number.isFinite(stop.triggerPrice) ? stop.triggerPrice : null,
+    native_protection_refresh_status: effectiveStopPresent ? "OK" : "MISSING",
+    native_protection_refresh_reason: effectiveStopPresent ? null : "STOP_ORDER_NOT_FOUND",
+    native_protection_refresh_context: (internalOnlyNoExchange && !stop && preservedNoExchangeStopOrderId)
+      ? "INTERNAL_NO_EXCHANGE_RECONCILE"
+      : "EXCHANGE_RECONCILE",
+    native_protection_stale: !effectiveStopPresent,
+    native_protection_stop_order_id: stop ? stop.orderId : preservedNoExchangeStopOrderId,
+    native_protection_stop_price: stop && Number.isFinite(stop.triggerPrice)
+      ? stop.triggerPrice
+      : (internalOnlyNoExchange && preservedNoExchangeStopOrderId && Number.isFinite(Number(baseMeta.native_protection_stop_price))
+        ? Number(baseMeta.native_protection_stop_price)
+        : null),
     native_protection_entry_price: Number.isFinite(Number(entryPrice)) ? Number(entryPrice) : null,
     native_protection_side: normalizePositionSide(positionSide),
     exchange_projection_source: "BINANCE_LIVE_STATE",
-    exchange_projection_in_sync: !!stop,
+    exchange_projection_in_sync: effectiveStopPresent,
     // Stage V — clear `flat_first_observed_at_ms` once the position is
     // confirmed active again so the next flat episode starts a fresh
     // staleness clock instead of inheriting an old one.
@@ -797,19 +828,44 @@ function reconcileBinancePositionMetaWithExchange({
   }
 
   nextMeta.native_protection_tp0_order_id = tp0 ? tp0.orderId : null;
-  nextMeta.native_protection_tp_order_id = tp1 ? tp1.orderId : null;
+  if (!tp0 && internalOnlyNoExchange && preservedNoExchangeTp0OrderId) {
+    nextMeta.native_protection_tp0_order_id = preservedNoExchangeTp0OrderId;
+  }
+  nextMeta.native_protection_tp_order_id = tp1 ? tp1.orderId : preservedNoExchangeTp1OrderId;
   nextMeta.native_protection_tp0_price = tp0 && Number.isFinite(tp0.triggerPrice) ? tp0.triggerPrice : null;
-  nextMeta.native_protection_tp_price = tp1 && Number.isFinite(tp1.triggerPrice) ? tp1.triggerPrice : null;
+  if (!tp0 && internalOnlyNoExchange && preservedNoExchangeTp0OrderId && Number.isFinite(Number(baseMeta.native_protection_tp0_price))) {
+    nextMeta.native_protection_tp0_price = Number(baseMeta.native_protection_tp0_price);
+  }
+  nextMeta.native_protection_tp_price = tp1 && Number.isFinite(tp1.triggerPrice)
+    ? tp1.triggerPrice
+    : (internalOnlyNoExchange && preservedNoExchangeTp1OrderId && Number.isFinite(Number(baseMeta.native_protection_tp_price))
+      ? Number(baseMeta.native_protection_tp_price)
+      : null);
   nextMeta.native_protection_tp0_qty_base = tp0 && Number.isFinite(tp0.qtyBase) ? tp0.qtyBase : null;
-  nextMeta.native_protection_tp_qty_base = tp1 && Number.isFinite(tp1.qtyBase) ? tp1.qtyBase : null;
+  if (!tp0 && internalOnlyNoExchange && preservedNoExchangeTp0OrderId && Number.isFinite(Number(baseMeta.native_protection_tp0_qty_base))) {
+    nextMeta.native_protection_tp0_qty_base = Number(baseMeta.native_protection_tp0_qty_base);
+  }
+  nextMeta.native_protection_tp_qty_base = tp1 && Number.isFinite(tp1.qtyBase)
+    ? tp1.qtyBase
+    : (internalOnlyNoExchange && preservedNoExchangeTp1OrderId && Number.isFinite(Number(baseMeta.native_protection_tp_qty_base))
+      ? Number(baseMeta.native_protection_tp_qty_base)
+      : null);
   nextMeta.native_protection_tp0_qty_ratio = tp0
     ? resolveConfiguredTakeProfitQtyRatio(baseMeta, "TP_P0_QTY", tp0.qtyRatio)
-    : null;
+    : (internalOnlyNoExchange && preservedNoExchangeTp0OrderId && Number.isFinite(Number(baseMeta.native_protection_tp0_qty_ratio))
+      ? Number(baseMeta.native_protection_tp0_qty_ratio)
+      : null);
   nextMeta.native_protection_tp_qty_ratio = tp1
     ? resolveConfiguredTakeProfitQtyRatio(baseMeta, "TP_P1_QTY", tp1.qtyRatio)
-    : null;
-  nextMeta.native_protection_tp0_status = tp0 ? "OK" : null;
-  nextMeta.native_protection_tp_status = tp1 ? "OK" : null;
+    : (internalOnlyNoExchange && preservedNoExchangeTp1OrderId && Number.isFinite(Number(baseMeta.native_protection_tp_qty_ratio))
+      ? Number(baseMeta.native_protection_tp_qty_ratio)
+      : null);
+  nextMeta.native_protection_tp0_status = tp0
+    ? "OK"
+    : (internalOnlyNoExchange && preservedNoExchangeTp0OrderId ? (upperOrNull(baseMeta.native_protection_tp0_status) || "OK") : null);
+  nextMeta.native_protection_tp_status = tp1
+    ? "OK"
+    : (internalOnlyNoExchange && preservedNoExchangeTp1OrderId ? (upperOrNull(baseMeta.native_protection_tp_status) || "OK") : null);
   nextMeta.native_protection_tp0_reason = null;
   nextMeta.native_protection_tp_reason = null;
 

@@ -29,6 +29,20 @@ function riskGovernorBlockerIsPromotedToHandoffReason() {
   assert.deepStrictEqual(patch.v2_discovery_risk_governor_blockers, ["RISK_GOVERNOR:CORRELATED_GROUP_NOTIONAL_EXCEEDED"]);
   assert.strictEqual(patch.v2_discovery_risk_governor_primary_code, "GROUP_NOTIONAL_EXCEEDED");
   assert.strictEqual(patch.v2_discovery_risk_governor_surface.primary_code, "GROUP_NOTIONAL_EXCEEDED");
+  const logPayload = __test.buildV2ServerEntryHandoffLogPayload({
+    exchange: "BINANCEFUT",
+    symbol: "XRPUSDT",
+    tf: "15m",
+    runId: "RUN__1",
+    signalId: "SIG__1",
+    signal: { event: "LONG", entry_grade: "CORE" },
+    endpointResultReason: "V2_RISK_GOVERNOR_BLOCKED",
+    handoff,
+  });
+  assert.strictEqual(logPayload.risk_governor_reason, "V2_RISK_GOVERNOR_BLOCKED");
+  assert.deepStrictEqual(logPayload.risk_governor_blockers, ["RISK_GOVERNOR:CORRELATED_GROUP_NOTIONAL_EXCEEDED"]);
+  assert.strictEqual(logPayload.risk_governor_primary_code, "GROUP_NOTIONAL_EXCEEDED");
+  assert.strictEqual(logPayload.risk_governor_primary_blocker, "RISK_GOVERNOR:CORRELATED_GROUP_NOTIONAL_EXCEEDED");
 }
 
 function routeReasonStillWinsWhenMoreSpecific() {

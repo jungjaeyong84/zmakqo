@@ -71,7 +71,12 @@ const {
   isSimplifiedExitV2Active,
   resolveSimplifiedExitV2FlagFromSnapshot,
 } = require("./simplifiedExitV2");
-const { writeOpenClawShadowTrailActivation } = require("../v2/openclawShadowExitWriter");
+const {
+  writeOpenClawShadowTp1Transition,
+  writeOpenClawShadowTrailActivation,
+  writeOpenClawShadowStopExit,
+  writeOpenClawShadowExternalClose,
+} = require("../v2/openclawShadowExitWriter");
 const { buildV2DirectExitDispatch } = require("./v2DirectExitDispatch");
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -810,6 +815,195 @@ function resolveBrokerFlatAlertExecPrice({ pos = null, posMeta = null, alertMap 
   const avgPrice = Number(pos && (pos.avg_price ?? pos.avgPrice));
   if (Number.isFinite(avgPrice) && avgPrice > 0) return avgPrice;
   return null;
+}
+
+function parseBoolish(value, fallback = false) {
+  if (value === null || value === undefined || value === "") return fallback;
+  const raw = String(value).trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  return fallback;
+}
+
+function isLivePaperInternalPosition(pos = null) {
+  const row = pos && typeof pos === "object" ? pos : {};
+  const meta = row.meta && typeof row.meta === "object" ? row.meta : {};
+  const livePaperMode = parseBoolish(
+    meta.live_paper_mode != null ? meta.live_paper_mode : row.live_paper_mode,
+    false,
+  );
+  const exchangeWriteRaw = meta.exchange_write_performed != null
+    ? meta.exchange_write_performed
+    : row.exchange_write_performed;
+  const exchangeWritePerformed = exchangeWriteRaw == null ? null : parseBoolish(exchangeWriteRaw, false);
+  const canaryMode = String(meta.canary_mode || row.canary_mode || "").trim().toUpperCase();
+  return livePaperMode === true
+    && (exchangeWritePerformed === false || canaryMode.includes("NO_EXCHANGE"));
+}
+
+function buildSyntheticLivePaperExitEvidenceId({ kind, symbol, entryEventId, observedAtMs } = {}) {
+  const kindPart = String(kind || "EXIT").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_") || "EXIT";
+  const symbolPart = String(symbol || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_") || "UNKNOWN";
+  const entryPart = String(entryEventId || "").trim().replace(/[^A-Z0-9_:-]+/gi, "_") || "UNKNOWN";
+  const ts = Number.isFinite(Number(observedAtMs)) ? Math.trunc(Number(observedAtMs)) : Date.now();
+  return `LPXITV2__${kindPart}__${symbolPart}__${entryPart}__${ts}`;
+}
+
+async function dispatchV2LivePaperExit({
+  db = null,
+  env = process.env,
+  symbol,
+  position = null,
+  positionSide,
+  triggeredKinds = [],
+  dispatch = null,
+  fillPrice = null,
+  observedAtMs = Date.now(),
+  writeTp1Transition = writeOpenClawShadowTp1Transition,
+  writeStopExit = writeOpenClawShadowStopExit,
+  writeExternalClose = writeOpenClawShadowExternalClose,
+} = {}) {
+  const pos = position && typeof position === "object" ? position : {};
+  const meta = pos.meta && typeof pos.meta === "object" ? pos.meta : {};
+  const entryEventId = String(meta.entry_event_id || "").trim();
+  const side = String(positionSide || "").trim().toUpperCase();
+  const normalizedSymbol = String(symbol || "").trim().toUpperCase();
+  const kinds = Array.isArray(triggeredKinds)
+    ? triggeredKinds.map((kind) => String(kind || "").trim().toUpperCase()).filter(Boolean)
+    : [];
+  const qty = Number(dispatch && dispatch.qty);
+  const resolvedFillPrice = Number(fillPrice);
+  if (!normalizedSymbol || !entryEventId || !side) {
+    return Object.freeze({
+      ok: false,
+      placed: false,
+      reason: "V2_LIVE_PAPER_EXIT_CONTEXT_INCOMPLETE",
+    });
+  }
+
+  const baseOrderId = buildSyntheticLivePaperExitEvidenceId({
+    kind: "ORDER",
+    symbol: normalizedSymbol,
+    entryEventId,
+    observedAtMs,
+  });
+
+  if (kinds.includes("TP_P1") || kinds.includes("TP1")) {
+    if (!(Number.isFinite(qty) && qty > 0)) {
+      return Object.freeze({
+        ok: false,
+        placed: false,
+        reason: "V2_LIVE_PAPER_TP1_QTY_REQUIRED",
+      });
+    }
+    const result = await writeTp1Transition({
+      db,
+      env,
+      exchange: "BINANCEFUT",
+      symbol: normalizedSymbol,
+      entryEventId,
+      positionSide: side,
+      sourceFillId: buildSyntheticLivePaperExitEvidenceId({
+        kind: "TP1",
+        symbol: normalizedSymbol,
+        entryEventId,
+        observedAtMs,
+      }),
+      sourceOrderId: baseOrderId,
+      fillQtyAbs: qty,
+      fillPrice: Number.isFinite(resolvedFillPrice) ? resolvedFillPrice : null,
+      positionMeta: meta,
+    });
+    return Object.freeze({
+      ok: result && result.ok === true,
+      placed: result && result.written === true,
+      reason: String(result && result.reason || "V2_LIVE_PAPER_TP1_UNKNOWN"),
+      writer: "TP1_TRANSITION",
+      order_id: baseOrderId,
+      client_order_id: baseOrderId,
+      writer_result: result || null,
+    });
+  }
+
+  if (kinds.includes("SL") || kinds.includes("STOP_LOSS")) {
+    const result = await writeStopExit({
+      db,
+      env,
+      exchange: "BINANCEFUT",
+      symbol: normalizedSymbol,
+      entryEventId,
+      positionSide: side,
+      sourceFillId: buildSyntheticLivePaperExitEvidenceId({
+        kind: "SL",
+        symbol: normalizedSymbol,
+        entryEventId,
+        observedAtMs,
+      }),
+      sourceOrderId: baseOrderId,
+      fillPrice: Number.isFinite(resolvedFillPrice) ? resolvedFillPrice : Number(meta.native_protection_stop_price),
+      event: "EXIT_SL_100P",
+      fullExit: true,
+      observedAtMs,
+      exchangeEvidence: Object.freeze({
+        event: "EXIT_SL",
+        execution_type: "TRADE",
+        order_type: "STOP_MARKET",
+        full_exit: true,
+        position_closed: true,
+        fill_price: Number.isFinite(resolvedFillPrice) ? resolvedFillPrice : null,
+        trigger_kinds: kinds,
+        live_paper_mode: true,
+      }),
+    });
+    return Object.freeze({
+      ok: result && result.ok === true,
+      placed: result && result.written === true,
+      reason: String(result && result.reason || "V2_LIVE_PAPER_SL_UNKNOWN"),
+      writer: "STOP_EXIT",
+      order_id: baseOrderId,
+      client_order_id: baseOrderId,
+      writer_result: result || null,
+    });
+  }
+
+  const result = await writeExternalClose({
+    db,
+    env,
+    exchange: "BINANCEFUT",
+    symbol: normalizedSymbol,
+    entryEventId,
+    positionSide: side,
+    sourceFillId: buildSyntheticLivePaperExitEvidenceId({
+      kind: kinds.includes("TRAIL") || kinds.includes("BE") ? "TRAIL_SYNC" : "EXTERNAL_SYNC",
+      symbol: normalizedSymbol,
+      entryEventId,
+      observedAtMs,
+    }),
+    sourceOrderId: baseOrderId,
+    event: "EXIT_EXTERNAL_SYNC",
+    closeKind: kinds.includes("TRAIL") || kinds.includes("BE") ? "EXTERNAL" : "MANUAL",
+    fullExit: true,
+    observedAtMs,
+    exchangeEvidence: Object.freeze({
+      event: "EXIT_EXTERNAL_SYNC",
+      execution_type: "TRADE",
+      full_exit: true,
+      position_closed: true,
+      trigger_kinds: kinds,
+      live_paper_mode: true,
+      fill_price: Number.isFinite(resolvedFillPrice) ? resolvedFillPrice : null,
+    }),
+  });
+  return Object.freeze({
+    ok: result && result.ok === true,
+    placed: result && result.written === true,
+    reason: String(result && result.reason || "V2_LIVE_PAPER_EXTERNAL_CLOSE_UNKNOWN"),
+    writer: "EXTERNAL_CLOSE",
+    order_id: baseOrderId,
+    client_order_id: baseOrderId,
+    writer_result: result || null,
+  });
 }
 
 const pendingIntentState = new Map();
@@ -2008,6 +2202,13 @@ function buildTp1MetaSyncTelemetryPayload({
   const afterMeta = afterPos && afterPos.meta && typeof afterPos.meta === "object" ? afterPos.meta : {};
   const expectedOrderId = refreshResult && refreshResult.tp_order_id ? String(refreshResult.tp_order_id) : null;
   const actualOrderId = afterMeta.native_protection_tp_order_id ? String(afterMeta.native_protection_tp_order_id) : null;
+  const livePaperInternal = isLivePaperInternalPosition(afterPos || beforePos);
+  const rawAfterStatus = afterMeta.native_protection_tp_status ? String(afterMeta.native_protection_tp_status).toUpperCase() : null;
+  const effectiveAfterStatus = rawAfterStatus || (
+    livePaperInternal && actualOrderId && (!expectedOrderId || actualOrderId === expectedOrderId)
+      ? "OK"
+      : null
+  );
   const issues = [];
 
   if (refreshResult && refreshResult.ok === true) {
@@ -2016,7 +2217,7 @@ function buildTp1MetaSyncTelemetryPayload({
     } else if (expectedOrderId && actualOrderId !== expectedOrderId) {
       issues.push("TP1_META_SYNC_ORDER_ID_MISMATCH");
     }
-    if (String(afterMeta.native_protection_tp_status || "").toUpperCase() !== "OK") {
+    if (effectiveAfterStatus !== "OK") {
       issues.push("TP1_META_SYNC_STATUS_NOT_OK");
     }
   }
@@ -2026,6 +2227,7 @@ function buildTp1MetaSyncTelemetryPayload({
     symbol: String(symbol || beforePos && (beforePos.symbol_or_pair_id || beforePos.symbol) || afterPos && (afterPos.symbol_or_pair_id || afterPos.symbol) || "").toUpperCase() || null,
     tf: String(tf || "").trim() || null,
     simplified_exit_v2_enabled: isSimplifiedExitV2Position(afterPos || beforePos),
+    live_paper_internal: livePaperInternal,
     refresh_ok: refreshResult ? refreshResult.ok === true : null,
     refresh_reason: refreshResult && refreshResult.reason ? String(refreshResult.reason) : null,
     refresh_needs_tp: !!(refreshPlan && refreshPlan.needsTp === true),
@@ -2034,7 +2236,7 @@ function buildTp1MetaSyncTelemetryPayload({
     refresh_tp_order_id: expectedOrderId,
     refresh_tp_status: refreshResult && refreshResult.tp_status ? String(refreshResult.tp_status).toUpperCase() : null,
     after_tp_order_id: actualOrderId,
-    after_tp_status: afterMeta.native_protection_tp_status ? String(afterMeta.native_protection_tp_status).toUpperCase() : null,
+    after_tp_status: effectiveAfterStatus,
     after_tp_price: Number.isFinite(Number(afterMeta.native_protection_tp_price)) ? Number(afterMeta.native_protection_tp_price) : null,
     after_tp_qty_ratio: Number.isFinite(Number(afterMeta.native_protection_tp_qty_ratio)) ? Number(afterMeta.native_protection_tp_qty_ratio) : null,
     meta_sync_ok: issues.length === 0,
@@ -2824,12 +3026,13 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
         for (const p of active) {
           const sym = String(p.symbol_or_pair_id || p.symbol || "").trim().toUpperCase();
           const rec = sym ? snapshot.byMap.get(sym) : null;
+          const livePaperInternal = isLivePaperInternalPosition(p);
           // Only skip on a *positive* observation that the broker is
           // flat. If the symbol isn't in the snapshot at all (newly
           // listed, hedge-mode quirk, dual-side variant, etc.) we
           // fall through to the legacy path and let the dispatch /
           // R1 / cooldown layers handle it — no silent drops.
-          if (rec && rec.isFlat === true) {
+          if (rec && rec.isFlat === true && livePaperInternal !== true) {
             structuredLog("tick_exit_skip_broker_flat", {
               exchange: "BINANCEFUT",
               symbol: sym,
@@ -4085,8 +4288,56 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
               ? Number(v2DispatchSymbolInfo.minQty) : null,
           });
           if (v2DirectDispatch && v2DirectDispatch.dispatch === true) {
-            const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
-            if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && !liveCfg.liveDryRun) {
+            const livePaperInternalPosition = isLivePaperInternalPosition(effectivePos);
+            if (livePaperInternalPosition === true) {
+              const livePaperExit = await dispatchV2LivePaperExit({
+                db: getFirestore(),
+                env: process.env,
+                symbol,
+                position: effectivePos,
+                positionSide: resolvedPosSide,
+                triggeredKinds: v2DirectDispatch.triggeredKinds,
+                dispatch: v2DirectDispatch,
+                fillPrice: price,
+                observedAtMs: now,
+              });
+              v2DispatchPlaced = livePaperExit && livePaperExit.placed === true;
+              v2DispatchOrderId = livePaperExit && livePaperExit.order_id ? String(livePaperExit.order_id) : null;
+              v2DispatchClientOrderId = livePaperExit && livePaperExit.client_order_id ? String(livePaperExit.client_order_id) : null;
+              if (v2DispatchPlaced) {
+                structuredLog("v2_direct_exit_live_paper_written", {
+                  exchange: "BINANCEFUT",
+                  symbol,
+                  run_id: dispatchRunId,
+                  triggered_kinds: v2DirectDispatch.triggeredKinds,
+                  close_side: v2DirectDispatch.closeSide,
+                  fraction: v2DirectDispatch.fraction,
+                  order_qty: v2DirectDispatch.qty,
+                  trigger_reason: v2DirectDispatch.triggerReason,
+                  writer: livePaperExit && livePaperExit.writer || null,
+                  writer_reason: livePaperExit && livePaperExit.reason || null,
+                  order_id: v2DispatchOrderId,
+                });
+              } else {
+                v2DispatchPlaceError = livePaperExit && livePaperExit.reason
+                  ? String(livePaperExit.reason)
+                  : "V2_DIRECT_EXIT_LIVE_PAPER_BLOCKED";
+                structuredLog("v2_direct_exit_live_paper_blocked", {
+                  exchange: "BINANCEFUT",
+                  symbol,
+                  run_id: dispatchRunId,
+                  triggered_kinds: v2DirectDispatch.triggeredKinds,
+                  close_side: v2DirectDispatch.closeSide,
+                  fraction: v2DirectDispatch.fraction,
+                  order_qty: v2DirectDispatch.qty,
+                  trigger_reason: v2DirectDispatch.triggerReason,
+                  writer: livePaperExit && livePaperExit.writer || null,
+                  writer_reason: livePaperExit && livePaperExit.reason || null,
+                }, "warn");
+              }
+            } else {
+              const liveCfg = await resolveLiveFuturesConfig({ exchange: "BINANCEFUT", symbol });
+              if (liveCfg && liveCfg.apiKey && liveCfg.apiSecret && !liveCfg.liveDryRun) {
               try {
                 const placeRes = await placeFuturesMarketOrder({
                   apiKey: liveCfg.apiKey,
@@ -4120,8 +4371,9 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                 // in operator chat within seconds. fillSync's later
                 // echo lands inside the dedupe TTL so no second alert
                 // ships for the same fill.
+                let alertMap = null;
                 try {
-                  const alertMap = resolveV2DirectDispatchAlertEvent({
+                  alertMap = resolveV2DirectDispatchAlertEvent({
                     triggeredKinds: v2DirectDispatch.triggeredKinds,
                     fraction: v2DirectDispatch.fraction,
                   });
@@ -4234,8 +4486,8 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                     note: "Order placed successfully; ledger stamp failed. fillSync will pick up the fill via exchange poll.",
                   }, "warn");
                 }
-              } catch (placeErr) {
-                v2DispatchPlaceError = placeErr && placeErr.message ? placeErr.message : String(placeErr);
+                } catch (placeErr) {
+                  v2DispatchPlaceError = placeErr && placeErr.message ? placeErr.message : String(placeErr);
                 // 2026-04-29 R3 — `reduce_only_reject` is now a pure
                 // diagnostic tag. With R1+R2 in place, a -2022 here
                 // means we lost a sub-5 s race against the broker's
@@ -4263,15 +4515,16 @@ async function runBinanceTickExitOnce({ nearPct, symbolCooldownMs, targetSymbols
                   // that's a real signal — open a follow-up to
                   // tighten R2 (e.g. invalidate snapshot on -2022).
                 }, "warn");
+                }
+              } else {
+                structuredLog("v2_direct_exit_dispatch_skipped_no_live_cfg", {
+                  exchange: "BINANCEFUT",
+                  symbol,
+                  run_id: dispatchRunId,
+                  live_dry_run: liveCfg && liveCfg.liveDryRun === true,
+                  has_api_key: !!(liveCfg && liveCfg.apiKey),
+                });
               }
-            } else {
-              structuredLog("v2_direct_exit_dispatch_skipped_no_live_cfg", {
-                exchange: "BINANCEFUT",
-                symbol,
-                run_id: dispatchRunId,
-                live_dry_run: liveCfg && liveCfg.liveDryRun === true,
-                has_api_key: !!(liveCfg && liveCfg.apiKey),
-              });
             }
           }
         } catch (dispatchErr) {
@@ -4895,6 +5148,9 @@ module.exports = {
     resolveV2DirectDispatchAlertEvent,
     resolveBrokerFlatAlertEvent,
     resolveBrokerFlatAlertExecPrice,
+    isLivePaperInternalPosition,
+    buildSyntheticLivePaperExitEvidenceId,
+    dispatchV2LivePaperExit,
     buildTradeExecutionAlertDedupeKey,
     shouldDispatchTradeExecutionAlert,
     recordTradeExecutionAlertSent,

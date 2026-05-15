@@ -1981,6 +1981,11 @@ function finiteNumberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function normalizeOrderIdentityToken(value) {
+  const text = String(value || "").trim();
+  return text || null;
+}
+
 function positiveNumberOrNull(value) {
   const n = finiteNumberOrNull(value);
   return n != null && n > 0 ? n : null;
@@ -2787,18 +2792,10 @@ async function loadPositionEntryContext(exchange, symbol, cacheMap) {
       nativeProtectionRefreshAtMs: Number.isFinite(Number(meta.native_protection_refresh_at_ms))
         ? Number(meta.native_protection_refresh_at_ms)
         : null,
-      nativeProtectionTp0OrderId: Number.isFinite(Number(meta.native_protection_tp0_order_id))
-        ? Number(meta.native_protection_tp0_order_id)
-        : null,
-      nativeProtectionTpOrderId: Number.isFinite(Number(meta.native_protection_tp_order_id))
-        ? Number(meta.native_protection_tp_order_id)
-        : null,
-      nativeProtectionConsumedTp0OrderId: Number.isFinite(Number(meta.native_protection_consumed_tp0_order_id))
-        ? Number(meta.native_protection_consumed_tp0_order_id)
-        : null,
-      nativeProtectionConsumedTpOrderId: Number.isFinite(Number(meta.native_protection_consumed_tp_order_id))
-        ? Number(meta.native_protection_consumed_tp_order_id)
-        : null,
+      nativeProtectionTp0OrderId: normalizeOrderIdentityToken(meta.native_protection_tp0_order_id),
+      nativeProtectionTpOrderId: normalizeOrderIdentityToken(meta.native_protection_tp_order_id),
+      nativeProtectionConsumedTp0OrderId: normalizeOrderIdentityToken(meta.native_protection_consumed_tp0_order_id),
+      nativeProtectionConsumedTpOrderId: normalizeOrderIdentityToken(meta.native_protection_consumed_tp_order_id),
       nativeProtectionTp0QtyBase: Number.isFinite(Number(meta.native_protection_tp0_qty_base))
         ? Number(meta.native_protection_tp0_qty_base)
         : null,
@@ -3051,6 +3048,52 @@ function buildV2PositionEntryContext({
   );
   const signalId = firstTrimmed(cycle.signal_id, proj.signal_id, runtime.signal_id);
   const signalDocId = firstTrimmed(cycle.signal_doc_id, proj.signal_doc_id, runtime.signal_doc_id, signalId);
+  const executionMode = firstTrimmed(
+    runtime.execution_mode,
+    runtime.executionMode,
+    proj.execution_mode,
+    proj.executionMode,
+    cycle.execution_mode,
+    cycle.executionMode,
+    "LIVE",
+  );
+  const exchangeWriteRaw = runtime.exchange_write_performed
+    ?? runtime.exchangeWritePerformed
+    ?? proj.exchange_write_performed
+    ?? proj.exchangeWritePerformed
+    ?? cycle.exchange_write_performed
+    ?? cycle.exchangeWritePerformed;
+  const exchangeWritePerformed = exchangeWriteRaw == null ? null : parseFillSyncBool(exchangeWriteRaw, false);
+  const canaryMode = firstTrimmed(
+    runtime.canary_mode,
+    runtime.canaryMode,
+    proj.canary_mode,
+    proj.canaryMode,
+    cycle.canary_mode,
+    cycle.canaryMode,
+  );
+  const livePaperMode = parseFillSyncBool(
+    runtime.live_paper_mode
+      ?? runtime.livePaperMode
+      ?? proj.live_paper_mode
+      ?? proj.livePaperMode
+      ?? cycle.live_paper_mode
+      ?? cycle.livePaperMode
+      ?? (executionMode === "LIVE_PAPER" ? true : null),
+    false,
+  );
+  const internalOnlyNoExchange = livePaperMode === true
+    && (exchangeWritePerformed === false || String(canaryMode || "").toUpperCase().includes("NO_EXCHANGE"));
+  const tp1OrderId = firstTrimmed(runtime.tp1_order_id, runtime.tp_order_id);
+  const tp1OrderStatusRaw = String(runtime.tp1_order_status || runtime.tp_order_status || "").trim().toUpperCase();
+  const tp1OrderStatus = tp1OrderStatusRaw === "PLACED"
+    ? "OK"
+    : (tp1OrderStatusRaw || (internalOnlyNoExchange && tp1OrderId ? "OK" : null));
+  const stopOrderId = firstTrimmed(runtime.sl_order_id, runtime.stop_order_id);
+  const stopOrderStatusRaw = String(runtime.sl_order_status || runtime.stop_order_status || "").trim().toUpperCase();
+  const stopOrderStatus = stopOrderStatusRaw === "PLACED"
+    ? "OK"
+    : (stopOrderStatusRaw || (internalOnlyNoExchange && stopOrderId ? "OK" : null));
   const meta = {
     entry_event_id: entryEventId,
     entry_signal_type: String(cycle.entry_signal_type || "V2_PROTECTED_ENTRY").trim() || "V2_PROTECTED_ENTRY",
@@ -3068,13 +3111,21 @@ function buildV2PositionEntryContext({
     tp_p1_entry_event_id: tpP1Done ? entryEventId : null,
     trail_active: trailActive,
     simplified_exit_v2_enabled: true,
-    native_protection_tp_order_id: finiteNumberOrNull(runtime.tp1_order_id || runtime.tp_order_id),
+    native_protection_stop_order_id: stopOrderId,
+    native_protection_stop_price: positiveNumberOrNull(runtime.sl_price || runtime.stop_price) || null,
+    native_protection_stop_status: stopOrderStatus,
+    native_protection_tp_order_id: tp1OrderId,
     native_protection_tp_qty_base: tp1TargetQtyAbs,
     native_protection_tp_qty_ratio: (tp1TargetQtyAbs != null && entryQtyAbs != null && entryQtyAbs > 0)
       ? tp1TargetQtyAbs / entryQtyAbs
       : null,
+    native_protection_tp_status: tp1OrderStatus,
     native_protection_refresh_status: String(runtime.native_refresh_status || runtime.native_protection_refresh_status || "OK").trim().toUpperCase() || "OK",
     native_protection_refresh_context: "V2_POSITION_CYCLE_FALLBACK",
+    execution_mode: executionMode,
+    live_paper_mode: livePaperMode,
+    exchange_write_performed: exchangeWritePerformed,
+    canary_mode: canaryMode,
   };
   return {
     entryEventId,
@@ -3100,7 +3151,10 @@ function buildV2PositionEntryContext({
     state: "ACTIVE",
     position_state: "ACTIVE",
     position_side: positionSide,
-    execution_mode: "LIVE",
+    execution_mode: executionMode,
+    live_paper_mode: livePaperMode,
+    exchange_write_performed: exchangeWritePerformed,
+    canary_mode: canaryMode,
     simplified_exit_v2_enabled: true,
     meta,
     position: {
@@ -3119,7 +3173,10 @@ function buildV2PositionEntryContext({
       openclaw_decision_bundle_hash: openclawDecisionBundleHash,
       signal_id: signalId,
       signal_doc_id: signalDocId,
-      execution_mode: "LIVE",
+      execution_mode: executionMode,
+      live_paper_mode: livePaperMode,
+      exchange_write_performed: exchangeWritePerformed,
+      canary_mode: canaryMode,
       simplified_exit_v2_enabled: true,
       meta,
     },
@@ -3149,7 +3206,7 @@ function buildV2PositionEntryContext({
       ? tp1FilledQtyAbs / entryQtyAbs
       : null,
     simplifiedExitV2Enabled: true,
-    executionMode: "LIVE",
+    executionMode,
     exitRulesOverride: null,
     v2_position_cycle_context: {
       position_cycle_id: positionCycleId,
@@ -3313,22 +3370,22 @@ function normalizeExitEventForRules(event, rules, positionCtx = null) {
 }
 
 function isSameOrderAsNativeTp0(orderMeta, positionCtx) {
-  const orderId = Number(orderMeta && orderMeta.orderId);
-  const nativeOrderId = Number(positionCtx && positionCtx.nativeProtectionTp0OrderId);
-  const consumedOrderId = Number(positionCtx && positionCtx.nativeProtectionConsumedTp0OrderId);
-  return Number.isFinite(orderId) && (
-    (Number.isFinite(nativeOrderId) && orderId === nativeOrderId)
-    || (Number.isFinite(consumedOrderId) && orderId === consumedOrderId)
+  const orderId = normalizeOrderIdentityToken(orderMeta && orderMeta.orderId);
+  const nativeOrderId = normalizeOrderIdentityToken(positionCtx && positionCtx.nativeProtectionTp0OrderId);
+  const consumedOrderId = normalizeOrderIdentityToken(positionCtx && positionCtx.nativeProtectionConsumedTp0OrderId);
+  return !!orderId && (
+    (nativeOrderId && orderId === nativeOrderId)
+    || (consumedOrderId && orderId === consumedOrderId)
   );
 }
 
 function isSameOrderAsNativeTp1(orderMeta, positionCtx) {
-  const orderId = Number(orderMeta && orderMeta.orderId);
-  const nativeOrderId = Number(positionCtx && positionCtx.nativeProtectionTpOrderId);
-  const consumedOrderId = Number(positionCtx && positionCtx.nativeProtectionConsumedTpOrderId);
-  return Number.isFinite(orderId) && (
-    (Number.isFinite(nativeOrderId) && orderId === nativeOrderId)
-    || (Number.isFinite(consumedOrderId) && orderId === consumedOrderId)
+  const orderId = normalizeOrderIdentityToken(orderMeta && orderMeta.orderId);
+  const nativeOrderId = normalizeOrderIdentityToken(positionCtx && positionCtx.nativeProtectionTpOrderId);
+  const consumedOrderId = normalizeOrderIdentityToken(positionCtx && positionCtx.nativeProtectionConsumedTpOrderId);
+  return !!orderId && (
+    (nativeOrderId && orderId === nativeOrderId)
+    || (consumedOrderId && orderId === consumedOrderId)
   );
 }
 
@@ -5981,6 +6038,8 @@ module.exports = {
     queueFillSyncAlertBatch,
     pickIntentForTrade,
     resolveExternalExitEvent,
+    isSameOrderAsNativeTp0,
+    isSameOrderAsNativeTp1,
     isSameOrderAsRecentTp1,
     isSameOrderAsRecentTp0,
     isSyntheticExternalFillExitEvent,

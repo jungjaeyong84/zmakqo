@@ -1,5 +1,4 @@
-<%- include('partials/app_start_unified', { title: '지금 · DONBEOLJA', pageTitle: '지금', active: 'home' }) %>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<%- include('partials/app_start_unified', { title: '로컬 대시보드 · DONBEOLJA', pageTitle: '로컬 대시보드', active: 'home', bodyClass: 'local-dashboard-page' }) %>
 
 <%
   var budgetUnit = String(
@@ -7,12 +6,11 @@
     (budget_perf && budget_perf.unit) ||
     (String(exchange || '').includes('BINANCE') ? 'USDT' : 'KRW')
   ).toUpperCase();
+  var unitLabel = budgetUnit === 'USDT' ? 'USDT' : 'KRW';
   var todayPnl = home_profit_ranges && home_profit_ranges.today ? home_profit_ranges.today.total : null;
   var weeklyPnl = weekly_range_perf && weekly_range_perf.total_realized_krw != null ? weekly_range_perf.total_realized_krw : null;
   var totalAsset = (budget_summary && budget_summary.total_max_krw != null) ? budget_summary.total_max_krw : null;
   var riskPct = (budget_summary && budget_summary.total_used_pct != null) ? Number(budget_summary.total_used_pct) : null;
-  var totalPnl = budget_perf && budget_perf.total_pnl_krw != null ? budget_perf.total_pnl_krw : null;
-  var realizedPnl = budget_perf && budget_perf.total_realized_krw != null ? budget_perf.total_realized_krw : null;
   var signals = Array.isArray(signals12) ? signals12 : [];
   var fills = Array.isArray(fills12) ? fills12 : [];
   var positions = Array.isArray(typeof active_positions !== 'undefined' ? active_positions : []) ? (typeof active_positions !== 'undefined' ? active_positions : []) : [];
@@ -26,390 +24,1107 @@
     { label: '30일', value: home_profit_ranges && home_profit_ranges.d30 ? home_profit_ranges.d30.total : null },
     { label: '전체', value: home_profit_ranges && home_profit_ranges.total ? home_profit_ranges.total.total : null },
   ];
+  var runtimeMode = runtime && runtime.mode ? String(runtime.mode).toUpperCase() : 'LOCAL';
+  var engineVersion = runtime && runtime.engine_version ? String(runtime.engine_version) : '-';
+  var executionMode = system_settings && system_settings.execution_mode ? String(system_settings.execution_mode).toUpperCase() : 'PAPER';
+  var liveLabel = (system_settings && system_settings.live_enabled) ? 'LIVE' : 'PAPER';
   var systemGuards = (typeof system_runtime_guards !== 'undefined' && system_runtime_guards) ? system_runtime_guards : null;
-  var systemGuardTone = systemGuards && systemGuards.circuit_breaker_open ? 'warn' : (systemGuards && systemGuards.block_new_entries ? 'warn' : 'ok');
-  var systemGuardTitle = systemGuards
-    ? (systemGuards.circuit_breaker_open ? '런타임 가드 차단' : (systemGuards.block_new_entries ? '런타임 가드 보류' : '런타임 가드 정상'))
-    : '런타임 가드 확인 중';
-  var systemGuardDetail = systemGuards
+  var guardState = systemGuards ? (systemGuards.circuit_breaker_open ? 'BLOCK' : (systemGuards.block_new_entries ? 'HOLD' : 'OK')) : 'CHECK';
+  var guardMessage = systemGuards
     ? [systemGuards.anomaly_reason || null, systemGuards.slo_reason || null].filter(Boolean).join(' · ')
-    : '';
-  var systemGuardRemediation = systemGuards && systemGuards.remediation ? systemGuards.remediation : null;
-  var systemGuardWriterAuthority = systemGuards && systemGuards.writer_authority ? systemGuards.writer_authority : null;
-  var systemGuardWriterTop = systemGuardWriterAuthority && Array.isArray(systemGuardWriterAuthority.remediation_candidates) && systemGuardWriterAuthority.remediation_candidates.length
-    ? systemGuardWriterAuthority.remediation_candidates[0]
-    : null;
-  var missionHeroRaw = (typeof mission_control !== 'undefined' && mission_control && mission_control.hero) ? mission_control.hero : {};
-  var statusKoMap = {
-    'OBJECTIVE_RECOVERY_REQUIRED': '수익 회복 진행 중',
-    'RECOVERY_CANARY_BLOCKED': '회복 대기 중',
-    'HOLD': '자동매매 보류 중',
-    'PASS': '자동매매 정상 운영 중',
-    'READY': '자동매매 준비됨',
-    'DEGRADED': '제한 운영 중',
-  };
-  var mTitle = missionHeroRaw.title || '';
-  var missionHero = {
-    title: statusKoMap[mTitle] || (mTitle.includes('_') ? '자동매매 운영 중' : mTitle) || '자동매매 운영 중',
-    detail: missionHeroRaw.detail || '',
-  };
+    : '런타임 가드 데이터를 수집 중입니다.';
+  var v3Paper = (typeof v3_paper !== 'undefined' && v3_paper) ? v3_paper : {};
+  var v3Bootstrap = v3Paper.bootstrap || {};
+  var v3Lane = v3Paper.lane || {};
+  var v3Entry = v3Paper.entry || {};
+  var v3Exit = v3Paper.exit || {};
+  var v3Perf = v3Paper.performance || {};
+  var v3Cycle = v3Paper.cycle || {};
+  var v3CycleLatest = v3Cycle.latest || {};
+  var v3RecentSteps = Array.isArray(v3Cycle.recent_steps) ? v3Cycle.recent_steps : [];
+  var v3AllowedSignals = Array.isArray(v3Lane.allowed_signals) ? v3Lane.allowed_signals : [];
+  var v3OpenPositions = Array.isArray(v3Perf.open_positions) ? v3Perf.open_positions : [];
+  var v3RecentExits = Array.isArray(v3Perf.recent_exits) ? v3Perf.recent_exits : [];
+  var v3BlockedReasons = v3Lane.blocked_reason_counts || {};
+  var bootstrapRemovedReasons = v3Bootstrap.removed_reason_counts || {};
+  var bootstrapRecommendation = String(v3Bootstrap.recommendation || 'NO_BOOTSTRAP').toUpperCase();
+  var bootstrapGateBreakdown = v3Bootstrap.gate_breakdown || {};
+  var bootstrapStaticGate = bootstrapGateBreakdown.static_usdt || {};
+  var bootstrapLiveGate = bootstrapGateBreakdown.live_r || {};
+  var bootstrapTargetHit = v3Bootstrap.target_hit === true;
   var dailySeries = (home_profit_ranges && home_profit_ranges.d7_daily)
     ? home_profit_ranges.d7_daily
     : (home_profit_ranges && home_profit_ranges.d7 && home_profit_ranges.d7.daily)
       ? home_profit_ranges.d7.daily : [];
 
-  function fmtN(x, d) { var n = Number(x); if (!Number.isFinite(n)) return '-'; return n.toLocaleString(undefined, { minimumFractionDigits: d||2, maximumFractionDigits: d||2 }); }
-  function fmtSigned(x) { var n = Number(x); if (!Number.isFinite(n)) return '-'; var t = (n>0?'+':'') + fmtN(n, budgetUnit==='USDT'?2:0) + ' USDT'; if (budgetUnit==='USDT') t += '<span class="krw-auto mono" data-usdt="'+n+'"></span>'; return t; }
-  function fmtUnit(x) { var n = Number(x); if (!Number.isFinite(n)) return '-'; var t = fmtN(n, budgetUnit==='USDT'?2:0) + ' USDT'; if (budgetUnit==='USDT') t += '<span class="krw-auto mono" data-usdt="'+n+'"></span>'; return t; }
-  function pnlCls(x) { var n = Number(x); if (!Number.isFinite(n)||n===0) return ''; return n>0?'profit-up':'profit-down'; }
-  function eventKo(e) { var s = String(e||'').toUpperCase(); if (s==='LONG') return '매수'; if (s==='SHORT') return '매도'; if (s.includes('EXIT')||s.includes('TP')||s.includes('SL')) return '청산'; return s||'-'; }
-  function eventCls(e) { var s = String(e||'').toUpperCase(); return s==='LONG'?'long':s==='SHORT'?'short':''; }
-  function statusKo(sig) { if (!sig) return '-'; if (String(sig.signal_source||'').toUpperCase()==='DROP') return '건너뜀'; if (sig.exec_plan&&sig.exec_plan.status) { var s=String(sig.exec_plan.status_detail||sig.exec_plan.status).toUpperCase(); if(s==='FILLED') return '체결'; if(s==='PENDING') return '대기'; if(s.includes('REJECT')||s.includes('TIMEOUT')) return '실패'; if(s==='CANCELED') return '취소'; } return '수신'; }
-  function statusCls(sig) { var s=statusKo(sig); if(s==='체결') return 'success'; if(s==='실패') return 'error'; if(s==='건너뜀'||s==='취소') return 'warning'; return 'filled'; }
-  function fmtTime(s) { if(!s) return '-'; var raw=String(s); var m=raw.match(/(\d{2}-\d{2})\s+(\d{2}:\d{2})/); if(m) return m[1]+' '+m[2]; var ms=Date.parse(raw); if(!Number.isFinite(ms)) return raw; var d=new Date(ms+9*3600000); var p=function(n){return String(n).padStart(2,'0');}; return p(d.getUTCMonth()+1)+'-'+p(d.getUTCDate())+' '+p(d.getUTCHours())+':'+p(d.getUTCMinutes()); }
-  function elapsed(iso) { if(!iso) return ''; var ms=Date.now()-Date.parse(iso); if(!Number.isFinite(ms)||ms<0) return ''; var m=Math.floor(ms/60000); if(m<60) return m+'분'; var h=Math.floor(m/60); if(h<24) return h+'시간'; return Math.floor(h/24)+'일'; }
-  function sideKo(s) { return String(s||'').toUpperCase()==='LONG'?'매수':'매도'; }
-  function fmtPct(x) { var n=Number(x); if(!Number.isFinite(n)) return '-'; return (n*100).toFixed(0)+'%'; }
+  function n(value) {
+    var num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+  function fmtN(value, digits) {
+    var num = n(value);
+    if (num === null) return '-';
+    return num.toLocaleString(undefined, {
+      minimumFractionDigits: digits || 0,
+      maximumFractionDigits: digits || 0,
+    });
+  }
+  function fmtSignedUnit(value) {
+    var num = n(value);
+    if (num === null) return '-';
+    return (num > 0 ? '+' : '') + fmtN(num, unitLabel === 'USDT' ? 2 : 0) + ' ' + unitLabel;
+  }
+  function fmtUnit(value) {
+    var num = n(value);
+    if (num === null) return '-';
+    return fmtN(num, unitLabel === 'USDT' ? 2 : 0) + ' ' + unitLabel;
+  }
+  function fmtPct(value, digits) {
+    var num = n(value);
+    if (num === null) return '-';
+    return (num * 100).toFixed(digits == null ? 1 : digits) + '%';
+  }
+  function fmtPlainPct(value, digits) {
+    var num = n(value);
+    if (num === null) return '-';
+    return num.toFixed(digits == null ? 2 : digits) + '%';
+  }
+  function toneClass(value) {
+    var num = n(value);
+    if (num === null || num === 0) return 'neutral';
+    return num > 0 ? 'up' : 'down';
+  }
+  function shortSym(value) {
+    return String(value || '-').replace('USDT', '');
+  }
+  function sideLabel(value) {
+    return String(value || '').toUpperCase() === 'SHORT' ? '숏' : '롱';
+  }
+  function eventLabel(value) {
+    var event = String(value || '').toUpperCase();
+    if (event === 'LONG') return '롱';
+    if (event === 'SHORT') return '숏';
+    if (event.indexOf('EXIT') === 0 || event.indexOf('TP') >= 0 || event.indexOf('SL') >= 0) return '청산';
+    return event || '-';
+  }
+  function statusLabel(value) {
+    var text = String(value || '').toUpperCase();
+    if (!text) return '-';
+    if (text === 'OK' || text === 'PASS' || text === 'LIVE_READY') return '정상';
+    if (text === 'HOLD') return '보류';
+    if (text === 'BLOCK' || text === 'BLOCKED') return '차단';
+    if (text === 'CHECK') return '확인 중';
+    return text;
+  }
+  function badgeTone(value) {
+    var text = String(value || '').toUpperCase();
+    if (text === 'OK' || text === 'PASS' || text === 'LIVE_READY' || text === 'PAPER') return 'ok';
+    if (text === 'HOLD' || text === 'CHECK' || text === 'KEEP_SHADOW_ONLY') return 'warn';
+    if (text === 'BLOCK' || text === 'BLOCKED' || text === 'NO_BOOTSTRAP') return 'bad';
+    return 'neutral';
+  }
+  function formatTime(value) {
+    if (!value) return '-';
+    var raw = String(value);
+    var match = raw.match(/(\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+    if (match) return match[1] + ' ' + match[2];
+    var ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) return raw;
+    var d = new Date(ms + 9 * 3600000);
+    var pad = function(x) { return String(x).padStart(2, '0'); };
+    return pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+  function formatAgo(value) {
+    if (!value) return '';
+    var ms = Date.now() - Date.parse(value);
+    if (!Number.isFinite(ms) || ms < 0) return '';
+    var mins = Math.floor(ms / 60000);
+    if (mins < 1) return '방금';
+    if (mins < 60) return mins + '분 전';
+    var hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + '시간 전';
+    return Math.floor(hours / 24) + '일 전';
+  }
+  function countKeys(obj) {
+    return obj && typeof obj === 'object' ? Object.keys(obj).length : 0;
+  }
+  function topReasonList(obj, limit) {
+    return Object.keys(obj || {})
+      .sort(function(a, b) { return Number(obj[b] || 0) - Number(obj[a] || 0); })
+      .slice(0, limit || 4)
+      .map(function(key) {
+        return { key: key, value: Number(obj[key] || 0) };
+      });
+  }
+  function dailyPointValue(row) {
+    if (!row || typeof row !== 'object') return null;
+    var candidates = [row.total, row.pnl_krw, row.pnl, row.value, row.realized_pnl, row.net];
+    for (var i = 0; i < candidates.length; i += 1) {
+      var num = n(candidates[i]);
+      if (num !== null) return num;
+    }
+    return null;
+  }
+  var sparkPoints = (Array.isArray(dailySeries) ? dailySeries : []).slice(-7).map(function(row, index) {
+    return {
+      label: row && (row.kst_date || row.date || row.day || row.label) ? String(row.kst_date || row.date || row.day || row.label).slice(5) : 'D' + String(index + 1),
+      value: dailyPointValue(row),
+    };
+  });
+  var sparkMaxAbs = sparkPoints.reduce(function(max, row) {
+    var num = Math.abs(n(row.value) || 0);
+    return num > max ? num : max;
+  }, 0) || 1;
 %>
 
 <style>
-  .home-page { display: flex; flex-direction: column; gap: 24px; }
-  .home-hero { text-align: center; padding: 32px 24px 24px; background: var(--md-surface); border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-lg); box-shadow: var(--md-elevation-1); }
-  .home-hero-label { font-size: 13px; font-weight: 500; color: var(--md-on-surface-variant); margin-bottom: 6px; }
-  .home-hero-value { font-family: var(--md-font-display); font-size: 40px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1; }
-  .home-hero-value .krw { font-size: 15px; color: var(--md-on-surface-variant); font-weight: 400; }
-  .home-sub { display: flex; justify-content: center; gap: 20px; margin-top: 10px; font-size: 13px; color: var(--md-on-surface-variant); flex-wrap: wrap; }
-  .home-sub strong { color: var(--md-on-surface); font-weight: 500; }
-  .home-main { display: grid; grid-template-columns: minmax(0, 1.2fr) 340px; gap: 24px; }
-  .home-side { display: flex; flex-direction: column; gap: 16px; }
-  .pnl-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-  .pnl-item { padding: 12px 14px; border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); background: var(--md-surface); }
-  .pnl-item-label { font-size: 11px; font-weight: 500; color: var(--md-on-surface-variant); }
-  .pnl-item-value { font-family: var(--md-font-display); font-size: 15px; font-weight: 500; margin-top: 4px; }
-  .pos-card { display: grid; grid-template-columns: 56px 48px 1fr auto; gap: 8px; align-items: center; padding: 12px 16px; border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); background: var(--md-surface); }
-  .pos-sym { font-weight: 600; font-size: 14px; }
-  .pos-meta { font-size: 11px; color: var(--md-on-surface-variant); }
-  .pos-meta.alert { color: var(--md-warning, #e65100); }
-  .warn-card { border: 1px solid var(--md-warning, #f59e0b); background: color-mix(in srgb, var(--md-warning, #f59e0b) 8%, var(--md-surface)); }
-  .warn-list { display:flex; flex-direction:column; gap:8px; }
-  .warn-item { padding:10px 12px; border:1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); background: var(--md-surface); }
-  .warn-item-title { font-weight:600; font-size:13px; }
-  .warn-item-meta { margin-top:4px; font-size:11px; color: var(--md-on-surface-variant); }
-  .pos-pnl { font-weight: 500; font-size: 13px; text-align: right; }
-  .trade-row { display: grid; grid-template-columns: 80px 44px 1fr auto; gap: 8px; align-items: center; padding: 8px 12px; border-radius: var(--md-shape-sm); }
-  .trade-row:hover { background: var(--md-surface-container-low); }
-  .trade-time { font-size: 11px; color: var(--md-on-surface-variant); font-family: var(--md-font-mono); }
-  .trade-sym { font-weight: 500; font-size: 13px; }
-  .status-row { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); background: var(--md-surface); }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .status-dot.ok { background: var(--md-success); }
-  .status-dot.warn { background: var(--md-warning); }
-  .spark-wrap { height: 56px; background: var(--md-surface); border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); padding: 6px 12px; }
-  .side-item { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 10px 14px; border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); }
-  .side-item-name { font-weight: 500; font-size: 13px; }
-  .side-item-meta { font-size: 11px; color: var(--md-on-surface-variant); }
-  .side-item-value { font-weight: 500; font-size: 13px; text-align: right; }
-  .v2-mission-panel { border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-lg); background: linear-gradient(135deg, color-mix(in srgb, var(--md-primary) 9%, var(--md-surface)), var(--md-surface)); padding: 18px; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); gap: 16px; align-items: stretch; }
-  .v2-mission-title { font-size: 24px; font-weight: 800; letter-spacing: -0.04em; }
-  .v2-mission-sub { margin-top: 6px; color: var(--md-on-surface-variant); font-size: 13px; line-height: 1.55; }
-  .v2-axis-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
-  .v2-axis { padding: 10px; border: 1px solid var(--md-outline-variant); border-radius: var(--md-shape-md); background: var(--md-surface); }
-  .v2-axis-k { font-size: 10px; color: var(--md-on-surface-variant); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-  .v2-axis-v { margin-top: 4px; font-size: 13px; font-weight: 700; }
-  .v2-blockers { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-  .v2-blocker { display:inline-flex; padding:3px 8px; border-radius:999px; border:1px solid var(--md-outline-variant); font-size:11px; background:var(--md-surface); color:var(--md-on-surface-variant); }
-  .v2-blocker.warn { color: var(--md-warning, #e65100); border-color: color-mix(in srgb, var(--md-warning, #e65100) 40%, var(--md-outline-variant)); }
-  .v2-verdict { font-size: 28px; font-weight: 900; letter-spacing: -0.04em; }
-  .v2-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-  @media (max-width: 1024px) { .v2-mission-panel { grid-template-columns: 1fr; } .v2-axis-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 1024px) { .home-main { grid-template-columns: 1fr; } }
-  @media (max-width: 768px) { .home-hero-value { font-size: 30px; } .pnl-grid { grid-template-columns: 1fr 1fr; } .home-sub { flex-direction: column; gap: 4px; align-items: center; } .pos-card { grid-template-columns: 48px 40px 1fr auto; } }
+  .local-dashboard-page {
+    background:
+      radial-gradient(circle at 12% 18%, rgba(251, 176, 59, 0.24), transparent 28%),
+      radial-gradient(circle at 88% 8%, rgba(57, 111, 255, 0.18), transparent 26%),
+      linear-gradient(180deg, #f8f2e8 0%, #f3ede2 50%, #ece4d5 100%);
+  }
+  .local-dashboard-page .app-shell,
+  .local-dashboard-page .app-main,
+  .local-dashboard-page .content {
+    background: transparent;
+  }
+  .local-dashboard-page .content {
+    padding-bottom: 52px;
+  }
+  .local-board {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .board-surface {
+    position: relative;
+    overflow: hidden;
+    border-radius: 28px;
+    border: 1px solid rgba(34, 27, 21, 0.1);
+    background: linear-gradient(180deg, rgba(255, 252, 247, 0.98) 0%, rgba(249, 244, 236, 0.95) 100%);
+    box-shadow: 0 24px 64px rgba(41, 30, 19, 0.12);
+  }
+  .board-surface::before {
+    content: "";
+    position: absolute;
+    inset: auto -72px -72px auto;
+    width: 220px;
+    height: 220px;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(255, 196, 86, 0.18) 0%, rgba(255, 196, 86, 0) 70%);
+    pointer-events: none;
+  }
+  .hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+    gap: 20px;
+  }
+  .hero-panel,
+  .summary-panel,
+  .board-panel {
+    padding: 26px;
+  }
+  .hero-eyebrow,
+  .panel-eyebrow,
+  .metric-label,
+  .timeline-label {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #75562a;
+  }
+  .hero-title {
+    margin: 10px 0 10px;
+    font-family: "Avenir Next", "Inter", "Noto Sans KR", sans-serif;
+    font-size: 42px;
+    font-weight: 750;
+    letter-spacing: -0.05em;
+    line-height: 1.02;
+    color: #18120d;
+  }
+  .hero-copy {
+    max-width: 720px;
+    margin: 0;
+    color: #65584b;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .hero-meta,
+  .hero-actions,
+  .badge-row,
+  .reason-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .hero-meta {
+    margin-top: 18px;
+  }
+  .hero-actions {
+    margin-top: 18px;
+  }
+  .hero-badge,
+  .tone-pill,
+  .reason-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(53, 43, 32, 0.12);
+    background: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+    font-weight: 700;
+    color: #2f241a;
+  }
+  .tone-pill.ok { color: #15693c; border-color: rgba(21, 105, 60, 0.2); background: rgba(223, 247, 232, 0.9); }
+  .tone-pill.warn { color: #9b5c05; border-color: rgba(155, 92, 5, 0.2); background: rgba(255, 243, 219, 0.92); }
+  .tone-pill.bad { color: #b12e20; border-color: rgba(177, 46, 32, 0.2); background: rgba(255, 232, 229, 0.9); }
+  .tone-pill.neutral,
+  .reason-pill { color: #5f5244; background: rgba(255, 255, 255, 0.76); }
+  .hero-actions .btn {
+    border-radius: 14px;
+    padding: 11px 14px;
+  }
+  .hero-actions .btn.btn-filled {
+    background: #18120d;
+    border-color: #18120d;
+  }
+  .hero-micro {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .micro-card {
+    border-radius: 18px;
+    border: 1px solid rgba(41, 30, 19, 0.08);
+    background: rgba(255, 255, 255, 0.72);
+    padding: 14px;
+  }
+  .micro-value {
+    margin-top: 8px;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #18120d;
+  }
+  .summary-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 100%;
+  }
+  .summary-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #7d6b57;
+  }
+  .summary-value {
+    margin-top: 12px;
+    font-size: 46px;
+    line-height: 0.98;
+    font-weight: 850;
+    letter-spacing: -0.06em;
+    color: #18120d;
+  }
+  .summary-value.up,
+  .metric-value.up,
+  .market-value.up,
+  .runtime-pnl.up { color: #136f41; }
+  .summary-value.down,
+  .metric-value.down,
+  .market-value.down,
+  .runtime-pnl.down { color: #c5352b; }
+  .summary-subtext {
+    margin-top: 10px;
+    color: #6e6051;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 22px;
+  }
+  .summary-box {
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.76);
+    border: 1px solid rgba(41, 30, 19, 0.08);
+    padding: 14px;
+  }
+  .summary-box .label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #7a6a58;
+  }
+  .summary-box .value {
+    margin-top: 7px;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #1b1510;
+  }
+  .summary-box .meta {
+    margin-top: 6px;
+    color: #77695a;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .spark-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(41, 30, 19, 0.08);
+  }
+  .spark-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .spark-bar {
+    position: relative;
+    width: 100%;
+    height: 76px;
+    display: flex;
+    align-items: flex-end;
+  }
+  .spark-track {
+    width: 100%;
+    height: 100%;
+    border-radius: 16px;
+    background: rgba(108, 96, 81, 0.1);
+    overflow: hidden;
+    position: relative;
+  }
+  .spark-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(61, 116, 255, 0.92) 0%, rgba(19, 111, 65, 0.9) 100%);
+  }
+  .spark-fill.down {
+    background: linear-gradient(180deg, rgba(230, 121, 64, 0.95) 0%, rgba(197, 53, 43, 0.9) 100%);
+  }
+  .spark-day,
+  .spark-value {
+    font-size: 11px;
+    color: #6f6152;
+  }
+  .spark-value {
+    font-family: var(--md-font-mono);
+  }
+  .metric-strip {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .metric-card {
+    padding: 18px;
+  }
+  .metric-value {
+    margin-top: 10px;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    color: #1b1510;
+  }
+  .metric-note {
+    margin-top: 8px;
+    color: #726454;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .board-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.95fr);
+    gap: 20px;
+  }
+  .panel-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 18px;
+  }
+  .panel-title {
+    margin: 8px 0 0;
+    font-size: 24px;
+    line-height: 1.05;
+    letter-spacing: -0.05em;
+    font-weight: 800;
+    color: #17110b;
+  }
+  .panel-copy {
+    margin: 8px 0 0;
+    color: #6c5d4d;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .pipeline-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .stage-card {
+    border-radius: 20px;
+    border: 1px solid rgba(41, 30, 19, 0.08);
+    background: rgba(255, 255, 255, 0.74);
+    padding: 16px;
+  }
+  .stage-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: #231a12;
+  }
+  .stage-stat {
+    margin-top: 12px;
+    font-size: 30px;
+    font-weight: 850;
+    line-height: 0.95;
+    letter-spacing: -0.05em;
+    color: #17110b;
+  }
+  .stage-meta {
+    margin-top: 10px;
+    color: #756757;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .stage-foot {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(41, 30, 19, 0.08);
+  }
+  .split-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+  }
+  .subpanel {
+    border-radius: 22px;
+    border: 1px solid rgba(41, 30, 19, 0.08);
+    background: rgba(255, 255, 255, 0.72);
+    padding: 18px;
+  }
+  .subpanel-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: #19120c;
+  }
+  .list-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .row-card {
+    border-radius: 18px;
+    border: 1px solid rgba(41, 30, 19, 0.08);
+    background: rgba(250, 247, 242, 0.88);
+    padding: 13px 14px;
+  }
+  .row-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+  }
+  .row-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: #1c150f;
+  }
+  .row-meta,
+  .row-submeta,
+  .timeline-meta {
+    margin-top: 6px;
+    color: #716253;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .bootstrap-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .bootstrap-box {
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.76);
+    border: 1px solid rgba(41, 30, 19, 0.08);
+    padding: 16px;
+  }
+  .bootstrap-box .value {
+    margin-top: 8px;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    color: #17110b;
+  }
+  .bootstrap-box .value.up { color: #136f41; }
+  .bootstrap-box .value.down { color: #c5352b; }
+  .runtime-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .runtime-chip {
+    border-radius: 18px;
+    border: 1px solid rgba(41, 30, 19, 0.08);
+    background: rgba(255, 255, 255, 0.78);
+    padding: 14px;
+  }
+  .runtime-chip .value {
+    margin-top: 7px;
+    font-size: 18px;
+    font-weight: 800;
+    color: #18120d;
+  }
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .timeline-row {
+    display: grid;
+    grid-template-columns: 88px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    border-radius: 16px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.74);
+    border: 1px solid rgba(41, 30, 19, 0.08);
+  }
+  .timeline-step {
+    font-size: 13px;
+    font-weight: 800;
+    color: #1b140f;
+  }
+  .timeline-time {
+    font-family: var(--md-font-mono);
+    font-size: 11px;
+    color: #766757;
+  }
+  .market-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .market-card {
+    border-radius: 18px;
+    border: 1px solid rgba(41, 30, 19, 0.08);
+    background: rgba(255, 255, 255, 0.74);
+    padding: 14px;
+  }
+  .market-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .market-name {
+    font-size: 14px;
+    font-weight: 800;
+    color: #1b140f;
+  }
+  .market-value {
+    font-size: 15px;
+    font-weight: 800;
+  }
+  .empty-state {
+    border-radius: 18px;
+    border: 1px dashed rgba(41, 30, 19, 0.15);
+    background: rgba(255, 255, 255, 0.5);
+    padding: 18px;
+    color: #786a59;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  @media (max-width: 1280px) {
+    .metric-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pipeline-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 1080px) {
+    .hero-grid,
+    .board-grid,
+    .split-grid { grid-template-columns: 1fr; }
+    .hero-micro { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 720px) {
+    .hero-title { font-size: 34px; }
+    .summary-value { font-size: 38px; }
+    .metric-strip,
+    .bootstrap-metrics,
+    .runtime-grid,
+    .summary-grid,
+    .pipeline-grid { grid-template-columns: 1fr; }
+    .timeline-row { grid-template-columns: 1fr; }
+  }
 </style>
 
-<div class="home-page">
+<div class="local-board">
+  <section class="hero-grid">
+    <article class="board-surface hero-panel">
+      <div class="hero-eyebrow">Local dashboard / v3 paper runtime</div>
+      <h2 class="hero-title">로컬 종이매매 운영 흐름을 한 화면에서 정리했습니다.</h2>
+      <p class="hero-copy">기존 홈 화면의 거래, 손익, 시스템 가드 정보는 유지하고, 로컬에서 실제로 도는 <strong>v3 paper lane</strong>, 최근 cycle, bootstrap edge, 청산 무결성을 같은 문맥에서 읽게 재구성했습니다.</p>
 
-  <div class="v2-mission-panel">
-    <div>
-      <div class="body-sm text-primary" style="font-weight:800;text-transform:uppercase;letter-spacing:.08em;">V2 Mission Control</div>
-      <div class="v2-mission-title" id="v2-mission-verdict">V2 상태 확인 중</div>
-      <div class="v2-mission-sub">LIVE 가능 여부는 OpenClaw, 24h canary, performance gate, Firestore cost guard 증거가 모두 맞을 때만 열립니다. V1 scheduler/tick 수동 버튼은 사용하지 않습니다.</div>
-      <div class="v2-actions">
-        <a class="btn btn-filled sm" href="/dashboard.html">V2 Mission Control</a>
-        <a class="btn btn-outlined sm" href="/dashboard/audit">V2 감사</a>
-        <a class="btn btn-outlined sm" href="/dashboard/protection/view">SL/TP/Trail</a>
-      </div>
-    </div>
-    <div>
-      <div class="v2-axis-grid">
-        <div class="v2-axis"><div class="v2-axis-k">Entry 24h</div><div class="v2-axis-v" id="v2-entry">-</div></div>
-        <div class="v2-axis"><div class="v2-axis-k">Exit 24h</div><div class="v2-axis-v" id="v2-exit">-</div></div>
-        <div class="v2-axis"><div class="v2-axis-k">Performance</div><div class="v2-axis-v" id="v2-perf">-</div></div>
-        <div class="v2-axis"><div class="v2-axis-k">Cost</div><div class="v2-axis-v" id="v2-cost">-</div></div>
-      </div>
-      <div class="v2-blockers" id="v2-blockers"><span class="v2-blocker">loading</span></div>
-    </div>
-  </div>
-
-  <!-- 히어로: 오늘 손익 -->
-  <div class="home-hero">
-    <div class="home-hero-label">오늘 손익</div>
-    <div class="home-hero-value <%= pnlCls(todayPnl) %>" id="hero-today"><%- fmtSigned(todayPnl) %></div>
-    <div class="home-sub">
-      <span>총자산 <strong id="hero-total"><%- fmtUnit(totalAsset) %></strong></span>
-      <span>이번주 <strong class="<%= pnlCls(weeklyPnl) %>"><%- fmtSigned(weeklyPnl) %></strong></span>
-      <% if (riskPct != null) { %><span>사용률 <strong><%= (riskPct*100).toFixed(0) %>%</strong></span><% } %>
-    </div>
-  </div>
-
-  <!-- 기간별 손익 + 스파크라인 -->
-  <div class="pnl-grid">
-    <% quickMetrics.forEach(function(q) { %>
-      <div class="pnl-item">
-        <div class="pnl-item-label"><%= q.label %></div>
-        <div class="pnl-item-value <%= pnlCls(q.value) %>"><%- fmtSigned(q.value) %></div>
-      </div>
-    <% }) %>
-  </div>
-
-  <% if (dailySeries && dailySeries.length) { %>
-    <div class="spark-wrap"><canvas id="spark-chart" height="40"></canvas></div>
-  <% } %>
-
-  <!-- 메인: 포지션+거래 / 사이드: 종목별+자금 -->
-  <div class="home-main">
-    <div>
-      <!-- 진행 중인 포지션 -->
-      <div class="card">
-        <div class="card-header"><div><div class="card-title">진행 중인 포지션</div></div></div>
-        <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
-          <% if (positions.length) { positions.forEach(function(p) { %>
-            <div class="pos-card">
-              <div class="pos-sym"><%= (p.symbol||'-').replace('USDT','') %></div>
-              <div><span class="chip sm <%= p.side==='LONG'?'long':'short' %>"><%= sideKo(p.side) %></span></div>
-              <div>
-                <div class="pos-meta"><%= p.avg_price ? fmtN(p.avg_price,2) : '-' %><% if (elapsed(p.entry_at)) { %> &middot; <%= elapsed(p.entry_at) %><% } %></div>
-                <% if (p.exit_stage && p.exit_stage.canonical_exit_stage) { %>
-                  <div class="pos-meta <%= p.exit_stage.stop_divergence ? 'alert' : '' %>">
-                    <%= p.exit_stage.canonical_exit_stage %>
-                    <% if (p.exit_stage.canonical_runner_remaining_abs != null) { %> · rem <%= fmtN(p.exit_stage.canonical_runner_remaining_abs, 3) %><% } %>
-                    <% if (p.exit_stage.chosen_stop_source || p.exit_stage.chosen_stop_price != null) { %>
-                      · <%= p.exit_stage.chosen_stop_source || '-' %> <%= p.exit_stage.chosen_stop_price != null ? fmtN(p.exit_stage.chosen_stop_price, 2) : '-' %>
-                    <% } %>
-                  </div>
-                <% } %>
-              </div>
-              <div class="pos-pnl <%= pnlCls(p.pnl_pct) %>"><%= p.pnl_pct!=null ? (p.pnl_pct>0?'+':'')+(p.pnl_pct*100).toFixed(2)+'%' : '-' %></div>
-            </div>
-          <% }) } else { %>
-            <div style="text-align:center;padding:16px;color:var(--md-on-surface-variant);font-size:13px">진행 중인 포지션 없음</div>
-          <% } %>
-        </div>
+      <div class="hero-meta">
+        <span class="hero-badge"><strong><%= exchange || 'BINANCEFUT' %></strong></span>
+        <span class="hero-badge">runtime <strong><%= runtimeMode %></strong></span>
+        <span class="hero-badge">exec <strong><%= executionMode %></strong></span>
+        <span class="hero-badge">mode <strong><%= liveLabel %></strong></span>
+        <span class="tone-pill <%= badgeTone(guardState) %>">guard <strong><%= statusLabel(guardState) %></strong></span>
       </div>
 
-      <!-- 최근 거래 -->
-      <div class="card" style="margin-top:16px">
-        <div class="card-header">
-          <div><div class="card-title">최근 거래</div></div>
-          <a href="/dashboard/trading" class="btn btn-text sm">전체 보기 &rarr;</a>
-        </div>
-        <div class="card-body">
-          <% if (signals.length) { %>
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <% signals.slice(0,5).forEach(function(sig) { %>
-                <div class="trade-row">
-                  <div class="trade-time"><%= fmtTime(sig.created_kst || sig.created_at) %></div>
-                  <div class="trade-sym"><%= (sig.symbol||'-').replace('USDT','') %></div>
-                  <div><span class="chip sm <%= eventCls(sig.event) %>"><%= eventKo(sig.event) %></span></div>
-                  <div><span class="chip sm <%= statusCls(sig) %>"><%= statusKo(sig) %></span></div>
+      <div class="hero-actions">
+        <a class="btn btn-filled sm" href="/dashboard/trading">거래기록</a>
+        <a class="btn btn-outlined sm" href="/dashboard/profit">수익 분석</a>
+        <a class="btn btn-outlined sm" href="/dashboard/recovery">자동화 상태</a>
+        <a class="btn btn-outlined sm" href="/dashboard/protection/view">보호주문</a>
+      </div>
+
+      <div class="hero-micro">
+        <% quickMetrics.forEach(function(item) { %>
+          <div class="micro-card">
+            <div class="metric-label"><%= item.label %></div>
+            <div class="micro-value <%= toneClass(item.value) %>"><%= fmtSignedUnit(item.value) %></div>
+          </div>
+        <% }) %>
+      </div>
+
+      <% if (sparkPoints.length) { %>
+        <div class="spark-grid">
+          <% sparkPoints.forEach(function(point) { var pointValue = n(point.value) || 0; var heightPct = Math.max(8, Math.round((Math.abs(pointValue) / sparkMaxAbs) * 100)); %>
+            <div class="spark-col">
+              <div class="spark-value <%= toneClass(pointValue) %>"><%= pointValue === 0 ? '0' : fmtN(pointValue, unitLabel === 'USDT' ? 2 : 0) %></div>
+              <div class="spark-bar">
+                <div class="spark-track">
+                  <div class="spark-fill <%= pointValue < 0 ? 'down' : '' %>" style="height:<%= heightPct %>%"></div>
                 </div>
-              <% }) %>
+              </div>
+              <div class="spark-day"><%= point.label %></div>
             </div>
-          <% } else { %>
-            <div style="text-align:center;padding:16px;color:var(--md-on-surface-variant);font-size:13px">아직 거래 기록이 없습니다</div>
+          <% }) %>
+        </div>
+      <% } %>
+    </article>
+
+    <article class="board-surface summary-panel">
+      <div>
+        <div class="summary-label">오늘 손익</div>
+        <div class="summary-value <%= toneClass(todayPnl) %>"><%= fmtSignedUnit(todayPnl) %></div>
+        <div class="summary-subtext">
+          총자산 <strong><%= fmtUnit(totalAsset) %></strong>
+          <% if (weeklyPnl != null) { %>
+            · 이번주 <strong class="<%= toneClass(weeklyPnl) %>"><%= fmtSignedUnit(weeklyPnl) %></strong>
+          <% } %>
+          <% if (riskPct != null) { %>
+            · 사용률 <strong><%= (riskPct * 100).toFixed(0) %>%</strong>
           <% } %>
         </div>
       </div>
-    </div>
 
-    <!-- 사이드 -->
-    <div class="home-side">
-      <div class="card <%= divergencePositions.length ? 'warn-card' : '' %>">
-        <div class="card-header">
+      <div class="summary-grid">
+        <div class="summary-box">
+          <div class="label">v3 cycle</div>
+          <div class="value"><%= statusLabel(v3CycleLatest && v3CycleLatest.ok ? 'OK' : (v3CycleLatest && v3CycleLatest.rc != null ? 'HOLD' : 'CHECK')) %></div>
+          <div class="meta"><%= v3CycleLatest && v3CycleLatest.ts ? formatTime(v3CycleLatest.ts) + ' · ' + formatAgo(v3CycleLatest.ts) : '최근 cycle 기록 없음' %></div>
+        </div>
+        <div class="summary-box">
+          <div class="label">bootstrap</div>
+          <div class="value"><%= bootstrapRecommendation === 'KEEP_SHADOW_ONLY' ? 'shadow' : bootstrapRecommendation.toLowerCase() %></div>
+          <div class="meta">retained <%= v3Bootstrap.retained_sample_n != null ? fmtN(v3Bootstrap.retained_sample_n, 0) : '-' %> / sample <%= v3Bootstrap.source_sample_n != null ? fmtN(v3Bootstrap.source_sample_n, 0) : '-' %></div>
+        </div>
+        <div class="summary-box">
+          <div class="label">runtime guard</div>
+          <div class="value"><%= statusLabel(guardState) %></div>
+          <div class="meta"><%= guardMessage || '정상 운영 중' %></div>
+        </div>
+        <div class="summary-box">
+          <div class="label">last signal</div>
+          <div class="value"><%= latestSignalsAt ? formatTime(latestSignalsAt) : '-' %></div>
+          <div class="meta"><%= latestSignalsAt ? formatAgo(latestSignalsAt) : '최근 신호 없음' %></div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="metric-strip">
+    <article class="board-surface metric-card">
+      <div class="metric-label">허용 신호</div>
+      <div class="metric-value"><%= v3Lane.allowed_signal_n != null ? fmtN(v3Lane.allowed_signal_n, 0) : '-' %></div>
+      <div class="metric-note">최근 lane 기준 active candidate 수</div>
+    </article>
+    <article class="board-surface metric-card">
+      <div class="metric-label">v3 오픈 포지션</div>
+      <div class="metric-value"><%= v3Perf.open_position_n != null ? fmtN(v3Perf.open_position_n, 0) : '-' %></div>
+      <div class="metric-note">entry ledger 대비 아직 종료되지 않은 포지션</div>
+    </article>
+    <article class="board-surface metric-card">
+      <div class="metric-label">오늘 종료</div>
+      <div class="metric-value"><%= v3Perf.today_closed_trade_n != null ? fmtN(v3Perf.today_closed_trade_n, 0) : '-' %></div>
+      <div class="metric-note">오늘 KST 기준 close 된 paper trade</div>
+    </article>
+    <article class="board-surface metric-card">
+      <div class="metric-label">live R WR <span class="badge"><%= bootstrapLiveGate.hit ? 'HIT' : 'MISS' %></span></div>
+      <div class="metric-value <%= bootstrapLiveGate.hit ? 'up' : 'down' %>"><%= bootstrapLiveGate.win_rate_pct != null ? fmtPlainPct(bootstrapLiveGate.win_rate_pct, 2) : '-' %></div>
+      <div class="metric-note">v3 진짜 표본 (n=<%= bootstrapLiveGate.sample_n != null ? fmtN(bootstrapLiveGate.sample_n, 0) : '-' %>) · 목표 ≥55%</div>
+    </article>
+    <article class="board-surface metric-card">
+      <div class="metric-label">static USDT WR <span class="badge"><%= bootstrapStaticGate.hit ? 'HIT' : 'MISS' %></span></div>
+      <div class="metric-value <%= bootstrapStaticGate.hit ? 'up' : 'down' %>"><%= bootstrapStaticGate.win_rate_pct != null ? fmtPlainPct(bootstrapStaticGate.win_rate_pct, 2) : '-' %></div>
+      <div class="metric-note">외부 holdout (n=<%= bootstrapStaticGate.sample_n != null ? fmtN(bootstrapStaticGate.sample_n, 0) : '-' %>) · 목표 ≥55%</div>
+    </article>
+    <article class="board-surface metric-card">
+      <div class="metric-label">청산 경고</div>
+      <div class="metric-value <%= divergencePositions.length ? 'down' : 'up' %>"><%= fmtN(divergencePositions.length, 0) %></div>
+      <div class="metric-note">stop divergence 감지된 runtime 포지션 수</div>
+    </article>
+  </section>
+
+  <section class="board-grid">
+    <div class="panel-stack">
+      <article class="board-surface board-panel">
+        <div class="panel-head">
           <div>
-            <div class="card-title">청산 무결성</div>
-            <div class="card-subtitle"><%= divergencePositions.length ? (divergencePositions.length + '개 심볼 경고') : '실시간 divergence 없음' %></div>
+            <div class="panel-eyebrow">Pipeline</div>
+            <h3 class="panel-title">v3 paper cycle</h3>
+            <p class="panel-copy">lane → entry ledger → exit ledger → performance 순서로 180초마다 도는 로컬 파이프라인입니다.</p>
           </div>
-          <a href="/dashboard/trading" class="btn btn-text sm">상세 &rarr;</a>
+          <div class="badge-row">
+            <span class="tone-pill <%= badgeTone(v3CycleLatest && v3CycleLatest.ok ? 'OK' : (v3CycleLatest && v3CycleLatest.rc != null ? 'HOLD' : 'CHECK')) %>"><%= v3CycleLatest && v3CycleLatest.ts ? formatAgo(v3CycleLatest.ts) : 'cycle 없음' %></span>
+          </div>
         </div>
-        <div class="card-body">
-          <% if (divergencePositions.length) { %>
-            <div class="warn-list">
-              <% divergencePositions.slice(0, 4).forEach(function(p) { %>
-                <div class="warn-item">
-                  <div class="warn-item-title"><%= (p.symbol||'-').replace('USDT','') %> <%= p.side === 'LONG' ? '매수' : '매도' %></div>
-                  <div class="warn-item-meta">
-                    canon <%= p.exit_stage.canonical_exit_stage || '-' %>
-                    <% if (p.exit_stage.chosen_stop_source || p.exit_stage.chosen_stop_price != null) { %>
-                      · chosen <%= p.exit_stage.chosen_stop_source || '-' %> <%= p.exit_stage.chosen_stop_price != null ? fmtN(p.exit_stage.chosen_stop_price, 2) : '-' %>
-                    <% } %>
-                    · floor <%= p.exit_stage.runner_floor_stop != null ? fmtN(p.exit_stage.runner_floor_stop, 2) : '-' %>
-                    · r <%= p.exit_stage.trail_stop_by_r != null ? fmtN(p.exit_stage.trail_stop_by_r, 2) : '-' %>
-                    · native <%= p.exit_stage.native_stop_price != null ? fmtN(p.exit_stage.native_stop_price, 2) : '-' %>
-                  </div>
-                  <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
-                    <% var divergenceItems = (Array.isArray(p.exit_stage.stop_divergence_items) && p.exit_stage.stop_divergence_items.length) ? p.exit_stage.stop_divergence_items : (p.exit_stage.stop_divergence_codes || []).map(function(code) { return { display: code }; }); %>
-                    <% divergenceItems.forEach(function(item) { %>
-                      <span class="chip sm warning"><%= item.display %></span>
-                    <% }) %>
-                  </div>
-                </div>
+        <div class="pipeline-grid">
+          <div class="stage-card">
+            <div class="stage-name">Lane</div>
+            <div class="stage-stat"><%= v3Lane.allowed_signal_n != null ? fmtN(v3Lane.allowed_signal_n, 0) : '-' %></div>
+            <div class="stage-meta">source <%= v3Lane.source_signal_n != null ? fmtN(v3Lane.source_signal_n, 0) : '-' %> · blocked <%= v3Lane.blocked_signal_n != null ? fmtN(v3Lane.blocked_signal_n, 0) : '-' %></div>
+            <div class="stage-foot reason-row">
+              <% topReasonList(v3BlockedReasons, 2).forEach(function(item) { %>
+                <span class="reason-pill"><%= item.key %> · <%= item.value %></span>
               <% }) %>
+              <% if (!countKeys(v3BlockedReasons)) { %><span class="reason-pill">blocked reason 없음</span><% } %>
             </div>
-          <% } else { %>
-            <div style="text-align:center;padding:12px;color:var(--md-on-surface-variant);font-size:13px">현재 활성 포지션 기준 divergence 없음</div>
-          <% } %>
+          </div>
+          <div class="stage-card">
+            <div class="stage-name">Entry Ledger</div>
+            <div class="stage-stat"><%= v3Entry.open_position_n != null ? fmtN(v3Entry.open_position_n, 0) : '-' %></div>
+            <div class="stage-meta">queue <%= v3Entry.source_queue_n != null ? fmtN(v3Entry.source_queue_n, 0) : '-' %> · appended <%= v3Entry.appended_entry_n != null ? fmtN(v3Entry.appended_entry_n, 0) : '-' %></div>
+            <div class="stage-foot"><span class="reason-pill"><%= v3Entry.generated_at ? formatTime(v3Entry.generated_at) : 'entry latest 없음' %></span></div>
+          </div>
+          <div class="stage-card">
+            <div class="stage-name">Exit Ledger</div>
+            <div class="stage-stat"><%= v3Exit.remaining_open_position_n != null ? fmtN(v3Exit.remaining_open_position_n, 0) : '-' %></div>
+            <div class="stage-meta">eligible <%= v3Exit.eligible_open_entry_n != null ? fmtN(v3Exit.eligible_open_entry_n, 0) : '-' %> · appended <%= v3Exit.appended_exit_n != null ? fmtN(v3Exit.appended_exit_n, 0) : '-' %></div>
+            <div class="stage-foot"><span class="reason-pill">live price symbols <%= v3Exit.live_price_symbol_n != null ? fmtN(v3Exit.live_price_symbol_n, 0) : '-' %></span></div>
+          </div>
+          <div class="stage-card">
+            <div class="stage-name">Performance</div>
+            <div class="stage-stat"><%= v3Perf.today_closed_trade_n != null ? fmtN(v3Perf.today_closed_trade_n, 0) : '-' %></div>
+            <div class="stage-meta">today win rate <%= v3Perf.today_metrics_r && v3Perf.today_metrics_r.win_rate_pct != null ? fmtPlainPct(v3Perf.today_metrics_r.win_rate_pct, 2) : '-' %> · all-time sample <%= v3Perf.all_time_metrics_r && v3Perf.all_time_metrics_r.sample_n != null ? fmtN(v3Perf.all_time_metrics_r.sample_n, 0) : '-' %></div>
+            <div class="stage-foot"><span class="reason-pill"><%= v3Perf.generated_at ? formatTime(v3Perf.generated_at) : 'performance latest 없음' %></span></div>
+          </div>
         </div>
-      </div>
+      </article>
 
-      <!-- 종목별 수익 -->
-      <div class="card">
-        <div class="card-header"><div><div class="card-title">종목별 수익</div><div class="card-subtitle">이번 주</div></div></div>
-        <div class="card-body" style="display:flex;flex-direction:column;gap:6px">
-          <% if (topMarkets.length) { topMarkets.forEach(function(row) { %>
-            <div class="side-item">
-              <div>
-                <div class="side-item-name"><%= (row.market||'-').replace('USDT','') %></div>
-                <div class="side-item-meta">비중 <%= row.share_pct!=null ? fmtPct(row.share_pct) : '-' %></div>
+      <article class="board-surface board-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-eyebrow">Edge Filter</div>
+            <h3 class="panel-title">bootstrap retained edge</h3>
+            <p class="panel-copy">기존 결과 표본에서 어떤 코호트를 남기고 무엇을 버릴지 정리한 bootstrap 결과입니다.</p>
+          </div>
+          <div class="badge-row">
+            <span class="tone-pill <%= bootstrapTargetHit ? 'ok' : 'bad' %>"><%= bootstrapTargetHit ? 'GATE_PASS' : 'GATE_FAIL' %></span>
+            <span class="tone-pill <%= badgeTone(bootstrapRecommendation) %>"><%= bootstrapRecommendation %></span>
+          </div>
+        </div>
+        <div class="bootstrap-metrics">
+          <div class="bootstrap-box">
+            <div class="metric-label">baseline WR (혼합)</div>
+            <div class="value"><%= v3Bootstrap.baseline_metrics && v3Bootstrap.baseline_metrics.win_rate_pct != null ? fmtPlainPct(v3Bootstrap.baseline_metrics.win_rate_pct, 2) : '-' %></div>
+            <div class="metric-note" style="margin-top:6px;">정책 적용 전 표본</div>
+          </div>
+          <div class="bootstrap-box">
+            <div class="metric-label">live R WR <span style="font-size:11px;color:<%= bootstrapLiveGate.hit ? '#137a4b' : '#b43224' %>">[<%= bootstrapLiveGate.hit ? 'HIT' : 'MISS' %>]</span></div>
+            <div class="value <%= bootstrapLiveGate.hit ? 'up' : 'down' %>"><%= bootstrapLiveGate.win_rate_pct != null ? fmtPlainPct(bootstrapLiveGate.win_rate_pct, 2) : '-' %></div>
+            <div class="metric-note" style="margin-top:6px;">v3 표본 n=<%= bootstrapLiveGate.sample_n != null ? fmtN(bootstrapLiveGate.sample_n, 0) : '-' %> · expectancy <%= bootstrapLiveGate.expectancy_r != null ? fmtN(bootstrapLiveGate.expectancy_r, 4) : '-' %>R</div>
+          </div>
+          <div class="bootstrap-box">
+            <div class="metric-label">static USDT WR <span style="font-size:11px;color:<%= bootstrapStaticGate.hit ? '#137a4b' : '#b43224' %>">[<%= bootstrapStaticGate.hit ? 'HIT' : 'MISS' %>]</span></div>
+            <div class="value <%= bootstrapStaticGate.hit ? 'up' : 'down' %>"><%= bootstrapStaticGate.win_rate_pct != null ? fmtPlainPct(bootstrapStaticGate.win_rate_pct, 2) : '-' %></div>
+            <div class="metric-note" style="margin-top:6px;">외부 holdout n=<%= bootstrapStaticGate.sample_n != null ? fmtN(bootstrapStaticGate.sample_n, 0) : '-' %> · expectancy <%= bootstrapStaticGate.expectancy_usdt != null ? fmtN(bootstrapStaticGate.expectancy_usdt, 4) : '-' %> USDT</div>
+          </div>
+          <div class="bootstrap-box">
+            <div class="metric-label">combined outcome WR <span style="font-size:11px;color:#6f675b">[참고]</span></div>
+            <div class="value"><%= v3Bootstrap.retained_metrics && v3Bootstrap.retained_metrics.win_rate_pct != null ? fmtPlainPct(v3Bootstrap.retained_metrics.win_rate_pct, 2) : '-' %></div>
+            <div class="metric-note" style="margin-top:6px;">단순 평균 · 게이트 판단 미사용</div>
+          </div>
+        </div>
+        <div class="metric-note" style="margin-top:10px;">목표: live R WR ≥ 55% <strong>AND</strong> static USDT WR ≥ 55% (둘 다 충족 시 GATE_PASS)</div>
+        <div class="reason-row" style="margin-top:16px;">
+          <% topReasonList(bootstrapRemovedReasons, 4).forEach(function(item) { %>
+            <span class="reason-pill"><%= item.key %> · <%= item.value %></span>
+          <% }) %>
+          <% if (!countKeys(bootstrapRemovedReasons)) { %><span class="reason-pill">제외 사유 데이터 없음</span><% } %>
+        </div>
+      </article>
+
+      <article class="board-surface board-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-eyebrow">Positions</div>
+            <h3 class="panel-title">runtime vs v3 paper</h3>
+            <p class="panel-copy">실제 runtime active position과 v3 paper ledger의 open position을 같이 비교할 수 있게 나눴습니다.</p>
+          </div>
+        </div>
+        <div class="split-grid">
+          <div class="subpanel">
+            <div class="subpanel-title">runtime active positions</div>
+            <div class="list-stack">
+              <% if (positions.length) { positions.slice(0, 6).forEach(function(pos) { %>
+                <div class="row-card">
+                  <div class="row-head">
+                    <div class="row-title"><%= shortSym(pos.symbol) %> · <%= sideLabel(pos.side) %></div>
+                    <span class="tone-pill <%= pos.exit_stage && pos.exit_stage.stop_divergence ? 'bad' : 'ok' %>"><%= pos.exit_stage && pos.exit_stage.canonical_exit_stage ? pos.exit_stage.canonical_exit_stage : 'ACTIVE' %></span>
+                  </div>
+                  <div class="row-meta">avg <%= pos.avg_price != null ? fmtN(pos.avg_price, 2) : '-' %> · lev <%= pos.leverage != null ? fmtN(pos.leverage, 2) + 'x' : '-' %> · entered <%= formatAgo(pos.entry_at) || '-' %></div>
+                  <div class="row-submeta runtime-pnl <%= toneClass(pos.pnl_pct) %>"><%= pos.pnl_pct != null ? fmtPlainPct(pos.pnl_pct * 100, 2) : '-' %></div>
+                </div>
+              <% }) } else { %>
+                <div class="empty-state">현재 runtime active position이 없습니다.</div>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="subpanel">
+            <div class="subpanel-title">v3 paper open positions</div>
+            <div class="list-stack">
+              <% if (v3OpenPositions.length) { v3OpenPositions.slice(0, 6).forEach(function(pos) { %>
+                <div class="row-card">
+                  <div class="row-head">
+                    <div class="row-title"><%= shortSym(pos.symbol) %> · <%= sideLabel(pos.side) %></div>
+                    <span class="tone-pill ok">OPEN</span>
+                  </div>
+                  <div class="row-meta">setup <%= pos.setup_type || '-' %> · grade <%= pos.entry_grade || '-' %> · tf <%= pos.tf || '-' %></div>
+                  <div class="row-submeta">created <%= formatTime(pos.created_at) %> · signal <%= pos.signal_price != null ? fmtN(pos.signal_price, 4) : '-' %></div>
+                </div>
+              <% }) } else { %>
+                <div class="empty-state">v3 paper ledger에 열린 포지션이 없습니다.</div>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="board-surface board-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-eyebrow">Feed</div>
+            <h3 class="panel-title">recent signal & fill tape</h3>
+            <p class="panel-copy">홈 화면에서 가장 자주 보는 최근 신호와 체결만 두 개의 짧은 테이프로 유지했습니다.</p>
+          </div>
+        </div>
+        <div class="split-grid">
+          <div class="subpanel">
+            <div class="subpanel-title">최근 신호</div>
+            <div class="list-stack">
+              <% if (signals.length) { signals.slice(0, 6).forEach(function(sig) { %>
+                <div class="row-card">
+                  <div class="row-head">
+                    <div class="row-title"><%= shortSym(sig.symbol) %> · <%= eventLabel(sig.event) %></div>
+                    <span class="tone-pill neutral"><%= sig.exec_plan && sig.exec_plan.status ? sig.exec_plan.status : 'SIGNAL' %></span>
+                  </div>
+                  <div class="row-meta"><%= formatTime(sig.created_kst || sig.created_at) %> · <%= sig.tf || '-' %> · <%= sig.display_reason_ko || sig.display_reason_stage_label || sig.display_reason_primary || '-' %></div>
+                </div>
+              <% }) } else { %>
+                <div class="empty-state">최근 신호가 없습니다.</div>
+              <% } %>
+            </div>
+          </div>
+          <div class="subpanel">
+            <div class="subpanel-title">최근 체결</div>
+            <div class="list-stack">
+              <% if (fills.length) { fills.slice(0, 6).forEach(function(fill) { %>
+                <div class="row-card">
+                  <div class="row-head">
+                    <div class="row-title"><%= shortSym(fill.symbol) %> · <%= eventLabel(fill.event) %></div>
+                    <span class="tone-pill neutral"><%= fill.leverage_applied != null ? fmtN(fill.leverage_applied, 1) + 'x' : 'fill' %></span>
+                  </div>
+                  <div class="row-meta"><%= formatTime(fill.created_kst || fill.created_at) %> · price <%= fill.exec_price != null ? fmtN(fill.exec_price, 4) : '-' %></div>
+                  <div class="row-submeta"><%= fill.display_exec_ko || fill.display_exec_text || fill.decision_reason || '-' %></div>
+                </div>
+              <% }) } else { %>
+                <div class="empty-state">최근 체결이 없습니다.</div>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <aside class="panel-stack">
+      <article class="board-surface board-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-eyebrow">System</div>
+            <h3 class="panel-title">runtime health</h3>
+            <p class="panel-copy">실행 환경, guard, 최신 시그널/체결 시간을 요약합니다.</p>
+          </div>
+        </div>
+        <div class="runtime-grid">
+          <div class="runtime-chip">
+            <div class="metric-label">runtime</div>
+            <div class="value"><%= runtimeMode %></div>
+          </div>
+          <div class="runtime-chip">
+            <div class="metric-label">engine</div>
+            <div class="value"><%= engineVersion %></div>
+          </div>
+          <div class="runtime-chip">
+            <div class="metric-label">execution</div>
+            <div class="value"><%= executionMode %></div>
+          </div>
+          <div class="runtime-chip">
+            <div class="metric-label">live gate</div>
+            <div class="value"><%= liveLabel %></div>
+          </div>
+          <div class="runtime-chip">
+            <div class="metric-label">latest signal</div>
+            <div class="value"><%= latestSignalsAt ? formatTime(latestSignalsAt) : '-' %></div>
+          </div>
+          <div class="runtime-chip">
+            <div class="metric-label">latest fill</div>
+            <div class="value"><%= latestFillsAt ? formatTime(latestFillsAt) : '-' %></div>
+          </div>
+        </div>
+        <div class="reason-row" style="margin-top:16px;">
+          <span class="tone-pill <%= badgeTone(guardState) %>">guard <%= statusLabel(guardState) %></span>
+          <% if (system_settings && system_settings.futures_leverage != null) { %><span class="reason-pill">default leverage <%= fmtN(system_settings.futures_leverage, 1) %>x</span><% } %>
+          <% if (signal_tf) { %><span class="reason-pill">signal tf <%= signal_tf %></span><% } %>
+          <% if (exec_tf) { %><span class="reason-pill">exec tf <%= exec_tf %></span><% } %>
+        </div>
+        <div class="row-submeta" style="margin-top:12px;"><%= guardMessage %></div>
+      </article>
+
+      <article class="board-surface board-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-eyebrow">Integrity</div>
+            <h3 class="panel-title">청산 무결성과 리듬</h3>
+            <p class="panel-copy">divergence 경고와 최근 v3 cycle step 시간을 같이 봅니다.</p>
+          </div>
+        </div>
+        <% if (divergencePositions.length) { %>
+          <div class="list-stack">
+            <% divergencePositions.slice(0, 4).forEach(function(pos) { %>
+              <div class="row-card">
+                <div class="row-head">
+                  <div class="row-title"><%= shortSym(pos.symbol) %> · <%= sideLabel(pos.side) %></div>
+                  <span class="tone-pill bad">divergence</span>
+                </div>
+                <div class="row-meta">canon <%= pos.exit_stage && pos.exit_stage.canonical_exit_stage ? pos.exit_stage.canonical_exit_stage : '-' %></div>
+                <div class="row-submeta"><%= Array.isArray(pos.exit_stage && pos.exit_stage.stop_divergence_codes) ? pos.exit_stage.stop_divergence_codes.join(', ') : '-' %></div>
               </div>
-              <div class="side-item-value <%= pnlCls(row.realized_krw) %>"><%- fmtSigned(row.realized_krw) %></div>
+            <% }) %>
+          </div>
+        <% } else { %>
+          <div class="empty-state">현재 divergence 경고는 없습니다.</div>
+        <% } %>
+
+        <div class="timeline">
+          <% if (v3RecentSteps.length) { v3RecentSteps.slice().reverse().forEach(function(step) { %>
+            <div class="timeline-row">
+              <div class="timeline-label"><%= step.step || '-' %></div>
+              <div>
+                <div class="timeline-step"><%= step.script || '-' %></div>
+                <div class="timeline-meta"><%= step.ts ? formatTime(step.ts) : '-' %> · <%= step.duration_ms != null ? fmtN(step.duration_ms, 0) + 'ms' : '-' %></div>
+              </div>
+              <span class="tone-pill <%= step.rc === 0 ? 'ok' : 'bad' %>">rc <%= step.rc != null ? step.rc : '-' %></span>
             </div>
           <% }) } else { %>
-            <div style="text-align:center;padding:12px;color:var(--md-on-surface-variant);font-size:13px">데이터 부족</div>
+            <div class="empty-state">최근 cycle step 로그가 없습니다.</div>
           <% } %>
         </div>
-      </div>
+      </article>
 
-      <!-- 자금 요약 -->
-      <div class="card">
-        <div class="card-header"><div><div class="card-title">자금 요약</div></div></div>
-        <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
-          <div class="side-item">
-            <div><div class="side-item-meta">총 손익</div></div>
-            <div class="side-item-value <%= pnlCls(totalPnl) %>"><%- fmtSigned(totalPnl) %></div>
-          </div>
-          <div class="side-item">
-            <div><div class="side-item-meta">실현 손익</div></div>
-            <div class="side-item-value <%= pnlCls(realizedPnl) %>"><%- fmtSigned(realizedPnl) %></div>
-          </div>
-          <div class="side-item">
-            <div><div class="side-item-meta">주간 체결</div></div>
-            <div class="side-item-value"><%= weekly_range_perf && weekly_range_perf.trades_n != null ? fmtN(weekly_range_perf.trades_n, 0) : '-' %>건</div>
+      <article class="board-surface board-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-eyebrow">Markets</div>
+            <h3 class="panel-title">주간 기여 마켓</h3>
+            <p class="panel-copy">기존 성과 집계 기준 상위 기여 마켓만 요약했습니다.</p>
           </div>
         </div>
-      </div>
+        <div class="market-grid">
+          <% if (topMarkets.length) { topMarkets.forEach(function(market) { %>
+            <div class="market-card">
+              <div class="market-head">
+                <div class="market-name"><%= shortSym(market.market || market.symbol || '-') %></div>
+                <div class="market-value <%= toneClass(market.total_realized_krw) %>"><%= fmtSignedUnit(market.total_realized_krw) %></div>
+              </div>
+              <div class="row-submeta">trade <%= market.trades_n != null ? fmtN(market.trades_n, 0) : '-' %> · win rate <%= market.win_rate_pct != null ? fmtPlainPct(market.win_rate_pct, 1) : '-' %></div>
+            </div>
+          <% }) } else { %>
+            <div class="empty-state">주간 기여 마켓 데이터가 없습니다.</div>
+          <% } %>
+        </div>
+      </article>
 
-      <div class="status-row">
-        <span class="status-dot <%= systemGuardTone %>"></span>
-        <strong style="font-size:13px"><%= systemGuardTitle %></strong>
-        <% if (systemGuardRemediation && (systemGuardRemediation.remediated_positions > 0 || systemGuardRemediation.skipped === true)) { %>
-          <span class="body-sm" style="color:var(--md-on-surface-variant)">
-            <%= systemGuardRemediation.skipped === true
-              ? '조치 없음'
-              : ('flatten ' + systemGuardRemediation.remediated_positions + '건') %>
-          </span>
-        <% } %>
-        <% if (systemGuardDetail) { %>
-          <span style="flex:1"></span>
-          <span class="body-sm" style="color:var(--md-on-surface-variant)"><%= systemGuardDetail %></span>
-        <% } else if (systemGuardWriterTop) { %>
-          <span style="flex:1"></span>
-        <% } %>
-        <% if (systemGuardWriterTop) { %>
-          <span class="body-sm" style="color:var(--md-on-surface-variant)">
-            writer authority <%= systemGuardWriterTop.symbol %> <%= systemGuardWriterTop.count %>건
-          </span>
-        <% } %>
-      </div>
-
-      <!-- 자동매매 상태 -->
-      <div class="status-row">
-        <span class="status-dot <%= missionHero.title.includes('정상') ? 'ok' : 'warn' %>"></span>
-        <strong style="font-size:13px"><%= missionHero.title %></strong>
-        <span style="flex:1"></span>
-        <a href="/dashboard/recovery" class="body-sm" style="color:var(--md-primary)">상세 &rarr;</a>
-      </div>
-    </div>
-  </div>
-
+      <article class="board-surface board-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-eyebrow">Recent exits</div>
+            <h3 class="panel-title">v3 종료 기록</h3>
+            <p class="panel-copy">exit ledger가 쌓이기 시작하면 여기서 바로 확인합니다.</p>
+          </div>
+        </div>
+        <div class="list-stack">
+          <% if (v3RecentExits.length) { v3RecentExits.slice(0, 5).forEach(function(exitRow) { %>
+            <div class="row-card">
+              <div class="row-head">
+                <div class="row-title"><%= shortSym(exitRow.symbol) %> · <%= exitRow.exit_event || 'EXIT' %></div>
+                <span class="tone-pill <%= badgeTone(n(exitRow.realized_pnl_pct) >= 0 ? 'OK' : 'BLOCK') %>"><%= exitRow.realized_pnl_pct != null ? fmtPlainPct(exitRow.realized_pnl_pct, 2) : '-' %></span>
+              </div>
+              <div class="row-meta"><%= formatTime(exitRow.closed_at) %> · R <%= exitRow.realized_r != null ? fmtN(exitRow.realized_r, 2) : '-' %></div>
+            </div>
+          <% }) } else { %>
+            <div class="empty-state">아직 v3 exit ledger가 비어 있습니다.</div>
+          <% } %>
+        </div>
+      </article>
+    </aside>
+  </section>
 </div>
 
 <script>
-(async function(){
-  function set(id, text){ var el=document.getElementById(id); if(el) el.textContent=text; }
-  function esc(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {
-      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[ch];
-    });
-  }
-  function block(items){
-    var el=document.getElementById('v2-blockers'); if(!el) return;
-    var xs=Array.isArray(items)?items.slice(0,5):[];
-    el.innerHTML = xs.length ? xs.map(function(x){ return '<span class="v2-blocker warn">'+esc(x)+'</span>'; }).join('') : '<span class="v2-blocker">blocker 없음</span>';
-  }
-  function min(v){ var n=Number(v); return Number.isFinite(n) ? Math.round(n) + '/1440m' : '-'; }
-  try {
-    var res = await fetch('/api/v2/mission-control', { credentials:'include' });
-    var j = await res.json();
-    set('v2-mission-verdict', j.verdict || 'V2 상태 불명');
-    set('v2-entry', min(j.entry_canary && j.entry_canary.coverage_minutes));
-    set('v2-exit', min(j.exit_canary && j.exit_canary.coverage_minutes));
-    set('v2-perf', j.performance_gate && j.performance_gate.ok ? 'PASS' : 'BLOCKED');
-    set('v2-cost', j.firestore_cost_guard && j.firestore_cost_guard.ok ? 'PASS' : 'BLOCKED');
-    block(j.blockers);
-  } catch (e) {
-    set('v2-mission-verdict', 'V2 상태 로드 실패');
-    block(['V2_SITE:MISSION_CONTROL_LOAD_FAILED']);
-  }
-})();
+  (function () {
+    var pulse = document.getElementById('pulse-time');
+    if (pulse) {
+      pulse.textContent = '기준 <%= as_of_kst ? String(as_of_kst).replace(/'/g, "\\'") : '-' %>';
+    }
+  })();
 </script>
 
 <%- include('partials/app_end_unified') %>
-
-<script>
-(function(){
-  var canvas = document.getElementById('spark-chart');
-  if (!canvas || typeof Chart === 'undefined') return;
-  var raw = <%- JSON.stringify(dailySeries || []) %>;
-  if (!raw.length) return;
-  new Chart(canvas, {
-    type: 'line',
-    data: { labels: raw.map(function(d){return d.day||''}), datasets: [{ data: raw.map(function(d){return d.pnl||d.value||0}), borderColor: '#1a73e8', backgroundColor: 'rgba(26,115,232,0.08)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } }
-  });
-})();
-</script>
-<script>
-(function(){
-  var exchange = '<%= String(exchange||'').toUpperCase()||'BINANCEFUT' %>';
-  var heroTotal = document.getElementById('hero-total');
-  function fmtV(x){var n=Number(x);return Number.isFinite(n)?n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+' USDT':'-';}
-  function fmtK(x){var n=Number(x);if(!Number.isFinite(n))return '';var sign=n<0?'-':'';return '(\u2248'+sign+Math.round(Math.abs(n)).toLocaleString()+'\uc6d0)';}
-  function applyAllKrw(rate){
-    document.querySelectorAll('.krw-auto[data-usdt]').forEach(function(el){
-      var v=Number(el.dataset.usdt);
-      el.textContent = Number.isFinite(v)&&Number.isFinite(rate) ? fmtK(v*rate) : '';
-    });
-  }
-  var _rate=null;
-  fetch('https://open.er-api.com/v6/latest/USD').then(function(r){return r.json()}).then(function(j){
-    if(j&&j.rates&&j.rates.KRW){ _rate=j.rates.KRW; applyAllKrw(_rate); }
-  }).catch(function(){});
-  fetch('/api/account/summary?exchange='+encodeURIComponent(exchange)).then(function(r){return r.json()}).then(function(j){
-    if(!j||!j.ok)return;
-    var total=j.total_value!=null?j.total_value:j.total_usdt;
-    if(heroTotal&&Number.isFinite(Number(total))){heroTotal.textContent=fmtV(total);if(_rate)heroTotal.textContent+=fmtK(Number(total)*_rate);}
-  }).catch(function(){});
-})();
-</script>
-<script src="/js/realtime.js"></script>
-<script>initRealtime('<%= String(exchange||'').toUpperCase()||'BINANCEFUT' %>');</script>

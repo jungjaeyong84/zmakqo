@@ -132,6 +132,37 @@ function run() {
   assert.strictEqual(healthyMetaSync.meta_sync_ok, true);
   assert.deepStrictEqual(healthyMetaSync.issue_codes, []);
 
+  const livePaperSentinelMetaSync = __test.buildTp1MetaSyncTelemetryPayload({
+    symbol: "ETHUSDT",
+    tf: "15m",
+    beforePosition: buildPosition({
+      live_paper_mode: true,
+      exchange_write_performed: false,
+      canary_mode: "LIVE_PAPER_NO_EXCHANGE",
+    }),
+    afterPosition: buildPosition({
+      live_paper_mode: true,
+      exchange_write_performed: false,
+      canary_mode: "LIVE_PAPER_NO_EXCHANGE",
+      native_protection_tp_order_id: "TP1__NO_EXCHANGE__LIVE_PAPER__eth1",
+      native_protection_tp_status: null,
+      native_protection_tp_price: 2358.98,
+      native_protection_tp_qty_ratio: 0.5,
+    }),
+    refreshPlan,
+    refreshResult: {
+      ok: true,
+      tp_order_id: "TP1__NO_EXCHANGE__LIVE_PAPER__eth1",
+      tp_status: "PLACED",
+      tp_price: 2358.98,
+      tp_qty_ratio: 0.5,
+    },
+  });
+  assert.strictEqual(livePaperSentinelMetaSync.live_paper_internal, true);
+  assert.strictEqual(livePaperSentinelMetaSync.after_tp_status, "OK");
+  assert.strictEqual(livePaperSentinelMetaSync.meta_sync_ok, true);
+  assert.deepStrictEqual(livePaperSentinelMetaSync.issue_codes, []);
+
   console.log("TP1_NATIVE_REFRESH_TELEMETRY_TEST_OK");
 }
 

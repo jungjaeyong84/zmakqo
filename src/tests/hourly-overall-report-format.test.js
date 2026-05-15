@@ -8,6 +8,7 @@ function run() {
   assert.strictEqual(typeof __test.formatSignedPercent, "function", "formatSignedPercent export missing");
   assert.strictEqual(typeof __test.formatPercentPlain, "function", "formatPercentPlain export missing");
   assert.strictEqual(typeof __test.formatV2Performance24hLine, "function", "formatV2Performance24hLine export missing");
+  assert.strictEqual(typeof __test.summarizeSystemOpsArtifact, "function", "summarizeSystemOpsArtifact export missing");
   assert.strictEqual(typeof __test.positionStatusLabel, "function", "positionStatusLabel export missing");
   assert.strictEqual(typeof __test.buildSystemOpsPrereportCommands, "function", "buildSystemOpsPrereportCommands export missing");
   assert.strictEqual(typeof __test.shouldRunPrereportCommands, "function", "shouldRunPrereportCommands export missing");
@@ -69,6 +70,28 @@ function run() {
       win_rate_pct: 40,
     }),
     "최근 24시간 승률 40.00% (4승/6패, 표본 10) / stale"
+  );
+  assert.deepStrictEqual(
+    __test.summarizeSystemOpsArtifact(
+      { generated_at_iso: "2026-05-09T00:00:00.000Z" },
+      { nowMs: Date.parse("2026-05-09T03:00:00.000Z") }
+    ),
+    {
+      generated_at: "2026-05-09T00:00:00.000Z",
+      stale: false,
+      reason: "SYSTEM_OPS_ARTIFACT_READY",
+    }
+  );
+  assert.deepStrictEqual(
+    __test.summarizeSystemOpsArtifact(
+      { generated_at_iso: "2026-05-09T00:00:00.000Z" },
+      { nowMs: Date.parse("2026-05-09T08:00:01.000Z") }
+    ),
+    {
+      generated_at: "2026-05-09T00:00:00.000Z",
+      stale: true,
+      reason: "SYSTEM_OPS_ARTIFACT_STALE",
+    }
   );
   const prereports = __test.buildSystemOpsPrereportCommands();
   assert.ok(prereports.some((step) => step.command === "node scripts/report-tp1-fail-closed-events.js"));

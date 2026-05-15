@@ -4,30 +4,48 @@ const session = require("express-session");
 const passport = require("passport");
 const path = require("path");
 
+function optionalRouteFactory(modulePath) {
+  try {
+    return require(modulePath);
+  } catch (error) {
+    console.warn("[OPTIONAL_ROUTE_DISABLED]", modulePath, error && error.message ? error.message : String(error));
+    return () => express.Router();
+  }
+}
+
+function optionalRouterModule(modulePath) {
+  try {
+    return require(modulePath);
+  } catch (error) {
+    console.warn("[OPTIONAL_ROUTER_DISABLED]", modulePath, error && error.message ? error.message : String(error));
+    return express.Router();
+  }
+}
+
 const healthRoutes = require("../routes/health.routes");
 const dataRoutes = require("../routes/data.routes");
 const debugRoutes = require("../routes/debug.routes");
 const authRoutes = require("../routes/auth.routes");
 const uiRoutes = require("../routes/ui.routes");
-const createWebhookRoutes = require("../routes/webhook.routes");
+const createWebhookRoutes = optionalRouteFactory("../routes/webhook.routes");
 
-const reportRoutes = require("../routes/report.routes");
-const reportPreviewRoutes = require("../routes/report.preview.routes");
-const reportLatestRoutes = require("../routes/report.latest.routes");
-const reportPackRoutes = require("../routes/report.pack.routes");
-const reportPackV4Routes = require("../routes/report.pack.v4.routes");
-const reportPackV4PlusRoutes = require("../routes/report.pack.v4plus.routes");
-const improvementPackRoutes = require("../routes/report.improvement-pack.routes");
-const reportInterpretRoutes = require("../routes/report.interpret.routes");
+const reportRoutes = optionalRouterModule("../routes/report.routes");
+const reportPreviewRoutes = optionalRouterModule("../routes/report.preview.routes");
+const reportLatestRoutes = optionalRouterModule("../routes/report.latest.routes");
+const reportPackRoutes = optionalRouterModule("../routes/report.pack.routes");
+const reportPackV4Routes = optionalRouterModule("../routes/report.pack.v4.routes");
+const reportPackV4PlusRoutes = optionalRouterModule("../routes/report.pack.v4plus.routes");
+const improvementPackRoutes = optionalRouterModule("../routes/report.improvement-pack.routes");
+const reportInterpretRoutes = optionalRouterModule("../routes/report.interpret.routes");
 
 const settingsRoutes = require("../routes/settings.routes");
-const auditRoutes = require("../routes/audit.routes");
+const auditRoutes = optionalRouterModule("../routes/audit.routes");
 
-const createPipelineRoutes = require("../routes/pipeline.routes");
-const createSystemRoutes = require("../routes/system.routes");
-const createSchedulerRoutes = require("../routes/scheduler.routes");
-const schedulerReportRoutes = require("../routes/scheduler.report.routes");
-const createDashboardRoutes = require("../routes/dashboard.routes");
+const createPipelineRoutes = optionalRouteFactory("../routes/pipeline.routes");
+const createSystemRoutes = optionalRouteFactory("../routes/system.routes");
+const createSchedulerRoutes = optionalRouteFactory("../routes/scheduler.routes");
+const schedulerReportRoutes = optionalRouterModule("../routes/scheduler.report.routes");
+const createDashboardRoutes = optionalRouteFactory("../routes/dashboard.routes");
 const createPricesRoutes = require("../routes/prices.routes");
 const accountRoutes = require("../routes/account.routes");
 const createStateRoutes = require("../routes/state.routes");
@@ -39,31 +57,29 @@ const dashboardBriefingRoutes = require("../routes/dashboard.briefing.routes");
 const dashboardEvalRoutes = require("../routes/dashboard.eval.routes");
 const dashboardJournalRoutes = require("../routes/dashboard.journal.routes");
 const dashboardAiRoutes = require("../routes/dashboard.ai.routes");
-const dashboardOpenClawRoutes = require("../routes/dashboard.openclaw.routes");
-const dashboardProtectionRoutes = require("../routes/dashboard.protection.routes");
-const openclawCronRoutes = require("../routes/openclaw.cron.routes");
+const dashboardProtectionRoutes = optionalRouterModule("../routes/dashboard.protection.routes");
 const dashboardSettingsRoutes = require("../routes/dashboard.settings.routes");
 const dashboardRiskRoutes = require("../routes/dashboard.risk.routes");
 const dashboardProfitRoutes = require("../routes/dashboard.profit.routes");
 const dashboardCashflowRoutes = require("../routes/dashboard.cashflow.routes");
-const createTradingActionsRoutes = require("../routes/trading.actions.routes");
+const createTradingActionsRoutes = optionalRouteFactory("../routes/trading.actions.routes");
 
-const briefingRoutes = require("../routes/briefing.routes");
-const briefingLatestRoutes = require("../routes/briefing.latest.routes");
-const patchSuggestRoutes = require("../routes/patch.suggest.routes");
+const briefingRoutes = optionalRouterModule("../routes/briefing.routes");
+const briefingLatestRoutes = optionalRouterModule("../routes/briefing.latest.routes");
+const patchSuggestRoutes = optionalRouterModule("../routes/patch.suggest.routes");
 const egressProxyRoutes = require("../routes/egress.proxy.routes");
 const sseRoutes = require("../routes/sse.routes");
 
-const weeklyCloseRoutes = require("../routes/weekly.close.routes");
-const evalWeeklyRoutes = require("../routes/eval.weekly.routes");
-const rulesPromoteRoutes = require("../routes/rules.promote.routes");
-const evalLatestRoutes = require("../routes/eval.latest.routes");
-const evalWeeksRoutes = require("../routes/eval.weeks.routes");
-const rulesSummaryRoutes = require("../routes/rules.summary.routes");
-const weeklyRunsRoutes = require("../routes/weekly.runs.routes");
-const backfillBarsRoutes = require("../routes/backfill.bars.routes");
-const dropSyncRoutes = require("../routes/filters.drop.sync.routes");
-const dropListRoutes = require("../routes/filters.drop.list.routes");
+const weeklyCloseRoutes = optionalRouterModule("../routes/weekly.close.routes");
+const evalWeeklyRoutes = optionalRouterModule("../routes/eval.weekly.routes");
+const rulesPromoteRoutes = optionalRouterModule("../routes/rules.promote.routes");
+const evalLatestRoutes = optionalRouterModule("../routes/eval.latest.routes");
+const evalWeeksRoutes = optionalRouterModule("../routes/eval.weeks.routes");
+const rulesSummaryRoutes = optionalRouterModule("../routes/rules.summary.routes");
+const weeklyRunsRoutes = optionalRouterModule("../routes/weekly.runs.routes");
+const backfillBarsRoutes = optionalRouterModule("../routes/backfill.bars.routes");
+const dropSyncRoutes = optionalRouterModule("../routes/filters.drop.sync.routes");
+const dropListRoutes = optionalRouterModule("../routes/filters.drop.list.routes");
 
 const createRiskRoutes = require("../routes/risk.routes");
 
@@ -100,7 +116,6 @@ const ensureAuthMaybe = (req, res, next) => {
       "/dashboard/profit",
       "/dashboard/cashflow",
       "/dashboard/state",
-      "/dashboard/openclaw",
       "/dashboard/protection",
     ];
     const apiAllowed = [
@@ -311,13 +326,7 @@ function createApp() {
   app.use("/", ensureAuthMaybe, dashboardCashflowRoutes);
   app.use("/", ensureAuthMaybe, dashboardJournalRoutes);
   app.use("/", ensureAuthMaybe, dashboardAiRoutes);
-  app.use("/", ensureAuthMaybe, dashboardOpenClawRoutes);
   app.use("/", ensureAuthMaybe, dashboardProtectionRoutes);
-  // openclawCronRoutes uses ensureAuthMaybe too — ensureAuthMaybe already
-  // honors x-scheduler-token (matches SCHEDULER_TOKEN env) so Cloud
-  // Scheduler calls pass through without an OAuth session. Inside the
-  // router we also double-check the token for defense in depth.
-  app.use("/", ensureAuthMaybe, openclawCronRoutes);
   app.use("/", ensureAuthMaybe, dashboardSettingsRoutes);
   app.use("/", ensureAuthMaybe, dashboardRiskRoutes);
 

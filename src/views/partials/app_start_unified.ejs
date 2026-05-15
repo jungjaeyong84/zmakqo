@@ -10,16 +10,15 @@
       : 'env';
 
   const __pageMetaMap = {
-    home:             { eyebrow: 'V2 Mission',   hint: 'V2 canary, performance, cost, OpenClaw evidence를 기준으로 운영 가능 여부를 확인합니다.' },
-    mission:          { eyebrow: 'V2 Mission',   hint: 'V2 canary, performance, cost, OpenClaw evidence를 기준으로 운영 가능 여부를 확인합니다.' },
+    home:             { eyebrow: 'Local Mission', hint: '로컬 v3 paper lane, 시스템 가드, 최근 신호 흐름을 한 화면에서 확인합니다.' },
+    mission:          { eyebrow: 'Local Mission', hint: '로컬 v3 paper lane, 시스템 가드, 최근 신호 흐름을 한 화면에서 확인합니다.' },
     profit:           { eyebrow: '수익',         hint: '기간별 손익과 주요 기여 마켓을 분석합니다.' },
     cashflow:         { eyebrow: '입출금',       hint: '입출금과 자금 흐름을 확인합니다.' },
     trading:          { eyebrow: '거래기록',     hint: '신호, 드롭, 주문, 포지션, 체결 기록을 봅니다.' },
-    recovery:         { eyebrow: 'V2 Gate',      hint: 'OpenClaw와 V2 승격 증거 수집 상태를 확인합니다.' },
-    'server-primary': { eyebrow: 'V2 Gate',      hint: 'OpenClaw 정본과 V2 cutover 진행 상태를 확인합니다.' },
-    audit:            { eyebrow: 'V2 Audit',     hint: 'V2 evidence, canary, cost, lineage 체인을 점검합니다.' },
+    recovery:         { eyebrow: 'Automation',   hint: '로컬 자동화와 증거 수집 상태를 확인합니다.' },
+    'server-primary': { eyebrow: 'Automation',   hint: '신호 정본과 서버 기준 흐름을 확인합니다.' },
+    audit:            { eyebrow: 'System Audit', hint: '증거, 비용, 청산 무결성, 라인리지를 점검합니다.' },
     settings:         { eyebrow: '설정',         hint: '거래소, 리스크, 실행 설정을 조정합니다.' },
-    openclaw:         { eyebrow: 'AI 에이전트',  hint: 'OpenClaw AI 에이전트의 페이즈, 크론 상태, 최근 판단 기록을 모니터링합니다.' },
     protection:       { eyebrow: '보호주문',     hint: '모든 활성 포지션의 SL/TP/트레일링 상태를 DB ↔ 거래소 실제 주문과 실시간 대조합니다.' },
   };
   const __pageMeta = __pageMetaMap[__active] || { eyebrow: 'DONBEOLJA', hint: '' };
@@ -31,7 +30,6 @@
   const __cashflowActive = __active === 'cashflow';
   const __tradingActive = ['execution', 'trading', 'server-primary', 'journal', 'ai', 'state'].includes(__active);
   const __automationActive = ['recovery', 'deployment', 'audit', 'analysis', 'report', 'eval', 'briefing', 'risk'].includes(__active);
-  const __openclawActive = __active === 'openclaw';
   const __protectionActive = __active === 'protection';
 %>
 <!doctype html>
@@ -59,17 +57,17 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <div class="sidebar-brand-icon">DB</div>
-        <div class="sidebar-brand-text">
-          <div class="sidebar-brand-name">DONBEOLJA</div>
-          <div class="sidebar-brand-sub">V2 OpenClaw Futures</div>
-        </div>
+      <div class="sidebar-brand-text">
+        <div class="sidebar-brand-name">DONBEOLJA</div>
+        <div class="sidebar-brand-sub">Local Paper Control</div>
+      </div>
       </div>
 
       <div class="sidebar-divider"></div>
 
       <nav class="sidebar-nav">
         <a href="/dashboard/home" class="<%= __homeActive ? 'active' : '' %>">
-          <span class="nav-icon">&#x1f3e0;</span> V2 미션
+          <span class="nav-icon">&#x1f3e0;</span> 개요
         </a>
         <a href="/dashboard/profit" class="<%= __profitActive ? 'active' : '' %>">
           <span class="nav-icon">&#x1f4c8;</span> 수익
@@ -88,13 +86,10 @@
           <span class="nav-icon">&#x1f4b0;</span> 입출금
         </a>
         <a href="/dashboard/recovery" class="<%= __automationActive ? 'active' : '' %>">
-          <span class="nav-icon">&#x2699;</span> V2 게이트
+          <span class="nav-icon">&#x2699;</span> 자동화
         </a>
         <a href="/dashboard/protection/view" class="<%= __protectionActive ? 'active' : '' %>">
           <span class="nav-icon">&#x1f6e1;</span> 보호주문
-        </a>
-        <a href="/dashboard/openclaw/view" class="<%= __openclawActive ? 'active' : '' %>">
-          <span class="nav-icon">&#x1f9e0;</span> AI 에이전트
         </a>
       </nav>
 
@@ -105,8 +100,8 @@
         </div>
         <div id="exchange-hint" class="body-sm text-muted">선물 · 멀티 마켓</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <span class="chip sm primary">OpenClaw 정본</span>
-          <span class="chip sm filled">V2 evidence</span>
+          <span class="chip sm primary">LOCAL</span>
+          <span class="chip sm filled">PAPER</span>
         </div>
         <div class="sidebar-env-chip"><%= __envLabel.toUpperCase() %></div>
       </div>
@@ -126,8 +121,8 @@
           <% } %>
         </div>
         <div class="topbar-actions">
-          <span class="chip primary">OpenClaw 정본</span>
-          <span class="chip filled">V2 evidence</span>
+          <span class="chip primary">LOCAL</span>
+          <span class="chip filled">PAPER</span>
           <% if (!__compactTopbar) { %>
             <span class="chip filled"><span class="mono"><%= __envLabel.toUpperCase() %></span></span>
           <% } %>

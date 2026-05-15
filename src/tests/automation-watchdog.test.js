@@ -28,11 +28,9 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
 
   const rows = __test.parseLaunchctlList([
     "123\t0\tcom.jeongjaeyong.donbeolja.objectivesupervisor",
-    "-\t0\tcom.jeongjaeyong.donbeolja.weeklypine",
     "-\t78\tcom.jeongjaeyong.donbeolja.stageautopilot",
   ].join("\n"));
   assert.strictEqual(rows.get("com.jeongjaeyong.donbeolja.objectivesupervisor").pid, 123);
-  assert.strictEqual(rows.get("com.jeongjaeyong.donbeolja.weeklypine").lastExit, 0);
   assert.strictEqual(rows.get("com.jeongjaeyong.donbeolja.stageautopilot").lastExit, 78);
 
   const cronRows = __test.parseOpenClawCronList({
@@ -44,15 +42,6 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
         state: {
           lastStatus: "ok",
           nextRunAtMs: 12345,
-        },
-      },
-      {
-        id: "job-2",
-        name: "donbeolja-weekly-pine",
-        enabled: false,
-        state: {
-          lastStatus: "error",
-          consecutiveErrors: 2,
         },
       },
     ],
@@ -74,20 +63,6 @@ const { __test } = require("../../scripts/automation-automation-watchdog");
   assert.strictEqual(schedulerPass.enabled, true);
   assert.strictEqual(schedulerPass.issueCode, null);
   assert.strictEqual(schedulerPass.scheduler, "OPENCLAW_CRON");
-
-  const schedulerDisabled = __test.assessSchedulerJob(
-    {
-      job_id: "weekly_pine",
-      label: "com.jeongjaeyong.donbeolja.weeklypine",
-      name: "donbeolja-weekly-pine",
-      produces_artifact: "weekly_pine_latest.json",
-      scheduler_sot: "OPENCLAW_CRON",
-      severity: "WARN",
-    },
-    cronRows
-  );
-  assert.strictEqual(schedulerDisabled.enabled, false);
-  assert.strictEqual(schedulerDisabled.issueCode, "donbeolja-weekly-pine_DISABLED");
 
   const reconciled = __test.reconcileSchedulerRowsWithArtifacts(
     [

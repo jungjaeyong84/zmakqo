@@ -1,0 +1,358 @@
+"use strict";
+
+const fs = require("fs");
+
+function trimOrNull(value) {
+  const text = String(value == null ? "" : value).trim();
+  return text || null;
+}
+
+function upper(value) {
+  const text = trimOrNull(value);
+  return text ? text.toUpperCase() : null;
+}
+
+function parseTimeMs(value) {
+  if (!value) return null;
+  const ms = Date.parse(String(value));
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function parseTfToMs(value) {
+  const text = trimOrNull(value);
+  if (!text) return null;
+  const match = /^(\d+)([mhdw])$/i.exec(text);
+  if (!match) return null;
+  const count = Number(match[1]);
+  const unit = String(match[2] || "").toLowerCase();
+  if (!Number.isFinite(count) || count <= 0) return null;
+  const unitMs = (
+    unit === "m" ? 60 * 1000
+      : unit === "h" ? 60 * 60 * 1000
+        : unit === "d" ? 24 * 60 * 60 * 1000
+          : unit === "w" ? 7 * 24 * 60 * 60 * 1000
+            : null
+  );
+  return unitMs ? count * unitMs : null;
+}
+
+function buildPositionLockKey(symbol, side) {
+  const normalizedSymbol = upper(symbol);
+  const normalizedSide = upper(side);
+  if (!normalizedSymbol || !normalizedSide) return null;
+  return `${normalizedSymbol}::${normalizedSide}`;
+}
+
+function readJsonlRows(filePath) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    return raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch (_) {
+          return null;
+        }
+      })
+      .filter((row) => row && typeof row === "object");
+  } catch (_) {
+    return [];
+  }
+}
+
+function appendJsonlRows(filePath, rows = []) {
+  if (!rows.length) return 0;
+  const payload = `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  fs.appendFileSync(filePath, payload);
+  return rows.length;
+}
+
+function writeJsonlRows(filePath, rows = []) {
+  const payloadRows = Array.isArray(rows) ? rows : [];
+  if (!payloadRows.length) {
+    fs.writeFileSync(filePath, "");
+    return 0;
+  }
+  const payload = `${payloadRows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  fs.writeFileSync(filePath, payload);
+  return payloadRows.length;
+}
+
+function hasCompleteLearningContext(row = {}) {
+  return (
+    upper(row.side)
+    && upper(row.setup_type)
+    && upper(row.structural_regime)
+    && upper(row.edge_cohort)
+    && trimOrNull(row.cohort_key)
+    && upper(row.profile_id)
+    && upper(row.entry_grade)
+    && row.market_quality_score !== null
+    && row.market_quality_score !== undefined
+    && row.spread_bps !== null
+    && row.spread_bps !== undefined
+    && row.funding_rate !== null
+    && row.funding_rate !== undefined
+    && upper(row.btc_1h_trend)
+    && upper(row.mtf_1h_direction)
+    && row.signal_price !== null
+    && row.signal_price !== undefined
+    && row.stop_price !== null
+    && row.stop_price !== undefined
+    && row.target_price !== null
+    && row.target_price !== undefined
+  );
+}
+
+function buildEntryId(queueRow = {}) {
+  const signalId = trimOrNull(queueRow.signal_id) || "UNKNOWN_SIGNAL";
+  return `V3ENTRY__${signalId}`;
+}
+
+function resolveConfiguredMaxSignalAgeMs() {
+  const raw = Number(process.env.V3_LEDGER_MAX_SIGNAL_AGE_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
+
+function resolveSignalStaleGraceMs() {
+  const raw = Number(process.env.V3_LEDGER_SIGNAL_STALE_GRACE_MS || (5 * 60 * 1000));
+  return Number.isFinite(raw) && raw >= 0 ? raw : (5 * 60 * 1000);
+}
+
+function resolveSignalAgeLimitMs(row = {}) {
+  const configured = resolveConfiguredMaxSignalAgeMs();
+  if (configured) return configured;
+  const tfMs = parseTfToMs(row && row.tf) || (15 * 60 * 1000);
+  return tfMs + resolveSignalStaleGraceMs();
+}
+
+function resolveSymbolCooldownMs(row = {}) {
+  const configured = Number(process.env.V3_LEDGER_SYMBOL_COOLDOWN_MS);
+  if (Number.isFinite(configured) && configured > 0) return configured;
+  return parseTfToMs(row && row.tf) || (15 * 60 * 1000);
+}
+
+function buildOpenSymbolIndex(existingRows = [], { closedSignalIds = new Set() } = {}) {
+  const openBySymbol = new Map();
+  const seenSignalIds = new Set();
+  for (const row of existingRows) {
+    const signalId = trimOrNull(row && row.signal_id);
+    if (signalId) seenSignalIds.add(signalId);
+    if (upper(row && row.status) !== "OPEN") continue;
+    if (signalId && closedSignalIds.has(signalId)) continue;
+    const positionKey = buildPositionLockKey(row && row.symbol, row && row.side);
+    if (!positionKey) continue;
+    openBySymbol.set(positionKey, row);
+  }
+  return Object.freeze({ openBySymbol, seenSignalIds });
+}
+
+function buildRecordedSignalIdSet(existingRows = []) {
+  const ids = new Set();
+  for (const row of Array.isArray(existingRows) ? existingRows : []) {
+    const signalId = trimOrNull(row && row.signal_id);
+    if (signalId) ids.add(signalId);
+  }
+  return ids;
+}
+
+function buildRecentClosedSymbolIndex(exitRows = []) {
+  const latestClosedBySymbol = new Map();
+  for (const row of Array.isArray(exitRows) ? exitRows : []) {
+    if (upper(row && row.status) !== "CLOSED") continue;
+    const positionKey = buildPositionLockKey(row && row.symbol, row && row.side);
+    const closedAtMs = parseTimeMs(row && row.closed_at);
+    if (!positionKey || !Number.isFinite(closedAtMs)) continue;
+    const previous = latestClosedBySymbol.get(positionKey);
+    if (!previous || closedAtMs > previous.closed_at_ms) {
+      latestClosedBySymbol.set(positionKey, Object.freeze({
+        position_key: positionKey,
+        symbol: upper(row && row.symbol),
+        side: upper(row && row.side),
+        closed_at_ms: closedAtMs,
+        closed_at: trimOrNull(row && row.closed_at),
+        signal_id: trimOrNull(row && row.signal_id),
+        tf: trimOrNull(row && row.tf),
+      }));
+    }
+  }
+  return Object.freeze({ latestClosedBySymbol });
+}
+
+function compactQueueRows(queueRows = [], {
+  recordedSignalIds = new Set(),
+  nowMs = Date.now(),
+} = {}) {
+  const retainedRows = [];
+  const prunedReasonCounts = Object.create(null);
+  const seenQueueSignalIds = new Set();
+
+  for (const row of Array.isArray(queueRows) ? queueRows : []) {
+    const signalId = trimOrNull(row && row.signal_id);
+    const symbol = upper(row && row.symbol);
+    if (!signalId || !symbol) {
+      prunedReasonCounts.V3_QUEUE_SIGNAL_OR_SYMBOL_MISSING = Number(prunedReasonCounts.V3_QUEUE_SIGNAL_OR_SYMBOL_MISSING || 0) + 1;
+      continue;
+    }
+    if (seenQueueSignalIds.has(signalId)) {
+      prunedReasonCounts.V3_QUEUE_DUPLICATE_SIGNAL_ID = Number(prunedReasonCounts.V3_QUEUE_DUPLICATE_SIGNAL_ID || 0) + 1;
+      continue;
+    }
+    seenQueueSignalIds.add(signalId);
+    const signalCreatedAtMs = parseTimeMs(row && row.created_at);
+    if (signalCreatedAtMs === null) {
+      prunedReasonCounts.V3_QUEUE_SIGNAL_CREATED_AT_REQUIRED = Number(prunedReasonCounts.V3_QUEUE_SIGNAL_CREATED_AT_REQUIRED || 0) + 1;
+      continue;
+    }
+    const signalAgeLimitMs = resolveSignalAgeLimitMs(row);
+    if ((nowMs - signalCreatedAtMs) > signalAgeLimitMs) {
+      prunedReasonCounts.V3_QUEUE_SIGNAL_STALE = Number(prunedReasonCounts.V3_QUEUE_SIGNAL_STALE || 0) + 1;
+      continue;
+    }
+    if (recordedSignalIds.has(signalId)) {
+      prunedReasonCounts.V3_QUEUE_SIGNAL_ALREADY_RECORDED = Number(prunedReasonCounts.V3_QUEUE_SIGNAL_ALREADY_RECORDED || 0) + 1;
+      continue;
+    }
+    retainedRows.push(row);
+  }
+
+  return Object.freeze({
+    max_signal_age_ms: resolveSignalAgeLimitMs((Array.isArray(queueRows) && queueRows[0]) || {}),
+    signal_age_policy: resolveConfiguredMaxSignalAgeMs() ? "FIXED_MAX_AGE" : "TF_PLUS_GRACE",
+    source_queue_n: Array.isArray(queueRows) ? queueRows.length : 0,
+    retained_queue_n: retainedRows.length,
+    pruned_queue_n: Math.max(0, (Array.isArray(queueRows) ? queueRows.length : 0) - retainedRows.length),
+    pruned_reason_counts: Object.freeze(prunedReasonCounts),
+    retained_rows: Object.freeze(retainedRows.slice()),
+  });
+}
+
+function buildV3PaperEntryLedgerReport(queueRows = [], {
+  ledgerPath = null,
+  closedSignalIds = new Set(),
+  exitRows = [],
+  nowMs = Date.now(),
+} = {}) {
+  const existingRows = ledgerPath ? readJsonlRows(ledgerPath) : [];
+  const index = buildOpenSymbolIndex(existingRows, { closedSignalIds });
+  const recentClosed = buildRecentClosedSymbolIndex(exitRows);
+  const blockedReasonCounts = Object.create(null);
+  const newEntries = [];
+
+  for (const row of Array.isArray(queueRows) ? queueRows : []) {
+    const signalId = trimOrNull(row && row.signal_id);
+    const symbol = upper(row && row.symbol);
+    const side = upper(row && row.side);
+    if (!signalId || !symbol) {
+      blockedReasonCounts.V3_LEDGER_SIGNAL_OR_SYMBOL_MISSING = Number(blockedReasonCounts.V3_LEDGER_SIGNAL_OR_SYMBOL_MISSING || 0) + 1;
+      continue;
+    }
+    const signalCreatedAtMs = parseTimeMs(row && row.created_at);
+    if (signalCreatedAtMs === null) {
+      blockedReasonCounts.V3_LEDGER_SIGNAL_CREATED_AT_REQUIRED = Number(blockedReasonCounts.V3_LEDGER_SIGNAL_CREATED_AT_REQUIRED || 0) + 1;
+      continue;
+    }
+    const signalAgeLimitMs = resolveSignalAgeLimitMs(row);
+    if ((nowMs - signalCreatedAtMs) > signalAgeLimitMs) {
+      blockedReasonCounts.V3_LEDGER_SIGNAL_STALE = Number(blockedReasonCounts.V3_LEDGER_SIGNAL_STALE || 0) + 1;
+      continue;
+    }
+    if (index.seenSignalIds.has(signalId)) {
+      blockedReasonCounts.V3_LEDGER_SIGNAL_ALREADY_RECORDED = Number(blockedReasonCounts.V3_LEDGER_SIGNAL_ALREADY_RECORDED || 0) + 1;
+      continue;
+    }
+    const positionKey = buildPositionLockKey(symbol, side);
+    const recentClosedEntry = positionKey ? recentClosed.latestClosedBySymbol.get(positionKey) : null;
+    if (recentClosedEntry) {
+      const cooldownMs = resolveSymbolCooldownMs(row);
+      if ((signalCreatedAtMs - recentClosedEntry.closed_at_ms) < cooldownMs) {
+        blockedReasonCounts.V3_LEDGER_SYMBOL_COOLDOWN_ACTIVE = Number(blockedReasonCounts.V3_LEDGER_SYMBOL_COOLDOWN_ACTIVE || 0) + 1;
+        continue;
+      }
+    }
+    if (positionKey && index.openBySymbol.has(positionKey)) {
+      blockedReasonCounts.V3_LEDGER_SYMBOL_ALREADY_OPEN = Number(blockedReasonCounts.V3_LEDGER_SYMBOL_ALREADY_OPEN || 0) + 1;
+      continue;
+    }
+    if (!hasCompleteLearningContext(row)) {
+      blockedReasonCounts.V3_LEDGER_LEARNING_CONTEXT_REQUIRED = Number(blockedReasonCounts.V3_LEDGER_LEARNING_CONTEXT_REQUIRED || 0) + 1;
+      continue;
+    }
+    const entry = Object.freeze({
+      v3_paper_entry_id: buildEntryId(row),
+      created_at: new Date().toISOString(),
+      signal_id: signalId,
+      symbol,
+      exchange: upper(row.exchange),
+      tf: trimOrNull(row.tf),
+      side: upper(row.side),
+      setup_type: upper(row.setup_type),
+      structural_regime: upper(row.structural_regime),
+      edge_cohort: upper(row.edge_cohort),
+      cohort_key: trimOrNull(row.cohort_key),
+      profile_id: upper(row.profile_id),
+      entry_grade: upper(row.entry_grade),
+      market_state: upper(row.market_state),
+      htf_bias: upper(row.htf_bias),
+      opportunity_score: row.opportunity_score == null ? null : Number(row.opportunity_score),
+      confidence: row.confidence == null ? null : Number(row.confidence),
+      setup_quality_score: row.setup_quality_score == null ? null : Number(row.setup_quality_score),
+      structure_alignment: row.structure_alignment == null ? null : Number(row.structure_alignment),
+      htf_alignment_score: row.htf_alignment_score == null ? null : Number(row.htf_alignment_score),
+      market_quality_score: row.market_quality_score == null ? null : Number(row.market_quality_score),
+      spread_bps: row.spread_bps == null ? null : Number(row.spread_bps),
+      funding_rate: row.funding_rate == null ? null : Number(row.funding_rate),
+      btc_1h_trend: upper(row.btc_1h_trend),
+      mtf_1h_direction: upper(row.mtf_1h_direction),
+      feature_lineage_source: upper(row.feature_lineage_source),
+      rr: row.rr == null ? null : Number(row.rr),
+      signal_price: row.signal_price == null ? null : Number(row.signal_price),
+      stop_price: row.stop_price == null ? null : Number(row.stop_price),
+      target_price: row.target_price == null ? null : Number(row.target_price),
+      status: "OPEN",
+      source: "V3_LOCAL_PAPER_LANE",
+    });
+    newEntries.push(entry);
+    index.seenSignalIds.add(signalId);
+    if (positionKey) index.openBySymbol.set(positionKey, entry);
+  }
+
+  const appendedEntryN = ledgerPath ? appendJsonlRows(ledgerPath, newEntries) : 0;
+
+  return Object.freeze({
+    ok: true,
+    source_queue_n: Array.isArray(queueRows) ? queueRows.length : 0,
+    existing_entry_n: existingRows.length,
+    appended_entry_n: appendedEntryN,
+    max_signal_age_ms: resolveSignalAgeLimitMs((Array.isArray(queueRows) && queueRows[0]) || {}),
+    signal_age_policy: resolveConfiguredMaxSignalAgeMs() ? "FIXED_MAX_AGE" : "TF_PLUS_GRACE",
+    symbol_cooldown_ms: resolveSymbolCooldownMs((Array.isArray(queueRows) && queueRows[0]) || {}),
+    position_lock_scope: "SYMBOL_SIDE",
+    blocked_reason_counts: Object.freeze(blockedReasonCounts),
+    new_entries: Object.freeze(newEntries.slice(0, 50)),
+    open_entries: Object.freeze([...index.openBySymbol.values()].slice(0, 50)),
+    open_position_n: index.openBySymbol.size,
+  });
+}
+
+module.exports = Object.freeze({
+  buildV3PaperEntryLedgerReport,
+  __test: {
+    readJsonlRows,
+    writeJsonlRows,
+    buildPositionLockKey,
+    buildOpenSymbolIndex,
+    buildRecordedSignalIdSet,
+    buildRecentClosedSymbolIndex,
+    compactQueueRows,
+    buildEntryId,
+    hasCompleteLearningContext,
+    parseTimeMs,
+    parseTfToMs,
+    resolveSignalAgeLimitMs,
+    resolveSymbolCooldownMs,
+  },
+});

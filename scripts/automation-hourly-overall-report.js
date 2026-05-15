@@ -371,6 +371,25 @@ function loadV2Performance24hSummary({ nowMs = Date.now(), maxAgeMs = 3 * 60 * 6
   };
 }
 
+function summarizeSystemOpsArtifact(ops = {}, { nowMs = Date.now(), maxAgeMs = 6 * 60 * 60 * 1000 } = {}) {
+  const row = ops && typeof ops === "object" ? ops : {};
+  const generatedAt = String(
+    row.generated_at_iso
+    || row.generated_at
+    || row.generated_at_kst
+    || ""
+  ).trim() || null;
+  const generatedAtMs = generatedAt ? Date.parse(generatedAt) : NaN;
+  const stale = Number.isFinite(generatedAtMs) && Number.isFinite(Number(nowMs))
+    ? (Number(nowMs) - generatedAtMs) > Math.max(60 * 1000, Number(maxAgeMs) || 0)
+    : true;
+  return {
+    generated_at: generatedAt,
+    stale,
+    reason: stale ? "SYSTEM_OPS_ARTIFACT_STALE" : "SYSTEM_OPS_ARTIFACT_READY",
+  };
+}
+
 function formatV2Performance24hLine(performance24h) {
   if (!performance24h || performance24h.available !== true) {
     return "최근 24시간 승률 N/A";
@@ -592,6 +611,7 @@ async function main() {
 
   const snapshot = readJsonSafe(snapshotPath, {});
   const ops = loadSystemOpsLatestSync({ fallbackPath: path.join(REPO_ROOT, "ops", "daily", "system_ops_check_latest.json") });
+  const systemOpsArtifact = summarizeSystemOpsArtifact(ops, { nowMs: meta.nowMs });
   const evGateRun = execJson("node scripts/report-ev-gate-impact.js --rolling-24h", { cwd: REPO_ROOT });
   const integrity = await auditBinanceExitIntegrity({ includeFlat: false });
   const positionsRaw = await readActivePositions();
@@ -657,13 +677,19 @@ async function main() {
     operations: {
       status: String(ops.status || "").trim() || "N/A",
       mode: String(ops.mode || "").trim() || "N/A",
-      reasons: Array.isArray(ops.reasons) ? ops.reasons : [],
+      reasons: [
+        ...(Array.isArray(ops.reasons) ? ops.reasons : []),
+        ...(systemOpsArtifact.stale ? [`system_ops_check_latest stale (${systemOpsArtifact.generated_at || "generated_at_missing"})`] : []),
+      ],
       error_count_24h: isFiniteNullable(ops.error_count)
         ? Number(ops.error_count)
         : (isFiniteNullable(snapshot.derived && snapshot.derived.error_count_24h)
           ? Number(snapshot.derived.error_count_24h)
           : null),
       error_source_stale: ops.derived && ops.derived.error_source_stale === true,
+      system_ops_generated_at: systemOpsArtifact.generated_at,
+      system_ops_stale: systemOpsArtifact.stale,
+      system_ops_artifact_reason: systemOpsArtifact.reason,
       day_over_day: "기준 데이터 없음",
       ev_gate_impact_available: evGateSummary.available,
       prereport_status: prereportStatus,
@@ -790,6 +816,7 @@ async function main() {
       `- 운영 가드 상태: \`${report.operations.status}\``,
       `- 운영 가드 모드: \`${report.operations.mode}\``,
       `- 이유: \`${(report.operations.reasons || []).join(" | ") || "없음"}\``,
+      `- system_ops_check latest: \`${report.operations.system_ops_generated_at || "N/A"}\`${report.operations.system_ops_stale ? " / stale" : ""}`,
       `- 최근 24시간 시스템 오류: \`${isFiniteNullable(report.operations.error_count_24h) ? `${report.operations.error_count_24h}건` : "N/A"}\``,
       ...buildTp1FailClosedQuarantineLines(ops).map((line) => `- ${line}`),
       "",
@@ -886,6 +913,7 @@ if (require.main === module) {
       formatPercentPlain,
       loadV2Performance24hSummary,
       formatV2Performance24hLine,
+      summarizeSystemOpsArtifact,
       summarizeExecutionEngine,
       positionStatusLabel,
       envBool,

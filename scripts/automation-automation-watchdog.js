@@ -97,7 +97,6 @@ const AUTOMATION_SEVERITY_BY_LABEL = Object.freeze({
   "com.jeongjaeyong.donbeolja.evtp1tune": "WARN",
   "com.jeongjaeyong.donbeolja.waitonebartune": "WARN",
   "com.jeongjaeyong.donbeolja.weeklyfilters": "WARN",
-  "com.jeongjaeyong.donbeolja.weeklypine": "WARN",
   "com.jeongjaeyong.donbeolja.automationwatchdog": "WARN",
 });
 
