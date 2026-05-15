@@ -176,6 +176,25 @@ const deterministicRand = () => 0.5; // jitter = 0 with this seed
   assert.strictEqual(isTransientFirestoreError(makeFirestoreErr(7, "")), false);
   assert.strictEqual(isTransientFirestoreError(null), false);
 
+  // 2026-04-19/20 incident: Firestore surfaces transaction-contention
+  // exhaustion as `3 INVALID_ARGUMENT: Invalid transaction.` instead of
+  // 10 ABORTED. Code 3 alone stays non-transient (so genuinely-bad
+  // arguments don't get spuriously retried) BUT the specific "Invalid
+  // transaction" message overrides via the message-pattern match.
+  assert.strictEqual(
+    isTransientFirestoreError(makeFirestoreErr(3, "3 INVALID_ARGUMENT: Invalid transaction.")),
+    true,
+    'code-3 "Invalid transaction" must be classified transient to ' +
+    'recover the BE stop raise — see 2026-04-19/20 ETHUSDT incident.'
+  );
+  // …but a different code-3 message (e.g. a real bad-query) must STILL
+  // be non-transient.
+  assert.strictEqual(
+    isTransientFirestoreError(makeFirestoreErr(3, "3 INVALID_ARGUMENT: Field path not valid.")),
+    false,
+    "generic INVALID_ARGUMENT must keep the no-retry pass-through"
+  );
+
   // wrapped error via `cause`
   const outer = new Error("wrapper");
   outer.cause = makeFirestoreErr(10, "10 ABORTED");

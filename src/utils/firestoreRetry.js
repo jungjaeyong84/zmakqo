@@ -47,6 +47,18 @@ const TRANSIENT_MESSAGE_PATTERNS = [
   /socket disconnected/i,
   /\b4 DEADLINE_EXCEEDED\b/i,
   /deadline exceeded/i,
+  // 2026-04-19/20 BE-raise incidents (Cloud Run exit-worker): Firestore
+  // surfaced `3 INVALID_ARGUMENT: Invalid transaction.` on the BE stop
+  // raise path multiple times within 24h, with the helper firing only
+  // once (attempts=1) because gRPC code 3 is excluded from the
+  // transient set above. Empirically the underlying cause is the SDK's
+  // internal transaction-retry buffer being exhausted by contention —
+  // not a malformed-request kind of INVALID_ARGUMENT. The narrow
+  // message-pattern match here re-enables retries for THIS specific
+  // surface only, leaving the generic INVALID_ARGUMENT pass-through in
+  // place for true argument errors (bad query shape, missing field,
+  // etc.) that genuinely won't recover.
+  /Invalid transaction\b/i,
 ];
 
 function boolEnv(name, fallback) {

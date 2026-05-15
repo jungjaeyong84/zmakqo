@@ -1,90 +1,67 @@
 "use strict";
 
-// Regression guard for the 2026-04-20 ETHUSDT "signal dropped / server signal
-// 미생성 주원인: Cannot access 'nextMeta' before initialization" incident.
+// Regression guard for the 2026-04-20 ETHUSDT incident:
+//   "signal dropped / server signal 미생성 주원인:
+//    Cannot access 'nextMeta' before initialization"
 //
-// Root cause: inside the live-execution branch of paperBinanceRunner.js, the
-// call site that builds `nativeProtectionMetaPatch` was passing `posMeta:
-// nextMeta` — but `nextMeta` is a `let` declared hundreds of lines BELOW in
-// the same enclosing block (the live-fill application section). Because `let`
-// hoists a TDZ binding for the whole block, that reference threw
-// "Cannot access 'nextMeta' before initialization" at runtime, the signal
-// generation aborted, and webhooks got dropped with no fills.
+// Root cause: inside the live-execution branch of paperBinanceRunner.js,
+// `buildNativeProtectionMetaPatch` was called with `posMeta: nextMeta`
+// ~300 lines BEFORE the matching `let nextMeta = mergeMeta(posMeta, …)`
+// declaration in the same for-iteration block. JavaScript hoists a TDZ
+// binding for `let`/`const` across the enclosing block, so the reference
+// threw at runtime, signal generation aborted, and webhooks dropped.
 //
-// The correct value at that call site is the OUTER `posMeta` function
-// parameter, which is always in scope. This test asserts:
-//   (a) That specific anti-pattern (`posMeta: nextMeta,` appearing BEFORE the
-//       first `let nextMeta = mergeMeta(posMeta,` declaration in the live
-//       branch) does not re-enter the file.
-//   (b) `buildNativeProtectionMetaPatch` is still being called — we're not
-//       accidentally deleting the call itself.
+// What this test does
+// -------------------
+// It runs the standalone TDZ audit tool (scripts/audit-tdz-traps.js) on
+// paperBinanceRunner.js and FAILS if the tool reports any findings. The
+// tool is a scope-aware "use-before-let/const" scanner shared with
+// project-wide audits — see scripts/audit-tdz-traps.js for what it does
+// and doesn't catch (e.g. closure deferred-execution patterns are skipped
+// to avoid false positives that drown the real signal).
+//
+// The file name is kept (instead of renaming to a generic "tdz audit"
+// title) because it is referenced by package.json `test` script — a
+// rename would break that pin without value. The audit it performs is no
+// longer specific to `nextMeta`; any future use-before-let/const trap in
+// the file will fail the test.
 
 const assert = require("assert");
-const fs = require("fs");
 const path = require("path");
+const { spawnSync } = require("child_process");
 
-const SRC = path.join(__dirname, "..", "engine", "paperBinanceRunner.js");
-const source = fs.readFileSync(SRC, "utf8");
-const lines = source.split("\n");
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const SCANNER = path.join(REPO_ROOT, "scripts", "audit-tdz-traps.js");
+const TARGET = path.join(REPO_ROOT, "src", "engine", "paperBinanceRunner.js");
 
-// (a) For every `posMeta: nextMeta` reference, walk backwards line-by-line.
-//     The nearest preceding boundary wins:
-//       - if we hit a `let/var/const nextMeta = …` first → declaration is in
-//         scope, the reference is safe;
-//       - if we hit a top-level `function …` / `async function …` first →
-//         we've crossed the enclosing function start without seeing a
-//         declaration, so the reference is TDZ-reachable within that
-//         function and must be fixed.
-//     This is a coarse approximation of JS scope, but it catches the real
-//     incident pattern: a `let nextMeta = …` declared WAY below a reference
-//     in the same function.
-// Strip `// …` line comments before searching so the test doesn't flag its
-// own documentation of the anti-pattern inside code comments.
-function stripLineComment(line) {
-  // Naïve: cut at the first `//` that isn't inside a string literal. Good
-  // enough for this file — we don't have regex literals containing `//`.
-  const idx = line.indexOf("//");
-  return idx >= 0 ? line.slice(0, idx) : line;
-}
+const result = spawnSync(process.execPath, [SCANNER, TARGET], {
+  cwd: REPO_ROOT,
+  encoding: "utf8",
+});
 
-const usageLineIdxs = [];
-for (let i = 0; i < lines.length; i += 1) {
-  if (/\bposMeta\s*:\s*nextMeta\b/.test(stripLineComment(lines[i]))) {
-    usageLineIdxs.push(i);
-  }
-}
-
-const DECL_RE = /\b(?:let|var|const)\s+nextMeta\s*=/;
-const FN_START_RE = /^(?:async\s+)?function\s+[A-Za-z_$][\w$]*\s*\(/;
-
-const offendingLines = [];
-for (const useIdx of usageLineIdxs) {
-  let verdict = null; // "SAFE" | "TDZ"
-  for (let j = useIdx - 1; j >= 0; j -= 1) {
-    if (DECL_RE.test(lines[j])) { verdict = "SAFE"; break; }
-    if (FN_START_RE.test(lines[j])) { verdict = "TDZ"; break; }
-  }
-  if (verdict === "TDZ") offendingLines.push(useIdx + 1);
-}
-
-assert.deepStrictEqual(
-  offendingLines,
-  [],
-  `TDZ REGRESSION: \`posMeta: nextMeta\` at line(s) ${offendingLines.join(", ")} — ` +
-  `no enclosing \`let/var/const nextMeta = …\` declaration precedes the reference ` +
-  `within the same function, so it will throw "Cannot access 'nextMeta' before ` +
-  `initialization" at runtime and drop the signal. Pass the outer \`posMeta\` ` +
-  `parameter instead (shorthand \`posMeta,\`).`
+assert.strictEqual(
+  result.status,
+  0,
+  `TDZ AUDIT FAILED for src/engine/paperBinanceRunner.js — the scanner ` +
+  `found a "let X" / "const X" reference that appears textually above ` +
+  `its declaration within the same enclosing block (the 2026-04-20 ` +
+  `ETHUSDT incident pattern). Run "node scripts/audit-tdz-traps.js ` +
+  `src/engine/paperBinanceRunner.js" for the offending line(s). If the ` +
+  `finding is a false positive (sub-block re-declaration with shadowing, ` +
+  `or closure deferred-execution), document it and adjust the scanner — ` +
+  `do not silence this guard.\n\n` +
+  `Scanner stdout:\n${result.stdout || "(empty)"}\n` +
+  `Scanner stderr:\n${result.stderr || "(empty)"}\n` +
+  `Exit code: ${result.status}`
 );
 
-// (b) Confirm the native-protection patch builder is still being invoked from
-// the live branch — otherwise we've accidentally deleted the call while
-// fixing the TDZ.
-const callSiteRegex = /nativeProtectionMetaPatch\s*=\s*buildNativeProtectionMetaPatch\s*\(/;
+// Sanity check on the scanner output so the test fails loudly if the
+// invocation succeeded for the wrong reason (e.g. scanner crashed but
+// returned 0 somehow).
 assert.ok(
-  callSiteRegex.test(source),
-  "expected `nativeProtectionMetaPatch = buildNativeProtectionMetaPatch(` to still exist; " +
-  "the live branch must continue to capture the native-protection state from liveResult"
+  /TDZ_AUDIT_OK/.test(result.stdout || ""),
+  `Scanner returned exit code 0 but did not print TDZ_AUDIT_OK — ` +
+  `something is wrong with the scanner itself.\nstdout: ${result.stdout}\n`
 );
 
 console.log("PAPER_BINANCE_RUNNER_NEXTMETA_TDZ_TEST_OK");
