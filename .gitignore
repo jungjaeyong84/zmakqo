@@ -43,3 +43,11 @@ donbeolja/
 
 # Phase 3d — operator override is meant to be host-local, never committed
 ops/runtime/operator_overrides.json
+
+# Runtime artifacts (logs, audit jsonls, lock dirs, env snapshots)
+ops/runtime/*.log
+ops/runtime/*.err.log
+ops/runtime/*.out.log
+ops/runtime/*.jsonl
+ops/runtime/*.lock/
+ops/runtime/*.env
