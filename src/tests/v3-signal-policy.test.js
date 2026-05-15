@@ -39,9 +39,14 @@ const { normalizeSignalForV3, evaluateV3SignalPolicy } = require("../v3/signalPo
   assert.strictEqual(signal.setup_type, "MOMENTUM_CONTINUATION");
   assert.strictEqual(signal.structural_regime, "TREND");
   const verdict = evaluateV3SignalPolicy(signal);
-  assert.strictEqual(verdict.ok, true);
-  assert.strictEqual(verdict.reason, "V3_SIGNAL_ALLOWED");
-  assert.strictEqual(verdict.apply_mode, "ACTIVE");
+  // 2026-05-16 phase 1B: this cohort is demoted to SHADOW (n=8 R, exp
+  // -0.044R). The raw signal still matches the profile (so it shows up
+  // in audit) but the paper-policy returns ok:false with a SHADOW
+  // reason and the apply_mode propagates through signalPolicy so
+  // downstream can distinguish "shadowed cohort" from other blocks.
+  assert.strictEqual(verdict.ok, false);
+  assert.strictEqual(verdict.reason, "V3_PAPER_COHORT_SHADOWED");
+  assert.strictEqual(verdict.apply_mode, "SHADOW");
   assert.strictEqual(verdict.profile_id, "LONG_MC_TREND_BUILDABLE_CORE");
   assert.strictEqual(verdict.cohort_key, "LONG | MOMENTUM_CONTINUATION | TREND | BUILDABLE_EDGE | CORE");
 })();
@@ -152,7 +157,12 @@ const { normalizeSignalForV3, evaluateV3SignalPolicy } = require("../v3/signalPo
   });
   const verdict = evaluateV3SignalPolicy(signal);
   assert.strictEqual(signal.setup_type, "BREAKOUT_RETEST");
-  assert.strictEqual(verdict.ok, true);
+  // 2026-05-16 phase 1B: this cohort is demoted to SHADOW (n=2 R noise
+  // tier). Same shape as the LONG_MC_TREND_BUILDABLE_CORE shadow case
+  // — signal matches the profile but is blocked at paper-policy.
+  assert.strictEqual(verdict.ok, false);
+  assert.strictEqual(verdict.reason, "V3_PAPER_COHORT_SHADOWED");
+  assert.strictEqual(verdict.apply_mode, "SHADOW");
   assert.strictEqual(verdict.profile_id, "LONG_BR_RANGE_MARGINAL_EARLY");
   assert.strictEqual(verdict.cohort_key, "LONG | BREAKOUT_RETEST | RANGE | MARGINAL_EDGE | EARLY");
 })();

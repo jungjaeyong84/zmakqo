@@ -12,6 +12,10 @@ function row({
   entry_grade,
   pnl,
 } = {}) {
+  // Helper stays static-USDT-only by default so the unit-splitter
+  // tests further down (which deliberately separate static vs live
+  // samples) keep working. Test blocks that need to exercise the
+  // dual-unit gate compose live-R rows explicitly.
   return {
     adjudication_family: "MODEL",
     adjudication_label: pnl > 0 ? "MODEL_WIN" : "MODEL_ERROR",
@@ -42,8 +46,16 @@ function row({
 }
 
 (() => {
+  // Compose dual-unit rows (USDT + R) so the bootstrap gate's
+  // `both_required` clause has non-zero sample count on the live-R
+  // side. Without realized_r the live_r gate short-circuits to
+  // sample_n=0 and the test would expect KEEP_SHADOW_ONLY instead.
+  const dualUnit = (params) => ({
+    ...row(params),
+    realized_r: params.pnl > 0 ? 1.5 : -1,
+  });
   const report = buildV3PaperBootstrapReport([
-    row({
+    dualUnit({
       side: "LONG",
       setup_type: "MOMENTUM_CONTINUATION",
       structural_regime: "TREND",
@@ -51,7 +63,7 @@ function row({
       entry_grade: "CORE",
       pnl: 1.2,
     }),
-    row({
+    dualUnit({
       side: "LONG",
       setup_type: "BREAKOUT_RETEST",
       structural_regime: "TREND",
@@ -59,7 +71,7 @@ function row({
       entry_grade: "CORE",
       pnl: 0.9,
     }),
-    row({
+    dualUnit({
       side: "LONG",
       setup_type: "PULLBACK_RECLAIM",
       structural_regime: "TREND",
@@ -67,7 +79,7 @@ function row({
       entry_grade: "CORE",
       pnl: -1.1,
     }),
-    row({
+    dualUnit({
       side: "SHORT",
       setup_type: "MOMENTUM_CONTINUATION",
       structural_regime: "TREND",
@@ -83,7 +95,9 @@ function row({
   assert.strictEqual(report.shadow_sample_n, 0);
   assert.strictEqual(report.combined_retained_sample_n, 3);
   assert.strictEqual(report.removed_sample_n, 1);
-  assert.strictEqual(report.active_allowlist.length, 7);
+  // 2026-05-16 phase 1B: 7 → 6 (LONG_BR_TRANSITION_BUILDABLE_EARLY
+  // removed; the two SHADOW cohorts remain in the allowlist).
+  assert.strictEqual(report.active_allowlist.length, 6);
   assert.strictEqual(report.retained_metrics.win_rate_pct, 100);
   assert.strictEqual(report.shadow_metrics.win_rate_pct, 0);
   assert.strictEqual(report.combined_retained_metrics.win_rate_pct, 100);

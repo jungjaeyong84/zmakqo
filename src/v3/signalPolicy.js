@@ -236,29 +236,13 @@ const V3_SIGNAL_ACTIVE_PROFILES = Object.freeze([
       rr: 1.4,
     }),
   }),
-  Object.freeze({
-    id: "LONG_BR_TRANSITION_BUILDABLE_EARLY",
-    cohort: Object.freeze({
-      side: "LONG",
-      setup_type: "BREAKOUT_RETEST",
-      structural_regime: "TRANSITION",
-      edge_cohort: "BUILDABLE_EDGE",
-      entry_grade: "EARLY",
-    }),
-    entry_grade: "EARLY",
-    source_band: "EARLY",
-    market_states: Object.freeze(["TRANSITION"]),
-    htf_biases: Object.freeze(["BULL"]),
-    trigger_types: Object.freeze(["BREAKOUT"]),
-    min: Object.freeze({
-      opportunity_score: 0.68,
-      confidence: 0.68,
-      setup_quality_score: 0.6,
-      structure_alignment: 0.75,
-      htf_alignment_score: 0.75,
-      rr: 1.4,
-    }),
-  }),
+  // 2026-05-16 — LONG_BR_TRANSITION_BUILDABLE_EARLY removed (phase 1B
+  // pruning). Bootstrap retained_live R showed n=36 WR 38.89% exp -0.008R
+  // net -0.30R — sample large enough to call. The cohort is also dropped
+  // from V3_PAPER_ALLOWED_COHORTS so it falls through as
+  // V3_SIGNAL_NO_ACTIVE_PROFILE_MATCH on the raw signal side instead of
+  // being routed-then-shadowed. If TRANSITION market regimes deserve a
+  // long retest profile in the future, re-add with adjusted min floors.
   Object.freeze({
     id: "SHORT_MC_TREND_MARGINAL_CORE",
     cohort: Object.freeze({
@@ -391,10 +375,14 @@ function evaluateV3SignalPolicy(signal = {}) {
   const cohortKey = buildV3PaperCohortKey(cohortContext);
 
   if (!policyVerdict.ok) {
+    // Propagate apply_mode even on the blocked branch so SHADOW cohorts
+    // surface as `apply_mode: "SHADOW"` for downstream observability.
+    // For other block reasons paperPolicy returns no apply_mode and we
+    // fall back to null (matching pre-2026-05-16 behavior).
     return Object.freeze({
       ok: false,
       reason: policyVerdict.reason,
-      apply_mode: null,
+      apply_mode: policyVerdict.apply_mode || null,
       blockers: Object.freeze([policyVerdict.reason]),
       cohort_key: cohortKey,
       profile_id: profile.id,

@@ -15,15 +15,29 @@
 - `LONG/SHORT` 둘 다 active
 - raw signal은 exact ingress profile matcher로만 통과
 
-허용 코호트:
+허용 코호트 (`V3_PAPER_BOOTSTRAP_2026_05_16_V3`, phase `PHASE_1B_PRUNED_BUILDABLE_AND_RANGE`):
 
 1. `ACTIVE` `LONG | MOMENTUM_CONTINUATION | TREND | MARGINAL_EDGE | CORE`
 2. `ACTIVE` `LONG | BREAKOUT_RETEST | TREND | MARGINAL_EDGE | CORE`
 3. `ACTIVE` `SHORT | MOMENTUM_CONTINUATION | TREND | MARGINAL_EDGE | CORE`
-4. `ACTIVE` `LONG | BREAKOUT_RETEST | RANGE | MARGINAL_EDGE | EARLY`
-5. `ACTIVE` `LONG | BREAKOUT_RETEST | TRANSITION | BUILDABLE_EDGE | EARLY`
-6. `ACTIVE` `LONG | MOMENTUM_CONTINUATION | TREND | BUILDABLE_EDGE | CORE`
-7. `ACTIVE` `LONG | BREAKOUT_RETEST | TREND | MARGINAL_EDGE | EARLY`
+4. `SHADOW` `LONG | BREAKOUT_RETEST | RANGE | MARGINAL_EDGE | EARLY`
+5. `SHADOW` `LONG | MOMENTUM_CONTINUATION | TREND | BUILDABLE_EDGE | CORE`
+6. `ACTIVE` `LONG | BREAKOUT_RETEST | TREND | MARGINAL_EDGE | EARLY`
+
+### 2026-05-16 phase 1B 가지치기 근거
+
+`ops/daily/v3_paper_bootstrap_latest.json` 의 `retained_live_metrics_r` 기준:
+
+| Cohort | n (R) | WR | Exp | Net | 처리 |
+|---|---|---|---|---|---|
+| `LONG_BR_TRANSITION_BUILDABLE_EARLY` | 36 | 38.9% | -0.008R | -0.30R | **완전 제거** (signalPolicy 도 함께) |
+| `LONG_MC_TREND_BUILDABLE_CORE` | 8 | 37.5% | -0.044R | -0.35R | `SHADOW` (회복 관찰) |
+| `LONG_BR_RANGE_MARGINAL_EARLY` | 2 | 0% | -1R | -2R | `SHADOW` (표본 부족) |
+
+`SHADOW` 코호트는:
+- `V3_SIGNAL_ACTIVE_PROFILES` 에 그대로 두어 raw signal 은 계속 생성되고 카운트됨
+- `evaluateV3PaperPolicy` 가 `ok:false, reason:"V3_PAPER_COHORT_SHADOWED", apply_mode:"SHADOW"` 를 돌려보내므로 entry 는 만들어지지 않음
+- 다음 부트스트랩 라운드에서 `removed_reason_counts.V3_PAPER_COHORT_SHADOWED` 로 보임 → 같은 시장 조건에서 라이브 수치가 회복되는지 평가 후 `ACTIVE` 복귀 또는 완전 제거 결정
 
 ## 무엇을 살리고 무엇을 버리나
 
