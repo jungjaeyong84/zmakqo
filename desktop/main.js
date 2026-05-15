@@ -97,7 +97,7 @@ function stopServerProcess() {
 function createMenu() {
   const template = [
     {
-      label: "DONBEOLJA HQ",
+      label: "DONBEOLJA Local Dashboard",
       submenu: [
         { role: "about" },
         { type: "separator" },
@@ -133,9 +133,9 @@ function createMenu() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    title: "DONBEOLJA HQ",
+    title: "DONBEOLJA Local Dashboard",
     show: false,
-    backgroundColor: "#fce39f",
+    backgroundColor: "#f7f2ea",
     width: 1600,
     height: 980,
     minWidth: 1180,

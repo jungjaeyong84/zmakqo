@@ -13,6 +13,7 @@ indicator("돈벌자 :) Ω Full v6.1.1.0", overlay = true, max_lines_count = 500
 grp_state = "═══ BIG TREND / 상태 엔진 ═══"
 grp_risk = "═══ 리스크 엔진 ═══"
 grp_thresholds = "═══ LONG/SHORT 핵심 조건 ═══"
+grp_filters = "═══ 서버 Discovery 필터 시각화 ═══"
 grp_webhook = "═══ 서버 알림 설정 ═══"
 grp_display = "═══ 표시 설정 ═══"
 grp_dev = "═══ 개발자 옵션 (Debug / Trace) ═══"
@@ -40,6 +41,7 @@ show_signal_shapes = input.bool(true, "LONG/SHORT 표시", group = grp_display)
 show_opportunity_lines = input.bool(false, "기회 점수 라인 표시", group = grp_display)
 show_state_bg = input.bool(false, "상태 배경 강조", group = grp_display)
 show_status_panel = input.bool(true, "상태 패널 표시", group = grp_display)
+show_discovery_filters = input.bool(true, "서버 Discovery 필터 시각화", group = grp_filters)
 show_block_reason = input.bool(true, "차단 사유 표시", group = grp_dev)
 
 //────────────────────────────────────
@@ -58,6 +60,45 @@ f_json_escape(string src) =>
 f_json_pair_s(string key, string val) => ",\"" + key + "\":\"" + f_json_escape(val) + "\""
 f_json_pair_n(string key, float val) => ",\"" + key + "\":" + str.tostring(val)
 f_bool_text(bool v) => v ? "true" : "false"
+f_text_or_dash(string src) => str.length(src) > 0 ? src : "-"
+f_soft_bg(color src) => color.new(src, 82)
+f_state_color(string state) =>
+    state == "BULL" ? color.rgb(90, 214, 160) :
+     state == "BEAR" ? color.rgb(255, 107, 129) :
+     state == "TRANSITION" ? color.rgb(255, 184, 108) :
+     state == "CHAOS" ? color.rgb(199, 146, 234) :
+     color.rgb(130, 170, 255)
+f_grade_color(string direction, string grade) =>
+    direction == "LONG" ? (grade == "CORE" ? color.rgb(72, 201, 176) : grade == "EARLY" ? color.rgb(137, 247, 212) : color.rgb(152, 161, 178)) :
+     direction == "SHORT" ? (grade == "CORE" ? color.rgb(255, 107, 129) : grade == "EARLY" ? color.rgb(255, 170, 189) : color.rgb(152, 161, 178)) :
+     color.rgb(152, 161, 178)
+f_verdict_color(string verdict, string direction) =>
+    verdict == "PASS" ? (direction == "SHORT" ? color.rgb(255, 107, 129) : color.rgb(72, 201, 176)) :
+     verdict == "CHECK" ? color.rgb(255, 184, 108) :
+     verdict == "OFF" ? color.rgb(189, 195, 199) :
+     color.rgb(255, 184, 108)
+f_setup_type_from_trigger(string trigger_type) =>
+    trigger_type == "BREAKOUT" or trigger_type == "BREAKDOWN" ? "BREAKOUT_RETEST" :
+     trigger_type == "RECLAIM" or trigger_type == "LOSS" ? "PULLBACK_RECLAIM" :
+     trigger_type == "CONTINUATION" ? "MOMENTUM_CONTINUATION" : "NONE"
+f_structural_regime(string state) =>
+    state == "BULL" or state == "BEAR" ? "TREND" :
+     state == "TRANSITION" ? "TRANSITION" : "RANGE"
+f_entry_grade_from_score(float score, float early_floor, float core_floor) =>
+    score >= core_floor ? "CORE" : score >= early_floor ? "EARLY" : "NONE"
+f_edge_cohort_from_expected(float expected_net_r_after_cost, float setup_quality_score, float market_quality_score) =>
+    expected_net_r_after_cost >= 1.0 and setup_quality_score >= 0.45 and market_quality_score >= 0.75 ? "BUILDABLE_EDGE" :
+     expected_net_r_after_cost >= 0.25 ? "MARGINAL_EDGE" : "NO_EDGE"
+f_empirical_blocker(string direction, string setup_type, string trigger_type, string structural_regime, string raw_edge_cohort, string entry_grade) =>
+    direction == "LONG" and setup_type == "BREAKOUT_RETEST" and trigger_type == "BREAKOUT" and structural_regime == "TRANSITION" and raw_edge_cohort == "MARGINAL_EDGE" and entry_grade == "EARLY" ? "BREAKOUT_RETEST:LONG_TRANSITION_MARGINAL_EARLY_DECAY_BLOCKED" :
+     direction == "LONG" and setup_type == "PULLBACK_RECLAIM" and trigger_type == "RECLAIM" and structural_regime == "RANGE" and raw_edge_cohort == "MARGINAL_EDGE" and entry_grade == "EARLY" ? "PULLBACK_RECLAIM:LONG_RANGE_MARGINAL_EARLY_DECAY_BLOCKED" :
+     direction == "LONG" and setup_type == "PULLBACK_RECLAIM" and trigger_type == "RECLAIM" and structural_regime == "TRANSITION" and raw_edge_cohort == "MARGINAL_EDGE" and (entry_grade == "EARLY" or entry_grade == "CORE") ? "PULLBACK_RECLAIM:LONG_TRANSITION_MARGINAL_DECAY_BLOCKED" :
+     direction == "SHORT" and setup_type == "BREAKOUT_RETEST" and trigger_type == "BREAKOUT" and structural_regime == "RANGE" and raw_edge_cohort == "MARGINAL_EDGE" and entry_grade == "EARLY" ? "BREAKOUT_RETEST:SHORT_RANGE_MARGINAL_EARLY_DECAY_BLOCKED" :
+     direction == "SHORT" and setup_type == "BREAKOUT_RETEST" and trigger_type == "BREAKOUT" and structural_regime == "TREND" and raw_edge_cohort == "BUILDABLE_EDGE" and entry_grade == "CORE" ? "BREAKOUT_RETEST:SHORT_TREND_BUILDABLE_CORE_DECAY_BLOCKED" :
+     direction == "SHORT" and setup_type == "PULLBACK_RECLAIM" and trigger_type == "RECLAIM" and structural_regime == "TRANSITION" and raw_edge_cohort == "BUILDABLE_EDGE" and entry_grade == "CORE" ? "PULLBACK_RECLAIM:SHORT_TRANSITION_BUILDABLE_CORE_DECAY_BLOCKED" :
+     direction == "SHORT" and setup_type == "PULLBACK_RECLAIM" and trigger_type == "RECLAIM" and structural_regime == "TRANSITION" and raw_edge_cohort == "MARGINAL_EDGE" and entry_grade == "EARLY" ? "PULLBACK_RECLAIM:SHORT_TRANSITION_MARGINAL_EARLY_DECAY_BLOCKED" :
+     direction == "SHORT" and setup_type == "PULLBACK_RECLAIM" and trigger_type == "RECLAIM" and structural_regime == "TREND" and raw_edge_cohort == "BUILDABLE_EDGE" and (entry_grade == "EARLY" or entry_grade == "CORE") ? "PULLBACK_RECLAIM:SHORT_TREND_BUILDABLE_DECAY_BLOCKED" :
+     ""
 
 //────────────────────────────────────
 // Constants
@@ -65,6 +106,29 @@ f_bool_text(bool v) => v ? "true" : "false"
 string STRATEGY_ID = "donbeolja_v6.1.1.0"
 string ENGINE_MODE = "CLEAN_REDESIGN"
 string QTY_PROFILE = "FIXED"
+
+// Latest server generator/discovery parity constants.
+float reclaim_trigger_strength_min = 0.64
+float reclaim_trigger_directional_pressure_min = 0.38
+float continuation_early_threshold_long = 0.54
+float continuation_close_pos_long_min = 0.48
+float continuation_close_pos_short_max = 0.52
+float continuation_pullback_depth_long_min = 0.30
+float continuation_pullback_depth_long_max = 0.88
+float continuation_pullback_depth_short_min = 0.12
+float continuation_pullback_depth_short_max = 0.70
+float continuation_pressure_min = 0.56
+
+float discovery_min_setup_quality_score = 0.29
+float discovery_min_market_quality_score = 0.70
+float discovery_min_volume_zscore = 0.30
+float discovery_min_rsi_long = 48.0
+float discovery_max_rsi_short = 52.0
+float discovery_min_expected_gross_r = 1.45
+float discovery_min_expected_net_r_after_cost = 0.25
+float discovery_min_signal_score = 50.0
+float discovery_early_signal_score = 50.0
+float discovery_core_signal_score = 78.0
 
 // Pine 내부 최적화 버그 회피용 더미 플롯(시각 출력 없음)
 plot(close, title = "dummy", display = display.none)
@@ -87,6 +151,7 @@ atr = ta.atr(14)
 atr_ratio = f_safe_div(atr, close)
 vol_ma = ta.sma(volume, 20)
 vol_ratio = vol_ma > 0 ? volume / vol_ma : 1.0
+volume_zscore_proxy = math.max(vol_ratio - 1.0, 0.0)
 
 range_high = ta.highest(high, 20)
 range_low = ta.lowest(low, 20)
@@ -165,15 +230,17 @@ short_opportunity = 0.22 * structure_alignment_short + 0.20 * directional_pressu
 //────────────────────────────────────
 // Trigger Engine
 //────────────────────────────────────
-pullback_depth_ok_long = price_position >= 0.34 and price_position <= 0.82
-pullback_depth_ok_short = price_position <= 0.66 and price_position >= 0.18
+pullback_depth_ok_long = price_position >= continuation_pullback_depth_long_min and price_position <= continuation_pullback_depth_long_max
+pullback_depth_ok_short = price_position <= continuation_pullback_depth_short_max and price_position >= continuation_pullback_depth_short_min
+continuation_bar_bias_long = bull_close or (close >= open * 0.998 and close_pos_in_bar >= continuation_close_pos_long_min)
+continuation_bar_bias_short = bear_close or (close <= open * 1.002 and close_pos_in_bar <= continuation_close_pos_short_max)
 
 trigger_breakout_long = close > recent_high and close > ema_fast and bull_close and body_ratio >= 0.46
-trigger_reclaim_long = close > ema_fast and low <= ema_fast and close >= ema_mid * 0.998 and reclaim_strength_long >= 0.68 and bull_close and directional_pressure_long >= 0.42 and (market_state != "TRANSITION" or transition_bias_long)
-trigger_continuation_long = close > ema_fast and ema_fast >= ema_mid and pullback_depth_ok_long and bull_close and macd_hist >= macd_hist[1]
+trigger_reclaim_long = close > ema_fast and low <= ema_fast and close >= ema_mid * 0.998 and reclaim_strength_long >= reclaim_trigger_strength_min and bull_close and directional_pressure_long >= reclaim_trigger_directional_pressure_min and (market_state != "TRANSITION" or transition_bias_long)
+trigger_continuation_long = close > ema_fast and ema_fast >= ema_mid and pullback_depth_ok_long and continuation_bar_bias_long and continuation_pressure_long >= continuation_pressure_min and macd_hist >= macd_hist[1]
 trigger_breakdown_short = close < recent_low and close < ema_fast and bear_close and body_ratio >= 0.46
-trigger_loss_short = close < ema_fast and high >= ema_fast and close <= ema_mid * 1.002 and reclaim_strength_short >= 0.68 and bear_close and directional_pressure_short >= 0.42 and (market_state != "TRANSITION" or transition_bias_short)
-trigger_continuation_short = close < ema_fast and ema_fast <= ema_mid and pullback_depth_ok_short and bear_close and macd_hist <= macd_hist[1]
+trigger_loss_short = close < ema_fast and high >= ema_fast and close <= ema_mid * 1.002 and reclaim_strength_short >= reclaim_trigger_strength_min and bear_close and directional_pressure_short >= reclaim_trigger_directional_pressure_min and (market_state != "TRANSITION" or transition_bias_short)
+trigger_continuation_short = close < ema_fast and ema_fast <= ema_mid and pullback_depth_ok_short and continuation_bar_bias_short and continuation_pressure_short >= continuation_pressure_min and macd_hist <= macd_hist[1]
 
 trigger_type_long = trigger_breakout_long ? "BREAKOUT" : trigger_reclaim_long ? "RECLAIM" : trigger_continuation_long ? "CONTINUATION" : "NONE"
 trigger_type_short = trigger_breakdown_short ? "BREAKDOWN" : trigger_loss_short ? "LOSS" : trigger_continuation_short ? "CONTINUATION" : "NONE"
@@ -211,11 +278,12 @@ risk_mode_short_core = not risk_ok_short_core ? (state_dead ? "DEAD_MARKET" : st
 //────────────────────────────────────
 // Final signals
 //────────────────────────────────────
-long_early_raw = long_opportunity >= thr_early and (trigger_reclaim_long or trigger_breakout_long) and risk_ok_long_early and structure_alignment_long >= 0.40 and directional_pressure_long >= 0.42 and anti_chop_gate
+long_early_raw = long_opportunity >= thr_early and (trigger_reclaim_long or trigger_breakout_long) and risk_ok_long_early and structure_alignment_long >= 0.40 and directional_pressure_long >= reclaim_trigger_directional_pressure_min and anti_chop_gate
+long_continuation_early_raw = trigger_continuation_long and long_opportunity >= continuation_early_threshold_long and risk_ok_long_core and structure_alignment_long >= 0.62 and participation >= 0.42 and continuation_pressure_long >= continuation_pressure_min and anti_chop_gate and transition_core_quality_long
 long_core_raw = long_opportunity >= thr_core and (trigger_continuation_long or trigger_breakout_long) and risk_ok_long_core and structure_alignment_long >= 0.62 and participation >= 0.42 and transition_core_quality_long
 long_diag_c = long_opportunity >= thr_diag_c and trigger_long and risk_ok_long_core and structure_alignment_long >= 0.82 and participation >= 0.58 and directional_pressure_long >= 0.64
 
-short_early_raw = short_opportunity >= thr_early and (trigger_loss_short or trigger_breakdown_short) and risk_ok_short_early and structure_alignment_short >= 0.40 and directional_pressure_short >= 0.42 and anti_chop_gate
+short_early_raw = short_opportunity >= thr_early and (trigger_loss_short or trigger_breakdown_short) and risk_ok_short_early and structure_alignment_short >= 0.40 and directional_pressure_short >= reclaim_trigger_directional_pressure_min and anti_chop_gate
 short_core_raw = short_opportunity >= thr_core and (trigger_continuation_short or trigger_breakdown_short) and risk_ok_short_core and structure_alignment_short >= 0.62 and participation >= 0.42 and transition_core_quality_short
 short_diag_c = short_opportunity >= thr_diag_c and trigger_short and risk_ok_short_core and structure_alignment_short >= 0.82 and participation >= 0.58 and directional_pressure_short >= 0.64
 
@@ -229,7 +297,7 @@ short_can_fire = na(last_short_signal_bar) or bar_index - last_short_signal_bar 
 
 long_core_pulse = long_core_raw and long_can_fire
 short_core_pulse = short_core_raw and short_can_fire
-long_early_pulse = long_early_raw and not long_core_pulse and long_can_fire
+long_early_pulse = (long_early_raw or long_continuation_early_raw) and not long_core_pulse and long_can_fire
 short_early_pulse = short_early_raw and not short_core_pulse and short_can_fire
 
 if long_core_pulse or long_early_pulse
@@ -239,7 +307,7 @@ if short_core_pulse or short_early_pulse
     last_short_signal_bar := bar_index
     last_short_trigger := trigger_type_short
 
-long_early = long_early_raw
+long_early = long_early_raw or long_continuation_early_raw
 long_core = long_core_raw
 short_early = short_early_raw
 short_core = short_core_raw
@@ -247,8 +315,87 @@ short_core = short_core_raw
 long_live_grade = long_core ? "CORE" : long_early ? "EARLY" : "NONE"
 short_live_grade = short_core ? "CORE" : short_early ? "EARLY" : "NONE"
 
-block_reason_long = risk_mode_long_early != "PASS" ? risk_mode_long_early : risk_mode_long_core != "PASS" and long_opportunity >= thr_early ? "CORE_ONLY_BLOCKED" : trigger_type_long == "NONE" ? "WAIT_TRIGGER" : long_opportunity < thr_early ? "LONG_SCORE_SHORT" : "PASS"
+block_reason_long = risk_mode_long_early != "PASS" ? risk_mode_long_early : risk_mode_long_core != "PASS" and (long_opportunity >= thr_early or long_opportunity >= continuation_early_threshold_long) ? "CORE_ONLY_BLOCKED" : trigger_type_long == "NONE" ? "WAIT_TRIGGER" : (long_opportunity < thr_early and not long_continuation_early_raw) ? "LONG_SCORE_SHORT" : "PASS"
 block_reason_short = risk_mode_short_early != "PASS" ? risk_mode_short_early : risk_mode_short_core != "PASS" and short_opportunity >= thr_early ? "CORE_ONLY_BLOCKED" : trigger_type_short == "NONE" ? "WAIT_TRIGGER" : short_opportunity < thr_early ? "SHORT_SCORE_SHORT" : "PASS"
+
+//────────────────────────────────────
+// Discovery criteria advisory visualization
+// Pine cannot reproduce server-only external data (spread, mark/index gap,
+// funding, orderbook, OI, liquidation, OpenClaw shadow). Keep webhook emit
+// tied to generator parity and visualize discovery filters separately.
+//────────────────────────────────────
+structural_regime = f_structural_regime(market_state)
+htf_alignment_score_long = htf_bias == "BULL" ? 1.0 : htf_bias == "NEUTRAL" ? 0.5 : 0.0
+htf_alignment_score_short = htf_bias == "BEAR" ? 1.0 : htf_bias == "NEUTRAL" ? 0.5 : 0.0
+market_quality_score_proxy = f_clamp01(0.55 * participation + 0.25 * (anti_chop_gate ? 1.0 : 0.0) + 0.20 * (state_dead or state_chaos ? 0.0 : 1.0))
+
+long_setup_type = f_setup_type_from_trigger(trigger_type_long)
+short_setup_type = f_setup_type_from_trigger(trigger_type_short)
+long_setup_quality_score = long_setup_type == "BREAKOUT_RETEST" ? f_clamp01(0.55 * body_ratio + 0.45 * structure_alignment_long) : long_setup_type == "PULLBACK_RECLAIM" ? pullback_quality_long : long_setup_type == "MOMENTUM_CONTINUATION" ? f_clamp01(0.55 * continuation_pressure_long + 0.45 * participation) : 0.0
+short_setup_quality_score = short_setup_type == "BREAKOUT_RETEST" ? f_clamp01(0.55 * body_ratio + 0.45 * structure_alignment_short) : short_setup_type == "PULLBACK_RECLAIM" ? pullback_quality_short : short_setup_type == "MOMENTUM_CONTINUATION" ? f_clamp01(0.55 * continuation_pressure_short + 0.45 * participation) : 0.0
+
+long_reclaim_hold_confirmed = close > ema_fast and close_pos_in_bar >= 0.52
+short_reclaim_hold_confirmed = close < ema_fast and close_pos_in_bar <= 0.48
+long_probe_mode = long_setup_type == "PULLBACK_RECLAIM" and not (trigger_reclaim_long and long_reclaim_hold_confirmed and not htf_conflict_long and volume_zscore_proxy >= discovery_min_volume_zscore and long_rr >= min_rr)
+short_probe_mode = short_setup_type == "PULLBACK_RECLAIM" and not (trigger_loss_short and short_reclaim_hold_confirmed and not htf_conflict_short and volume_zscore_proxy >= discovery_min_volume_zscore and short_rr >= min_rr)
+
+long_expected_gross_r_proxy = long_rr
+short_expected_gross_r_proxy = short_rr
+long_expected_net_r_after_cost_proxy = math.max(long_rr - 0.20, 0.0)
+short_expected_net_r_after_cost_proxy = math.max(short_rr - 0.20, 0.0)
+
+long_trigger_score = trigger_long and volume_zscore_proxy >= discovery_min_volume_zscore and rsi_val >= discovery_min_rsi_long ? math.round(8 + 6 * f_clamp01(volume_zscore_proxy) + 6 * f_clamp01((rsi_val - discovery_min_rsi_long) / 10.0)) : 0
+short_trigger_score = trigger_short and volume_zscore_proxy >= discovery_min_volume_zscore and rsi_val <= discovery_max_rsi_short ? math.round(8 + 6 * f_clamp01(volume_zscore_proxy) + 6 * f_clamp01((discovery_max_rsi_short - rsi_val) / 10.0)) : 0
+long_expected_edge_score = long_expected_gross_r_proxy >= discovery_min_expected_gross_r and long_expected_net_r_after_cost_proxy >= discovery_min_expected_net_r_after_cost ? math.round(20 * f_clamp01(0.50 * f_clamp01(long_expected_net_r_after_cost_proxy / 1.50) + 0.50 * long_opportunity)) : 0
+short_expected_edge_score = short_expected_gross_r_proxy >= discovery_min_expected_gross_r and short_expected_net_r_after_cost_proxy >= discovery_min_expected_net_r_after_cost ? math.round(20 * f_clamp01(0.50 * f_clamp01(short_expected_net_r_after_cost_proxy / 1.50) + 0.50 * short_opportunity)) : 0
+
+long_signal_score_proxy = math.round((25 * htf_alignment_score_long) + (20 * long_setup_quality_score) + long_trigger_score + (market_quality_score_proxy >= discovery_min_market_quality_score ? 15 * market_quality_score_proxy : 0) + long_expected_edge_score)
+short_signal_score_proxy = math.round((25 * htf_alignment_score_short) + (20 * short_setup_quality_score) + short_trigger_score + (market_quality_score_proxy >= discovery_min_market_quality_score ? 15 * market_quality_score_proxy : 0) + short_expected_edge_score)
+long_filter_entry_grade = f_entry_grade_from_score(long_signal_score_proxy, discovery_early_signal_score, discovery_core_signal_score)
+short_filter_entry_grade = f_entry_grade_from_score(short_signal_score_proxy, discovery_early_signal_score, discovery_core_signal_score)
+long_edge_cohort_proxy = f_edge_cohort_from_expected(long_expected_net_r_after_cost_proxy, long_setup_quality_score, market_quality_score_proxy)
+short_edge_cohort_proxy = f_edge_cohort_from_expected(short_expected_net_r_after_cost_proxy, short_setup_quality_score, market_quality_score_proxy)
+long_empirical_blocker = f_empirical_blocker("LONG", long_setup_type, trigger_type_long, structural_regime, long_edge_cohort_proxy, long_filter_entry_grade)
+short_empirical_blocker = f_empirical_blocker("SHORT", short_setup_type, trigger_type_short, structural_regime, short_edge_cohort_proxy, short_filter_entry_grade)
+
+string long_filter_blocker = "PASS"
+if market_quality_score_proxy < discovery_min_market_quality_score or state_dead or state_chaos
+    long_filter_blocker := "NO_TRADE:MARKET_QUALITY_TOO_LOW"
+else if htf_alignment_score_long < 0.40 or htf_conflict_long
+    long_filter_blocker := "HTF_REGIME:ALIGNMENT_REQUIRED"
+else if str.length(long_empirical_blocker) > 0
+    long_filter_blocker := "SETUP:" + long_empirical_blocker
+else if long_probe_mode
+    long_filter_blocker := "SETUP:PROBE_NOT_EXECUTABLE"
+else if long_setup_type == "NONE" or long_setup_quality_score < discovery_min_setup_quality_score
+    long_filter_blocker := "SETUP:QUALITY_REQUIRED"
+else if not trigger_long or volume_zscore_proxy < discovery_min_volume_zscore or rsi_val < discovery_min_rsi_long
+    long_filter_blocker := "TRIGGER:CONFIRMATION_REQUIRED"
+else if long_expected_gross_r_proxy < discovery_min_expected_gross_r or long_expected_net_r_after_cost_proxy < discovery_min_expected_net_r_after_cost
+    long_filter_blocker := "EXPECTED_EDGE:NET_R_REQUIRED"
+else if long_signal_score_proxy < discovery_min_signal_score
+    long_filter_blocker := "SIGNAL_SCORE:MIN_SCORE_REQUIRED"
+
+string short_filter_blocker = "PASS"
+if market_quality_score_proxy < discovery_min_market_quality_score or state_dead or state_chaos
+    short_filter_blocker := "NO_TRADE:MARKET_QUALITY_TOO_LOW"
+else if htf_alignment_score_short < 0.40 or htf_conflict_short
+    short_filter_blocker := "HTF_REGIME:ALIGNMENT_REQUIRED"
+else if str.length(short_empirical_blocker) > 0
+    short_filter_blocker := "SETUP:" + short_empirical_blocker
+else if short_probe_mode
+    short_filter_blocker := "SETUP:PROBE_NOT_EXECUTABLE"
+else if short_setup_type == "NONE" or short_setup_quality_score < discovery_min_setup_quality_score
+    short_filter_blocker := "SETUP:QUALITY_REQUIRED"
+else if not trigger_short or volume_zscore_proxy < discovery_min_volume_zscore or rsi_val > discovery_max_rsi_short
+    short_filter_blocker := "TRIGGER:CONFIRMATION_REQUIRED"
+else if short_expected_gross_r_proxy < discovery_min_expected_gross_r or short_expected_net_r_after_cost_proxy < discovery_min_expected_net_r_after_cost
+    short_filter_blocker := "EXPECTED_EDGE:NET_R_REQUIRED"
+else if short_signal_score_proxy < discovery_min_signal_score
+    short_filter_blocker := "SIGNAL_SCORE:MIN_SCORE_REQUIRED"
+
+long_filter_verdict = show_discovery_filters ? (long_core_pulse or long_early_pulse ? (long_filter_blocker == "PASS" ? "PASS" : "CHECK") : "OFF") : "OFF"
+short_filter_verdict = show_discovery_filters ? (short_core_pulse or short_early_pulse ? (short_filter_blocker == "PASS" ? "PASS" : "CHECK") : "OFF") : "OFF"
 
 //────────────────────────────────────
 // Alert policy
@@ -267,7 +414,7 @@ emit_short_early = short_early_pulse
 //────────────────────────────────────
 // Payload builders
 //────────────────────────────────────
-f_entry_payload(string direction, string grade, float score, string state, string htf, string trigger_type, string risk_mode, float rr, float stop_price, float target_price) =>
+f_entry_payload(string direction, string grade, float score, string state, string htf, string trigger_type, string risk_mode, float rr, float stop_price, float target_price, string setup_type, float signal_score_proxy, string criteria_verdict, string criteria_blocker) =>
     string side = direction == "LONG" ? "BUY" : "SELL"
     string features = "{"
     features += "\"strategy_id\":\"" + STRATEGY_ID + "\""
@@ -277,8 +424,12 @@ f_entry_payload(string direction, string grade, float score, string state, strin
     features += f_json_pair_s("market_state", state)
     features += f_json_pair_s("htf_bias", htf)
     features += f_json_pair_s("trigger_type", trigger_type)
+    features += f_json_pair_s("setup_type_proxy", setup_type)
     features += f_json_pair_s("risk_mode", risk_mode)
     features += f_json_pair_n("opportunity_score", score)
+    features += f_json_pair_n("signal_score_proxy", signal_score_proxy)
+    features += f_json_pair_s("criteria_advisory_verdict", criteria_verdict)
+    features += f_json_pair_s("criteria_advisory_top_blocker", criteria_blocker)
     features += f_json_pair_n("rr", rr)
     features += f_json_pair_n("stop_price", stop_price)
     features += f_json_pair_n("target_price", target_price)
@@ -318,22 +469,22 @@ f_entry_payload(string direction, string grade, float score, string state, strin
     json += "}"
     json
 
-long_core_payload = f_entry_payload("LONG", "CORE", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long_core, long_rr, long_stop, long_target)
-long_early_payload = f_entry_payload("LONG", "EARLY", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long_early, long_rr, long_stop, long_target)
-short_core_payload = f_entry_payload("SHORT", "CORE", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short_core, short_rr, short_stop, short_target)
-short_early_payload = f_entry_payload("SHORT", "EARLY", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short_early, short_rr, short_stop, short_target)
+long_core_payload = f_entry_payload("LONG", "CORE", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long_core, long_rr, long_stop, long_target, long_setup_type, long_signal_score_proxy, long_filter_verdict, long_filter_blocker)
+long_early_payload = f_entry_payload("LONG", "EARLY", long_opportunity, market_state, htf_bias, trigger_type_long, risk_mode_long_early, long_rr, long_stop, long_target, long_setup_type, long_signal_score_proxy, long_filter_verdict, long_filter_blocker)
+short_core_payload = f_entry_payload("SHORT", "CORE", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short_core, short_rr, short_stop, short_target, short_setup_type, short_signal_score_proxy, short_filter_verdict, short_filter_blocker)
+short_early_payload = f_entry_payload("SHORT", "EARLY", short_opportunity, market_state, htf_bias, trigger_type_short, risk_mode_short_early, short_rr, short_stop, short_target, short_setup_type, short_signal_score_proxy, short_filter_verdict, short_filter_blocker)
 
 //────────────────────────────────────
 // Visualization
 //────────────────────────────────────
-plotshape(show_signal_shapes and long_core_pulse, title = "Webhook Long Core", style = shape.triangleup, location = location.belowbar, size = size.tiny, color = color.lime, text = "RC", textcolor = color.white)
-plotshape(show_signal_shapes and long_early_pulse, title = "Webhook Long Early", style = shape.circle, location = location.belowbar, size = size.tiny, color = color.new(color.lime, 0), text = "RE", textcolor = color.white)
-plotshape(show_signal_shapes and short_core_pulse, title = "Webhook Short Core", style = shape.triangledown, location = location.abovebar, size = size.tiny, color = color.red, text = "SC", textcolor = color.white)
-plotshape(show_signal_shapes and short_early_pulse, title = "Webhook Short Early", style = shape.circle, location = location.abovebar, size = size.tiny, color = color.new(color.red, 0), text = "SE", textcolor = color.white)
-
+plotshape(show_signal_shapes and long_core_pulse, title = "Webhook Long Core", style = shape.triangleup, location = location.belowbar, size = size.tiny, color = color.rgb(72, 201, 176), text = "LC", textcolor = color.white)
+plotshape(show_signal_shapes and long_early_pulse, title = "Webhook Long Early", style = shape.circle, location = location.belowbar, size = size.tiny, color = color.rgb(137, 247, 212), text = "LE", textcolor = color.rgb(27, 38, 59))
+plotshape(show_signal_shapes and short_core_pulse, title = "Webhook Short Core", style = shape.triangledown, location = location.abovebar, size = size.tiny, color = color.rgb(255, 107, 129), text = "SC", textcolor = color.white)
+plotshape(show_signal_shapes and short_early_pulse, title = "Webhook Short Early", style = shape.circle, location = location.abovebar, size = size.tiny, color = color.rgb(255, 170, 189), text = "SE", textcolor = color.rgb(64, 16, 38))
 plot(show_opportunity_lines ? long_opportunity : na, title = "Long Opportunity", color = color.new(color.lime, 0), linewidth = 2)
 plot(show_opportunity_lines ? -short_opportunity : na, title = "Short Opportunity (-)", color = color.new(color.red, 0), linewidth = 2)
 plot(show_opportunity_lines ? thr_early : na, title = "EARLY Threshold", color = color.new(color.yellow, 0), linewidth = 1, style = plot.style_linebr)
+plot(show_opportunity_lines ? continuation_early_threshold_long : na, title = "LONG Continuation Early Threshold", color = color.new(color.aqua, 0), linewidth = 1, style = plot.style_linebr)
 plot(show_opportunity_lines ? thr_core : na, title = "CORE Threshold", color = color.new(color.green, 10), linewidth = 1, style = plot.style_linebr)
 plot(show_opportunity_lines ? thr_diag_c : na, title = "DIAG_C Threshold", color = color.new(color.aqua, 10), linewidth = 1, style = plot.style_linebr)
 bgcolor(show_state_bg ? (long_core ? color.new(color.green, 92) : short_core ? color.new(color.red, 92) : na) : na)
@@ -341,35 +492,55 @@ bgcolor(show_state_bg ? (long_core ? color.new(color.green, 92) : short_core ? c
 //────────────────────────────────────
 // Diagnostics table
 //────────────────────────────────────
-var table diag = table.new(position.bottom_left, 2, 12, bgcolor = color.new(color.black, 90), border_width = 1)
+var table diag = table.new(position.bottom_left, 2, 18, bgcolor = color.new(color.rgb(17, 22, 35), 8), border_width = 1)
 if barstate.islast
     if show_status_panel
-        table.cell(diag, 0, 0, "돈벌자 Ω", text_color = color.white, bgcolor = color.rgb(24, 52, 92))
-        table.cell(diag, 1, 0, "v6.1.1.0", text_color = color.white, bgcolor = color.rgb(24, 52, 92))
-        table.cell(diag, 0, 1, "시장 상태", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 1, market_state, text_color = market_state == "BULL" ? color.lime : market_state == "BEAR" ? color.red : color.orange)
-        table.cell(diag, 0, 2, "HTF 상태", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 2, htf_bias, text_color = htf_bias == "BULL" ? color.lime : htf_bias == "BEAR" ? color.red : color.white)
-        table.cell(diag, 0, 3, "롱 점수", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 3, str.tostring(long_opportunity, "#.###"), text_color = color.lime)
-        table.cell(diag, 0, 4, "숏 점수", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 4, str.tostring(short_opportunity, "#.###"), text_color = color.red)
-        table.cell(diag, 0, 5, "롱 트리거", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 5, trigger_type_long == "NONE" ? "-" : trigger_type_long, text_color = trigger_type_long == "NONE" ? color.orange : color.lime)
-        table.cell(diag, 0, 6, "숏 트리거", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 6, trigger_type_short == "NONE" ? "-" : trigger_type_short, text_color = trigger_type_short == "NONE" ? color.orange : color.red)
-        table.cell(diag, 0, 7, "롱 등급", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 7, long_live_grade == "" ? "-" : long_live_grade, text_color = long_live_grade == "CORE" ? color.lime : long_live_grade == "EARLY" ? color.yellow : color.orange)
-        table.cell(diag, 0, 8, "숏 등급", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 8, short_live_grade == "" ? "-" : short_live_grade, text_color = short_live_grade == "CORE" ? color.red : short_live_grade == "EARLY" ? color.yellow : color.orange)
-        table.cell(diag, 0, 9, "롱 리스크", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 9, long_live_grade == "CORE" ? risk_mode_long_core : risk_mode_long_early, text_color = (long_live_grade == "CORE" ? risk_mode_long_core : risk_mode_long_early) == "PASS" ? color.lime : color.orange)
-        table.cell(diag, 0, 10, "숏 리스크", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 10, short_live_grade == "CORE" ? risk_mode_short_core : risk_mode_short_early, text_color = (short_live_grade == "CORE" ? risk_mode_short_core : risk_mode_short_early) == "PASS" ? color.red : color.orange)
-        table.cell(diag, 0, 11, "차단 사유", text_color = color.new(color.gray, 5))
-        table.cell(diag, 1, 11, show_block_reason ? (long_live_grade == "" and short_live_grade == "" ? (block_reason_long != "PASS" ? block_reason_long : block_reason_short) : "-") : "-", text_color = color.orange)
+        color stateRowBg = f_soft_bg(f_state_color(market_state))
+        color htfRowBg = f_soft_bg(f_state_color(htf_bias))
+        color longWebhookBg = f_soft_bg(f_grade_color("LONG", long_live_grade))
+        color shortWebhookBg = f_soft_bg(f_grade_color("SHORT", short_live_grade))
+        color longFilterBg = f_soft_bg(f_verdict_color(long_filter_verdict, "LONG"))
+        color shortFilterBg = f_soft_bg(f_verdict_color(short_filter_verdict, "SHORT"))
+        color neutralBg = color.new(color.rgb(31, 41, 55), 76)
+        color headerBg = color.rgb(46, 72, 115)
+        table.cell(diag, 0, 0, "돈벌자 Ω", text_color = color.white, bgcolor = headerBg)
+        table.cell(diag, 1, 0, "Webhook parity", text_color = color.white, bgcolor = headerBg)
+        table.cell(diag, 0, 1, "시장 상태", text_color = color.new(color.white, 0), bgcolor = stateRowBg)
+        table.cell(diag, 1, 1, market_state, text_color = f_state_color(market_state), bgcolor = stateRowBg)
+        table.cell(diag, 0, 2, "HTF 상태", text_color = color.new(color.white, 0), bgcolor = htfRowBg)
+        table.cell(diag, 1, 2, htf_bias, text_color = f_state_color(htf_bias), bgcolor = htfRowBg)
+        table.cell(diag, 0, 3, "롱 웹훅", text_color = color.new(color.white, 0), bgcolor = longWebhookBg)
+        table.cell(diag, 1, 3, f_text_or_dash(long_live_grade), text_color = f_grade_color("LONG", long_live_grade), bgcolor = longWebhookBg)
+        table.cell(diag, 0, 4, "숏 웹훅", text_color = color.new(color.white, 0), bgcolor = shortWebhookBg)
+        table.cell(diag, 1, 4, f_text_or_dash(short_live_grade), text_color = f_grade_color("SHORT", short_live_grade), bgcolor = shortWebhookBg)
+        table.cell(diag, 0, 5, "롱 점수", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 5, str.tostring(long_opportunity, "#.###"), text_color = color.rgb(137, 247, 212), bgcolor = neutralBg)
+        table.cell(diag, 0, 6, "숏 점수", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 6, str.tostring(short_opportunity, "#.###"), text_color = color.rgb(255, 170, 189), bgcolor = neutralBg)
+        table.cell(diag, 0, 7, "롱 트리거", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 7, trigger_type_long == "NONE" ? "-" : trigger_type_long, text_color = trigger_type_long == "NONE" ? color.rgb(255, 184, 108) : color.rgb(72, 201, 176), bgcolor = neutralBg)
+        table.cell(diag, 0, 8, "숏 트리거", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 8, trigger_type_short == "NONE" ? "-" : trigger_type_short, text_color = trigger_type_short == "NONE" ? color.rgb(255, 184, 108) : color.rgb(255, 107, 129), bgcolor = neutralBg)
+        table.cell(diag, 0, 9, "롱 셋업", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 9, long_setup_type, text_color = long_setup_type == "NONE" ? color.rgb(255, 184, 108) : color.rgb(137, 247, 212), bgcolor = neutralBg)
+        table.cell(diag, 0, 10, "숏 셋업", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 10, short_setup_type, text_color = short_setup_type == "NONE" ? color.rgb(255, 184, 108) : color.rgb(255, 170, 189), bgcolor = neutralBg)
+        table.cell(diag, 0, 11, "롱 필터", text_color = color.new(color.white, 0), bgcolor = longFilterBg)
+        table.cell(diag, 1, 11, long_filter_verdict, text_color = f_verdict_color(long_filter_verdict, "LONG"), bgcolor = longFilterBg)
+        table.cell(diag, 0, 12, "숏 필터", text_color = color.new(color.white, 0), bgcolor = shortFilterBg)
+        table.cell(diag, 1, 12, short_filter_verdict, text_color = f_verdict_color(short_filter_verdict, "SHORT"), bgcolor = shortFilterBg)
+        table.cell(diag, 0, 13, "롱 advisory", text_color = color.new(color.white, 0), bgcolor = longFilterBg)
+        table.cell(diag, 1, 13, show_block_reason and long_filter_verdict != "OFF" ? long_filter_blocker : "-", text_color = long_filter_blocker == "PASS" ? color.rgb(72, 201, 176) : color.rgb(255, 184, 108), bgcolor = longFilterBg)
+        table.cell(diag, 0, 14, "숏 advisory", text_color = color.new(color.white, 0), bgcolor = shortFilterBg)
+        table.cell(diag, 1, 14, show_block_reason and short_filter_verdict != "OFF" ? short_filter_blocker : "-", text_color = short_filter_blocker == "PASS" ? color.rgb(255, 107, 129) : color.rgb(255, 184, 108), bgcolor = shortFilterBg)
+        table.cell(diag, 0, 15, "롱 signal", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 15, str.tostring(long_signal_score_proxy, "#"), text_color = color.rgb(137, 247, 212), bgcolor = neutralBg)
+        table.cell(diag, 0, 16, "숏 signal", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 16, str.tostring(short_signal_score_proxy, "#"), text_color = color.rgb(255, 170, 189), bgcolor = neutralBg)
+        table.cell(diag, 0, 17, "웹훅 차단", text_color = color.new(color.white, 0), bgcolor = neutralBg)
+        table.cell(diag, 1, 17, show_block_reason ? (long_live_grade == "NONE" and short_live_grade == "NONE" ? (block_reason_long != "PASS" ? block_reason_long : block_reason_short) : "-") : "-", text_color = color.rgb(255, 184, 108), bgcolor = neutralBg)
     else
-        for row = 0 to 11
+        for row = 0 to 17
             table.cell(diag, 0, row, "", text_color = color.new(color.white, 100), bgcolor = color.new(color.black, 100))
             table.cell(diag, 1, row, "", text_color = color.new(color.white, 100), bgcolor = color.new(color.black, 100))
 
