@@ -131,6 +131,68 @@ function loadSignalLevelFallback(signalIds = []) {
   return Object.freeze(lookup);
 }
 
+// 2026-05-18 — Binance futures /fapi/v1/klines started returning 429
+// under bursty per-cycle fetches (15 open positions × per-symbol pages,
+// fired serially without throttle) and the script had no retry, so a
+// single 429 from one symbol killed the entire exit-ledger run for
+// minutes at a time. The helpers below add:
+//   - retry-on-429 with exponential backoff + honor of the
+//     Retry-After response header (Binance returns it as seconds);
+//   - retry-on-418 (IP ban) but only once, with a long pause and
+//     surface to the caller so the cycle can stop;
+//   - retry on transient 5xx with shorter backoff;
+//   - other non-OK statuses propagate without retry.
+const KLINE_FETCH_MAX_RETRIES = (() => {
+  const n = Number(process.env.V3_PAPER_EXIT_KLINE_MAX_RETRIES);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 4;
+})();
+const KLINE_FETCH_BASE_BACKOFF_MS = (() => {
+  const n = Number(process.env.V3_PAPER_EXIT_KLINE_BASE_BACKOFF_MS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1500;
+})();
+const KLINE_INTER_SYMBOL_DELAY_MS = (() => {
+  const n = Number(process.env.V3_PAPER_EXIT_KLINE_INTER_SYMBOL_MS);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 250;
+})();
+
+function sleepMs(ms) {
+  const clamped = Math.max(0, Math.floor(Number(ms) || 0));
+  return new Promise((resolve) => setTimeout(resolve, clamped));
+}
+
+function parseRetryAfterMs(res) {
+  try {
+    const raw = res && res.headers && typeof res.headers.get === "function"
+      ? res.headers.get("retry-after")
+      : null;
+    if (!raw) return null;
+    const seconds = Number(String(raw).trim());
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
+  } catch (_) {}
+  return null;
+}
+
+async function fetchKlinePageWithRetry({ url, fetchImpl, symbol }) {
+  let lastStatus = null;
+  for (let attempt = 0; attempt <= KLINE_FETCH_MAX_RETRIES; attempt += 1) {
+    const res = await fetchImpl(url);
+    if (res.ok) return res;
+    lastStatus = res.status;
+    // 429 = rate limited, 418 = IP banned (Binance pattern), 5xx = transient.
+    const retriable = res.status === 429 || res.status === 418 || (res.status >= 500 && res.status < 600);
+    if (!retriable || attempt === KLINE_FETCH_MAX_RETRIES) {
+      throw new Error(`V3_EXIT_KLINE_FETCH_FAILED:${symbol}:${res.status}`);
+    }
+    const retryAfterMs = parseRetryAfterMs(res);
+    // Exponential backoff: 1.5s, 3s, 6s, 12s. Honor Retry-After if longer.
+    const computed = KLINE_FETCH_BASE_BACKOFF_MS * Math.pow(2, attempt);
+    const waitMs = retryAfterMs && retryAfterMs > computed ? retryAfterMs : computed;
+    await sleepMs(waitMs);
+  }
+  // Unreachable — loop either returns or throws — but keep the guard.
+  throw new Error(`V3_EXIT_KLINE_FETCH_FAILED:${symbol}:${lastStatus || "EXHAUSTED"}`);
+}
+
 async function fetchKlinesForEntry(entry, nowMs, {
   fetchImpl = global.fetch,
   klineInterval = KLINE_INTERVAL,
@@ -162,10 +224,7 @@ async function fetchKlinesForEntry(entry, nowMs, {
     url.searchParams.set("limit", String(klineLimit));
     url.searchParams.set("startTime", String(startTime));
     url.searchParams.set("endTime", String(endTime));
-    const res = await fetchImpl(url);
-    if (!res.ok) {
-      throw new Error(`V3_EXIT_KLINE_FETCH_FAILED:${symbol}:${res.status}`);
-    }
+    const res = await fetchKlinePageWithRetry({ url, fetchImpl, symbol });
     const rows = await res.json();
     if (!Array.isArray(rows) || rows.length === 0) {
       completedRange = true;
@@ -199,10 +258,55 @@ async function fetchKlinesForEntry(entry, nowMs, {
 async function fetchCandlePathsBySignalId(entries = [], options = {}) {
   const nowMs = Date.now();
   const lookup = Object.create(null);
-  for (const entry of Array.isArray(entries) ? entries : []) {
+  const list = Array.isArray(entries) ? entries : [];
+
+  // 2026-05-18 — fetch by SYMBOL first, then slice per-entry, so multiple
+  // open entries on the same symbol share one set of kline pages. Before
+  // this, three concurrent BNBUSDT entries each fired their own paginated
+  // fetch, tripling the per-symbol Binance weight and contributing to the
+  // 429 cascade.
+  const bySymbol = new Map();
+  for (const entry of list) {
+    const symbol = String(entry && entry.symbol || "").trim().toUpperCase();
     const signalId = trimOrNull(entry && entry.signal_id);
-    if (!signalId) continue;
-    lookup[signalId] = await fetchKlinesForEntry(entry, nowMs, options);
+    const createdAtMs = toEpochMs(entry && entry.created_at);
+    if (!symbol || !signalId || !Number.isFinite(createdAtMs)) continue;
+    if (!bySymbol.has(symbol)) bySymbol.set(symbol, []);
+    bySymbol.get(symbol).push({ entry, signalId, createdAtMs });
+  }
+
+  let isFirst = true;
+  for (const [symbol, group] of bySymbol) {
+    if (!isFirst && KLINE_INTER_SYMBOL_DELAY_MS > 0) {
+      // Spread requests across the Binance per-minute weight budget so we
+      // don't fire all symbols in a sub-second burst.
+      await sleepMs(KLINE_INTER_SYMBOL_DELAY_MS);
+    }
+    isFirst = false;
+
+    // Fetch once using the earliest entry on this symbol so the window
+    // covers everyone, then SLICE per entry by its own created_at before
+    // returning. The downstream `resolveExitFromCandlePath` scans the
+    // first SL/TP hit chronologically — if a newer entry inherited the
+    // shared (older-window) candles unsliced, it would false-trigger on
+    // a pre-creation candle. The slice keeps each lookup entry-scoped
+    // exactly as the original one-fetch-per-entry path did.
+    const earliest = group.reduce(
+      (acc, row) => (row.createdAtMs < acc.createdAtMs ? row : acc),
+      group[0]
+    );
+    const sharedCandles = await fetchKlinesForEntry(earliest.entry, nowMs, options);
+
+    for (const row of group) {
+      // 60s margin matches fetchKlinesForEntry's own startTime offset so
+      // a candle that opens slightly before created_at (but covers the
+      // create moment in its high/low) still counts.
+      const minOpenMs = row.createdAtMs - 60 * 1000;
+      lookup[row.signalId] = sharedCandles.filter((c) => {
+        const openMs = c && c.open_time ? Date.parse(c.open_time) : null;
+        return Number.isFinite(openMs) && openMs >= minOpenMs;
+      });
+    }
   }
   return Object.freeze(lookup);
 }
@@ -284,6 +388,9 @@ module.exports = Object.freeze({
     computeRequiredKlinePages,
     resolveKlinePageBudget,
     fetchKlinesForEntry,
+    fetchKlinePageWithRetry,
+    fetchCandlePathsBySignalId,
+    parseRetryAfterMs,
     toEpochMs,
   },
 });
