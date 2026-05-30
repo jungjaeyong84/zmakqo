@@ -39,6 +39,33 @@
 - `evaluateV3PaperPolicy` 가 `ok:false, reason:"V3_PAPER_COHORT_SHADOWED", apply_mode:"SHADOW"` 를 돌려보내므로 entry 는 만들어지지 않음
 - 다음 부트스트랩 라운드에서 `removed_reason_counts.V3_PAPER_COHORT_SHADOWED` 로 보임 → 같은 시장 조건에서 라이브 수치가 회복되는지 평가 후 `ACTIVE` 복귀 또는 완전 제거 결정
 
+### 2026-05-30 take-profit 비대칭 (RR) + phase 2 LONG 엣지 조사
+
+**SHORT take-profit 단축 (RR 1.55 → 1.2)** — `scripts/analyze-v3-rr-sweep.js` 가
+296개 closed paper trade 를 실제 Binance 1m 경로로 replay 한 결과:
+
+| Side | RR | WR | Exp | 결정 |
+|---|---|---|---|---|
+| SHORT | 1.55 → **1.2** | 45.8% → **53.6%** | +0.167R → **+0.180R** | 단축 (WR·exp·net 모두 개선) |
+| LONG | **1.55 유지** | 43.1% | +0.098R | 유지 (모든 RR 에서 WR≥50%+수익 동시 불가) |
+
+LONG/SHORT 는 정반대 target 거리를 원함 — 약세장에서 SHORT 는 빠르게 목표 도달,
+LONG 은 발전할 공간 필요. side 별 RR 은 env (`V3_RAW_RR_SHORT`/`V3_RAW_RR_LONG`)
+로 오버라이드 가능. SHORT 프로파일의 `min.rr` floor 는 1.4 → 1.15 로 함께 낮춤.
+
+**phase 2 — LONG 엣지 조사 (4가지 방법, 모두 무엣지 확정)**:
+1. 진입 feature 판별: out-of-sample 상관 0 (`scripts/analyze-v3-winrate-levers.js`)
+2. RR sweep: WR≥50% + 수익 동시 만족하는 RR 없음
+3. exit 오버레이 (breakeven/partial, `scripts/analyze-v3-exit-overlay.js`):
+   50% 찍는 유일한 변형이 expectancy 붕괴(+0.029R) + TEST 음수 → metric gaming
+4. 심볼 단위 train/test: **양쪽 양수인 LONG 심볼 0개**. 과거 LONG 수익은
+   INJUSDT 단일 심볼의 train 구간 아티팩트(TR +1.37R → TE -0.15R)였음
+
+**운영자 결정 (2026-05-30)**: 위 증거(현재 out-of-sample LONG ≈ -0.2R 손실)
+에도 불구하고 LONG 은 **ACTIVE 유지** — BULL 레짐 복귀 시 회복 가능성에 베팅.
+LONG 을 SHADOW 로 강등하거나 SHORT 에 partial-TP 오버레이(WR 60%, exp 반감)를
+거는 옵션은 모두 거부됨. 이 결정은 의도된 것이며 "손실 LONG 방치 버그"가 아님.
+
 ## 무엇을 살리고 무엇을 버리나
 
 참고만 하는 것:
