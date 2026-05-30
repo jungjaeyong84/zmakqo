@@ -2,6 +2,30 @@
 
 const { normalizeSignalForV3, evaluateV3SignalPolicy } = require("./signalPolicy");
 
+// 2026-05-30 — side-specific take-profit distance (RR), evidence-driven.
+// A full 1m-path RR sweep over 296 closed paper trades
+// (scripts/analyze-v3-rr-sweep.js) showed LONG and SHORT want OPPOSITE
+// target distances in the BEAR-dominated sample:
+//   SHORT: tightening RR 1.55 -> 1.2 lifts WR 45.8% -> 53.6% AND raises
+//          expectancy +0.167R -> +0.180R AND net +27.8R -> +29.8R.
+//          (downside momentum reaches a near target fast; waiting for the
+//           far target gives back gains on reversals.)
+//   LONG:  expectancy is best at the WIDE target (RR 1.55, +0.098R); every
+//          tighter RR lowers expectancy and only crosses 50% WR at RR 0.8
+//          where it turns money-losing (-0.072R). LONG has no real edge in
+//          this sample, so it keeps the wider 1.55 target (operator
+//          decision 2026-05-30: keep LONG profitable rather than force a
+//          loss-making 50% WR).
+// Both are env-overridable so the next regime can be retuned without a
+// code change.
+function resolveRawRr(side) {
+  const env = side === "SHORT"
+    ? Number(process.env.V3_RAW_RR_SHORT)
+    : Number(process.env.V3_RAW_RR_LONG);
+  if (Number.isFinite(env) && env > 0) return env;
+  return side === "SHORT" ? 1.2 : 1.55;
+}
+
 function trimOrNull(value) {
   const text = String(value == null ? "" : value).trim();
   return text || null;
@@ -314,8 +338,8 @@ function generateCandidates(snapshot) {
   const candidates = [];
   if (!snapshot || !Number.isFinite(snapshot.close) || !Number.isFinite(snapshot.atr14) || snapshot.atr14 <= 0) return candidates;
 
-  const longLevels = buildLevels("LONG", snapshot);
-  const shortLevels = buildLevels("SHORT", snapshot);
+  const longLevels = buildLevels("LONG", snapshot, resolveRawRr("LONG"));
+  const shortLevels = buildLevels("SHORT", snapshot, resolveRawRr("SHORT"));
 
   const trendUp = snapshot.market_state === "BULL" && snapshot.htf_bias === "BULL" && snapshot.close > snapshot.ema20;
   const breakoutLong = Number.isFinite(snapshot.breakout_atr) && snapshot.breakout_atr >= 0.08;

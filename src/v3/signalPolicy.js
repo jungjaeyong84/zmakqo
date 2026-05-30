@@ -263,7 +263,11 @@ const V3_SIGNAL_ACTIVE_PROFILES = Object.freeze([
       setup_quality_score: 0.72,
       structure_alignment: 0.72,
       htf_alignment_score: 0.72,
-      rr: 1.4,
+      // 2026-05-30 — SHORT take-profit distance tightened to RR 1.2 (see
+      // rawSignalGenerator.resolveRawRr + scripts/analyze-v3-rr-sweep.js),
+      // so the rr floor drops from 1.4 to 1.15 to admit the closer target.
+      // LONG profiles keep rr:1.4 since LONG stays at RR 1.55.
+      rr: 1.15,
     }),
   }),
 ]);
