@@ -79,6 +79,12 @@ async function main() {
     source_queue_n: payload.source_queue_n,
     appended_entry_n: payload.appended_entry_n,
     open_position_n: payload.open_position_n,
+    risk_controls: payload.risk_controls || null,
+    risk_blocked: {
+      max_open_total: (payload.blocked_reason_counts && payload.blocked_reason_counts.V3_LEDGER_MAX_OPEN_TOTAL) || 0,
+      max_open_per_side: (payload.blocked_reason_counts && payload.blocked_reason_counts.V3_LEDGER_MAX_OPEN_PER_SIDE) || 0,
+      daily_drawdown_kill: (payload.blocked_reason_counts && payload.blocked_reason_counts.V3_LEDGER_DAILY_DRAWDOWN_KILL) || 0,
+    },
   }));
 }
 

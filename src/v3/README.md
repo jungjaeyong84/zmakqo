@@ -15,6 +15,27 @@
 - `LONG/SHORT` 둘 다 active
 - raw signal은 exact ingress profile matcher로만 통과
 
+## 포트폴리오 리스크 통제 (2026-06-19, live-readiness 선행조건)
+
+v3 숏 엔진은 시장 전체 하락 한 번에 상관 SHORT를 최대 ~19개 동시 발사한다
+(크립토 심볼 상관 0.7~0.9). symbol+side 잠금만으로는 실노출이 안 묶이므로
+`localPaperEntryLedger`에 3중 통제를 추가했다. 전부 env 오버라이드 가능:
+
+| Env | 기본값 | 의미 | blocked reason |
+|---|---|---|---|
+| `V3_MAX_OPEN_TOTAL` | `6` | 전체 동시 오픈 상한 | `V3_LEDGER_MAX_OPEN_TOTAL` |
+| `V3_MAX_OPEN_PER_SIDE` | `5` | 방향별 동시 오픈 상한 (상관 클러스터 방어) | `V3_LEDGER_MAX_OPEN_PER_SIDE` |
+| `V3_DAILY_DRAWDOWN_KILL_R` | `-5` | 당일 실현 R이 이 값 이하면 신규 진입 전면 정지 (0=비활성) | `V3_LEDGER_DAILY_DRAWDOWN_KILL` |
+
+- kill 스위치는 **실현 R만** 본다 (오픈 포지션 미실현은 제외). UTC 일 단위.
+- 통제 상태는 entry-ledger 리포트의 `risk_controls` 필드 + 사이클 로그의
+  `risk_blocked`로 관측된다 (`open_long_n`, `open_short_n`, `kill_switch_active`,
+  `today_realized_r`).
+- 페이퍼에서 먼저 검증한 뒤 동일 파라미터를 라이브로 가져간다 — 이게
+  라이브 진입 순서의 1단계. 통제가 페이퍼 성과를 어떻게 바꾸는지(상관
+  클러스터 거래 수 감소)는 다음 부트스트랩 라운드에서 측정.
+- 테스트: `src/tests/v3-entry-risk-controls.test.js`
+
 허용 코호트 (`V3_PAPER_BOOTSTRAP_2026_05_16_V3`, phase `PHASE_1B_PRUNED_BUILDABLE_AND_RANGE`):
 
 1. `ACTIVE` `LONG | MOMENTUM_CONTINUATION | TREND | MARGINAL_EDGE | CORE`

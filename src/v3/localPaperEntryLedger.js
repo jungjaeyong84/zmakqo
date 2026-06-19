@@ -135,6 +135,57 @@ function resolveSymbolCooldownMs(row = {}) {
   return parseTfToMs(row && row.tf) || (15 * 60 * 1000);
 }
 
+// 2026-06-19 — portfolio risk controls (live-readiness prerequisite).
+// The v3 short engine fires up to ~19 correlated SHORT entries in a single
+// market-wide down-move (crypto symbols are 0.7-0.9 correlated), so the
+// per-symbol-side lock alone does NOT bound real exposure: one adverse
+// macro move can hit every stacked short at once. These caps bound the
+// effective single-bet size and add a daily circuit breaker. All are
+// env-overridable so paper and live can be tuned without a code change.
+//
+//   V3_MAX_OPEN_TOTAL       max concurrent open positions (default 6)
+//   V3_MAX_OPEN_PER_SIDE    max concurrent per direction  (default 5)
+//   V3_DAILY_DRAWDOWN_KILL_R  if today's realized R <= this (negative),
+//                             halt ALL new entries for the rest of the UTC
+//                             day. Default -5R. Set 0 to disable.
+function resolveMaxOpenTotal() {
+  const raw = Number(process.env.V3_MAX_OPEN_TOTAL);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 6;
+}
+
+function resolveMaxOpenPerSide() {
+  const raw = Number(process.env.V3_MAX_OPEN_PER_SIDE);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 5;
+}
+
+function resolveDailyDrawdownKillR() {
+  const raw = Number(process.env.V3_DAILY_DRAWDOWN_KILL_R);
+  // 0 (or unset-to-0) disables the kill switch; only negative values arm it.
+  if (Number.isFinite(raw)) return raw;
+  return -5;
+}
+
+// Sum realized R for exits closed since 00:00 UTC of `nowMs`. Drives the
+// daily-drawdown circuit breaker. Open-position unrealized PnL is
+// deliberately excluded — the breaker trips on booked losses only.
+function computeTodayRealizedR(exitRows = [], nowMs = Date.now()) {
+  const dayStart = new Date(Number(nowMs) || Date.now());
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayStartMs = dayStart.getTime();
+  let net = 0;
+  let n = 0;
+  for (const row of Array.isArray(exitRows) ? exitRows : []) {
+    if (upper(row && row.status) !== "CLOSED") continue;
+    const closedMs = parseTimeMs(row && row.closed_at);
+    if (!Number.isFinite(closedMs) || closedMs < dayStartMs) continue;
+    const r = Number(row && row.realized_r);
+    if (!Number.isFinite(r)) continue;
+    net += r;
+    n += 1;
+  }
+  return { net, n, day_start_ms: dayStartMs };
+}
+
 function buildOpenSymbolIndex(existingRows = [], { closedSignalIds = new Set() } = {}) {
   const openBySymbol = new Map();
   const seenSignalIds = new Set();
@@ -242,6 +293,21 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
   const blockedReasonCounts = Object.create(null);
   const newEntries = [];
 
+  // --- portfolio risk controls (see resolver block above) -----------------
+  const maxOpenTotal = resolveMaxOpenTotal();
+  const maxOpenPerSide = resolveMaxOpenPerSide();
+  const dailyKillR = resolveDailyDrawdownKillR();
+  const today = computeTodayRealizedR(exitRows, nowMs);
+  const killSwitchActive = dailyKillR < 0 && today.net <= dailyKillR;
+  // running open counts per side, seeded from positions already open.
+  let openLongN = 0;
+  let openShortN = 0;
+  for (const openRow of index.openBySymbol.values()) {
+    const openSide = upper(openRow && openRow.side);
+    if (openSide === "LONG") openLongN += 1;
+    else if (openSide === "SHORT") openShortN += 1;
+  }
+
   for (const row of Array.isArray(queueRows) ? queueRows : []) {
     const signalId = trimOrNull(row && row.signal_id);
     const symbol = upper(row && row.symbol);
@@ -276,6 +342,24 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
     if (positionKey && index.openBySymbol.has(positionKey)) {
       blockedReasonCounts.V3_LEDGER_SYMBOL_ALREADY_OPEN = Number(blockedReasonCounts.V3_LEDGER_SYMBOL_ALREADY_OPEN || 0) + 1;
       continue;
+    }
+    // risk control 1 — daily drawdown circuit breaker halts every new entry
+    if (killSwitchActive) {
+      blockedReasonCounts.V3_LEDGER_DAILY_DRAWDOWN_KILL = Number(blockedReasonCounts.V3_LEDGER_DAILY_DRAWDOWN_KILL || 0) + 1;
+      continue;
+    }
+    // risk control 2 — total concurrent-position cap (counts existing + admitted)
+    if (index.openBySymbol.size >= maxOpenTotal) {
+      blockedReasonCounts.V3_LEDGER_MAX_OPEN_TOTAL = Number(blockedReasonCounts.V3_LEDGER_MAX_OPEN_TOTAL || 0) + 1;
+      continue;
+    }
+    // risk control 3 — per-direction concurrent cap (bounds correlated clusters)
+    if (side === "LONG" || side === "SHORT") {
+      const sideOpenN = side === "LONG" ? openLongN : openShortN;
+      if (sideOpenN >= maxOpenPerSide) {
+        blockedReasonCounts.V3_LEDGER_MAX_OPEN_PER_SIDE = Number(blockedReasonCounts.V3_LEDGER_MAX_OPEN_PER_SIDE || 0) + 1;
+        continue;
+      }
     }
     if (!hasCompleteLearningContext(row)) {
       blockedReasonCounts.V3_LEDGER_LEARNING_CONTEXT_REQUIRED = Number(blockedReasonCounts.V3_LEDGER_LEARNING_CONTEXT_REQUIRED || 0) + 1;
@@ -318,6 +402,8 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
     newEntries.push(entry);
     index.seenSignalIds.add(signalId);
     if (positionKey) index.openBySymbol.set(positionKey, entry);
+    if (side === "LONG") openLongN += 1;
+    else if (side === "SHORT") openShortN += 1;
   }
 
   const appendedEntryN = ledgerPath ? appendJsonlRows(ledgerPath, newEntries) : 0;
@@ -335,6 +421,16 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
     new_entries: Object.freeze(newEntries.slice(0, 50)),
     open_entries: Object.freeze([...index.openBySymbol.values()].slice(0, 50)),
     open_position_n: index.openBySymbol.size,
+    risk_controls: Object.freeze({
+      max_open_total: maxOpenTotal,
+      max_open_per_side: maxOpenPerSide,
+      daily_drawdown_kill_r: dailyKillR,
+      kill_switch_active: killSwitchActive,
+      today_realized_r: Number(today.net.toFixed(4)),
+      today_closed_n: today.n,
+      open_long_n: openLongN,
+      open_short_n: openShortN,
+    }),
   });
 }
 
@@ -354,5 +450,9 @@ module.exports = Object.freeze({
     parseTfToMs,
     resolveSignalAgeLimitMs,
     resolveSymbolCooldownMs,
+    resolveMaxOpenTotal,
+    resolveMaxOpenPerSide,
+    resolveDailyDrawdownKillR,
+    computeTodayRealizedR,
   },
 });
