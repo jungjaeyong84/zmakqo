@@ -110,12 +110,16 @@ function buildV3PaperValidationReport({
 } = {}) {
   const retainedSampleMin = Math.max(1, Math.trunc(Number(thresholds.min_retained_sample_n || 50)));
   const paperClosedTradeMin = Math.max(1, Math.trunc(Number(thresholds.min_closed_trade_n || 30)));
+  // 2026-06-25 — aligned with the profitability gate (see paperBootstrap).
+  // WR floor 48% (was 52%) sits above the ~43.4% RR-aware breakeven yet
+  // inside the reachable CI; expectancy floor 0.15R (was 0) carries a buffer
+  // over ~0.12R live cost. The absolute 52/55% WR numbers were RR-blind.
   const paperWinRateMin = Number.isFinite(Number(thresholds.min_paper_win_rate_pct))
     ? Number(thresholds.min_paper_win_rate_pct)
-    : 52;
+    : 48;
   const paperExpectancyMin = Number.isFinite(Number(thresholds.min_paper_expectancy_r))
     ? Number(thresholds.min_paper_expectancy_r)
-    : 0;
+    : 0.15;
   const liveSeedActivationMin = Math.max(1, Math.trunc(Number(thresholds.min_live_seed_activation_n || 5)));
   const liveSeedMatureTarget = Math.max(
     liveSeedActivationMin,
@@ -189,10 +193,17 @@ function buildV3PaperValidationReport({
 
   const paperSampleN = Number(allTime.sample_n || 0);
   const paperSampleOk = paperSampleN >= paperClosedTradeMin;
-  const paperQualityOk = allTime.win_rate_pct >= paperWinRateMin && allTime.expectancy_r > paperExpectancyMin;
+  const paperQualityOk = allTime.win_rate_pct >= paperWinRateMin && allTime.expectancy_r >= paperExpectancyMin;
+  // Rolling gate is a separate "recent windows not collapsing" check — it
+  // requires each window to be non-negative (> rollingMin, default 0), NOT
+  // to clear the full all-time expectancy floor. Short windows are noisy;
+  // holding every one above +0.15R would be far too strict.
+  const rollingExpectancyMin = Number.isFinite(Number(thresholds.min_rolling_expectancy_r))
+    ? Number(thresholds.min_rolling_expectancy_r)
+    : 0;
   const stableTradeWindows = rollingTradeWindows.filter((row) => row.available);
   const rollingGateOk = stableTradeWindows.length > 0
-    ? stableTradeWindows.every((row) => row.metrics.expectancy_r > paperExpectancyMin)
+    ? stableTradeWindows.every((row) => row.metrics.expectancy_r > rollingExpectancyMin)
     : false;
 
   let readiness = "WAIT_BOOTSTRAP_EXPANSION";
@@ -210,10 +221,10 @@ function buildV3PaperValidationReport({
       summaryLines.push(`bootstrap retained sample ${shortfall}건 추가 필요`);
     }
     if (!staticGateHit) {
-      summaryLines.push(`bootstrap static USDT WR ${round(staticWinRatePct, 2)}% (n=${staticSampleN})로 목표 55% 미달`);
+      summaryLines.push(`bootstrap static gate 미달 (WR ${round(staticWinRatePct, 2)}% / n=${staticSampleN}) — 수익성 게이트 기준 미충족`);
     }
     if (!liveBootstrapGateHit) {
-      summaryLines.push(`bootstrap live R WR ${round(liveBootstrapWinRatePct, 2)}% (n=${liveBootstrapSampleN})로 목표 55% 미달`);
+      summaryLines.push(`bootstrap live gate 미달 (WR ${round(liveBootstrapWinRatePct, 2)}% / n=${liveBootstrapSampleN}) — WR≥48% + exp≥0.15R + PF≥1.30 미충족`);
     }
     if (!staticGatePositive) {
       summaryLines.push(`bootstrap static expectancy ${round(staticExpectancyUsdt, 4)} USDT로 양수 아님`);

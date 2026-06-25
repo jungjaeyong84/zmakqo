@@ -162,6 +162,25 @@ function summarizeOutcomeRows(rows = []) {
   });
 }
 
+// Profitability-gate thresholds (2026-06-25). Env-overridable so the bar
+// can be retuned without a code change. Defaults chosen from the n=710
+// statistical picture: WR floor 48% sits ~4.6pp above the ~43.4% RR-aware
+// blended breakeven yet inside the reachable CI; expectancy floor 0.15R
+// leaves a buffer over ~0.12R live cost; profit-factor floor 1.30 is a
+// standard robustness bar.
+function resolveGateMinWrPct() {
+  const raw = Number(process.env.V3_GATE_MIN_WR_PCT);
+  return Number.isFinite(raw) && raw > 0 ? raw : 48;
+}
+function resolveGateMinExpectancyR() {
+  const raw = Number(process.env.V3_GATE_MIN_EXPECTANCY_R);
+  return Number.isFinite(raw) ? raw : 0.15;
+}
+function resolveGateMinProfitFactor() {
+  const raw = Number(process.env.V3_GATE_MIN_PROFIT_FACTOR);
+  return Number.isFinite(raw) && raw > 0 ? raw : 1.30;
+}
+
 function summarizeRowsByNumericField(rows = [], {
   field = "realized_pnl",
   expectancyKey = "expectancy_usdt",
@@ -347,19 +366,48 @@ function buildV3PaperBootstrapReport(outcomes = []) {
   const retainedStaticMetricsUsdt = summarizeUsdtOnly(activeRows);
   const baselineStaticMetricsUsdt = summarizeUsdtOnly(referenceRows);
 
-  // Gate (C-plan): require BOTH external static USDT WR >= 55% AND v3 live R WR >= 55%.
-  // The combined outcome WR (retainedMetrics.win_rate_pct) is kept for backward visibility only.
-  const TARGET_WR_PCT = 55;
+  // 2026-06-25 — PROFITABILITY GATE (replaces the absolute 55% WR "C-plan").
+  //
+  // Why the 55% gate was wrong:
+  //   - Statistically unreachable. At n=710 the 95% CI on the true win rate
+  //     is [46.3%, 53.7%]; 55% sits ABOVE the upper bound, so with 95%
+  //     confidence the strategy's true WR is NOT 55%. The gate waited 6
+  //     weeks for an edge profile this strategy structurally does not have.
+  //   - RR-blind. With SHORT at RR 1.2 (breakeven WR 45.5%) and LONG at RR
+  //     1.55 (breakeven 39.2%), the blended breakeven is ~43.4%. A 50% WR is
+  //     already +6.6pp above breakeven. The 55% number implicitly assumed
+  //     RR 1.0 (breakeven 50%), which is not this strategy.
+  //
+  // The gate now tests what actually determines live viability: WR
+  // comfortably above the RR-aware breakeven, positive expectancy with a
+  // buffer over real-world live cost (~0.12R fees+slippage+funding), and a
+  // robust profit factor. This is MORE discriminating than a single WR
+  // number — a 48% WR / -0.05R / PF 0.9 strategy fails all three. All
+  // thresholds are env-overridable.
+  const minWrPct = resolveGateMinWrPct();
+  const minExpectancyR = resolveGateMinExpectancyR();
+  const minProfitFactor = resolveGateMinProfitFactor();
+  const pfVal = (m) => (m && m.profit_factor === "INF" ? Infinity : Number((m && m.profit_factor) || 0));
+
   const staticWr = Number(retainedStaticMetricsUsdt.win_rate_pct || 0);
   const liveWr = Number(retainedLiveMetricsR.win_rate_pct || 0);
-  const staticGateHit = staticWr >= TARGET_WR_PCT && retainedStaticMetricsUsdt.sample_n > 0;
-  const liveGateHit = liveWr >= TARGET_WR_PCT && retainedLiveMetricsR.sample_n > 0;
+  const staticExp = Number(retainedStaticMetricsUsdt.expectancy_usdt || 0);
+  const liveExp = Number(retainedLiveMetricsR.expectancy_r || 0);
+  const staticPf = pfVal(retainedStaticMetricsUsdt);
+  const livePf = pfVal(retainedLiveMetricsR);
+
+  // Static seed is in USDT units, so its expectancy is gated on >0 (sign,
+  // not magnitude); the live R side carries the R-magnitude buffer.
+  const staticGateHit = retainedStaticMetricsUsdt.sample_n > 0
+    && staticWr >= minWrPct && staticExp > 0 && staticPf >= minProfitFactor;
+  const liveGateHit = retainedLiveMetricsR.sample_n > 0
+    && liveWr >= minWrPct && liveExp >= minExpectancyR && livePf >= minProfitFactor;
   const targetHit = staticGateHit && liveGateHit;
-  const staticPositive = Number(retainedStaticMetricsUsdt.expectancy_usdt || 0) > 0;
-  const livePositive = Number(retainedLiveMetricsR.expectancy_r || 0) > 0;
+  const staticPositive = staticExp > 0;
+  const livePositive = liveExp > 0;
   const positiveExpectancy = staticPositive && livePositive;
   const combinedOutcomeWr = Number(retainedMetrics.win_rate_pct || 0);
-  const recommendation = targetHit && positiveExpectancy
+  const recommendation = targetHit
     ? "READY_FOR_PARALLEL_PAPER_LANE"
     : "KEEP_SHADOW_ONLY";
 
@@ -385,7 +433,13 @@ function buildV3PaperBootstrapReport(outcomes = []) {
     removed_reason_counts: Object.freeze(removedReasonCounts),
     retained_top_cohorts: buildTopCohorts(activeRows),
     shadow_top_cohorts: buildTopCohorts(shadowRows),
-    target_win_rate_pct: TARGET_WR_PCT,
+    gate_policy: "PROFITABILITY_2026_06_25",
+    gate_thresholds: Object.freeze({
+      min_win_rate_pct: minWrPct,
+      min_expectancy_r: minExpectancyR,
+      min_profit_factor: minProfitFactor,
+    }),
+    target_win_rate_pct: minWrPct, // back-compat alias for the WR floor
     target_hit: targetHit,
     positive_expectancy: positiveExpectancy,
     gate_breakdown: Object.freeze({
@@ -393,6 +447,7 @@ function buildV3PaperBootstrapReport(outcomes = []) {
         sample_n: retainedStaticMetricsUsdt.sample_n,
         win_rate_pct: retainedStaticMetricsUsdt.win_rate_pct,
         expectancy_usdt: retainedStaticMetricsUsdt.expectancy_usdt,
+        profit_factor: retainedStaticMetricsUsdt.profit_factor,
         hit: staticGateHit,
         positive: staticPositive,
       }),
@@ -400,6 +455,7 @@ function buildV3PaperBootstrapReport(outcomes = []) {
         sample_n: retainedLiveMetricsR.sample_n,
         win_rate_pct: retainedLiveMetricsR.win_rate_pct,
         expectancy_r: retainedLiveMetricsR.expectancy_r,
+        profit_factor: retainedLiveMetricsR.profit_factor,
         hit: liveGateHit,
         positive: livePositive,
       }),

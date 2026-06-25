@@ -33,6 +33,14 @@ function exitRow(id, side, realizedR, closedAt) {
       expectancy_r: 0.12,
     },
     target_hit: true,
+    // gate_breakdown is how validationReport reads the bootstrap gate
+    // (static_usdt / live_r .hit + .positive). The fixture must supply it
+    // or every bootstrap-gated assertion fails regardless of target_hit.
+    gate_breakdown: {
+      static_usdt: { sample_n: 32, win_rate_pct: 58.5, expectancy_usdt: 0.23, profit_factor: 1.6, hit: true, positive: true },
+      live_r: { sample_n: 6, win_rate_pct: 50, expectancy_r: 0.12, profit_factor: 1.4, hit: true, positive: true },
+      both_required: true,
+    },
   };
   const exitRows = [
     exitRow(1, "LONG", 1.2, "2026-05-01T00:00:00.000Z"),
@@ -111,6 +119,11 @@ function exitRow(id, side, realizedR, closedAt) {
       expectancy_r: 0.05,
     },
     target_hit: true,
+    gate_breakdown: {
+      static_usdt: { sample_n: 32, win_rate_pct: 58.5, expectancy_usdt: 0.23, profit_factor: 1.6, hit: true, positive: true },
+      live_r: { sample_n: 5, win_rate_pct: 50, expectancy_r: 0.05, profit_factor: 1.35, hit: true, positive: true },
+      both_required: true,
+    },
     seed_mix: {
       live_seed_source_n: 5,
       static_seed_source_n: 399,
