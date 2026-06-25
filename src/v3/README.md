@@ -147,12 +147,21 @@ LONG 을 SHADOW 로 강등하거나 SHORT 에 partial-TP 오버레이(WR 60%, ex
 1. `v3 policy`가 지금 표본에서 실제로 win-rate / expectancy를 개선하는지 확인하고
 2. 개선이 확인되면 그다음에만 별도 `v3 runtime lane`을 붙이는 단계다.
 
-현재 기본 bootstrap 목표는:
+현재 기본 bootstrap 게이트는 (2026-06-25 수익성 게이트, env 오버라이드 가능):
 
 - no-reclaim exact allowlist
-- retained sample `49+`
-- retained win rate `55%+`
-- positive expectancy
+- retained sample `50+`
+- win rate `≥ 48%` (`V3_GATE_MIN_WR_PCT`) — RR-aware 손익분기(~43.4%) 위, 도달 가능 CI 내
+- expectancy `≥ +0.15R` (`V3_GATE_MIN_EXPECTANCY_R`) — 라이브 비용 ~0.12R 버퍼
+- profit factor `≥ 1.30` (`V3_GATE_MIN_PROFIT_FACTOR`)
+
+> **왜 55%를 버렸나** (2026-06-25): 구 게이트의 `retained win rate 55%+` 는
+> 통계 근거 없는 하드코딩이었다. n=710에서 참 WR의 95% CI는 [46.3%, 53.7%]로
+> 55%는 상한 밖 = 구조적으로 도달 불가. 게다가 RR을 무시했다 — SHORT는 RR 1.2라
+> 손익분기 45.5%, LONG은 39.2%, 블렌드 ~43.4%인데 50% WR이면 이미 +6.6%p 위다.
+> 새 게이트는 단일 WR 대신 "손익분기 위 + 양의 expectancy(비용 버퍼) + PF" 를
+> 보므로 더 엄격하다 (48%/-0.05R/PF0.9 전략은 셋 다 탈락). 근거:
+> `scripts/analyze-v3-rr-sweep.js`, `scripts/analyze-v3-winrate-levers.js`.
 
 ## 로컬 런타임
 
