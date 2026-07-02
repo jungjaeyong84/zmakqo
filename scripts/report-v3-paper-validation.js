@@ -203,8 +203,12 @@ async function main() {
   const thresholds = {
     min_retained_sample_n: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_RETAINED_SAMPLE_N", 50),
     min_closed_trade_n: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_CLOSED_TRADE_N", 30),
-    min_paper_win_rate_pct: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_PAPER_WIN_RATE_PCT", 52),
-    min_paper_expectancy_r: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_PAPER_EXPECTANCY_R", 0),
+    // 2026-06-25 profitability gate: WR floor 52 -> 48 (RR-aware breakeven
+    // ~43.4%), expectancy floor 0 -> 0.15R (live-cost buffer). These runner
+    // defaults were overriding the module defaults, so the paper quality
+    // gate was still using the stale 52/0 — aligned here.
+    min_paper_win_rate_pct: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_PAPER_WIN_RATE_PCT", 48),
+    min_paper_expectancy_r: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_PAPER_EXPECTANCY_R", 0.15),
     min_live_seed_activation_n: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_LIVE_SEED_ACTIVATION_N", 5),
     min_live_seed_mature_n: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_LIVE_SEED_MATURE_N", 10),
     min_live_seed_share_pct: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_LIVE_SEED_SHARE_PCT", 10),
