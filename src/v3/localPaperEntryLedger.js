@@ -165,6 +165,40 @@ function resolveDailyDrawdownKillR() {
   return -5;
 }
 
+// 2026-07-05 — symmetric entry-quality filters (operator doctrine: no
+// policy may treat LONG and SHORT differently — same rule, same threshold,
+// both sides).
+//
+// Evidence (post-RR era n=498, chronological 70/30 train/test, see
+// scripts/analyze-v3-wr-levers-round2.js):
+//   - funding_rate >= 0 at entry improves BOTH sides independently
+//     (LONG 31.4%→46.6% WR, SHORT 53.2%→59.5% WR) and holds out-of-sample.
+//   - INJUSDT was a robust drag on the SHORT side (TR -0.15 / TE -0.49,
+//     n=13/13) and its LONG edge had already collapsed out-of-sample; the
+//     ban is applied to BOTH sides per the symmetry doctrine.
+//   - combined: era 52.0%→55.3% WR, +0.187→+0.280R per trade,
+//     live-cost-adjusted expectancy +0.067→+0.160R (2.4x), at the cost of
+//     ~47% of trade volume (the cut bucket was ~breakeven, +0.08R).
+//
+//   V3_ENTRY_MIN_FUNDING      minimum funding_rate at entry, applied to both
+//                             sides identically (default 0). In practice
+//                             funding is always present here because the
+//                             learning-context gate upstream already rejects
+//                             rows without it; the isFinite guard below is
+//                             defensive only.
+//   V3_ENTRY_SYMBOL_DENYLIST  comma-separated symbols blocked for BOTH
+//                             sides (default "INJUSDT").
+function resolveEntryMinFunding() {
+  const raw = Number(process.env.V3_ENTRY_MIN_FUNDING);
+  return Number.isFinite(raw) ? raw : 0;
+}
+
+function resolveEntrySymbolDenylist() {
+  const raw = process.env.V3_ENTRY_SYMBOL_DENYLIST;
+  const list = raw == null ? ["INJUSDT"] : String(raw).split(",");
+  return new Set(list.map((s) => String(s || "").trim().toUpperCase()).filter(Boolean));
+}
+
 // Sum realized R for exits closed since 00:00 UTC of `nowMs`. Drives the
 // daily-drawdown circuit breaker. Open-position unrealized PnL is
 // deliberately excluded — the breaker trips on booked losses only.
@@ -293,6 +327,9 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
   const blockedReasonCounts = Object.create(null);
   const newEntries = [];
 
+  // --- symmetric entry-quality filters (see resolver block above) ---------
+  const entryMinFunding = resolveEntryMinFunding();
+  const entrySymbolDenylist = resolveEntrySymbolDenylist();
   // --- portfolio risk controls (see resolver block above) -----------------
   const maxOpenTotal = resolveMaxOpenTotal();
   const maxOpenPerSide = resolveMaxOpenPerSide();
@@ -341,6 +378,18 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
     }
     if (positionKey && index.openBySymbol.has(positionKey)) {
       blockedReasonCounts.V3_LEDGER_SYMBOL_ALREADY_OPEN = Number(blockedReasonCounts.V3_LEDGER_SYMBOL_ALREADY_OPEN || 0) + 1;
+      continue;
+    }
+    // symmetric quality filter 1 — symbol denylist (both sides, same list)
+    if (entrySymbolDenylist.has(symbol)) {
+      blockedReasonCounts.V3_LEDGER_SYMBOL_DENYLISTED = Number(blockedReasonCounts.V3_LEDGER_SYMBOL_DENYLISTED || 0) + 1;
+      continue;
+    }
+    // symmetric quality filter 2 — funding floor (both sides, same threshold).
+    // Missing funding passes: absence of data is not a signal defect.
+    const rowFunding = Number(row && row.funding_rate);
+    if (Number.isFinite(rowFunding) && rowFunding < entryMinFunding) {
+      blockedReasonCounts.V3_LEDGER_FUNDING_BELOW_MIN = Number(blockedReasonCounts.V3_LEDGER_FUNDING_BELOW_MIN || 0) + 1;
       continue;
     }
     // risk control 1 — daily drawdown circuit breaker halts every new entry
@@ -421,6 +470,10 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
     new_entries: Object.freeze(newEntries.slice(0, 50)),
     open_entries: Object.freeze([...index.openBySymbol.values()].slice(0, 50)),
     open_position_n: index.openBySymbol.size,
+    entry_filters: Object.freeze({
+      min_funding: entryMinFunding,
+      symbol_denylist: Object.freeze([...entrySymbolDenylist]),
+    }),
     risk_controls: Object.freeze({
       max_open_total: maxOpenTotal,
       max_open_per_side: maxOpenPerSide,
@@ -454,5 +507,7 @@ module.exports = Object.freeze({
     resolveMaxOpenPerSide,
     resolveDailyDrawdownKillR,
     computeTodayRealizedR,
+    resolveEntryMinFunding,
+    resolveEntrySymbolDenylist,
   },
 });

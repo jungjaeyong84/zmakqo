@@ -87,6 +87,30 @@ LONG 은 발전할 공간 필요. side 별 RR 은 env (`V3_RAW_RR_SHORT`/`V3_RAW
 LONG 을 SHADOW 로 강등하거나 SHORT 에 partial-TP 오버레이(WR 60%, exp 반감)를
 거는 옵션은 모두 거부됨. 이 결정은 의도된 것이며 "손실 LONG 방치 버그"가 아님.
 
+### 2026-07-05 대칭 entry-quality 필터
+
+**운영자 원칙: LONG/SHORT 를 차별하는 정책 금지** — 같은 규칙·같은 임계값을
+양쪽에 동일 적용한다. post-RR 시대(n=498) train/test 검증
+(`scripts/analyze-v3-wr-levers-round2.js`)에서 양쪽 모두 독립적으로 개선이
+확인된 두 필터를 entry-ledger admit 단계에 추가:
+
+| Env | 기본값 | 규칙 (양쪽 동일) | blocked reason |
+|---|---|---|---|
+| `V3_ENTRY_MIN_FUNDING` | `0` | 진입 시 funding_rate ≥ 임계값 | `V3_LEDGER_FUNDING_BELOW_MIN` |
+| `V3_ENTRY_SYMBOL_DENYLIST` | `INJUSDT` | 심볼 양방향 전면 차단 | `V3_LEDGER_SYMBOL_DENYLISTED` |
+
+근거 (era, TRAIN/TEST 양쪽 유지 확인):
+- funding ≥ 0: LONG WR 31.4→46.6%, SHORT WR 53.2→59.5% — **양쪽 다 개선**
+- INJUSDT: SHORT 쪽 robust drag (TR -0.15 / TE -0.49), LONG 엣지는 이미
+  out-of-sample 붕괴 → 대칭 원칙에 따라 양방향 금지
+- 합산: era 52.0→55.3% WR, exp +0.187→+0.280R,
+  **라이브 비용 차감 exp +0.067→+0.160R (2.4배)**
+- 비용: 거래량 약 -47% (잘린 묶음은 ~손익분기 +0.08R)
+
+기각된 후보 (정직 기록): mid-spread SHORT 음수는 비단조(우연 셀), 시간대
+필터는 40셀 다중검정 대비 증거 부족 — 관측만. 신호 생성은 그대로 두고
+진입만 차단하므로(SHADOW 방식) 차단 코호트의 회복 여부는 계속 관측된다.
+
 ## 무엇을 살리고 무엇을 버리나
 
 참고만 하는 것:

@@ -11,6 +11,13 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 
+// Fixtures here carry negative funding_rate and one INJUSDT row; disable the
+// 2026-07-05 symmetric entry-quality filters so they don't preempt the
+// risk-control behavior under test (filters covered by
+// src/tests/v3-entry-quality-filters.test.js).
+process.env.V3_ENTRY_MIN_FUNDING = "-1";
+process.env.V3_ENTRY_SYMBOL_DENYLIST = "";
+
 const { buildV3PaperEntryLedgerReport, __test } = require("../v3/localPaperEntryLedger");
 const {
   resolveMaxOpenTotal,

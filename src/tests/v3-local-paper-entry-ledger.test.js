@@ -5,6 +5,14 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+// These tests exercise dedup / cooldown / symbol-side locks with legacy
+// fixtures that carry negative funding_rate. Disable the 2026-07-05
+// symmetric entry-quality filters so they don't preempt the behavior under
+// test; the filters themselves are covered by
+// src/tests/v3-entry-quality-filters.test.js.
+process.env.V3_ENTRY_MIN_FUNDING = "-1";
+process.env.V3_ENTRY_SYMBOL_DENYLIST = "";
+
 const { buildV3PaperEntryLedgerReport, __test } = require("../v3/localPaperEntryLedger");
 
 function tmpFile(name) {
