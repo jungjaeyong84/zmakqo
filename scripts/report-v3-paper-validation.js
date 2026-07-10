@@ -207,8 +207,11 @@ async function main() {
     // ~43.4%), expectancy floor 0 -> 0.15R (live-cost buffer). These runner
     // defaults were overriding the module defaults, so the paper quality
     // gate was still using the stale 52/0 — aligned here.
+    // 2026-07-10 — gate metrics moved to realized_r_net (costs now modeled
+    // inside the metric), so the 0.15R gross floor's ~0.12R live-cost buffer
+    // would double-count. Net floor 0.05R keeps the same positive-EV margin.
     min_paper_win_rate_pct: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_PAPER_WIN_RATE_PCT", 48),
-    min_paper_expectancy_r: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_PAPER_EXPECTANCY_R", 0.15),
+    min_paper_expectancy_r: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_PAPER_EXPECTANCY_R", 0.05),
     min_live_seed_activation_n: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_LIVE_SEED_ACTIVATION_N", 5),
     min_live_seed_mature_n: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_LIVE_SEED_MATURE_N", 10),
     min_live_seed_share_pct: thresholdEnvNumber("V3_PAPER_VALIDATION_MIN_LIVE_SEED_SHARE_PCT", 10),

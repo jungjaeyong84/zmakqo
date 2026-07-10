@@ -211,6 +211,28 @@ function computeRealizedR(entry = {}, exitPrice) {
   return null;
 }
 
+const DEFAULT_ROUND_TRIP_FEE_PCT = 0.10;
+const DEFAULT_ROUND_TRIP_SLIPPAGE_PCT = 0.04;
+
+function resolveCostConfig(env = process.env) {
+  const fee = toNumberOrNull(env && env.V3_COST_ROUND_TRIP_FEE_PCT);
+  const slippage = toNumberOrNull(env && env.V3_COST_ROUND_TRIP_SLIPPAGE_PCT);
+  return Object.freeze({
+    round_trip_fee_pct: fee !== null && fee >= 0 ? fee : DEFAULT_ROUND_TRIP_FEE_PCT,
+    round_trip_slippage_pct: slippage !== null && slippage >= 0 ? slippage : DEFAULT_ROUND_TRIP_SLIPPAGE_PCT,
+  });
+}
+
+function computeCostR(entry = {}, costConfig = resolveCostConfig()) {
+  const signalPrice = toNumberOrNull(entry.signal_price);
+  const stopPrice = toNumberOrNull(entry.stop_price);
+  if (signalPrice === null || stopPrice === null || signalPrice <= 0) return null;
+  const riskPct = (Math.abs(signalPrice - stopPrice) / signalPrice) * 100;
+  if (!(riskPct > 0)) return null;
+  const costPct = Number(costConfig.round_trip_fee_pct || 0) + Number(costConfig.round_trip_slippage_pct || 0);
+  return round(costPct / riskPct, 4);
+}
+
 function buildOpenEntries(entryRows = [], existingExitRows = [], signalLookup = {}) {
   const closedSignalIds = buildClosedSignalIdSet(existingExitRows);
   const openEntries = [];
@@ -238,6 +260,7 @@ function buildV3PaperExitLedgerReport(entryRows = [], {
   const existingExitRows = exitLedgerPath ? readJsonlRows(exitLedgerPath) : [];
   const { openEntries, hydratedOpenEntryN } = buildOpenEntries(entryRows, existingExitRows, signalLookup);
   const blockedReasonCounts = Object.create(null);
+  const costConfig = resolveCostConfig();
   const newExits = [];
 
   for (const entry of openEntries) {
@@ -258,6 +281,8 @@ function buildV3PaperExitLedgerReport(entryRows = [], {
     }
     const exitOutcome = resolveExitFromCandlePath(entry, candlePath);
     if (!exitOutcome) continue;
+    const realizedR = computeRealizedR(entry, exitOutcome.exit_price);
+    const costR = computeCostR(entry, costConfig);
     newExits.push(Object.freeze({
       v3_paper_exit_id: buildExitId(entry),
       closed_at: trimOrNull(exitOutcome.exit_at) || new Date().toISOString(),
@@ -282,10 +307,16 @@ function buildV3PaperExitLedgerReport(entryRows = [], {
       signal_price: toNumberOrNull(entry.signal_price),
       stop_price: toNumberOrNull(entry.stop_price),
       target_price: toNumberOrNull(entry.target_price),
+      equity_curve_state: upper(entry.equity_curve_state),
+      equity_curve_window_n: toNumberOrNull(entry.equity_curve_window_n),
       exit_price: toNumberOrNull(exitOutcome.exit_price),
       exit_event: upper(exitOutcome.exit_event),
       realized_pnl_pct: computeRealizedPnlPct(entry, exitOutcome.exit_price),
-      realized_r: computeRealizedR(entry, exitOutcome.exit_price),
+      realized_r: realizedR,
+      cost_round_trip_fee_pct: costConfig.round_trip_fee_pct,
+      cost_round_trip_slippage_pct: costConfig.round_trip_slippage_pct,
+      cost_r: costR,
+      realized_r_net: realizedR !== null && costR !== null ? round(realizedR - costR, 4) : realizedR,
       status: "CLOSED",
       price_source: trimOrNull(exitOutcome.price_source) || "BINANCE_FAPI_1M_KLINES_PATH",
       source: "V3_LOCAL_PAPER_EXIT",
@@ -310,6 +341,8 @@ function buildV3PaperExitLedgerReport(entryRows = [], {
 
 module.exports = Object.freeze({
   buildV3PaperExitLedgerReport,
+  resolveCostConfig,
+  computeCostR,
   __test: {
     readJsonlRows,
     buildExitId,
@@ -318,6 +351,8 @@ module.exports = Object.freeze({
     resolveExitFromCandlePath,
     computeRealizedPnlPct,
     computeRealizedR,
+    resolveCostConfig,
+    computeCostR,
     hasValidDirectionalLevels,
     buildOpenEntries,
   },

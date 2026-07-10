@@ -111,6 +111,48 @@ LONG 을 SHADOW 로 강등하거나 SHORT 에 partial-TP 오버레이(WR 60%, ex
 필터는 40셀 다중검정 대비 증거 부족 — 관측만. 신호 생성은 그대로 두고
 진입만 차단하므로(SHADOW 방식) 차단 코호트의 회복 여부는 계속 관측된다.
 
+### 2026-07-10 비용 모델 + net-R 게이트 전환
+
+**발단**: 누적 +135R(gross)의 출처를 주별로 분해하니 상위 3주(W20/W23/W26)가
++155R, **나머지 432건 합계 -19R** — 엣지가 폭락/고변동 주간에 전부 몰려 있고
+평상시엔 잃는 구조. 게다가 수수료·슬리피지가 R 계산에 아예 없어서
+(진입-손절 중앙값 1.86% 폭 기준 왕복 ~0.075R/거래) 실전 기준으로는
+평상시 구간이 확정 마이너스였다.
+
+**측정 수정 (출시)**:
+
+| Env | 기본값 | 의미 |
+|---|---|---|
+| `V3_COST_ROUND_TRIP_FEE_PCT` | `0.10` | 시장가 왕복 수수료 % (taker 0.05×2) |
+| `V3_COST_ROUND_TRIP_SLIPPAGE_PCT` | `0.04` | 왕복 슬리피지 % 가정 (0.02×2) |
+
+- exit-ledger가 청산마다 `cost_r`(해당 거래의 리스크 폭으로 환산)과
+  `realized_r_net`을 기록한다.
+- validation 게이트의 모든 paper 지표(품질 + rolling 윈도우)는
+  **`realized_r_net` 기준**(`paper_gate.metric_basis: NET_OF_COSTS`).
+  비용 필드가 없는 레거시 행은 자기 signal/stop 가격으로 동일 모델을
+  소급 적용. gross 지표는 `gross_*` 필드로 병기.
+- expectancy 플로어 0.15R(gross, ~0.12R 라이브 비용 버퍼 내장)는 비용이
+  지표 안으로 들어왔으므로 이중계산 — **net 0.05R로 조정**
+  (`V3_PAPER_VALIDATION_MIN_PAPER_EXPECTANCY_R`).
+
+**자기자본곡선 상태 (관찰 전용, 차단 아님)**:
+
+직전 20건 청산 net R 합의 부호(`V3_EQUITY_CURVE_WINDOW`, 기본 20)를
+entry admit 시 `equity_curve_state`(ON/OFF)로 스탬프하고 exit 행까지
+전달한다. 전체 원장 walk-forward에서 ON +0.224R / OFF -0.064R(net)로
+강력해 보이지만, **시간순 70/30 분할에서 window=20만 간신히 생존(+0.046R)
+하고 10/30은 음수로 뒤집혔다** — 인접 파라미터가 죽는 단독 생존은 우연일
+가능성이 높아 차단 필터로는 기각. validation 리포트의
+`equity_curve_observation`으로 전방 증거를 누적해 분할이 계속 성립할 때만
+승격한다.
+
+**함께 기각 (정직 기록)**: BTC 3일 변동성 분위, BTC 7일 추세 강도/정렬 —
+전부 train/test에서 부호가 뒤집힘(우연 셀). "이긴 주간"을 외생 변수로
+식별하려는 시도는 현재 데이터로는 실패.
+
+- 테스트: `src/tests/v3-cost-model-and-equity-curve.test.js`
+
 ## 무엇을 살리고 무엇을 버리나
 
 참고만 하는 것:

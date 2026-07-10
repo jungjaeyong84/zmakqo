@@ -1,6 +1,7 @@
 "use strict";
 
 const fs = require("fs");
+const { computeCostR } = require("./localPaperExitLedger");
 
 function trimOrNull(value) {
   const text = String(value == null ? "" : value).trim();
@@ -199,6 +200,54 @@ function resolveEntrySymbolDenylist() {
   return new Set(list.map((s) => String(s || "").trim().toUpperCase()).filter(Boolean));
 }
 
+// 2026-07-10 — equity-curve state, OBSERVE-ONLY. The trailing-20 filter
+// (trade only when the last 20 closed trades net > 0 after costs) showed
+// ON +0.224R vs OFF -0.064R net on the full ledger, but only window=20
+// survived the chronological 70/30 split and only barely (+0.046R);
+// windows 10/30 flipped negative out-of-sample. Not shippable as a
+// blocking filter — we stamp the state on every admitted entry so forward
+// samples accumulate, and promote it only if the split keeps holding.
+//
+//   V3_EQUITY_CURVE_WINDOW  trailing closed-trade count (default 20).
+function resolveEquityCurveWindowN() {
+  const raw = Number(process.env.V3_EQUITY_CURVE_WINDOW);
+  return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 20;
+}
+
+function toExitNetR(row) {
+  const net = Number(row && row.realized_r_net);
+  if (Number.isFinite(net)) return net;
+  const gross = Number(row && row.realized_r);
+  if (!Number.isFinite(gross)) return null;
+  const costR = computeCostR(row || {});
+  return costR === null ? gross : gross - costR;
+}
+
+function computeEquityCurveState(exitRows = [], nowMs = Date.now(), windowN = resolveEquityCurveWindowN()) {
+  const closed = [];
+  for (const row of Array.isArray(exitRows) ? exitRows : []) {
+    if (upper(row && row.status) !== "CLOSED") continue;
+    const closedMs = parseTimeMs(row && row.closed_at);
+    if (!Number.isFinite(closedMs) || closedMs >= nowMs) continue;
+    const netR = toExitNetR(row);
+    if (netR === null) continue;
+    closed.push({ closed_ms: closedMs, net_r: netR });
+  }
+  closed.sort((a, b) => a.closed_ms - b.closed_ms);
+  if (closed.length < windowN) {
+    return Object.freeze({ state: null, window_n: windowN, trailing_net_r: null, sample_n: closed.length });
+  }
+  const trailingNetR = closed
+    .slice(closed.length - windowN)
+    .reduce((acc, row) => acc + row.net_r, 0);
+  return Object.freeze({
+    state: trailingNetR > 0 ? "ON" : "OFF",
+    window_n: windowN,
+    trailing_net_r: Number(trailingNetR.toFixed(4)),
+    sample_n: closed.length,
+  });
+}
+
 // Sum realized R for exits closed since 00:00 UTC of `nowMs`. Drives the
 // daily-drawdown circuit breaker. Open-position unrealized PnL is
 // deliberately excluded — the breaker trips on booked losses only.
@@ -336,6 +385,9 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
   const dailyKillR = resolveDailyDrawdownKillR();
   const today = computeTodayRealizedR(exitRows, nowMs);
   const killSwitchActive = dailyKillR < 0 && today.net <= dailyKillR;
+  // observe-only equity-curve state, stamped on every admitted entry
+  // (never blocks — see the resolver block comment above).
+  const equityCurve = computeEquityCurveState(exitRows, nowMs);
   // running open counts per side, seeded from positions already open.
   let openLongN = 0;
   let openShortN = 0;
@@ -445,6 +497,9 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
       signal_price: row.signal_price == null ? null : Number(row.signal_price),
       stop_price: row.stop_price == null ? null : Number(row.stop_price),
       target_price: row.target_price == null ? null : Number(row.target_price),
+      equity_curve_state: equityCurve.state,
+      equity_curve_window_n: equityCurve.window_n,
+      equity_curve_trailing_net_r: equityCurve.trailing_net_r,
       status: "OPEN",
       source: "V3_LOCAL_PAPER_LANE",
     });
@@ -474,6 +529,7 @@ function buildV3PaperEntryLedgerReport(queueRows = [], {
       min_funding: entryMinFunding,
       symbol_denylist: Object.freeze([...entrySymbolDenylist]),
     }),
+    equity_curve: equityCurve,
     risk_controls: Object.freeze({
       max_open_total: maxOpenTotal,
       max_open_per_side: maxOpenPerSide,
@@ -509,5 +565,7 @@ module.exports = Object.freeze({
     computeTodayRealizedR,
     resolveEntryMinFunding,
     resolveEntrySymbolDenylist,
+    resolveEquityCurveWindowN,
+    computeEquityCurveState,
   },
 });

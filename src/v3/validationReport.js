@@ -1,6 +1,7 @@
 "use strict";
 
 const { buildV3PaperPerformanceReport } = require("./performanceReport");
+const { resolveCostConfig, computeCostR } = require("./localPaperExitLedger");
 
 function toFiniteNumber(value, fallback = null) {
   const num = Number(value);
@@ -26,6 +27,28 @@ function sortClosedExitRows(exitRows = []) {
       const bMs = Date.parse(String(b && b.closed_at || ""));
       return (Number.isFinite(aMs) ? aMs : 0) - (Number.isFinite(bMs) ? bMs : 0);
     });
+}
+
+// 2026-07-10 — the gate previously judged gross paper R; live round-trip
+// fee + slippage (~0.075R at the 1.86% median risk width) was invisible, so
+// a "passing" strategy could still be -EV at the exchange. Every gate metric
+// now runs on realized_r_net; rows written before the cost fields existed
+// get the same cost model applied from their own signal/stop prices.
+function toNetRealizedR(row, costConfig) {
+  const gross = toFiniteNumber(row && row.realized_r);
+  if (gross === null) return null;
+  const recordedNet = toFiniteNumber(row && row.realized_r_net);
+  if (recordedNet !== null) return recordedNet;
+  const costR = computeCostR(row || {}, costConfig);
+  return costR === null ? gross : gross - costR;
+}
+
+function toNetRealizedExitRows(exitRows = [], costConfig = resolveCostConfig()) {
+  return (Array.isArray(exitRows) ? exitRows : []).map((row) => {
+    const netR = toNetRealizedR(row, costConfig);
+    if (netR === null) return row;
+    return { ...row, realized_r: netR };
+  });
 }
 
 function summarizeWindow(entryRows, exitRows, now) {
@@ -84,6 +107,70 @@ function buildDayWindows(entryRows, exitRows, now, dayWindows = []) {
   );
 }
 
+// 2026-07-10 — OBSERVE-ONLY. The trailing-20 equity-curve filter looked
+// strong on the full ledger (ON +0.224R net vs OFF -0.064R net) but only
+// window=20 survived the chronological 70/30 split and only barely
+// (+0.046R); windows 10 and 30 flipped negative out-of-sample. Per doctrine
+// that is not shippable as a blocking filter — we log the split here to
+// accumulate forward evidence and promote it only if it holds.
+function summarizeRealizedRows(rows = []) {
+  const rs = rows.map((row) => toFiniteNumber(row && row.__net_r)).filter((v) => v !== null);
+  if (!rs.length) {
+    return Object.freeze({ sample_n: 0, win_rate_pct: null, expectancy_r: null, net_r: null });
+  }
+  const net = rs.reduce((acc, v) => acc + v, 0);
+  const winN = rs.filter((v) => v > 0).length;
+  return Object.freeze({
+    sample_n: rs.length,
+    win_rate_pct: round((winN / rs.length) * 100, 2),
+    expectancy_r: round(net / rs.length, 4),
+    net_r: round(net, 4),
+  });
+}
+
+function buildEquityCurveObservation(entryRows = [], exitRows = [], {
+  windowN = 20,
+  costConfig = resolveCostConfig(),
+} = {}) {
+  const window = Math.max(1, Math.trunc(Number(windowN) || 20));
+  const entryAtById = new Map();
+  for (const row of Array.isArray(entryRows) ? entryRows : []) {
+    const id = row && row.v3_paper_entry_id;
+    const ms = Date.parse(String(row && row.created_at || ""));
+    if (id && Number.isFinite(ms)) entryAtById.set(id, ms);
+  }
+  const closedRows = sortClosedExitRows(exitRows)
+    .map((row) => {
+      const netR = toNetRealizedR(row, costConfig);
+      if (netR === null) return null;
+      const closedMs = Date.parse(String(row.closed_at || ""));
+      if (!Number.isFinite(closedMs)) return null;
+      const entryMs = entryAtById.get(row.v3_paper_entry_id);
+      return { __net_r: netR, closed_ms: closedMs, entry_ms: Number.isFinite(entryMs) ? entryMs : closedMs };
+    })
+    .filter(Boolean);
+  const onRows = [];
+  const offRows = [];
+  const resolveState = (atMs) => {
+    const prior = closedRows.filter((row) => row.closed_ms < atMs);
+    if (prior.length < window) return null;
+    const tail = prior.slice(prior.length - window);
+    return tail.reduce((acc, row) => acc + row.__net_r, 0) > 0 ? "ON" : "OFF";
+  };
+  for (const row of closedRows) {
+    const state = resolveState(row.entry_ms);
+    if (state === "ON") onRows.push(row);
+    else if (state === "OFF") offRows.push(row);
+  }
+  return Object.freeze({
+    mode: "OBSERVE_ONLY",
+    window_n: window,
+    current_state: resolveState(Date.now()),
+    on_metrics: summarizeRealizedRows(onRows),
+    off_metrics: summarizeRealizedRows(offRows),
+  });
+}
+
 function toRecommendationText(code) {
   switch (String(code || "").toUpperCase()) {
     case "READY_FOR_RUNTIME_LANE_REVIEW":
@@ -112,14 +199,16 @@ function buildV3PaperValidationReport({
   const paperClosedTradeMin = Math.max(1, Math.trunc(Number(thresholds.min_closed_trade_n || 30)));
   // 2026-06-25 — aligned with the profitability gate (see paperBootstrap).
   // WR floor 48% (was 52%) sits above the ~43.4% RR-aware breakeven yet
-  // inside the reachable CI; expectancy floor 0.15R (was 0) carries a buffer
-  // over ~0.12R live cost. The absolute 52/55% WR numbers were RR-blind.
+  // inside the reachable CI. The absolute 52/55% WR numbers were RR-blind.
+  // 2026-07-10 — paper metrics now run on realized_r_net (fee + slippage
+  // modeled per trade), so the old 0.15R gross floor with its ~0.12R
+  // live-cost buffer would double-count costs; 0.05R net keeps the margin.
   const paperWinRateMin = Number.isFinite(Number(thresholds.min_paper_win_rate_pct))
     ? Number(thresholds.min_paper_win_rate_pct)
     : 48;
   const paperExpectancyMin = Number.isFinite(Number(thresholds.min_paper_expectancy_r))
     ? Number(thresholds.min_paper_expectancy_r)
-    : 0.15;
+    : 0.05;
   const liveSeedActivationMin = Math.max(1, Math.trunc(Number(thresholds.min_live_seed_activation_n || 5)));
   const liveSeedMatureTarget = Math.max(
     liveSeedActivationMin,
@@ -139,9 +228,16 @@ function buildV3PaperValidationReport({
     ? thresholds.day_windows
     : [7, 14, 30];
 
-  const allTime = summarizeWindow(entryRows, exitRows, now);
-  const rollingTradeWindows = buildTradeWindows(entryRows, exitRows, now, tradeWindows);
-  const rollingDayWindows = buildDayWindows(entryRows, exitRows, now, dayWindows);
+  const costConfig = resolveCostConfig();
+  const netExitRows = toNetRealizedExitRows(exitRows, costConfig);
+  const allTime = summarizeWindow(entryRows, netExitRows, now);
+  const allTimeGross = summarizeWindow(entryRows, exitRows, now);
+  const rollingTradeWindows = buildTradeWindows(entryRows, netExitRows, now, tradeWindows);
+  const rollingDayWindows = buildDayWindows(entryRows, netExitRows, now, dayWindows);
+  const equityCurveObservation = buildEquityCurveObservation(entryRows, exitRows, {
+    windowN: thresholds.equity_curve_window_n,
+    costConfig,
+  });
 
   const retainedSampleN = Number(bootstrap && bootstrap.retained_sample_n || 0);
   const gateBreakdown = bootstrap && typeof bootstrap.gate_breakdown === "object" ? bootstrap.gate_breakdown : null;
@@ -302,6 +398,11 @@ function buildV3PaperValidationReport({
     }),
     paper_gate: Object.freeze({
       ok: paperSampleOk && paperQualityOk && rollingGateOk,
+      metric_basis: "NET_OF_COSTS",
+      cost_model: Object.freeze({
+        round_trip_fee_pct: costConfig.round_trip_fee_pct,
+        round_trip_slippage_pct: costConfig.round_trip_slippage_pct,
+      }),
       sample_ok: paperSampleOk,
       quality_ok: paperQualityOk,
       rolling_ok: rollingGateOk,
@@ -311,11 +412,15 @@ function buildV3PaperValidationReport({
       win_rate_pct: round(allTime.win_rate_pct, 2),
       expectancy_r: round(allTime.expectancy_r, 4),
       net_r: round(allTime.net_r, 4),
+      gross_win_rate_pct: round(allTimeGross.win_rate_pct, 2),
+      gross_expectancy_r: round(allTimeGross.expectancy_r, 4),
+      gross_net_r: round(allTimeGross.net_r, 4),
       min_win_rate_pct: round(paperWinRateMin, 2),
       min_expectancy_r: round(paperExpectancyMin, 4),
     }),
     rolling_trade_windows: rollingTradeWindows,
     rolling_day_windows: rollingDayWindows,
+    equity_curve_observation: equityCurveObservation,
     summary_lines: Object.freeze(summaryLines),
   });
 }
@@ -326,5 +431,8 @@ module.exports = Object.freeze({
     sortClosedExitRows,
     buildTradeWindows,
     buildDayWindows,
+    toNetRealizedR,
+    toNetRealizedExitRows,
+    buildEquityCurveObservation,
   },
 });
