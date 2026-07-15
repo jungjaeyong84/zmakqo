@@ -153,6 +153,52 @@ entry admit 시 `equity_curve_state`(ON/OFF)로 스탬프하고 exit 행까지
 
 - 테스트: `src/tests/v3-cost-model-and-equity-curve.test.js`
 
+### 2026-07-15 마이크로-라이브 실행 레이어 (증분 1)
+
+READY_FOR_RUNTIME_LANE_REVIEW 도달(2026-07-15)에 따른 다음 단계. **판정은
+분할**: 실행 레이어 구축은 GO, 실제 자금 투입은 조건부 NO —
+**자금 투입 기준: 실행 레이어 완성 시점에 post-filter 표본 n≥180 이고
+비용 차감 expectancy > 0** (7/15 시점 post-filter n=96, +0.080R gross 로
+비용 차감 시 음수 — 미충족).
+
+구성:
+- `src/v3/liveExecutor.js` — 순수 결정 로직. **paper entry ledger 가 유일한
+  admission authority** — 거기 admit 된 signal_id 만 라이브 주문 후보가
+  되므로 paper↔live 가 1:1 비교됨 (슬리피지/수수료 실측이 목적).
+- `scripts/run-v3-live-executor.js` — 러너. 시장가 진입 → STOP_MARKET +
+  TAKE_PROFIT_MARKET (closePosition) 브래킷. 브래킷이 거래소에 있으므로
+  로컬 머신이 죽어도 exit 은 강제됨.
+- transport 는 purge 에서 살아남은 `src/exchanges/binanceFuturesPrivate.js`
+  재사용 (서명·재시도·정밀도 완비, 자체 테스트 그린).
+
+안전 모델 (겹겹이, 기본값 = 전부 안전):
+| 장치 | 기본값 |
+|---|---|
+| `V3_LIVE_ENABLED` | `0` (꺼짐) |
+| `V3_LIVE_DRY_RUN` | `1` (켜도 주문 안 나감, 로그만) |
+| `V3_LIVE_NOTIONAL_USDT` | `10` — **코드 상수 hard cap 20 USDT** 로 클램프 (env 로 올릴 수 없음; 캡 상향 = 코드 리뷰 = 자금 기준 충족 확인) |
+| `V3_LIVE_LEVERAGE` | `1` (최대 3 클램프) |
+| freshness | 10분보다 오래된 entry 는 실행 불가 → 냉시작이 원장 히스토리를 재생할 수 없음 (실측: 902건 전부 ENTRY_TOO_OLD) |
+| 라이브 caps/kill | paper 와 동일 env (`V3_MAX_OPEN_*`, `V3_DAILY_DRAWDOWN_KILL_R`) 를 라이브 원장에 독립 적용 |
+| dedup | signal_id 당 1회 (dry-run 행은 라이브 노출로 계산 안 함) |
+| hedge 모드 | 감지 시 중단 (closePosition 시맨틱은 one-way 전용) |
+
+단계별 롤아웃:
+1. **지금**: `V3_LIVE_ENABLED=0` — 아무 일도 안 일어남 (검증 완료)
+2. **dry-run**: `V3_LIVE_ENABLED=1` 만 — 주문 없이 intent 로그 축적
+3. **testnet**: `BINANCE_FUTURES_BASE_URL=https://testnet.binancefuture.com`
+   + testnet 키 + `V3_LIVE_DRY_RUN=0` — 실제 주문 흐름 검증, 돈 0
+4. **micro-live**: 자금 기준 (n≥180 & cost-adj exp>0) 충족 시에만 실키 +
+   실주소로 전환
+
+⚠️ 운영 주의: 구 Binance API 키가 GCP NAT IP 에 allowlist 되어 있었다면
+그 IP 는 2026-07-02 에 해제됨 — 라이브 전에 키의 IP 제한을 이 머신
+기준으로 갱신해야 함. 키는 `V3_LIVE_BINANCE_API_KEY/SECRET` (신규 이름,
+기존 env 와 충돌 없음).
+
+증분 2 (다음): exit 동기화 (체결·수수료 실측 기록 → paper 대비 슬리피지
+리포트), launchd 배선.
+
 ## 무엇을 살리고 무엇을 버리나
 
 참고만 하는 것:

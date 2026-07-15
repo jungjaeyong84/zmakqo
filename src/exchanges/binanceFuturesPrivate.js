@@ -1770,6 +1770,10 @@ module.exports = {
   getFuturesBaseUrl,
   getSpotBaseUrl,
   normalizeRecvWindow,
+  // 2026-07-15: exported for the v3 micro-live executor — LOT_SIZE-aware
+  // quantity rounding before order placement (defined above; logic covered
+  // by the normalizeFuturesQuantityFromExchangeInfo tests).
+  normalizeFuturesQuantity,
   __test: {
     isDuplicateClientOrderError,
     isAlgoEndpointUnavailableError,
