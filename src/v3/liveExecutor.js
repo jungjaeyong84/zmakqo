@@ -27,7 +27,7 @@
 
 const LIVE_NOTIONAL_HARD_CAP_USDT = 20; // code constant — deliberately not env
 
-function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
+function num(v) { if (v === null || v === undefined || v === "") return null; const n = Number(v); return Number.isFinite(n) ? n : null; }
 function upper(v) { const s = String(v == null ? "" : v).trim(); return s ? s.toUpperCase() : null; }
 
 function resolveLiveEnabled() {

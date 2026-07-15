@@ -196,8 +196,20 @@ READY_FOR_RUNTIME_LANE_REVIEW 도달(2026-07-15)에 따른 다음 단계. **판�
 기준으로 갱신해야 함. 키는 `V3_LIVE_BINANCE_API_KEY/SECRET` (신규 이름,
 기존 env 와 충돌 없음).
 
-증분 2 (다음): exit 동기화 (체결·수수료 실측 기록 → paper 대비 슬리피지
-리포트), launchd 배선.
+**증분 2 (2026-07-15 완료)** — exit 동기화 + 실측 리포트 + launchd 배선:
+- `src/v3/liveExitSync.js` — 순수 로직: 브래킷 체결 판정(양쪽 체결 anomaly
+  포함), userTrades 수수료 집계(비-USDT 커미션은 별도 표기), **실현 R·
+  슬리피지·수수료를 R 단위로 실측** (부호 규약: 양수 = 유리). dry-run 행은
+  같은 signal_id 의 paper exit 를 미러링(슬리피지·수수료 0) → 파이프라인
+  전체를 주문 0 으로 상시 검증.
+- `scripts/run-v3-live-exit-sync.js` — 실 포지션: 브래킷 조회 → 체결 기록
+  (실제 평균가+수수료) → 생존 sibling 레그 정밀 취소(orderId 지정).
+- `scripts/report-v3-live-vs-paper.js` — signal_id 조인으로
+  `measured_cost_r_per_trade` 산출 (`ops/daily/v3_live_vs_paper_latest.json`).
+  **풀 라이브 결정은 가정치 ~0.12R 대신 이 실측치를 사용한다.**
+- launchd: `com.jeongjaeyong.donbeolja.v3livecycle` (180s, executor →
+  exit-sync → report). `.env` 에 `V3_LIVE_ENABLED` 없으면 완전 inert —
+  롤아웃 단계 전환은 코드/launchd 변경 없이 `.env` 편집만으로 진행.
 
 ## 무엇을 살리고 무엇을 버리나
 
