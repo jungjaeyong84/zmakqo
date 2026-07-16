@@ -23,4 +23,5 @@ fi
 
 node scripts/run-v3-live-executor.js || echo "{\"step\":\"live_executor\",\"rc\":$?}"
 node scripts/run-v3-live-exit-sync.js || echo "{\"step\":\"live_exit_sync\",\"rc\":$?}"
+node scripts/run-v3-live-reconcile.js || echo "{\"step\":\"live_reconcile\",\"rc\":$?}"
 node scripts/report-v3-live-vs-paper.js || echo "{\"step\":\"live_vs_paper\",\"rc\":$?}"

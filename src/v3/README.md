@@ -211,6 +211,30 @@ READY_FOR_RUNTIME_LANE_REVIEW 도달(2026-07-15)에 따른 다음 단계. **판�
   exit-sync → report). `.env` 에 `V3_LIVE_ENABLED` 없으면 완전 inert —
   롤아웃 단계 전환은 코드/launchd 변경 없이 `.env` 편집만으로 진행.
 
+### 2026-07-16 생존 강화 (survival hardening) — 5종 세트
+
+"침묵이 죽음과 구별되지 않는" 구멍들을 메운 세트. 공통 기반:
+`liveLedgerView.latestRowsBySignalId` (append-only 원장에서 **signal_id 당
+최신 행이 authoritative** — 수리 행이 원본을 대체) +
+`opsAlert` (상태전이 알림, 6h 재알림, 회복 통지; `V3_OPS_ALERT_CHANNEL` →
+`EXIT_INTEGRITY_ALERT_CHANNEL` → `telegram:$TELEGRAM_CHAT_ID` 순 해석).
+
+| # | 장치 | 위치 | 동작 |
+|---|---|---|---|
+| 1 | **데드맨** | `deadmanCheck.js` + launchd `v3deadman` (600s) | 아티팩트 나이로 파이프라인 심박 판정 (paper 15분 / live 15분 / readiness watch 26h). 정지→알림, 회복→통지. **한계: 같은 머신이라 머신 전체 사망은 못 잡음 (외부 관찰자 필요, 명시적 미해결)** |
+| 2 | **브래킷 수리** | `liveBracketRepair.js` + exit-sync 통합 | `OPEN_BRACKET_INCOMPLETE` 발견 시: 포지션 플랫→EXTERNAL_OR_UNFILLED 기록(수동검토 플래그), 레그 죽음→**원래 paper 레벨로만** 재설치(재가격 금지), 체결된 exit 레그+포지션 공존→ANOMALY(자동수리 금지, 즉시 알림) |
+| 3 | **원장 백업** | `run-v3-ledger-backup.js` + launchd `v3backup` (일 03:47) | ops/runtime *.jsonl 전부 + *_latest.json → tar.gz + sha256 manifest, 보존 14개. **iCloud Drive 자동감지 미러** (`V3_BACKUP_EXTRA_DIR` 로 재지정 가능) — 디스크 사망 보호. tar 는 `-T` 파일리스트 (30k+ 파일 ARG_MAX 회피) |
+| 4 | **출혈 차단기** | executor 내장 | 최근 `V3_LIVE_BLEED_WINDOW_N`(30) 실거래 expectancy < `V3_LIVE_BLEED_MIN_EXP_R`(-0.15R) → 신규 진입 전면 정지. **래칭**: 정지 중엔 창이 안 바뀌므로 자연 래치 — 해제는 수동 검토 후 `V3_LIVE_BLEED_OVERRIDE=1` 또는 원장 정리. daily kill(자정 리셋)이 못 잡는 만성 출혈용 |
+| 5 | **정합성** | `liveReconcile.js` + live cycle 스텝 | 거래소↔원장: GHOST_POSITION(원장 모르는 포지션; dry-run 중엔 "계좌=플랫" 불변식) / MISSING_POSITION(grace 10분 초과) / QTY_MISMATCH(5% 허용) — 발견 시 알림(시그니처 dedup) |
+
+감사에서 발견·수정된 부수 사항: `num(null)→0` 강제변환(별도 커밋),
+tar E2BIG(ops/daily 30k 스냅샷), 좀비 launchd
+`v3openclawlearningstate`(러너 삭제 후 plist 잔존, exit 78 반복 — 제거;
+동일 작업은 paper cycle 9단계가 수행).
+
+테스트: `src/tests/v3-survival-hardening.test.js` (latest-wins, 차단기
+래치/오버라이드/경계값, 수리 결정표, 정합 분류, 데드맨 판정, 알림 dedup).
+
 ## 무엇을 살리고 무엇을 버리나
 
 참고만 하는 것:

@@ -27,6 +27,8 @@
 
 const LIVE_NOTIONAL_HARD_CAP_USDT = 20; // code constant — deliberately not env
 
+const { latestRowsBySignalId } = require("./liveLedgerView");
+
 function num(v) { if (v === null || v === undefined || v === "") return null; const n = Number(v); return Number.isFinite(n) ? n : null; }
 function upper(v) { const s = String(v == null ? "" : v).trim(); return s ? s.toUpperCase() : null; }
 
@@ -64,6 +66,36 @@ function resolveLiveDailyKillR() {
   return raw !== null ? raw : -5;
 }
 
+// 2026-07-16 — slow-bleed breaker. The daily kill resets at UTC midnight, so
+// a strategy losing just under the daily limit forever never trips it. This
+// breaker looks at the trailing window of REAL live closes and halts all new
+// live entries when the measured expectancy is decisively negative. It
+// LATCHES by construction: halted trading cannot change the window, so the
+// breaker stays tripped until a human reviews and either clears/archives the
+// live ledger or sets V3_LIVE_BLEED_OVERRIDE=1 (both deliberate acts).
+function resolveBleedWindowN() {
+  const raw = num(process.env.V3_LIVE_BLEED_WINDOW_N);
+  return raw !== null && raw >= 5 ? Math.floor(raw) : 30;
+}
+function resolveBleedMinExpR() {
+  const raw = num(process.env.V3_LIVE_BLEED_MIN_EXP_R);
+  return raw !== null ? raw : -0.15;
+}
+function resolveBleedOverride() {
+  return String(process.env.V3_LIVE_BLEED_OVERRIDE || "0").trim() === "1";
+}
+
+// Trailing expectancy over the last N REAL closed live trades.
+function computeTrailingLiveStats(liveExitRows = [], windowN = 30) {
+  const real = (Array.isArray(liveExitRows) ? liveExitRows : [])
+    .filter((r) => r && r.dry_run !== true && upper(r.status) === "CLOSED" && num(r.realized_r) !== null)
+    .sort((a, b) => (Date.parse(a.closed_at) || 0) - (Date.parse(b.closed_at) || 0));
+  const tail = real.slice(-windowN);
+  const n = tail.length;
+  const net = tail.reduce((s, r) => s + num(r.realized_r), 0);
+  return { n, expectancy_r: n ? net / n : null, net_r: net };
+}
+
 function computeLiveTodayRealizedR(liveExitRows = [], nowMs = Date.now()) {
   const dayStart = new Date(Number(nowMs) || Date.now());
   dayStart.setUTCHours(0, 0, 0, 0);
@@ -99,6 +131,9 @@ function decideLiveOrders({
     max_open_total: resolveLiveMaxOpenTotal(),
     max_open_per_side: resolveLiveMaxOpenPerSide(),
     daily_kill_r: resolveLiveDailyKillR(),
+    bleed_window_n: resolveBleedWindowN(),
+    bleed_min_exp_r: resolveBleedMinExpR(),
+    bleed_override: resolveBleedOverride(),
   });
 
   const skipped = Object.create(null);
@@ -110,7 +145,9 @@ function decideLiveOrders({
     return Object.freeze({ intents: Object.freeze(intents), skipped: Object.freeze(skipped), config });
   }
 
-  // live open/dedup state
+  // live open/dedup state — read through latest-row-wins so a bracket-repair
+  // row (same signal_id, fresh order ids) is not double-counted as two
+  // open positions against the concurrency caps.
   const executedSignalIds = new Set();
   const closedSignalIds = new Set();
   for (const row of Array.isArray(liveExitRows) ? liveExitRows : []) {
@@ -119,10 +156,10 @@ function decideLiveOrders({
   }
   let openTotal = 0, openLong = 0, openShort = 0;
   const openSymbolSide = new Set();
-  for (const row of Array.isArray(liveEntryRows) ? liveEntryRows : []) {
-    const sid = row && row.signal_id;
-    if (sid) executedSignalIds.add(sid);
-    if (!sid || closedSignalIds.has(sid)) continue;
+  for (const row of latestRowsBySignalId(liveEntryRows).values()) {
+    const sid = row.signal_id;
+    executedSignalIds.add(sid);
+    if (closedSignalIds.has(sid)) continue;
     if (row.dry_run === true) continue; // dry-run rows don't hold live exposure
     openTotal += 1;
     const side = upper(row.side);
@@ -134,6 +171,13 @@ function decideLiveOrders({
   // live daily kill switch (booked live losses only)
   const todayLiveR = computeLiveTodayRealizedR(liveExitRows, nowMs);
   const killActive = config.daily_kill_r < 0 && todayLiveR <= config.daily_kill_r;
+
+  // slow-bleed breaker (trailing REAL-trade expectancy; latches — see above)
+  const bleed = computeTrailingLiveStats(liveExitRows, config.bleed_window_n);
+  const bleedTripped = !config.bleed_override
+    && bleed.n >= config.bleed_window_n
+    && bleed.expectancy_r !== null
+    && bleed.expectancy_r < config.bleed_min_exp_r;
 
   for (const e of Array.isArray(paperEntries) ? paperEntries : []) {
     const signalId = e && e.signal_id;
@@ -148,6 +192,7 @@ function decideLiveOrders({
     const createdMs = Date.parse(e && e.created_at);
     if (!Number.isFinite(createdMs) || (nowMs - createdMs) > config.max_entry_age_ms) { skip("ENTRY_TOO_OLD"); continue; }
     if (killActive) { skip("LIVE_DAILY_KILL"); continue; }
+    if (bleedTripped) { skip("LIVE_BLEED_BREAKER"); continue; }
     if (openTotal >= config.max_open_total) { skip("LIVE_MAX_OPEN_TOTAL"); continue; }
     const sideOpen = side === "LONG" ? openLong : openShort;
     if (sideOpen >= config.max_open_per_side) { skip("LIVE_MAX_OPEN_PER_SIDE"); continue; }
@@ -183,6 +228,7 @@ function decideLiveOrders({
     live_open_total: openTotal,
     live_today_realized_r: todayLiveR,
     live_kill_active: killActive,
+    live_bleed: Object.freeze({ ...bleed, tripped: bleedTripped }),
   });
 }
 
@@ -196,5 +242,8 @@ module.exports = Object.freeze({
     resolveLeverage,
     resolveMaxEntryAgeMs,
     computeLiveTodayRealizedR,
+    computeTrailingLiveStats,
+    resolveBleedWindowN,
+    resolveBleedMinExpR,
   },
 });

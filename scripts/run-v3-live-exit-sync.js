@@ -27,7 +27,15 @@ const {
   computeLiveRealizedMetrics,
   mirrorDryRunExit,
 } = require("../src/v3/liveExitSync");
+const {
+  decideBracketRepair,
+  buildRepairedEntryRow,
+  buildExternalCloseExitRow,
+} = require("../src/v3/liveBracketRepair");
+const { alertOnce } = require("../src/v3/opsAlert");
 const priv = require("../src/exchanges/binanceFuturesPrivate");
+
+const ALERT_STATE = require("path").join(__dirname, "..", "ops/runtime/v3_ops_alert_state.json");
 
 const ROOT = path.resolve(__dirname, "..");
 const PAPER_EXIT = path.join(ROOT, "ops/runtime/v3_paper_exit_ledger.jsonl");
@@ -143,15 +151,105 @@ async function main() {
     }
   }
 
-  // real closes (network)
+  // real closes (network) — with naked-position bracket repair
   if (open.real.length) {
     const keys = resolveKeys();
     if (!keys.apiKey || !keys.apiSecret) {
       console.log(JSON.stringify({ ok: false, reason: "V3_LIVE_KEYS_MISSING", open_real_n: open.real.length }));
       process.exit(1);
     }
+
+    // one account snapshot per cycle for repair decisions
+    let positionsBySymbol = null;
+    const needsRepair = open.real.filter((e) => String(e.status).toUpperCase() === "OPEN_BRACKET_INCOMPLETE");
+    if (needsRepair.length) {
+      try {
+        const account = await priv.fetchBinanceFuturesAccount({ ...keys });
+        positionsBySymbol = new Map();
+        for (const p of (account && account.positions) || []) {
+          const amt = Number(p.positionAmt);
+          if (Number.isFinite(amt) && amt !== 0) positionsBySymbol.set(String(p.symbol).toUpperCase(), amt);
+        }
+      } catch (e) {
+        results.push({ step: "REPAIR_ACCOUNT_FETCH", status: "ERROR", error: String(e && e.message || e) });
+      }
+    }
+
     for (const e of open.real) {
       try {
+        // ---- bracket repair (the naked-position hole) --------------------
+        if (String(e.status).toUpperCase() === "OPEN_BRACKET_INCOMPLETE" && positionsBySymbol) {
+          const fetchOrder = async (orderId) => {
+            if (orderId == null) return null;
+            try { return await priv.fetchFuturesOrder({ ...keys, symbol: e.symbol, orderId }); } catch (_) { return null; }
+          };
+          const decision = decideBracketRepair({
+            entryRow: e,
+            positionAmt: positionsBySymbol.get(String(e.symbol).toUpperCase()) || 0,
+            stopOrder: await fetchOrder(e.stop_order_id),
+            tpOrder: await fetchOrder(e.tp_order_id),
+          });
+          if (decision.action === "CLOSE_EXTERNAL") {
+            const row = buildExternalCloseExitRow(e);
+            appendJsonl(LIVE_EXIT, row);
+            results.push({ signal_id: e.signal_id, status: "CLOSED", exit_event: row.exit_event, needs_review: true });
+            await alertOnce({
+              stateFile: ALERT_STATE, key: `external_close_${e.signal_id}`, active: true,
+              title: "⚠️ v3 live: 외부 종결/미체결 감지", severity: "warn",
+              body: `${e.symbol} ${e.side} (${e.signal_id}) — 거래소 플랫인데 원장은 OPEN이었음. 수동 확인 필요.`,
+            });
+            continue; // superseded — no exit resolution this cycle
+          }
+          if (decision.action === "ANOMALY") {
+            results.push({ signal_id: e.signal_id, status: "REPAIR_ANOMALY", reason: decision.reason });
+            await alertOnce({
+              stateFile: ALERT_STATE, key: `repair_anomaly_${e.signal_id}`, active: true,
+              title: "🚨 v3 live: 브래킷 수리 불가 anomaly", severity: "error",
+              body: `${e.symbol} ${e.side} (${e.signal_id}) — ${decision.reason}. 자동수리 금지 조건, 즉시 수동 개입 필요.`,
+            });
+            continue;
+          }
+          if (decision.action.startsWith("REPLACE")) {
+            const legs = [];
+            let newStopId = null, newTpId = null, repairError = null;
+            try {
+              if (decision.action !== "REPLACE_TP") {
+                const o = await priv.placeFuturesStopMarketOrder({
+                  ...keys, symbol: e.symbol,
+                  side: String(e.side).toUpperCase() === "LONG" ? "SELL" : "BUY",
+                  stopPrice: e.stop_price, closePosition: true,
+                });
+                newStopId = o && o.orderId; legs.push("STOP");
+              }
+              if (decision.action !== "REPLACE_STOP") {
+                const o = await priv.placeFuturesTakeProfitMarketOrder({
+                  ...keys, symbol: e.symbol,
+                  side: String(e.side).toUpperCase() === "LONG" ? "SELL" : "BUY",
+                  stopPrice: e.target_price, closePosition: true,
+                });
+                newTpId = o && o.orderId; legs.push("TP");
+              }
+            } catch (err) { repairError = String(err && err.message || err); }
+            if (legs.length && !repairError) {
+              const repairedRow = buildRepairedEntryRow(e, { stopOrderId: newStopId, tpOrderId: newTpId, repairedLegs: legs });
+              appendJsonl(LIVE_ENTRY, repairedRow);
+              results.push({ signal_id: e.signal_id, status: "BRACKET_REPAIRED", legs });
+            } else {
+              results.push({ signal_id: e.signal_id, status: "REPAIR_FAILED", error: repairError });
+            }
+            await alertOnce({
+              stateFile: ALERT_STATE, key: `bracket_repair_${e.signal_id}`, active: true,
+              title: repairError ? "🚨 v3 live: 브래킷 수리 실패" : "⚠️ v3 live: 벌거벗은 포지션 수리됨",
+              severity: repairError ? "error" : "warn",
+              body: `${e.symbol} ${e.side} (${e.signal_id}) — ${decision.reason} → ${repairError ? `수리 실패: ${repairError} — 즉시 수동 개입!` : `레그 재설치: ${legs.join("+")}`}`,
+            });
+            continue; // exits resolve next cycle against the repaired row
+          }
+          // decision NONE → legs healthy; append authoritative OPEN row so
+          // the incomplete status stops re-triggering repair each cycle
+          appendJsonl(LIVE_ENTRY, buildRepairedEntryRow(e, { repairedLegs: [] }));
+        }
+
         const row = await syncRealEntry(e, keys);
         if (row) { appendJsonl(LIVE_EXIT, row); results.push({ signal_id: row.signal_id, status: "CLOSED", exit_event: row.exit_event }); }
       } catch (err) {

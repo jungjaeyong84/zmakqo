@@ -51,3 +51,4 @@ ops/runtime/*.out.log
 ops/runtime/*.jsonl
 ops/runtime/*.lock/
 ops/runtime/*.env
+ops/backup/

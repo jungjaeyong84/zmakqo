@@ -17,7 +17,12 @@
 function num(v) { if (v === null || v === undefined || v === "") return null; const n = Number(v); return Number.isFinite(n) ? n : null; }
 function upper(v) { const s = String(v == null ? "" : v).trim(); return s ? s.toUpperCase() : null; }
 
+const { latestRowsBySignalId } = require("./liveLedgerView");
+
 // Live entry rows that still need exit resolution, split by mode.
+// 2026-07-16: reads through latestRowsBySignalId — bracket REPAIR appends a
+// fresh row per signal_id, and exits must resolve against the repaired
+// order ids, never the superseded originals.
 function buildOpenLiveEntries(liveEntryRows = [], liveExitRows = []) {
   const closed = new Set();
   for (const r of Array.isArray(liveExitRows) ? liveExitRows : []) {
@@ -25,8 +30,8 @@ function buildOpenLiveEntries(liveEntryRows = [], liveExitRows = []) {
   }
   const real = [];
   const dryRun = [];
-  for (const r of Array.isArray(liveEntryRows) ? liveEntryRows : []) {
-    if (!r || !r.signal_id || closed.has(r.signal_id)) continue;
+  for (const r of latestRowsBySignalId(liveEntryRows).values()) {
+    if (closed.has(r.signal_id)) continue;
     const st = upper(r.status);
     if (r.dry_run === true && st === "DRY_RUN") dryRun.push(r);
     else if (r.dry_run !== true && (st === "OPEN" || st === "OPEN_BRACKET_INCOMPLETE")) real.push(r);

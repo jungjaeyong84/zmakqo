@@ -154,6 +154,22 @@ async function main() {
     }
   }
 
+  // slow-bleed breaker trip alert (dedup: once per trip, 6h re-arm)
+  try {
+    const { alertOnce } = require("../src/v3/opsAlert");
+    await alertOnce({
+      stateFile: path.join(ROOT, "ops/runtime/v3_ops_alert_state.json"),
+      key: "live_bleed_breaker",
+      active: decision.live_bleed ? decision.live_bleed.tripped === true : false,
+      title: "🚨 v3 live: 출혈 차단기 발동 — 신규 진입 정지",
+      severity: "error",
+      recoveryTitle: "✅ v3 live: 출혈 차단기 해제",
+      body: decision.live_bleed
+        ? `최근 ${decision.live_bleed.n}거래 expectancy ${decision.live_bleed.expectancy_r != null ? decision.live_bleed.expectancy_r.toFixed(3) : "?"}R < 임계 ${decision.config.bleed_min_exp_r}R. 래칭 상태 — 수동 검토 후 해제(V3_LIVE_BLEED_OVERRIDE=1 또는 원장 정리) 필요.`
+        : "",
+    });
+  } catch (_) { /* alerting must never block execution */ }
+
   const results = [];
   for (const intent of decision.intents) {
     const row = await executeIntent(intent, keys);
@@ -173,6 +189,7 @@ async function main() {
     live_open_total: decision.live_open_total,
     live_today_realized_r: decision.live_today_realized_r,
     live_kill_active: decision.live_kill_active,
+    live_bleed: decision.live_bleed,
   }));
 }
 
