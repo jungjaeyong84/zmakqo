@@ -235,6 +235,35 @@ tar E2BIG(ops/daily 30k 스냅샷), 좀비 launchd
 테스트: `src/tests/v3-survival-hardening.test.js` (latest-wins, 차단기
 래치/오버라이드/경계값, 수리 결정표, 정합 분류, 데드맨 판정, 알림 dedup).
 
+### 2026-07-24 전략 재판단 — "상시 돈 인쇄기는 없다" 확정과 2정 체제
+
+**측정으로 닫은 경로들** (`scripts/analyze-v3-daily-regime-gate.js`,
+`scripts/analyze-v3-htf-momentum.js`):
+- 일봉 레짐 정렬 게이트: 3정의 모두에서 "버린 묶음"이 양수 — 7월 출혈의
+  원인이 아님. 최선 +0.03R gross 개선뿐 → 채택 안 함.
+- 일봉 TSMOM (14/30/90d, 11심볼, 2.7년, 플립시 비용): **3개 lookback 전부
+  최근 16개월 음수** (-6~-15%/yr), B&H(+11%)도 못 이김 → v4 일봉 레인
+  안 지음. (진입 feature·RR·exit 오버레이에 이은 4번째 독립 부정 결과)
+
+**살아있는 구조** — 평소엔 잠자고 자기 엣지가 실측될 때만 깨어나는 2정:
+1. **v3 = 약세장 전문가** (paper 대기, READY 감시 중)
+2. **funding 하베스터 후보** = `fundingMonitor.js` + launchd `v3funding`
+   (시간당): 6심볼 trailing 7일 funding APY 감시,
+   `V3_FUNDING_ALERT_APY_PCT`(기본 15%) 초과가 **지속**되면(커버리지 가드:
+   윈도우당 이벤트 ≥ 2.5/일 — 데이터 공백이 연환산 스파이크를 못 만들게)
+   텔레그램. 실측(7/24): BTC 5.1% / BNB 5.6% / 나머지 ≤3% — 차가움, 대기.
+   델타중립 실행 레이어는 **첫 실제 알림이 트리거** (엣지 관측 전 실행부터
+   짓지 않는다는 v3 교훈). 자본이 작으면 푼돈임을 명시.
+
+**비용 공학 (결정론적 개선)**: 진입을 maker-first로 —
+`pickMakerPrice`(패시브 사이드 합류) + GTX(post-only) 지정가 →
+`V3_LIVE_MAKER_WAIT_MS`(기본 5s) 대기 → 미체결 시 시장가 폴백.
+부분체결은 체결분만 유지(브래킷이 closePosition이라 안전측).
+`entry_fill_mode`(MAKER/MAKER_PARTIAL/TAKER)를 원장에 기록해 실제 maker
+체결률을 micro-live가 실측. taker 0.05%→maker 0.02%: 왕복 비용
+~0.115R→~0.09R (+BNB 수수료 할인 10%는 운영자 계정 설정 — 켜면 ~0.08R).
+`V3_LIVE_MAKER_FIRST=0`으로 비활성 가능.
+
 ## 무엇을 살리고 무엇을 버리나
 
 참고만 하는 것:

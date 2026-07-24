@@ -28,6 +28,8 @@ const DESCRIPTORS = [
   { name: "v3live_cycle", path: path.join(ROOT, "ops/daily/v3_live_vs_paper_latest.json"), max_age_ms: 15 * 60 * 1000 },
   // readiness watcher runs 2x daily + on load
   { name: "v3ready_watch", path: path.join(ROOT, "ops/runtime/v3_readiness_watch_state.json"), max_age_ms: 26 * 60 * 60 * 1000 },
+  // funding monitor runs hourly (2h10m allowance for one missed tick)
+  { name: "v3funding_monitor", path: path.join(ROOT, "ops/daily/v3_funding_monitor_latest.json"), max_age_ms: 130 * 60 * 1000 },
 ];
 
 async function main() {

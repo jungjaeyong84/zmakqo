@@ -85,6 +85,31 @@ function resolveBleedOverride() {
   return String(process.env.V3_LIVE_BLEED_OVERRIDE || "0").trim() === "1";
 }
 
+// 2026-07-24 — maker-first entry (cost engineering). The binding constraint
+// of the 15m lane is cost (~0.115R) vs thin gross edge; a maker fill cuts
+// the entry leg from taker 0.05% to maker 0.02% deterministically — no
+// statistical assumption. Plan: join the passive side of the book with a
+// GTX (post-only) limit, wait briefly, fall back to market. Fill mode is
+// recorded per trade so micro-live measures the real maker fill-rate.
+function resolveMakerFirstEnabled() {
+  return String(process.env.V3_LIVE_MAKER_FIRST == null ? "1" : process.env.V3_LIVE_MAKER_FIRST).trim() !== "0";
+}
+function resolveMakerWaitMs() {
+  const raw = num(process.env.V3_LIVE_MAKER_WAIT_MS);
+  const v = raw !== null && raw > 0 ? raw : 5000;
+  return Math.max(1000, Math.min(30000, v));
+}
+// Passive-side price: BUY joins the bid, SELL joins the ask. Book prices come
+// from the exchange, so they are already tick-aligned.
+function pickMakerPrice({ orderSide, bookTicker } = {}) {
+  const side = upper(orderSide);
+  const bid = num(bookTicker && (bookTicker.bidPrice ?? bookTicker.b));
+  const ask = num(bookTicker && (bookTicker.askPrice ?? bookTicker.a));
+  if (side === "BUY") return bid !== null && bid > 0 ? bid : null;
+  if (side === "SELL") return ask !== null && ask > 0 ? ask : null;
+  return null;
+}
+
 // Trailing expectancy over the last N REAL closed live trades.
 function computeTrailingLiveStats(liveExitRows = [], windowN = 30) {
   const real = (Array.isArray(liveExitRows) ? liveExitRows : [])
@@ -245,5 +270,8 @@ module.exports = Object.freeze({
     computeTrailingLiveStats,
     resolveBleedWindowN,
     resolveBleedMinExpR,
+    resolveMakerFirstEnabled,
+    resolveMakerWaitMs,
+    pickMakerPrice,
   },
 });

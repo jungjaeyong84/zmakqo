@@ -79,18 +79,69 @@ async function executeIntent(intent, keys) {
   try { await priv.setFuturesLeverage({ ...keys, symbol: intent.symbol, leverage: intent.leverage }); }
   catch (e) { /* non-fatal: pre-existing leverage is acceptable */ }
 
-  // 3. market entry
-  let entryOrder;
-  try {
-    entryOrder = await priv.placeFuturesMarketOrder({
-      ...keys,
-      symbol: intent.symbol,
-      side: intent.order_side,
-      quantity: qty,
-      newClientOrderId: `v3live_${intent.signal_id}`.slice(0, 36),
-    });
-  } catch (e) {
-    return { ...base, dry_run: false, status: "ERROR", error: `ENTRY_ORDER_FAIL: ${e && e.message}`, qty };
+  // 3. entry — maker-first (GTX post-only at the passive side), market fallback.
+  // Cuts the entry leg from taker 0.05% to maker 0.02% when it fills; fill
+  // mode is recorded so micro-live measures the real maker fill-rate.
+  const { __test: execHelpers } = require("../src/v3/liveExecutor");
+  let entryOrder = null;
+  let entryQty = qty;
+  let fillMode = "TAKER";
+  if (execHelpers.resolveMakerFirstEnabled()) {
+    try {
+      const bt = await priv.fetchFuturesBookTicker({ symbol: intent.symbol });
+      const makerPrice = execHelpers.pickMakerPrice({ orderSide: intent.order_side, bookTicker: bt });
+      if (makerPrice) {
+        const lim = await priv.placeFuturesLimitOrder({
+          ...keys,
+          symbol: intent.symbol,
+          side: intent.order_side,
+          quantity: qty,
+          price: makerPrice, // book price — already tick-aligned
+          timeInForce: "GTX",
+          clientOrderId: `v3ml_${intent.signal_id}`.slice(0, 36),
+        });
+        const limId = lim && lim.orderId;
+        const deadline = Date.now() + execHelpers.resolveMakerWaitMs();
+        let last = lim;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 1000));
+          try { last = await priv.fetchFuturesOrder({ ...keys, symbol: intent.symbol, orderId: limId }); } catch (_) {}
+          if (last && String(last.status).toUpperCase() === "FILLED") break;
+        }
+        const st = last && String(last.status).toUpperCase();
+        if (st === "FILLED") {
+          entryOrder = last; fillMode = "MAKER";
+        } else {
+          // timeout — cancel; the cancel can race an in-flight fill, so
+          // re-fetch and honor whatever actually executed.
+          try { await priv.cancelFuturesOrder({ ...keys, symbol: intent.symbol, orderId: limId }); } catch (_) {}
+          try { last = await priv.fetchFuturesOrder({ ...keys, symbol: intent.symbol, orderId: limId }); } catch (_) {}
+          const executedQty = Number(last && last.executedQty) || 0;
+          if (last && String(last.status).toUpperCase() === "FILLED") {
+            entryOrder = last; fillMode = "MAKER";
+          } else if (executedQty > 0) {
+            // partial maker fill: keep the filled part (brackets are
+            // closePosition, so they cover whatever exists) — do NOT
+            // market-buy the remainder; smaller position is the safe side.
+            entryOrder = last; entryQty = executedQty; fillMode = "MAKER_PARTIAL";
+          }
+        }
+      }
+    } catch (_) { /* GTX reject (would cross) or any maker-path failure → market fallback */ }
+  }
+  if (!entryOrder) {
+    try {
+      entryOrder = await priv.placeFuturesMarketOrder({
+        ...keys,
+        symbol: intent.symbol,
+        side: intent.order_side,
+        quantity: qty,
+        newClientOrderId: `v3live_${intent.signal_id}`.slice(0, 36),
+      });
+      fillMode = "TAKER";
+    } catch (e) {
+      return { ...base, dry_run: false, status: "ERROR", error: `ENTRY_ORDER_FAIL: ${e && e.message}`, qty };
+    }
   }
 
   // 4. protective bracket — closePosition orders survive local crashes
@@ -118,7 +169,8 @@ async function executeIntent(intent, keys) {
     ...base,
     dry_run: false,
     status: bracketError ? "OPEN_BRACKET_INCOMPLETE" : "OPEN",
-    qty,
+    qty: entryQty,
+    entry_fill_mode: fillMode,
     entry_order_id: entryOrder && (entryOrder.orderId || entryOrder.order_id) || null,
     entry_avg_price: Number(entryOrder && (entryOrder.avgPrice || entryOrder.avg_price)) || null,
     stop_order_id: stopOrder && stopOrder.orderId || null,
