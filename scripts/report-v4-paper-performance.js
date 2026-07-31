@@ -73,6 +73,26 @@ function scoreVariant(rows) {
     excess_sharpe: excessSharpe >= CRITERIA.min_excess_sharpe,
     drawdown: ddPct >= CRITERIA.max_drawdown_pct,
   };
+
+  // STATISTICAL POWER — reported next to every verdict so it can never be
+  // mistaken for validation. SE of a Sharpe estimate over T years is
+  // ~sqrt((1+S^2/2)/T). At 90 days a TRUE-zero strategy clears a 0.5 bar
+  // ~40% of the time and a TRUE-0.5 strategy misses it ~50% of the time:
+  // the gate is close to a coin flip. Separating Sharpe 0.5 from 0 at 95%
+  // confidence needs roughly TWO DECADES of daily data. A short-horizon
+  // "pass" therefore means the lane BEHAVES as backtested — it does not,
+  // and cannot, certify that an edge exists.
+  const years = n / 365;
+  const seSharpe = Math.sqrt((1 + Math.pow(CRITERIA.min_excess_sharpe, 2) / 2) / Math.max(years, 1e-6));
+  const normCdf = (z) => {
+    const t = 1 / (1 + 0.2316419 * Math.abs(z));
+    const d = 0.3989423 * Math.exp(-z * z / 2);
+    const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    return z > 0 ? 1 - p : p;
+  };
+  const falsePassProb = 1 - normCdf(CRITERIA.min_excess_sharpe / Math.sqrt((1 + 0) / Math.max(years, 1e-6)));
+
+  const passed = Object.values(checks).every(Boolean);
   return {
     days: n,
     ann_return_pct_maker: +annPct.toFixed(2),
@@ -83,8 +103,17 @@ function scoreVariant(rows) {
     max_drawdown_pct: +ddPct.toFixed(2),
     equity_maker: +eq.toFixed(6),
     checks,
-    verdict: Object.values(checks).every(Boolean)
-      ? "PASS"
+    statistical_power: {
+      sharpe_standard_error: +seSharpe.toFixed(2),
+      false_pass_probability: +falsePassProb.toFixed(3),
+      years_observed: +years.toFixed(2),
+      years_needed_for_95pct_separation: 20,
+      note: "a short-horizon PASS certifies behavior, NOT edge",
+    },
+    // Deliberately not the word "PASS" on its own: the power numbers above
+    // make an unqualified pass unjustifiable at this horizon.
+    verdict: passed
+      ? (years >= 3 ? "PASS" : "BEHAVIOR_OK_NOT_STATISTICALLY_VALIDATED")
       : (checks.sample ? "FAIL" : "ACCUMULATING"),
   };
 }
