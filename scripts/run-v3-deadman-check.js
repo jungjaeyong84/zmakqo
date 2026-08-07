@@ -37,6 +37,11 @@ const DESCRIPTORS = [
   { name: "v3funding_monitor", path: path.join(ROOT, "ops/daily/v3_funding_monitor_latest.json"), max_age_ms: 130 * 60 * 1000 },
   // v4 cross-sectional lane rebalances daily (26h allowance for one miss)
   { name: "v4paper_lane", path: path.join(ROOT, "ops/daily/v4_paper_latest.json"), max_age_ms: 26 * 60 * 60 * 1000 },
+  // Flow collector runs 2x daily. This one is watched harder than its cadence
+  // suggests: the /futures/data window is only ~30 days deep, so a silent
+  // outage longer than that punches a hole in the history that can NEVER be
+  // backfilled. 26h catches it while recovery is still free.
+  { name: "v5flow_collector", path: path.join(ROOT, "ops/daily/v5_flow_collector_latest.json"), max_age_ms: 26 * 60 * 60 * 1000 },
 ];
 
 async function main() {
