@@ -2,21 +2,39 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 
+// 2026-08-07 — rewritten for the post-v3 system.
+//
+// This dashboard used to read the v3 paper lane and nothing else. That lane
+// was retired: the book ran 64% short and weekly win rate regressed on BTC's
+// weekly return at R2 = 0.705, so its "edge" was market beta. Its artifacts
+// are still on disk but frozen, and a dashboard that keeps rendering frozen
+// numbers as if they were live is worse than one that shows nothing — it
+// invites decisions from stale data.
+//
+// So the page now shows the lanes that are ACTUALLY RUNNING, and shows the
+// retired one explicitly labelled as retired, with the number that killed it.
+//
+// Live lanes:
+//   funding carry  — the only mechanism that survived every control. Contractual
+//                    income, not prediction. Currently dormant by design.
+//   v4 paper       — cross-sectional, accumulating toward 90-day criteria.
+//   v5 flow        — banks the 30-day /futures/data window so history can grow.
+//   infrastructure — deadman heartbeats, ledger backups.
+
 const OPS_DAILY_DIR = path.resolve(__dirname, "../../ops/daily");
-const OPS_RUNTIME_DIR = path.resolve(__dirname, "../../ops/runtime");
+const OPS_BACKUP_DIR = path.resolve(__dirname, "../../ops/backup");
 const PUBLIC_DIR = path.resolve(__dirname, "../../public");
 const VIEWS_DIR = path.resolve(__dirname, "../views");
 
 const PATHS = {
-  bootstrap: path.join(OPS_DAILY_DIR, "v3_paper_bootstrap_latest.json"),
-  lane: path.join(OPS_DAILY_DIR, "v3_paper_lane_latest.json"),
-  entry: path.join(OPS_DAILY_DIR, "v3_paper_entry_ledger_latest.json"),
-  exit: path.join(OPS_DAILY_DIR, "v3_paper_exit_ledger_latest.json"),
-  performance: path.join(OPS_DAILY_DIR, "v3_paper_performance_latest.json"),
-  validation: path.join(OPS_DAILY_DIR, "v3_paper_validation_latest.json"),
-  cycleLog: path.join(OPS_RUNTIME_DIR, "v3_paper_cycle.out.log"),
-  entryLedger: path.join(OPS_RUNTIME_DIR, "v3_paper_entry_ledger.jsonl"),
-  exitLedger: path.join(OPS_RUNTIME_DIR, "v3_paper_exit_ledger.jsonl"),
+  funding: path.join(OPS_DAILY_DIR, "v3_funding_monitor_latest.json"),
+  v4perf: path.join(OPS_DAILY_DIR, "v4_paper_performance_latest.json"),
+  v4lane: path.join(OPS_DAILY_DIR, "v4_paper_latest.json"),
+  flow: path.join(OPS_DAILY_DIR, "v5_flow_collector_latest.json"),
+  deadman: path.join(OPS_DAILY_DIR, "v3_deadman_latest.json"),
+  // retired, rendered as history only
+  v3perf: path.join(OPS_DAILY_DIR, "v3_paper_performance_latest.json"),
+  v3validation: path.join(OPS_DAILY_DIR, "v3_paper_validation_latest.json"),
 };
 
 function readJsonSafe(filePath, fallback = null) {
@@ -24,27 +42,6 @@ function readJsonSafe(filePath, fallback = null) {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
   } catch (_error) {
     return fallback;
-  }
-}
-
-function readJsonLinesSafe(filePath, limit = 100) {
-  try {
-    return fs
-      .readFileSync(filePath, "utf8")
-      .split(/\r?\n/)
-      .map((line) => String(line || "").trim())
-      .filter(Boolean)
-      .slice(limit * -1)
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch (_error) {
-          return null;
-        }
-      })
-      .filter((row) => row && typeof row === "object");
-  } catch (_error) {
-    return [];
   }
 }
 
@@ -56,28 +53,19 @@ function asNumber(value) {
 function formatNumber(value, digits = 0) {
   const num = asNumber(value);
   if (num === null) return "-";
-  return num.toLocaleString("ko-KR", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
+  return num.toLocaleString("ko-KR", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-function formatPercent(value, digits = 1) {
+function formatPercent(value, digits = 2) {
   const num = asNumber(value);
   if (num === null) return "-";
   return `${formatNumber(num, digits)}%`;
 }
 
-function formatR(value, digits = 2) {
+function formatSigned(value, digits = 2, suffix = "%p") {
   const num = asNumber(value);
   if (num === null) return "-";
-  return `${num > 0 ? "+" : ""}${formatNumber(num, digits)}R`;
-}
-
-function formatPnlPercent(value, digits = 2) {
-  const num = asNumber(value);
-  if (num === null) return "-";
-  return `${num > 0 ? "+" : ""}${formatNumber(num, digits)}%`;
+  return `${num > 0 ? "+" : ""}${formatNumber(num, digits)}${suffix}`;
 }
 
 function formatDateTime(value) {
@@ -86,11 +74,8 @@ function formatDateTime(value) {
   if (!Number.isFinite(ms)) return String(value);
   return new Intl.DateTimeFormat("ko-KR", {
     timeZone: "Asia/Seoul",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+    month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
     hour12: false,
   }).format(new Date(ms));
 }
@@ -109,269 +94,249 @@ function formatAgo(value) {
   return `${Math.floor(hours / 24)}일 전`;
 }
 
-function rankEntries(mapLike, limit = 5) {
-  return Object.entries(mapLike || {})
-    .map(([label, value]) => ({ label, value: Number(value || 0) }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, limit);
-}
-
-function buildExitBySignalId(exitLedgerRows = []) {
-  const latestBySignalId = new Map();
-  for (const row of Array.isArray(exitLedgerRows) ? exitLedgerRows : []) {
-    const signalId = String(row && row.signal_id || "").trim();
-    if (!signalId) continue;
-    const closedAt = Date.parse(String(row && row.closed_at || ""));
-    const previous = latestBySignalId.get(signalId);
-    if (!previous || (Number.isFinite(closedAt) && closedAt >= previous.__closedAtMs)) {
-      latestBySignalId.set(signalId, Object.freeze({
-        ...row,
-        __closedAtMs: Number.isFinite(closedAt) ? closedAt : 0,
-      }));
-    }
-  }
-  return latestBySignalId;
-}
-
-function buildRecentEntryFlow(entryLedgerRows = [], exitLedgerRows = [], limit = 6) {
-  const exitBySignalId = buildExitBySignalId(exitLedgerRows);
-  return entryLedgerRows
-    .slice(limit * -1)
-    .reverse()
-    .map((entryRow) => {
-      const signalId = String(entryRow && entryRow.signal_id || "").trim();
-      const exitRow = signalId ? exitBySignalId.get(signalId) : null;
-      const currentStatus = exitRow ? "CLOSED" : String(entryRow && entryRow.status || "").trim().toUpperCase() || "OPEN";
-      const statusDetail = exitRow
-        ? `${currentStatus} · ${String(exitRow.exit_event || "").trim() || "-"}`
-        : currentStatus;
-      return Object.freeze({
-        ...entryRow,
-        current_status: currentStatus,
-        status_detail: statusDetail,
-        closed_at: exitRow ? exitRow.closed_at || null : null,
-        exit_event: exitRow ? exitRow.exit_event || null : null,
-      });
-    });
-}
-
 function toneByNumber(value) {
   const num = asNumber(value);
   if (num === null || num === 0) return "neutral";
   return num > 0 ? "up" : "down";
 }
 
-function validationLabel(value) {
-  const code = String(value || "").toUpperCase();
-  if (code === "READY_FOR_RUNTIME_LANE_REVIEW") return "검토 가능";
-  if (code === "WAIT_LIVE_SEED_MIX_EXPANSION") return "live seed 확장";
-  if (code === "WAIT_PAPER_SAMPLE_ACCUMULATION") return "paper 누적 중";
-  if (code === "PAPER_SAMPLE_FAILS_QUALITY") return "품질 미달";
-  if (code === "WAIT_BOOTSTRAP_EXPANSION") return "표본 부족";
-  return code || "확인 중";
-}
-
-function computeHealth(latestCycle, recentSteps) {
-  if (!latestCycle) {
-    return {
-      tone: "warn",
-      label: "데이터 없음",
-      detail: "v3 paper cycle 완료 로그를 아직 찾지 못했습니다.",
-    };
+// Health comes from the deadman rather than from any single lane's log: it is
+// the one artifact whose whole job is knowing whether the others are alive.
+function computeHealth(deadman) {
+  if (!deadman || !Array.isArray(deadman.healthy)) {
+    return { tone: "warn", label: "확인 불가", detail: "데드맨 아티팩트를 읽지 못했습니다." };
   }
-  const lastTs = Date.parse(String(latestCycle.ts || ""));
-  const ageMinutes = Number.isFinite(lastTs) ? (Date.now() - lastTs) / 60000 : null;
-  const failedStep = (recentSteps || []).find((row) => Number(row && row.rc) !== 0);
-  if (failedStep) {
+  const stale = Array.isArray(deadman.stale) ? deadman.stale : [];
+  if (stale.length) {
     return {
       tone: "bad",
-      label: "사이클 오류",
-      detail: `${failedStep.step || "step"} 단계 rc=${failedStep.rc}`,
-    };
-  }
-  if (ageMinutes !== null && ageMinutes > 10) {
-    return {
-      tone: "warn",
-      label: "갱신 지연",
-      detail: `마지막 완료 ${Math.round(ageMinutes)}분 전`,
+      label: `${stale.length}개 심박 정지`,
+      detail: stale.map((s) => s.name).join(", "),
     };
   }
   return {
     tone: "ok",
     label: "정상",
-    detail: `마지막 완료 ${formatAgo(latestCycle.ts)}`,
+    detail: `${deadman.healthy.length}개 레인 심박 확인 · ${formatAgo(deadman.generated_at)}`,
+  };
+}
+
+function backupSummary() {
+  try {
+    const files = fs.readdirSync(OPS_BACKUP_DIR)
+      .filter((f) => f.endsWith(".tar.gz"))
+      .map((f) => ({ f, t: fs.statSync(path.join(OPS_BACKUP_DIR, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t);
+    if (!files.length) return { count: 0, latestAt: null, latestName: null };
+    return { count: files.length, latestAt: new Date(files[0].t).toISOString(), latestName: files[0].f };
+  } catch (_error) {
+    return { count: 0, latestAt: null, latestName: null };
+  }
+}
+
+function buildCarryLane(funding) {
+  const menu = (funding && funding.carry_menu) || {};
+  const verdict = String(menu.verdict || "NO_DATA").toUpperCase();
+  const sources = Array.isArray(menu.sources) ? menu.sources : [];
+  const hot = Array.isArray(funding && funding.hot) ? funding.hot : [];
+  const perSymbol = Object.entries((funding && funding.per_symbol) || {})
+    .map(([symbol, d]) => ({
+      symbol,
+      apyPct: asNumber(d && d.apy_pct),
+      events: asNumber(d && d.events),
+      negativeEvents: asNumber(d && d.negative_events),
+    }))
+    .sort((a, b) => (b.apyPct || 0) - (a.apyPct || 0));
+
+  // Lookup keyed by kind|symbol over EVERY source, not a truncated slice — an
+  // earlier version sliced to 6 and silently dropped XRP's excess, which then
+  // rendered as "-" as if the number did not exist.
+  const bySymbol = new Map();
+  for (const s of sources) bySymbol.set(`${s.kind}|${s.symbol}`, s);
+
+  // The menu carries two distinct carry mechanisms and they are NOT
+  // interchangeable: funding is perpetual and re-prices every 8h, while basis
+  // is a dated future that converges at delivery by arbitrage. Showing only
+  // funding hid four real sources.
+  const fundingSources = sources.filter((s) => s.kind === "funding");
+  const basisSources = sources.filter((s) => s.kind === "basis");
+
+  return {
+    generatedAt: (funding && funding.generated_at) || null,
+    verdict,
+    verdictLabel: verdict === "HOLD_RISK_FREE" ? "대기 — 무위험 보유"
+      : verdict === "HARVEST" ? "수확 가능"
+        : verdict,
+    // dormant is the CORRECT state when carry is thin; it is not a failure
+    isDormant: verdict === "HOLD_RISK_FREE",
+    alertApyPct: asNumber(funding && funding.alert_apy_pct),
+    windowDays: asNumber(funding && funding.window_days),
+    best: sources.length ? sources[0] : null,
+    sources,
+    fundingSources,
+    basisSources,
+    excessFor: (kind, symbol) => bySymbol.get(`${kind}|${symbol}`) || null,
+    hot,
+    perSymbol,
+  };
+}
+
+function buildV4Lane(v4perf) {
+  const variants = Object.entries((v4perf && v4perf.variants) || {}).map(([name, s]) => ({
+    name,
+    days: asNumber(s.days),
+    annPct: asNumber(s.ann_return_pct_maker),
+    excessPct: asNumber(s.excess_return_pct),
+    excessSharpe: asNumber(s.excess_sharpe),
+    volPct: asNumber(s.annualized_vol_pct),
+    maxDdPct: asNumber(s.max_drawdown_pct),
+    equity: asNumber(s.equity_maker),
+    verdict: String(s.verdict || "-"),
+  }));
+  const criteria = (v4perf && v4perf.criteria) || {};
+  const minDays = asNumber(criteria.min_days) || 90;
+  const days = variants.length ? Math.max(...variants.map((v) => v.days || 0)) : 0;
+  return {
+    generatedAt: (v4perf && v4perf.generated_at) || null,
+    variants,
+    criteria,
+    days,
+    minDays,
+    progressPct: Math.min(100, Math.round((days / minDays) * 100)),
+  };
+}
+
+function buildFlowLane(flow) {
+  return {
+    generatedAt: (flow && flow.generated_at) || null,
+    rowsTotal: asNumber(flow && flow.rows_total),
+    rowsAppended: asNumber(flow && flow.rows_appended),
+    symbols: asNumber(flow && flow.symbols),
+    bankedSpanDays: asNumber(flow && flow.banked_span_days),
+    earliest: (flow && flow.earliest) || null,
+    latest: (flow && flow.latest) || null,
+    failures: Array.isArray(flow && flow.failures) ? flow.failures : [],
+    // the API only ever serves ~30d; anything past that exists solely because
+    // this collector wrote it down
+    apiHorizonDays: 30,
   };
 }
 
 function buildLocalDashboardView() {
-  const bootstrap = readJsonSafe(PATHS.bootstrap, {});
-  const lane = readJsonSafe(PATHS.lane, {});
-  const entry = readJsonSafe(PATHS.entry, {});
-  const exit = readJsonSafe(PATHS.exit, {});
-  const performance = readJsonSafe(PATHS.performance, {});
-  const validation = readJsonSafe(PATHS.validation, {});
-  const cycleRows = readJsonLinesSafe(PATHS.cycleLog, 80);
-  const entryLedgerRows = readJsonLinesSafe(PATHS.entryLedger, 20);
-  const exitLedgerRows = readJsonLinesSafe(PATHS.exitLedger, 20);
+  const funding = readJsonSafe(PATHS.funding, {});
+  const v4perf = readJsonSafe(PATHS.v4perf, {});
+  const flow = readJsonSafe(PATHS.flow, {});
+  const deadman = readJsonSafe(PATHS.deadman, {});
+  const v3perf = readJsonSafe(PATHS.v3perf, {});
+  const v3validation = readJsonSafe(PATHS.v3validation, {});
 
-  const recentSteps = cycleRows.filter((row) => row && row.step).slice(-8);
-  const latestCycle = [...cycleRows].reverse().find((row) => row && row.event === "V3_PAPER_CYCLE_DONE") || null;
-  const health = computeHealth(latestCycle, recentSteps);
+  const health = computeHealth(deadman);
+  const carry = buildCarryLane(funding);
+  const v4 = buildV4Lane(v4perf);
+  const flowLane = buildFlowLane(flow);
+  const backup = backupSummary();
 
   const overviewCards = [
     {
-      label: "런타임 상태",
+      label: "시스템 상태",
       value: health.label,
-      note: (validation && validation.recommendation_text) || health.detail,
+      note: health.detail,
       tone: health.tone,
     },
     {
-      label: "허용 승률",
-      value: formatPercent(bootstrap.retained_metrics && bootstrap.retained_metrics.win_rate_pct, 2),
-      note: `${formatNumber(bootstrap.retained_sample_n)} samples`,
-      tone: (bootstrap.target_hit ? "up" : "neutral"),
+      label: "캐리 판정",
+      value: carry.verdictLabel,
+      note: carry.best
+        ? `최고 ${carry.best.symbol} ${formatPercent(carry.best.annualized_net_pct)} (무위험 대비 ${formatSigned(carry.best.excess_pct)})`
+        : "캐리 데이터 없음",
+      tone: carry.isDormant ? "neutral" : "up",
     },
     {
-      label: "기대값",
-      value: formatNumber(bootstrap.retained_metrics && bootstrap.retained_metrics.expectancy_usdt, 4),
-      note: "USDT / trade",
-      tone: toneByNumber(bootstrap.retained_metrics && bootstrap.retained_metrics.expectancy_usdt),
+      label: "실거래 노출",
+      value: "0 USDT",
+      note: "전 레인 페이퍼 · 주문 경로 없음",
+      tone: "ok",
     },
     {
-      label: "오늘 종료",
-      value: formatNumber(performance.today_closed_trade_n),
-      note: `Net ${formatR(performance.today_metrics_r && performance.today_metrics_r.net, 2)}`,
-      tone: toneByNumber(performance.today_metrics_r && performance.today_metrics_r.net),
+      label: "flow 데이터 확보",
+      value: `${formatNumber(flowLane.bankedSpanDays, 0)}일`,
+      note: `API는 ${flowLane.apiHorizonDays}일까지만 제공 · ${formatNumber(flowLane.rowsTotal)}행`,
+      tone: (flowLane.bankedSpanDays || 0) > flowLane.apiHorizonDays ? "up" : "neutral",
     },
   ];
 
-  const pipeline = [
+  const lanes = [
     {
-      label: "신호 필터",
-      updatedAt: lane.generated_at,
-      primary: `${formatNumber(lane.allowed_signal_n)} 허용`,
-      secondary: `${formatNumber(lane.blocked_signal_n)} 차단`,
+      key: "carry",
+      label: "펀딩 캐리",
+      role: "주력",
+      state: carry.isDormant ? "대기 중" : "수확 가능",
+      updatedAt: carry.generatedAt,
+      note: "계약상 수령 — 예측 불필요",
+      tone: carry.isDormant ? "neutral" : "up",
     },
     {
-      label: "진입 원장",
-      updatedAt: entry.generated_at,
-      primary: `${formatNumber(entry.open_position_n)} 보유`,
-      secondary: `${formatNumber(entry.appended_entry_n)} 신규`,
+      key: "v4",
+      label: "v4 크로스섹셔널",
+      role: "관찰",
+      state: `${formatNumber(v4.days)}일 / ${formatNumber(v4.minDays)}일`,
+      updatedAt: v4.generatedAt,
+      note: "시장중립 · 90일 기준 누적 중",
+      tone: "neutral",
     },
     {
-      label: "청산 원장",
-      updatedAt: exit.generated_at,
-      primary: `${formatNumber(exit.appended_exit_n)} 청산`,
-      secondary: `${formatNumber(exit.remaining_open_position_n)} 잔여`,
+      key: "flow",
+      label: "v5 flow 수집기",
+      role: "데이터",
+      state: `${formatNumber(flowLane.bankedSpanDays, 0)}일 확보`,
+      updatedAt: flowLane.generatedAt,
+      note: "백필 불가 — 멈추면 영구 손실",
+      tone: flowLane.failures.length ? "warn" : "ok",
     },
     {
-      label: "성과 집계",
-      updatedAt: performance.generated_at,
-      primary: `${formatPercent(performance.all_time_metrics_r && performance.all_time_metrics_r.win_rate_pct, 1)} 승률`,
-      secondary: `${formatR(performance.all_time_metrics_r && performance.all_time_metrics_r.expectancy, 2)} 기대값`,
+      key: "infra",
+      label: "인프라",
+      role: "보호",
+      state: `백업 ${formatNumber(backup.count)}개`,
+      updatedAt: backup.latestAt,
+      note: `데드맨 ${(deadman.healthy || []).length}개 감시`,
+      tone: "ok",
     },
   ];
 
-  const retainedMetrics = bootstrap.retained_metrics || {};
-  const baselineMetrics = bootstrap.baseline_metrics || {};
-  const topCohorts = Array.isArray(bootstrap.retained_top_cohorts) ? bootstrap.retained_top_cohorts.slice(0, 4) : [];
-  const blockedReasons = rankEntries(lane.blocked_reason_counts, 5);
-  const removedReasons = rankEntries(bootstrap.removed_reason_counts, 5);
-  const openPositions = Array.isArray(performance.open_positions) ? performance.open_positions.slice(0, 6) : [];
-  const recentExits = Array.isArray(performance.recent_exits)
-    ? performance.recent_exits.slice(0, 6)
-    : exitLedgerRows.slice(-6).reverse();
-  const recentEntries = buildRecentEntryFlow(entryLedgerRows, exitLedgerRows, 6);
-
-  const validationBootstrapGate = validation.bootstrap_gate || {};
-  const validationPaperGate = validation.paper_gate || {};
-  const validationSummary = Array.isArray(validation.summary_lines) ? validation.summary_lines : [];
-  const validationReadiness = String(validation.readiness || "WAIT_BOOTSTRAP_EXPANSION").toUpperCase();
-
-  pipeline.push({
-    label: "표본 검증",
-    updatedAt: validation.generated_at,
-    primary: validationLabel(validationReadiness),
-    secondary: `bootstrap ${Number(validationBootstrapGate.remaining_to_min_n || 0)} / paper ${Number(validationPaperGate.remaining_to_min_n || 0)}`,
-  });
+  const v3paperGate = (v3validation && v3validation.paper_gate) || {};
+  const retired = {
+    label: "v3 방향성 레인",
+    retiredOn: "2026-08-07",
+    reason: "주간 승률의 71%를 BTC 방향이 설명 (R2=0.705). 우위가 아니라 시장 베타였음.",
+    finalTrades: asNumber(v3paperGate.closed_trade_n),
+    finalWinRate: asNumber(v3paperGate.win_rate_pct),
+    finalExpectancyR: asNumber(v3paperGate.expectancy_r),
+    finalGrossExpectancyR: asNumber(v3paperGate.gross_expectancy_r),
+    lastUpdated: (v3perf && v3perf.generated_at) || null,
+  };
 
   return {
     generatedAt: new Date().toISOString(),
     header: {
-      title: "DONBEOLJA 로컬 대시보드",
-      subtitle: "로컬 v3 paper runtime만 단순하게 본다.",
-      refreshNote: "45초 자동 새로고침",
+      title: "DONBEOLJA",
+      subtitle: "현재 가동 중인 레인만 표시합니다.",
+      refreshNote: "60초 자동 새로고침",
     },
     health,
     overviewCards,
-    validation: {
-      readiness: validationReadiness,
-      readinessLabel: validationLabel(validationReadiness),
-      recommendationText: String(validation.recommendation_text || "validation 데이터를 계산 중입니다."),
-      bootstrapGate: validationBootstrapGate,
-      paperGate: validationPaperGate,
-      summaryLines: validationSummary,
+    lanes,
+    carry,
+    v4,
+    flow: flowLane,
+    deadman: {
+      generatedAt: (deadman && deadman.generated_at) || null,
+      healthy: Array.isArray(deadman.healthy) ? deadman.healthy : [],
+      stale: Array.isArray(deadman.stale) ? deadman.stale : [],
     },
-    snapshot: {
-      recommendation: String(bootstrap.recommendation || "NO_DATA").toUpperCase(),
-      targetHit: Boolean(bootstrap.target_hit),
-      latestCycleAt: latestCycle && latestCycle.ts ? latestCycle.ts : null,
-      strategyId: bootstrap.strategy_id || "-",
-    },
-    pipeline,
-    bootstrap: {
-      generatedAt: bootstrap.generated_at || null,
-      retained: {
-        sampleN: formatNumber(retainedMetrics.sample_n),
-        winRate: formatPercent(retainedMetrics.win_rate_pct, 2),
-        expectancy: formatNumber(retainedMetrics.expectancy_usdt, 4),
-        profitFactor: formatNumber(retainedMetrics.profit_factor, 2),
-        netPnl: formatNumber(retainedMetrics.net_pnl_usdt, 4),
-      },
-      baseline: {
-        sampleN: formatNumber(baselineMetrics.sample_n),
-        winRate: formatPercent(baselineMetrics.win_rate_pct, 2),
-        expectancy: formatNumber(baselineMetrics.expectancy_usdt, 4),
-        profitFactor: formatNumber(baselineMetrics.profit_factor, 2),
-        netPnl: formatNumber(baselineMetrics.net_pnl_usdt, 4),
-      },
-      topCohorts,
-      removedReasons,
-    },
-    flow: {
-      allowedSignals: formatNumber(lane.allowed_signal_n),
-      blockedSignals: formatNumber(lane.blocked_signal_n),
-      openPositions: formatNumber(entry.open_position_n),
-      recentEntries,
-      blockedReasons,
-    },
-    performance: {
-      generatedAt: performance.generated_at || null,
-      today: {
-        trades: formatNumber(performance.today_closed_trade_n),
-        winRate: formatPercent(performance.today_metrics_r && performance.today_metrics_r.win_rate_pct, 1),
-        netR: formatR(performance.today_metrics_r && performance.today_metrics_r.net, 2),
-      },
-      allTime: {
-        trades: formatNumber(performance.all_time_metrics_r && performance.all_time_metrics_r.sample_n),
-        winRate: formatPercent(performance.all_time_metrics_r && performance.all_time_metrics_r.win_rate_pct, 1),
-        expectancy: formatR(performance.all_time_metrics_r && performance.all_time_metrics_r.expectancy, 2),
-      },
-      openPositions,
-      recentExits,
-    },
-    cycle: {
-      latestCycle,
-      recentSteps,
-    },
-    helpers: {
-      formatDateTime,
-      formatAgo,
-      formatPnlPercent,
-      formatR,
-      formatPercent,
-      toneByNumber,
-    },
+    backup,
+    retired,
+    helpers: { formatDateTime, formatAgo, formatNumber, formatPercent, formatSigned, toneByNumber },
   };
 }
 
@@ -381,21 +346,13 @@ function createLocalDashboardApp() {
   app.set("view engine", "ejs");
   app.use(express.static(PUBLIC_DIR, { index: false, maxAge: "5m" }));
 
-  app.get("/healthz", (_req, res) => {
-    return res.json({ ok: true, mode: "desktop-local-dashboard" });
-  });
+  app.get("/healthz", (_req, res) => res.json({ ok: true, mode: "desktop-local-dashboard" }));
 
-  app.get("/api/local-dashboard", (_req, res) => {
-    return res.json({ ok: true, data: buildLocalDashboardView() });
-  });
+  app.get("/api/local-dashboard", (_req, res) => res.json({ ok: true, data: buildLocalDashboardView() }));
 
-  app.get(["/", "/dashboard/home"], (_req, res) => {
-    return res.render("local-dashboard-clean", buildLocalDashboardView());
-  });
+  app.get(["/", "/dashboard/home"], (_req, res) => res.render("local-dashboard-clean", buildLocalDashboardView()));
 
-  app.use((_req, res) => {
-    return res.redirect("/dashboard/home");
-  });
+  app.use((_req, res) => res.redirect("/dashboard/home"));
 
   return app;
 }
@@ -405,7 +362,9 @@ module.exports = {
   createLocalDashboardApp,
   buildLocalDashboardView,
   __test: {
-    buildExitBySignalId,
-    buildRecentEntryFlow,
+    computeHealth,
+    buildCarryLane,
+    buildV4Lane,
+    buildFlowLane,
   },
 };

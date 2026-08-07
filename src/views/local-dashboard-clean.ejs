@@ -1,659 +1,326 @@
 <!doctype html>
 <html lang="ko">
 <head>
-  <%
-    const validationView = (typeof validation !== "undefined" && validation) ? validation : {
-      readiness: "WAIT_BOOTSTRAP_EXPANSION",
-      readinessLabel: "확인 중",
-      recommendationText: "validation 데이터를 계산 중입니다.",
-      bootstrapGate: {},
-      paperGate: {},
-      summaryLines: [],
-    };
-  %>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title><%= header.title %></title>
-  <meta http-equiv="refresh" content="45" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <style>
-    :root {
-      --bg: #f5f1e8;
-      --surface: rgba(255, 252, 246, 0.86);
-      --surface-strong: #fffaf1;
-      --line: rgba(44, 32, 20, 0.08);
-      --text: #1f1a15;
-      --muted: #74685a;
-      --up: #1e8f5a;
-      --down: #c0553d;
-      --neutral: #7a7368;
-      --warn: #a46a1d;
-      --bad: #b4432c;
-      --ok: #196c48;
-      --accent: #2d6cdf;
-      --shadow: 0 24px 72px rgba(43, 30, 17, 0.12);
-      --radius-xl: 28px;
-      --radius-lg: 20px;
-      --radius-md: 14px;
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><%= header.title %> 로컬 대시보드</title>
+<meta http-equiv="refresh" content="60">
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212a; --line:#272c38;
+    --fg:#e6e9ef; --dim:#9aa3b2; --faint:#6b7484;
+    --ok:#3ecf8e; --up:#3ecf8e; --down:#f0616d; --warn:#f5a524; --bad:#f0616d; --neutral:#7d8698;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f6f7f9; --panel:#ffffff; --panel2:#f0f2f5; --line:#e0e3e9;
+      --fg:#16191f; --dim:#5b6472; --faint:#8a93a3;
     }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; }
-    body {
-      font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(255, 205, 114, 0.32), transparent 28%),
-        radial-gradient(circle at top right, rgba(100, 143, 255, 0.18), transparent 24%),
-        linear-gradient(180deg, #f7f2ea 0%, #efe7da 100%);
-      color: var(--text);
-      padding: 24px;
-    }
-    .shell {
-      max-width: 1460px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-    .panel {
-      background: var(--surface);
-      backdrop-filter: blur(18px);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-xl);
-      box-shadow: var(--shadow);
-    }
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 1.5fr) minmax(340px, 0.8fr);
-      gap: 18px;
-      padding: 22px;
-    }
-    .hero-left,
-    .hero-right,
-    .section,
-    .mini-panel {
-      background: rgba(255,255,255,0.56);
-      border: 1px solid rgba(44, 32, 20, 0.06);
-      border-radius: 22px;
-    }
-    .hero-left { padding: 28px; }
-    .hero-right { padding: 24px; }
-    .eyebrow {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    h1 {
-      margin: 12px 0 10px;
-      font-size: clamp(34px, 5vw, 54px);
-      line-height: 0.98;
-      letter-spacing: -0.05em;
-    }
-    .hero-copy {
-      margin: 0;
-      max-width: 720px;
-      color: var(--muted);
-      font-size: 15px;
-      line-height: 1.75;
-    }
-    .hero-meta,
-    .badge-row,
-    .kpi-grid,
-    .section-grid,
-    .mini-grid,
-    .stack,
-    .row,
-    .table-row,
-    .progress-row {
-      display: flex;
-      gap: 10px;
-    }
-    .hero-meta,
-    .badge-row,
-    .stack {
-      flex-wrap: wrap;
-    }
-    .hero-meta { margin-top: 18px; }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.82);
-      border: 1px solid rgba(44,32,20,0.07);
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 999px;
-      background: var(--neutral);
-    }
-    .dot.ok, .status.ok { background: var(--ok); }
-    .dot.warn, .status.warn { background: var(--warn); }
-    .dot.bad, .status.bad { background: var(--bad); }
-    .dot.up { background: var(--up); }
-    .dot.down { background: var(--down); }
-    .status-pill {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 14px 16px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.72);
-      border: 1px solid rgba(44, 32, 20, 0.08);
-      margin-bottom: 14px;
-    }
-    .status-label { font-size: 13px; color: var(--muted); }
-    .status-value { font-size: 22px; font-weight: 700; }
-    .status-detail { color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .button-link {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 11px 16px;
-      border-radius: 14px;
-      text-decoration: none;
-      font-weight: 700;
-      color: white;
-      background: linear-gradient(135deg, #1f6ef3 0%, #3259d8 100%);
-      box-shadow: 0 10px 24px rgba(45, 108, 223, 0.24);
-    }
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-    }
-    .kpi-card {
-      padding: 18px;
-      border-radius: 20px;
-      background: var(--surface-strong);
-      border: 1px solid var(--line);
-    }
-    .kpi-label {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 10px;
-    }
-    .kpi-value {
-      font-size: 28px;
-      font-weight: 750;
-      letter-spacing: -0.04em;
-      margin-bottom: 6px;
-    }
-    .kpi-value.up { color: var(--up); }
-    .kpi-value.down { color: var(--down); }
-    .kpi-note { font-size: 13px; color: var(--muted); }
-    .section-grid {
-      display: grid;
-      grid-template-columns: repeat(12, minmax(0, 1fr));
-      gap: 18px;
-    }
-    .section {
-      padding: 22px;
-    }
-    .span-12 { grid-column: span 12; }
-    .span-8 { grid-column: span 8; }
-    .span-7 { grid-column: span 7; }
-    .span-6 { grid-column: span 6; }
-    .span-5 { grid-column: span 5; }
-    .span-4 { grid-column: span 4; }
-    .section-head {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 14px;
-      margin-bottom: 18px;
-    }
-    .section-title {
-      margin: 4px 0 0;
-      font-size: 24px;
-      letter-spacing: -0.04em;
-    }
-    .section-copy {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .mini-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-    .mini-panel {
-      padding: 18px;
-    }
-    .mini-title {
-      margin: 8px 0 12px;
-      font-size: 18px;
-      letter-spacing: -0.03em;
-    }
-    .stat-list {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-    .stat-item {
-      padding: 12px 0;
-      border-top: 1px solid rgba(44,32,20,0.06);
-    }
-    .stat-item:first-child,
-    .metric-row:first-child,
-    .table-row:first-child,
-    .progress-row:first-child { border-top: 0; }
-    .stat-label,
-    .metric-label,
-    .table-meta {
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .stat-value {
-      margin-top: 6px;
-      font-size: 17px;
-      font-weight: 700;
-    }
-    .metric-row,
-    .table-row,
-    .progress-row {
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 0;
-      border-top: 1px solid rgba(44,32,20,0.06);
-    }
-    .metric-value {
-      font-size: 15px;
-      font-weight: 700;
-      text-align: right;
-    }
-    .progress-label {
-      min-width: 0;
-      flex: 1;
-      padding-right: 14px;
-    }
-    .progress-bar {
-      flex: 0 0 44%;
-      height: 10px;
-      border-radius: 999px;
-      background: rgba(44,32,20,0.08);
-      overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, #2d6cdf 0%, #5e8cff 100%);
-    }
-    .table {
-      border-top: 1px solid rgba(44,32,20,0.06);
-    }
-    .table-main {
-      font-size: 14px;
-      font-weight: 600;
-    }
-    .table-main.up { color: var(--up); }
-    .table-main.down { color: var(--down); }
-    .muted { color: var(--muted); }
-    .empty {
-      padding: 18px;
-      border-radius: 16px;
-      background: rgba(255,255,255,0.58);
-      border: 1px dashed rgba(44,32,20,0.12);
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .pipeline-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-    }
-    .pipeline-card {
-      padding: 18px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.66);
-      border: 1px solid rgba(44,32,20,0.07);
-    }
-    .pipeline-name { font-size: 14px; font-weight: 700; }
-    .pipeline-primary {
-      margin-top: 18px;
-      font-size: 26px;
-      font-weight: 750;
-      letter-spacing: -0.04em;
-    }
-    .pipeline-secondary { margin-top: 6px; color: var(--muted); font-size: 13px; }
-    .pipeline-time { margin-top: 16px; color: var(--muted); font-size: 12px; }
-    @media (max-width: 1180px) {
-      .hero,
-      .kpi-grid,
-      .mini-grid,
-      .pipeline-grid,
-      .section-grid { grid-template-columns: 1fr; }
-      .span-8, .span-7, .span-6, .span-5, .span-4, .span-12 { grid-column: span 1; }
-      .stat-list { grid-template-columns: 1fr; }
-      .progress-bar { flex-basis: 38%; }
-    }
-    @media (max-width: 720px) {
-      body { padding: 14px; }
-      .hero-left, .hero-right, .section, .panel { padding: 18px; }
-      .status-pill { align-items: flex-start; flex-direction: column; }
-      .table-row, .progress-row, .metric-row { align-items: flex-start; flex-direction: column; }
-      .progress-bar { width: 100%; flex-basis: auto; }
-    }
-  </style>
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",Segoe UI,sans-serif;}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px}
+  header.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin-bottom:22px}
+  h1{font-size:22px;margin:0;letter-spacing:.5px}
+  .sub{color:var(--dim);font-size:13px}
+  .spacer{flex:1}
+  .stamp{color:var(--faint);font-size:12px;font-variant-numeric:tabular-nums}
+
+  .grid{display:grid;gap:12px}
+  .cards{grid-template-columns:repeat(auto-fit,minmax(215px,1fr));margin-bottom:26px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 16px}
+  .card .k{color:var(--dim);font-size:12px;letter-spacing:.3px}
+  .card .v{font-size:23px;font-weight:650;margin:7px 0 5px;letter-spacing:-.3px}
+  .card .n{color:var(--faint);font-size:12px;line-height:1.45}
+  .tone-ok .v,.tone-up .v{color:var(--up)}
+  .tone-down .v,.tone-bad .v{color:var(--down)}
+  .tone-warn .v{color:var(--warn)}
+
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:18px 18px 16px;margin-bottom:16px}
+  section > h2{font-size:15px;margin:0 0 3px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  section > .desc{color:var(--faint);font-size:12.5px;margin:0 0 14px}
+  .pill{font-size:11px;padding:2.5px 9px;border-radius:999px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--dim);font-weight:500;letter-spacing:.2px}
+  .pill.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+  .pill.up{color:var(--up);border-color:color-mix(in srgb,var(--up) 40%,transparent)}
+  .pill.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+  .pill.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+
+  .tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{width:100%;border-collapse:collapse;font-size:13px;min-width:440px}
+  th,td{text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  th{color:var(--dim);font-weight:500;font-size:12px}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr:last-child td{border-bottom:none}
+  .pos{color:var(--up)} .neg{color:var(--down)} .mut{color:var(--faint)}
+
+  .lanes{grid-template-columns:repeat(auto-fit,minmax(255px,1fr))}
+  .lane{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:13px 14px}
+  .lane .h{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+  .lane .nm{font-weight:600;font-size:13.5px}
+  .lane .st{font-size:18px;font-weight:600;margin-bottom:3px}
+  .lane .nt{color:var(--faint);font-size:11.5px}
+
+  .bar{height:6px;background:var(--panel2);border-radius:99px;overflow:hidden;margin:9px 0 6px;
+    border:1px solid var(--line)}
+  .bar > i{display:block;height:100%;background:var(--neutral)}
+
+  .note{background:var(--panel2);border-left:3px solid var(--line);border-radius:0 8px 8px 0;
+    padding:11px 13px;color:var(--dim);font-size:12.5px;margin-top:13px}
+  .note b{color:var(--fg);font-weight:600}
+  .retired{opacity:.72}
+  .retired h2{color:var(--dim)}
+  footer{color:var(--faint);font-size:11.5px;text-align:center;margin-top:28px;line-height:1.7}
+</style>
 </head>
 <body>
-  <div class="shell">
-    <section class="panel hero">
-      <div class="hero-left">
-        <div class="eyebrow">Local Runtime</div>
-        <h1><%= header.title %></h1>
-        <p class="hero-copy"><%= header.subtitle %> 기존 HQ 화면을 이어붙이지 않고, 지금 실제로 돌아가는 `v3 paper` 산출물만 읽어오는 새 화면입니다.</p>
-        <div class="hero-meta">
-          <span class="badge"><span class="dot <%= health.tone %>"></span><%= health.label %></span>
-          <span class="badge">권고 <strong><%= snapshot.recommendation %></strong></span>
-          <span class="badge">전략 ID <strong><%= snapshot.strategyId %></strong></span>
-          <span class="badge"><%= header.refreshNote %></span>
-        </div>
+<div class="wrap">
+
+  <header class="top">
+    <h1><%= header.title %></h1>
+    <span class="sub"><%= header.subtitle %></span>
+    <span class="spacer"></span>
+    <span class="stamp"><%= helpers.formatDateTime(generatedAt) %> · <%= header.refreshNote %></span>
+  </header>
+
+  <div class="grid cards">
+    <% overviewCards.forEach(function(c){ %>
+      <div class="card tone-<%= c.tone %>">
+        <div class="k"><%= c.label %></div>
+        <div class="v"><%= c.value %></div>
+        <div class="n"><%= c.note %></div>
       </div>
-      <div class="hero-right">
-        <div class="status-pill">
-          <div>
-            <div class="status-label">마지막 cycle 완료</div>
-            <div class="status-value"><%= helpers.formatDateTime(snapshot.latestCycleAt) %></div>
-          </div>
-          <span class="badge"><%= helpers.formatAgo(snapshot.latestCycleAt) %></span>
-        </div>
-        <div class="status-pill">
-          <div>
-            <div class="status-label">현재 bootstrap 판단</div>
-            <div class="status-value"><%= snapshot.targetHit ? '승급 가능' : 'shadow 유지' %></div>
-          </div>
-          <span class="badge"><%= snapshot.recommendation %></span>
-        </div>
-        <div class="status-detail"><%= health.detail %></div>
-        <div style="margin-top:16px">
-          <a class="button-link" href="/dashboard/home">지금 새로고침</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="kpi-grid">
-      <% overviewCards.forEach(function(card) { %>
-        <article class="kpi-card">
-          <div class="kpi-label"><%= card.label %></div>
-          <div class="kpi-value <%= card.tone %>"><%= card.value %></div>
-          <div class="kpi-note"><%= card.note %></div>
-        </article>
-      <% }) %>
-    </section>
-
-    <section class="panel section span-12">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">Pipeline</div>
-          <h2 class="section-title">v3 paper 파이프라인</h2>
-          <p class="section-copy">lane → entry → exit → performance → validation 다섯 단계만 남겨서 봅니다.</p>
-        </div>
-      </div>
-      <div class="pipeline-grid">
-        <% pipeline.forEach(function(item) { %>
-          <article class="pipeline-card">
-            <div class="pipeline-name"><%= item.label %></div>
-            <div class="pipeline-primary"><%= item.primary %></div>
-            <div class="pipeline-secondary"><%= item.secondary %></div>
-            <div class="pipeline-time"><%= helpers.formatDateTime(item.updatedAt) %></div>
-          </article>
-        <% }) %>
-      </div>
-    </section>
-
-    <section class="panel section span-12">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">Validation Gate</div>
-          <h2 class="section-title">표본 검증 상태</h2>
-          <p class="section-copy"><%= validationView.recommendationText %></p>
-        </div>
-        <span class="badge"><%= validationView.readinessLabel %></span>
-      </div>
-      <div class="mini-grid">
-        <section class="mini-panel">
-          <div class="eyebrow">Bootstrap Gate</div>
-          <div class="mini-title"><%= validationView.bootstrapGate.retained_sample_n || 0 %> / <%= validationView.bootstrapGate.min_required_n || 0 %></div>
-          <div class="stat-list">
-            <div class="stat-item"><div class="stat-label">Retained Sample</div><div class="stat-value"><%= validationView.bootstrapGate.retained_sample_n || 0 %></div></div>
-            <div class="stat-item"><div class="stat-label">Need More</div><div class="stat-value"><%= validationView.bootstrapGate.remaining_to_min_n || 0 %></div></div>
-            <div class="stat-item"><div class="stat-label">Win Rate</div><div class="stat-value"><%= validationView.bootstrapGate.win_rate_pct != null ? validationView.bootstrapGate.win_rate_pct + '%' : '-' %></div></div>
-            <div class="stat-item"><div class="stat-label">Expectancy</div><div class="stat-value"><%= validationView.bootstrapGate.expectancy_usdt != null ? validationView.bootstrapGate.expectancy_usdt + ' USDT' : '-' %></div></div>
-          </div>
-        </section>
-        <section class="mini-panel">
-          <div class="eyebrow">Paper Gate</div>
-          <div class="mini-title"><%= validationView.paperGate.closed_trade_n || 0 %> / <%= validationView.paperGate.min_required_n || 0 %></div>
-          <div class="stat-list">
-            <div class="stat-item"><div class="stat-label">Closed Trades</div><div class="stat-value"><%= validationView.paperGate.closed_trade_n || 0 %></div></div>
-            <div class="stat-item"><div class="stat-label">Need More</div><div class="stat-value"><%= validationView.paperGate.remaining_to_min_n || 0 %></div></div>
-            <div class="stat-item"><div class="stat-label">Win Rate</div><div class="stat-value"><%= validationView.paperGate.win_rate_pct != null ? validationView.paperGate.win_rate_pct + '%' : '-' %></div></div>
-            <div class="stat-item"><div class="stat-label">Expectancy</div><div class="stat-value"><%= validationView.paperGate.expectancy_r != null ? validationView.paperGate.expectancy_r + 'R' : '-' %></div></div>
-          </div>
-        </section>
-      </div>
-      <div style="margin-top:14px" class="table">
-        <% if (validationView.summaryLines && validationView.summaryLines.length) { %>
-          <% validationView.summaryLines.forEach(function(line) { %>
-            <div class="metric-row">
-              <div class="metric-label"><%= line %></div>
-            </div>
-          <% }) %>
-        <% } else { %>
-          <div class="empty">validation summary가 아직 없습니다.</div>
-        <% } %>
-      </div>
-    </section>
-
-    <section class="section-grid">
-      <article class="panel section span-7">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Bootstrap</div>
-            <h2 class="section-title">허용 코호트 품질</h2>
-            <p class="section-copy">기준선과 retained cohort 성과를 나란히 비교합니다.</p>
-          </div>
-          <span class="badge"><%= helpers.formatDateTime(bootstrap.generatedAt) %></span>
-        </div>
-        <div class="mini-grid">
-          <section class="mini-panel">
-            <div class="eyebrow">Retained</div>
-            <div class="mini-title"><%= bootstrap.retained.winRate %> win</div>
-            <div class="stat-list">
-              <div class="stat-item"><div class="stat-label">Sample</div><div class="stat-value"><%= bootstrap.retained.sampleN %></div></div>
-              <div class="stat-item"><div class="stat-label">Expectancy</div><div class="stat-value"><%= bootstrap.retained.expectancy %></div></div>
-              <div class="stat-item"><div class="stat-label">Profit Factor</div><div class="stat-value"><%= bootstrap.retained.profitFactor %></div></div>
-              <div class="stat-item"><div class="stat-label">Net PnL</div><div class="stat-value"><%= bootstrap.retained.netPnl %></div></div>
-            </div>
-          </section>
-          <section class="mini-panel">
-            <div class="eyebrow">Baseline</div>
-            <div class="mini-title"><%= bootstrap.baseline.winRate %> win</div>
-            <div class="stat-list">
-              <div class="stat-item"><div class="stat-label">Sample</div><div class="stat-value"><%= bootstrap.baseline.sampleN %></div></div>
-              <div class="stat-item"><div class="stat-label">Expectancy</div><div class="stat-value"><%= bootstrap.baseline.expectancy %></div></div>
-              <div class="stat-item"><div class="stat-label">Profit Factor</div><div class="stat-value"><%= bootstrap.baseline.profitFactor %></div></div>
-              <div class="stat-item"><div class="stat-label">Net PnL</div><div class="stat-value"><%= bootstrap.baseline.netPnl %></div></div>
-            </div>
-          </section>
-        </div>
-        <div style="margin-top:14px" class="table">
-          <% if (bootstrap.topCohorts.length) { %>
-            <% bootstrap.topCohorts.forEach(function(item) { %>
-              <div class="progress-row">
-                <div class="progress-label">
-                  <div class="table-main"><%= item.key %></div>
-                  <div class="table-meta"><%= item.n %> samples · expectancy <%= item.expectancy %></div>
-                </div>
-                <div class="progress-bar"><div class="progress-fill" style="width:<%= Math.max(8, Math.min(100, item.win_rate || 0)) %>%"></div></div>
-                <div class="metric-value"><%= item.win_rate %>%</div>
-              </div>
-            <% }) %>
-          <% } else { %>
-            <div class="empty">retained top cohort 데이터가 아직 없습니다.</div>
-          <% } %>
-        </div>
-      </article>
-
-      <article class="panel section span-5">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Filter</div>
-            <h2 class="section-title">차단 사유</h2>
-            <p class="section-copy">현재 lane 차단과 bootstrap 제거 사유만 간단히 봅니다.</p>
-          </div>
-        </div>
-        <div class="mini-panel" style="margin-bottom:14px">
-          <div class="eyebrow">Lane Blocked</div>
-          <div class="table">
-            <% if (flow.blockedReasons.length) { %>
-              <% flow.blockedReasons.forEach(function(item) { %>
-                <div class="metric-row">
-                  <div class="metric-label"><%= item.label %></div>
-                  <div class="metric-value"><%= item.value %></div>
-                </div>
-              <% }) %>
-            <% } else { %>
-              <div class="empty">현재 차단 사유 없음</div>
-            <% } %>
-          </div>
-        </div>
-        <div class="mini-panel">
-          <div class="eyebrow">Bootstrap Removed</div>
-          <div class="table">
-            <% if (bootstrap.removedReasons.length) { %>
-              <% bootstrap.removedReasons.forEach(function(item) { %>
-                <div class="metric-row">
-                  <div class="metric-label"><%= item.label %></div>
-                  <div class="metric-value"><%= item.value %></div>
-                </div>
-              <% }) %>
-            <% } else { %>
-              <div class="empty">제거 사유 데이터가 없습니다.</div>
-            <% } %>
-          </div>
-        </div>
-      </article>
-
-      <article class="panel section span-6">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Activity</div>
-            <h2 class="section-title">최근 paper 청산</h2>
-            <p class="section-copy">가장 최근 청산 결과만 짧게 보여줍니다.</p>
-          </div>
-        </div>
-        <div class="table">
-          <% if (performance.recentExits.length) { %>
-            <% performance.recentExits.forEach(function(item) { %>
-              <div class="table-row">
-                <div>
-                  <div class="table-main"><%= item.symbol || '-' %> · <%= item.side || '-' %> · <%= item.exit_event || item.status || '-' %></div>
-                  <div class="table-meta"><%= helpers.formatDateTime(item.closed_at) %> · <%= item.setup_type || '-' %> · <%= item.entry_grade || '-' %></div>
-                </div>
-                <div class="table-main <%= helpers.toneByNumber(item.realized_r) %>"><%= helpers.formatR(item.realized_r, 2) %> / <%= helpers.formatPnlPercent(item.realized_pnl_pct, 2) %></div>
-              </div>
-            <% }) %>
-          <% } else { %>
-            <div class="empty">아직 닫힌 paper trade가 없습니다.</div>
-          <% } %>
-        </div>
-      </article>
-
-      <article class="panel section span-6">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Entry Flow</div>
-            <h2 class="section-title">최근 entry 기록</h2>
-            <p class="section-copy">중복 진입 여부와 신호 흐름을 빠르게 확인합니다.</p>
-          </div>
-        </div>
-        <div class="table">
-          <% if (flow.recentEntries.length) { %>
-            <% flow.recentEntries.forEach(function(item) { %>
-              <div class="table-row">
-                <div>
-                  <div class="table-main"><%= item.symbol || '-' %> · <%= item.side || '-' %> · <%= item.setup_type || '-' %></div>
-                  <div class="table-meta"><%= helpers.formatDateTime(item.opened_at || item.created_at || item.ts) %> · <%= item.entry_grade || '-' %> · <%= item.status_detail || item.current_status || item.status || '-' %></div>
-                </div>
-                <div class="metric-value"><%= item.signal_price != null ? item.signal_price : '-' %></div>
-              </div>
-            <% }) %>
-          <% } else { %>
-            <div class="empty">entry ledger 데이터가 아직 없습니다.</div>
-          <% } %>
-        </div>
-      </article>
-
-      <article class="panel section span-5">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Performance</div>
-            <h2 class="section-title">성과 요약</h2>
-            <p class="section-copy">오늘과 전체 성과만 남겼습니다.</p>
-          </div>
-        </div>
-        <div class="mini-panel" style="margin-bottom:14px">
-          <div class="eyebrow">Today</div>
-          <div class="stat-list">
-            <div class="stat-item"><div class="stat-label">Trades</div><div class="stat-value"><%= performance.today.trades %></div></div>
-            <div class="stat-item"><div class="stat-label">Win Rate</div><div class="stat-value"><%= performance.today.winRate %></div></div>
-            <div class="stat-item"><div class="stat-label">Net</div><div class="stat-value"><%= performance.today.netR %></div></div>
-          </div>
-        </div>
-        <div class="mini-panel">
-          <div class="eyebrow">All Time</div>
-          <div class="stat-list">
-            <div class="stat-item"><div class="stat-label">Trades</div><div class="stat-value"><%= performance.allTime.trades %></div></div>
-            <div class="stat-item"><div class="stat-label">Win Rate</div><div class="stat-value"><%= performance.allTime.winRate %></div></div>
-            <div class="stat-item"><div class="stat-label">Expectancy</div><div class="stat-value"><%= performance.allTime.expectancy %></div></div>
-          </div>
-        </div>
-      </article>
-
-      <article class="panel section span-7">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Cycle</div>
-            <h2 class="section-title">최근 cycle 단계</h2>
-            <p class="section-copy">실패 step이 있으면 여기서 바로 보입니다.</p>
-          </div>
-        </div>
-        <div class="table">
-          <% if (cycle.recentSteps.length) { %>
-            <% cycle.recentSteps.forEach(function(step) { %>
-              <div class="table-row">
-                <div>
-                  <div class="table-main"><%= step.step %></div>
-                  <div class="table-meta"><%= step.script %></div>
-                </div>
-                <div style="text-align:right">
-                  <div class="table-main <%= Number(step.rc) === 0 ? 'up' : 'down' %>">rc <%= step.rc %></div>
-                  <div class="table-meta"><%= helpers.formatDateTime(step.ts) %> · <%= step.duration_ms || 0 %>ms</div>
-                </div>
-              </div>
-            <% }) %>
-          <% } else { %>
-            <div class="empty">cycle 로그가 아직 없습니다.</div>
-          <% } %>
-        </div>
-      </article>
-    </section>
+    <% }); %>
   </div>
+
+  <section>
+    <h2>가동 레인</h2>
+    <p class="desc">v3 방향성 레인은 2026-08-07 은퇴했습니다. 아래가 현재 살아 있는 전부입니다.</p>
+    <div class="grid lanes">
+      <% lanes.forEach(function(l){ %>
+        <div class="lane">
+          <div class="h">
+            <span class="nm"><%= l.label %></span>
+            <span class="pill <%= l.tone %>"><%= l.role %></span>
+          </div>
+          <div class="st"><%= l.state %></div>
+          <div class="nt"><%= l.note %></div>
+          <div class="nt" style="margin-top:5px">갱신 <%= helpers.formatAgo(l.updatedAt) %></div>
+        </div>
+      <% }); %>
+    </div>
+  </section>
+
+  <section>
+    <h2>
+      펀딩 캐리
+      <span class="pill <%= carry.isDormant ? '' : 'up' %>"><%= carry.verdictLabel %></span>
+      <span class="pill">주력</span>
+    </h2>
+    <p class="desc">
+      현물 매수 + 선물 숏으로 가격 변동을 상쇄하고 8시간마다 들어오는 수수료만 받습니다.
+      맞힐 것이 없으므로 예측 정확도가 개입하지 않습니다.
+      최근 <%= helpers.formatNumber(carry.windowDays) %>일 기준, 연 <%= helpers.formatNumber(carry.alertApyPct) %>% 넘으면 알림.
+    </p>
+
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>심볼</th><th>펀딩 APY</th><th>비용 차감 후</th><th>무위험 대비</th><th>이벤트</th><th>역전 횟수</th></tr></thead>
+        <tbody>
+          <% carry.perSymbol.forEach(function(r){ var s = carry.excessFor('funding', r.symbol); %>
+            <tr>
+              <td><%= r.symbol.replace('USDT','') %></td>
+              <td><%= helpers.formatPercent(r.apyPct) %></td>
+              <td class="mut"><%= s ? helpers.formatPercent(s.annualized_net_pct) : '-' %></td>
+              <td class="<%= s && s.excess_pct > 0 ? 'pos' : 'neg' %>">
+                <%= s ? helpers.formatSigned(s.excess_pct) : '-' %>
+              </td>
+              <td class="mut"><%= helpers.formatNumber(r.events) %></td>
+              <td class="<%= r.negativeEvents > 0 ? 'neg' : 'mut' %>"><%= helpers.formatNumber(r.negativeEvents) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (carry.basisSources.length) { %>
+      <p class="desc" style="margin:18px 0 8px">
+        <b style="color:var(--fg)">분기선물 베이시스</b> — 만기가 있어 인도일에 차익거래로 수렴합니다.
+        펀딩과 달리 재가격되지 않으므로, 진입 시점의 수익률이 만기까지 확정됩니다.
+      </p>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>계약</th><th>연환산 순수익</th><th>무위험 대비</th></tr></thead>
+          <tbody>
+            <% carry.basisSources.forEach(function(s){ %>
+              <tr>
+                <td><%= s.symbol.replace('USDT','') %></td>
+                <td><%= helpers.formatPercent(s.annualized_net_pct) %></td>
+                <td class="<%= s.excess_pct > 0 ? 'pos' : 'neg' %>"><%= helpers.formatSigned(s.excess_pct) %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <% if (carry.isDormant) { %>
+      <div class="note">
+        <b>지금 아무것도 하지 않는 것이 정상 동작입니다.</b>
+        어떤 심볼도 무위험 수익률을 의미 있게 넘지 못해, 자본은 무위험 자산에 대기합니다.
+        방향성 전략과 달리 이 상태에서는 손실이 발생하지 않습니다 — 틀릴 베팅 자체가 없기 때문입니다.
+        <% if (!carry.hot.length) { %>과열 심볼: 없음.<% } else { %>과열 심볼: <%= carry.hot.join(', ') %>.<% } %>
+      </div>
+    <% } %>
+  </section>
+
+  <section>
+    <h2>v4 크로스섹셔널 페이퍼 <span class="pill">관찰</span></h2>
+    <p class="desc">
+      시장중립 롱숏. 90일 기준까지 <%= helpers.formatNumber(v4.days) %>일 누적
+      (연변동성이 낮게 유지되면 중립이 작동하는 것).
+    </p>
+    <div class="bar"><i style="width:<%= v4.progressPct %>%"></i></div>
+
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>변형</th><th>일수</th><th>연수익</th><th>무위험 대비</th><th>초과 샤프</th><th>변동성</th><th>MDD</th><th>판정</th></tr></thead>
+        <tbody>
+          <% v4.variants.forEach(function(v){ %>
+            <tr>
+              <td><%= v.name %></td>
+              <td class="mut"><%= helpers.formatNumber(v.days) %></td>
+              <td class="<%= v.annPct >= 0 ? 'pos' : 'neg' %>"><%= helpers.formatPercent(v.annPct, 1) %></td>
+              <td class="<%= v.excessPct >= 0 ? 'pos' : 'neg' %>"><%= helpers.formatSigned(v.excessPct, 1) %></td>
+              <td class="<%= v.excessSharpe >= 0 ? 'pos' : 'neg' %>"><%= helpers.formatNumber(v.excessSharpe, 2) %></td>
+              <td class="mut"><%= helpers.formatPercent(v.volPct, 1) %></td>
+              <td class="neg"><%= helpers.formatPercent(v.maxDdPct, 1) %></td>
+              <td class="mut"><%= v.verdict %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      진단 결과 이 구조는 이 거래소에서 구조적으로 불리합니다. 유니버스 평균 쌍상관이 0.693이라
+      <b>27종목이 실질 1.4개 독립 베팅</b>에 불과하고, 그래서 샤프 0.5를 넘기려면 IC 0.121이 필요합니다
+      (달성 가능 범위는 0.02~0.05). 신호를 개선해서 해결되는 문제가 아닙니다.
+      90일까지는 판정을 보류하고 데이터만 쌓습니다.
+    </div>
+  </section>
+
+  <section>
+    <h2>
+      v5 flow 수집기
+      <span class="pill <%= flow.failures.length ? 'warn' : 'ok' %>">
+        <%= flow.failures.length ? flow.failures.length + '건 실패' : '정상' %>
+      </span>
+    </h2>
+    <p class="desc">
+      OI · 큰손/개미 롱숏비율 · 테이커비율은 가격에서 유도할 수 없는 정보인데,
+      바이낸스는 <b><%= flow.apiHorizonDays %>일치만</b> 제공합니다. 적어두지 않으면 다음 달에도 <%= flow.apiHorizonDays %>일입니다.
+    </p>
+
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>확보 기간</th><th>총 행수</th><th>직전 추가</th><th>심볼</th><th>최초</th><th>최신</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="<%= (flow.bankedSpanDays||0) > flow.apiHorizonDays ? 'pos' : '' %>">
+              <%= helpers.formatNumber(flow.bankedSpanDays, 0) %>일
+            </td>
+            <td><%= helpers.formatNumber(flow.rowsTotal) %></td>
+            <td class="mut">+<%= helpers.formatNumber(flow.rowsAppended) %></td>
+            <td class="mut"><%= helpers.formatNumber(flow.symbols) %></td>
+            <td class="mut"><%= helpers.formatDateTime(flow.earliest) %></td>
+            <td class="mut"><%= helpers.formatDateTime(flow.latest) %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <b>이 데이터는 백필이 불가능합니다.</b> <%= flow.apiHorizonDays %>일 넘게 수집이 멈추면
+      그 구간은 영구히 사라집니다. 데드맨이 26시간 기준으로 감시하는 이유입니다.
+    </div>
+  </section>
+
+  <section>
+    <h2>인프라 <span class="pill <%= deadman.stale.length ? 'bad' : 'ok' %>">
+      <%= deadman.stale.length ? deadman.stale.length + '개 정지' : '전부 정상' %></span></h2>
+    <p class="desc">데드맨 심박 감시 및 원장 백업. 감시 대상은 <em>살아 있어야 하는</em> 레인만입니다 —
+      일부러 멈춘 작업을 감시하면 영구 오알람이 되고, 늑대소년이 된 데드맨은 무시당합니다.</p>
+
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>감시 대상</th><th>상태</th><th>마지막 갱신</th><th>허용 지연</th></tr></thead>
+        <tbody>
+          <% deadman.healthy.forEach(function(h){ %>
+            <tr>
+              <td><%= h.name %></td>
+              <td class="pos">정상</td>
+              <td class="mut"><%= Math.round(h.age_ms/60000) %>분 전</td>
+              <td class="mut"><%= Math.round(h.max_age_ms/3600000) %>시간</td>
+            </tr>
+          <% }); %>
+          <% deadman.stale.forEach(function(h){ %>
+            <tr>
+              <td><%= h.name %></td>
+              <td class="neg">심박 정지</td>
+              <td class="neg"><%= Math.round(h.age_ms/60000) %>분 전</td>
+              <td class="mut"><%= Math.round(h.max_age_ms/3600000) %>시간</td>
+            </tr>
+          <% }); %>
+          <tr>
+            <td>원장 백업</td>
+            <td class="pos"><%= helpers.formatNumber(backup.count) %>개 보관</td>
+            <td class="mut"><%= helpers.formatAgo(backup.latestAt) %></td>
+            <td class="mut">일 1회</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="retired">
+    <h2><%= retired.label %> <span class="pill">은퇴 <%= retired.retiredOn %></span></h2>
+    <p class="desc">기록으로만 남깁니다. 아래 수치는 정지 시점에 고정된 값이며 더 이상 갱신되지 않습니다.</p>
+
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>최종 거래</th><th>승률</th><th>비용 전 기대값</th><th>비용 후 기대값</th><th>동결 시각</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><%= helpers.formatNumber(retired.finalTrades) %></td>
+            <td><%= helpers.formatPercent(retired.finalWinRate) %></td>
+            <td class="pos"><%= helpers.formatNumber(retired.finalGrossExpectancyR, 4) %>R</td>
+            <td class="<%= retired.finalExpectancyR > 0 ? 'pos' : 'neg' %>">
+              <%= helpers.formatNumber(retired.finalExpectancyR, 4) %>R
+            </td>
+            <td class="mut"><%= helpers.formatDateTime(retired.lastUpdated) %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <b>은퇴 사유.</b> <%= retired.reason %>
+      신호에 비용 전 우위는 실재했지만(<%= helpers.formatNumber(retired.finalGrossExpectancyR, 4) %>R/거래),
+      왕복 비용이 그 우위와 거의 같은 크기여서 순 기대값이 0으로 수렴했습니다.
+      실행 개선으로도 넘을 수 없음을 확인했습니다 — 모든 진입이 메이커로 체결되는 물리적 최선에서도
+      0.0488R로 게이트(0.05R)에 미달하고, 신뢰구간이 0을 포함합니다.
+    </div>
+  </section>
+
+  <footer>
+    실거래 노출 0 USDT · 전 레인 페이퍼 · 주문 경로 없음<br>
+    <%= helpers.formatDateTime(generatedAt) %> 생성 · <%= header.refreshNote %>
+  </footer>
+
+</div>
 </body>
 </html>
