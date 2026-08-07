@@ -3,324 +3,207 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><%= header.title %> 로컬 대시보드</title>
+<title>DONBEOLJA</title>
 <meta http-equiv="refresh" content="60">
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --panel2:#1d212a; --line:#272c38;
     --fg:#e6e9ef; --dim:#9aa3b2; --faint:#6b7484;
-    --ok:#3ecf8e; --up:#3ecf8e; --down:#f0616d; --warn:#f5a524; --bad:#f0616d; --neutral:#7d8698;
+    --ok:#3ecf8e; --up:#3ecf8e; --down:#f0616d; --warn:#f5a524; --bad:#f0616d;
   }
   @media (prefers-color-scheme: light){
-    :root{
-      --bg:#f6f7f9; --panel:#ffffff; --panel2:#f0f2f5; --line:#e0e3e9;
-      --fg:#16191f; --dim:#5b6472; --faint:#8a93a3;
-    }
+    :root{ --bg:#f6f7f9; --panel:#fff; --panel2:#f0f2f5; --line:#e0e3e9;
+           --fg:#16191f; --dim:#5b6472; --faint:#8a93a3; }
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--fg);
-    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",Segoe UI,sans-serif;}
-  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px}
-  header.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin-bottom:22px}
-  h1{font-size:22px;margin:0;letter-spacing:.5px}
-  .sub{color:var(--dim);font-size:13px}
-  .spacer{flex:1}
-  .stamp{color:var(--faint);font-size:12px;font-variant-numeric:tabular-nums}
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",Pretendard,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:24px 16px 56px}
 
-  .grid{display:grid;gap:12px}
-  .cards{grid-template-columns:repeat(auto-fit,minmax(215px,1fr));margin-bottom:26px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px 16px}
-  .card .k{color:var(--dim);font-size:12px;letter-spacing:.3px}
-  .card .v{font-size:23px;font-weight:650;margin:7px 0 5px;letter-spacing:-.3px}
-  .card .n{color:var(--faint);font-size:12px;line-height:1.45}
-  .tone-ok .v,.tone-up .v{color:var(--up)}
-  .tone-down .v,.tone-bad .v{color:var(--down)}
-  .tone-warn .v{color:var(--warn)}
+  .top{display:flex;align-items:baseline;gap:10px;margin-bottom:16px}
+  h1{font-size:19px;margin:0;letter-spacing:.5px}
+  .stamp{margin-left:auto;color:var(--faint);font-size:11.5px;font-variant-numeric:tabular-nums}
 
-  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-    padding:18px 18px 16px;margin-bottom:16px}
-  section > h2{font-size:15px;margin:0 0 3px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-  section > .desc{color:var(--faint);font-size:12.5px;margin:0 0 14px}
-  .pill{font-size:11px;padding:2.5px 9px;border-radius:999px;border:1px solid var(--line);
-    background:var(--panel2);color:var(--dim);font-weight:500;letter-spacing:.2px}
-  .pill.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
-  .pill.up{color:var(--up);border-color:color-mix(in srgb,var(--up) 40%,transparent)}
-  .pill.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
-  .pill.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+  /* 상태 스트립 — 사실 4개, 설명 없음 */
+  .strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:18px}
+  .strip div{background:var(--panel);padding:10px 12px}
+  .strip .k{color:var(--faint);font-size:11px}
+  .strip .v{font-size:15px;font-weight:600;margin-top:2px}
+  .ok,.up{color:var(--up)} .down,.bad{color:var(--down)} .warn{color:var(--warn)}
 
-  .tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-  table{width:100%;border-collapse:collapse;font-size:13px;min-width:440px}
-  th,td{text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);
-    font-variant-numeric:tabular-nums;white-space:nowrap}
-  th{color:var(--dim);font-weight:500;font-size:12px}
+  /* 메인 카드 */
+  .main{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+  .main h2{font-size:15px;margin:0 0 2px;display:flex;align-items:center;gap:8px}
+  .badge{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--panel2);
+    border:1px solid var(--line);color:var(--dim);font-weight:500}
+  .badge.up{color:var(--up)} .badge.down{color:var(--down)}
+  .cfg{color:var(--faint);font-size:11.5px;margin:0 0 16px;font-variant-numeric:tabular-nums}
+
+  .big{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:14px;margin-bottom:16px}
+  .big div .k{color:var(--faint);font-size:11px}
+  .big div .v{font-size:26px;font-weight:650;letter-spacing:-.5px;margin-top:3px;
+    font-variant-numeric:tabular-nums}
+  .big div .s{color:var(--faint);font-size:11px;margin-top:1px}
+
+  .bar{height:7px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;
+    overflow:hidden;margin:4px 0 6px}
+  .bar>i{display:block;height:100%;background:var(--up)}
+  .barnote{color:var(--faint);font-size:11.5px;margin-bottom:16px}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+  th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--faint);font-weight:500;font-size:11px}
   th:first-child,td:first-child{text-align:left}
   tbody tr:last-child td{border-bottom:none}
-  .pos{color:var(--up)} .neg{color:var(--down)} .mut{color:var(--faint)}
+  .tblwrap{overflow-x:auto}
+  .sub{color:var(--dim);font-size:12px;margin:16px 0 6px;font-weight:600}
+  .mut{color:var(--faint)}
 
-  .lanes{grid-template-columns:repeat(auto-fit,minmax(255px,1fr))}
-  .lane{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:13px 14px}
-  .lane .h{display:flex;align-items:center;gap:8px;margin-bottom:9px}
-  .lane .nm{font-weight:600;font-size:13.5px}
-  .lane .st{font-size:18px;font-weight:600;margin-bottom:3px}
-  .lane .nt{color:var(--faint);font-size:11.5px}
-
-  .bar{height:6px;background:var(--panel2);border-radius:99px;overflow:hidden;margin:9px 0 6px;
-    border:1px solid var(--line)}
-  .bar > i{display:block;height:100%;background:var(--neutral)}
-
-  .note{background:var(--panel2);border-left:3px solid var(--line);border-radius:0 8px 8px 0;
-    padding:11px 13px;color:var(--dim);font-size:12.5px;margin-top:13px}
-  .note b{color:var(--fg);font-weight:600}
-  .retired{opacity:.72}
-  .retired h2{color:var(--dim)}
-  footer{color:var(--faint);font-size:11.5px;text-align:center;margin-top:28px;line-height:1.7}
+  /* 나머지 레인 — 한 줄씩 */
+  .others{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .row{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .row .n{font-size:13px;min-width:118px}
+  .row .st{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+  .row .nt{color:var(--faint);font-size:11.5px;margin-left:auto;text-align:right}
+  /* On a phone the three columns collide and every value wraps mid-word.
+     Stack instead: name+value on one line, the note underneath. */
+  @media (max-width: 560px){
+    .row{flex-wrap:wrap;row-gap:3px}
+    .row .n{min-width:0;flex:1}
+    .row .st{white-space:nowrap}
+    .row .nt{flex-basis:100%;margin-left:0;text-align:left}
+    .strip{grid-template-columns:repeat(2,1fr)}
+    .big{grid-template-columns:repeat(2,1fr)}
+  }
+  .empty{color:var(--faint);font-size:12.5px;padding:14px 0;text-align:center}
+  footer{color:var(--faint);font-size:11px;text-align:center;margin-top:20px}
 </style>
 </head>
 <body>
 <div class="wrap">
 
-  <header class="top">
-    <h1><%= header.title %></h1>
-    <span class="sub"><%= header.subtitle %></span>
-    <span class="spacer"></span>
-    <span class="stamp"><%= helpers.formatDateTime(generatedAt) %> · <%= header.refreshNote %></span>
-  </header>
+  <div class="top">
+    <h1>DONBEOLJA</h1>
+    <span class="stamp"><%= helpers.formatDateTime(generatedAt) %></span>
+  </div>
 
-  <div class="grid cards">
-    <% overviewCards.forEach(function(c){ %>
-      <div class="card tone-<%= c.tone %>">
-        <div class="k"><%= c.label %></div>
-        <div class="v"><%= c.value %></div>
-        <div class="n"><%= c.note %></div>
+  <div class="strip">
+    <% strip.forEach(function(s){ %>
+      <div><div class="k"><%= s.label %></div><div class="v <%= s.tone %>"><%= s.value %></div></div>
+    <% }); %>
+  </div>
+
+  <div class="main">
+    <h2>
+      v6 페이퍼
+      <span class="badge <%= v6.tone %>"><%= v6.verdictLabel %></span>
+    </h2>
+    <p class="cfg">
+      td+vol 조합 · 임계값 <%= v6.config.threshold %> · <%= v6.config.hold_hours %>시간 보유 · 비용 <%= v6.config.cost_pct %>% 반영
+    </p>
+
+    <div class="big">
+      <div>
+        <div class="k">종료 거래</div>
+        <div class="v"><%= helpers.formatNumber(v6.closedN) %></div>
+        <div class="s">보유 중 <%= helpers.formatNumber(v6.openN) %>건</div>
+      </div>
+      <% if (v6.realised) { %>
+        <div>
+          <div class="k">승률</div>
+          <div class="v"><%= helpers.formatNumber(v6.realised.win_rate_pct, 1) %>%</div>
+          <div class="s">롱 <%= v6.realised.long_n %> · 숏 <%= v6.realised.short_n %></div>
+        </div>
+        <div>
+          <div class="k">누적 순손익</div>
+          <div class="v <%= v6.realised.total_net_pct >= 0 ? 'up' : 'down' %>">
+            <%= helpers.formatSigned(v6.realised.total_net_pct, 2, '%') %>
+          </div>
+          <div class="s">거래당 <%= helpers.formatSigned(v6.realised.mean_net_pct, 3, '%') %></div>
+        </div>
+        <div>
+          <div class="k">t 값</div>
+          <div class="v <%= v6.realised.t_stat > 1.96 ? 'up' : '' %>">
+            <%= v6.realised.t_stat === null ? '-' : helpers.formatNumber(v6.realised.t_stat, 2) %>
+          </div>
+          <div class="s">1.96 넘어야 유의</div>
+        </div>
+      <% } else { %>
+        <div>
+          <div class="k">승률</div><div class="v mut">-</div><div class="s">종료 거래 없음</div>
+        </div>
+      <% } %>
+    </div>
+
+    <div class="bar"><i style="width:<%= v6.progressPct %>%"></i></div>
+    <div class="barnote">
+      판정까지 <%= helpers.formatNumber(v6.closedN) %> / <%= helpers.formatNumber(v6.minN) %> 거래
+      · <%= helpers.formatNumber(v6.daysRunning, 1) %>일 경과
+      <%
+        /* The backtest's RETURN is the seductive number and it would be read as
+           a forecast. Its t-stat is the honest one: this config reached t 1.10,
+           below the 3.39 that a shuffled null reaches in the same search. Show
+           the number that limits the claim, not the one that inflates it. */
+      %>
+      <% if (v6.expectedT !== null) { %>
+        · 백테스트 t <%= helpers.formatNumber(v6.expectedT, 2) %> (유의 기준 1.96 미달 — 검증 아님)
+      <% } %>
+    </div>
+
+    <% if (v6.open.length) { %>
+      <div class="sub">보유 중</div>
+      <div class="tblwrap"><table>
+        <thead><tr><th>심볼</th><th>방향</th><th>점수</th><th>진입가</th><th>청산 예정</th></tr></thead>
+        <tbody>
+          <% v6.open.forEach(function(p){ %>
+            <tr>
+              <td><%= p.symbol.replace('USDT','') %></td>
+              <td class="<%= p.side === 'LONG' ? 'up' : 'down' %>"><%= p.side %></td>
+              <td class="mut"><%= helpers.formatNumber(p.score, 1) %></td>
+              <td class="mut"><%= p.entry_price %></td>
+              <td class="mut"><%= helpers.formatDateTime(p.close_due_at) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table></div>
+    <% } %>
+
+    <% if (v6.recent.length) { %>
+      <div class="sub">최근 종료</div>
+      <div class="tblwrap"><table>
+        <thead><tr><th>심볼</th><th>방향</th><th>총%</th><th>순%</th><th>종료</th></tr></thead>
+        <tbody>
+          <% v6.recent.forEach(function(p){ %>
+            <tr>
+              <td><%= p.symbol.replace('USDT','') %></td>
+              <td class="<%= p.side === 'LONG' ? 'up' : 'down' %>"><%= p.side %></td>
+              <td class="mut"><%= helpers.formatSigned(p.gross_pct, 2, '%') %></td>
+              <td class="<%= p.net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(p.net_pct, 2, '%') %></td>
+              <td class="mut"><%= helpers.formatAgo(p.closed_at) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table></div>
+    <% } %>
+
+    <% if (!v6.open.length && !v6.recent.length) { %>
+      <div class="empty">아직 신호가 발생하지 않았습니다. 매시간 24개 심볼을 확인합니다.</div>
+    <% } %>
+  </div>
+
+  <div class="others">
+    <% others.forEach(function(o){ %>
+      <div class="row">
+        <span class="n mut"><%= o.name %></span>
+        <span class="st"><%= o.state %></span>
+        <span class="nt"><%= o.note %> · <%= helpers.formatAgo(o.at) %></span>
       </div>
     <% }); %>
   </div>
 
-  <section>
-    <h2>가동 레인</h2>
-    <p class="desc">v3 방향성 레인은 2026-08-07 은퇴했습니다. 아래가 현재 살아 있는 전부입니다.</p>
-    <div class="grid lanes">
-      <% lanes.forEach(function(l){ %>
-        <div class="lane">
-          <div class="h">
-            <span class="nm"><%= l.label %></span>
-            <span class="pill <%= l.tone %>"><%= l.role %></span>
-          </div>
-          <div class="st"><%= l.state %></div>
-          <div class="nt"><%= l.note %></div>
-          <div class="nt" style="margin-top:5px">갱신 <%= helpers.formatAgo(l.updatedAt) %></div>
-        </div>
-      <% }); %>
-    </div>
-  </section>
-
-  <section>
-    <h2>
-      펀딩 캐리
-      <span class="pill <%= carry.isDormant ? '' : 'up' %>"><%= carry.verdictLabel %></span>
-      <span class="pill">주력</span>
-    </h2>
-    <p class="desc">
-      현물 매수 + 선물 숏으로 가격 변동을 상쇄하고 8시간마다 들어오는 수수료만 받습니다.
-      맞힐 것이 없으므로 예측 정확도가 개입하지 않습니다.
-      최근 <%= helpers.formatNumber(carry.windowDays) %>일 기준, 연 <%= helpers.formatNumber(carry.alertApyPct) %>% 넘으면 알림.
-    </p>
-
-    <div class="tblwrap">
-      <table>
-        <thead><tr><th>심볼</th><th>펀딩 APY</th><th>비용 차감 후</th><th>무위험 대비</th><th>이벤트</th><th>역전 횟수</th></tr></thead>
-        <tbody>
-          <% carry.perSymbol.forEach(function(r){ var s = carry.excessFor('funding', r.symbol); %>
-            <tr>
-              <td><%= r.symbol.replace('USDT','') %></td>
-              <td><%= helpers.formatPercent(r.apyPct) %></td>
-              <td class="mut"><%= s ? helpers.formatPercent(s.annualized_net_pct) : '-' %></td>
-              <td class="<%= s && s.excess_pct > 0 ? 'pos' : 'neg' %>">
-                <%= s ? helpers.formatSigned(s.excess_pct) : '-' %>
-              </td>
-              <td class="mut"><%= helpers.formatNumber(r.events) %></td>
-              <td class="<%= r.negativeEvents > 0 ? 'neg' : 'mut' %>"><%= helpers.formatNumber(r.negativeEvents) %></td>
-            </tr>
-          <% }); %>
-        </tbody>
-      </table>
-    </div>
-
-    <% if (carry.basisSources.length) { %>
-      <p class="desc" style="margin:18px 0 8px">
-        <b style="color:var(--fg)">분기선물 베이시스</b> — 만기가 있어 인도일에 차익거래로 수렴합니다.
-        펀딩과 달리 재가격되지 않으므로, 진입 시점의 수익률이 만기까지 확정됩니다.
-      </p>
-      <div class="tblwrap">
-        <table>
-          <thead><tr><th>계약</th><th>연환산 순수익</th><th>무위험 대비</th></tr></thead>
-          <tbody>
-            <% carry.basisSources.forEach(function(s){ %>
-              <tr>
-                <td><%= s.symbol.replace('USDT','') %></td>
-                <td><%= helpers.formatPercent(s.annualized_net_pct) %></td>
-                <td class="<%= s.excess_pct > 0 ? 'pos' : 'neg' %>"><%= helpers.formatSigned(s.excess_pct) %></td>
-              </tr>
-            <% }); %>
-          </tbody>
-        </table>
-      </div>
-    <% } %>
-
-    <% if (carry.isDormant) { %>
-      <div class="note">
-        <b>지금 아무것도 하지 않는 것이 정상 동작입니다.</b>
-        어떤 심볼도 무위험 수익률을 의미 있게 넘지 못해, 자본은 무위험 자산에 대기합니다.
-        방향성 전략과 달리 이 상태에서는 손실이 발생하지 않습니다 — 틀릴 베팅 자체가 없기 때문입니다.
-        <% if (!carry.hot.length) { %>과열 심볼: 없음.<% } else { %>과열 심볼: <%= carry.hot.join(', ') %>.<% } %>
-      </div>
-    <% } %>
-  </section>
-
-  <section>
-    <h2>v4 크로스섹셔널 페이퍼 <span class="pill">관찰</span></h2>
-    <p class="desc">
-      시장중립 롱숏. 90일 기준까지 <%= helpers.formatNumber(v4.days) %>일 누적
-      (연변동성이 낮게 유지되면 중립이 작동하는 것).
-    </p>
-    <div class="bar"><i style="width:<%= v4.progressPct %>%"></i></div>
-
-    <div class="tblwrap">
-      <table>
-        <thead><tr><th>변형</th><th>일수</th><th>연수익</th><th>무위험 대비</th><th>초과 샤프</th><th>변동성</th><th>MDD</th><th>판정</th></tr></thead>
-        <tbody>
-          <% v4.variants.forEach(function(v){ %>
-            <tr>
-              <td><%= v.name %></td>
-              <td class="mut"><%= helpers.formatNumber(v.days) %></td>
-              <td class="<%= v.annPct >= 0 ? 'pos' : 'neg' %>"><%= helpers.formatPercent(v.annPct, 1) %></td>
-              <td class="<%= v.excessPct >= 0 ? 'pos' : 'neg' %>"><%= helpers.formatSigned(v.excessPct, 1) %></td>
-              <td class="<%= v.excessSharpe >= 0 ? 'pos' : 'neg' %>"><%= helpers.formatNumber(v.excessSharpe, 2) %></td>
-              <td class="mut"><%= helpers.formatPercent(v.volPct, 1) %></td>
-              <td class="neg"><%= helpers.formatPercent(v.maxDdPct, 1) %></td>
-              <td class="mut"><%= v.verdict %></td>
-            </tr>
-          <% }); %>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="note">
-      진단 결과 이 구조는 이 거래소에서 구조적으로 불리합니다. 유니버스 평균 쌍상관이 0.693이라
-      <b>27종목이 실질 1.4개 독립 베팅</b>에 불과하고, 그래서 샤프 0.5를 넘기려면 IC 0.121이 필요합니다
-      (달성 가능 범위는 0.02~0.05). 신호를 개선해서 해결되는 문제가 아닙니다.
-      90일까지는 판정을 보류하고 데이터만 쌓습니다.
-    </div>
-  </section>
-
-  <section>
-    <h2>
-      v5 flow 수집기
-      <span class="pill <%= flow.failures.length ? 'warn' : 'ok' %>">
-        <%= flow.failures.length ? flow.failures.length + '건 실패' : '정상' %>
-      </span>
-    </h2>
-    <p class="desc">
-      OI · 큰손/개미 롱숏비율 · 테이커비율은 가격에서 유도할 수 없는 정보인데,
-      바이낸스는 <b><%= flow.apiHorizonDays %>일치만</b> 제공합니다. 적어두지 않으면 다음 달에도 <%= flow.apiHorizonDays %>일입니다.
-    </p>
-
-    <div class="tblwrap">
-      <table>
-        <thead><tr><th>확보 기간</th><th>총 행수</th><th>직전 추가</th><th>심볼</th><th>최초</th><th>최신</th></tr></thead>
-        <tbody>
-          <tr>
-            <td class="<%= (flow.bankedSpanDays||0) > flow.apiHorizonDays ? 'pos' : '' %>">
-              <%= helpers.formatNumber(flow.bankedSpanDays, 0) %>일
-            </td>
-            <td><%= helpers.formatNumber(flow.rowsTotal) %></td>
-            <td class="mut">+<%= helpers.formatNumber(flow.rowsAppended) %></td>
-            <td class="mut"><%= helpers.formatNumber(flow.symbols) %></td>
-            <td class="mut"><%= helpers.formatDateTime(flow.earliest) %></td>
-            <td class="mut"><%= helpers.formatDateTime(flow.latest) %></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="note">
-      <b>이 데이터는 백필이 불가능합니다.</b> <%= flow.apiHorizonDays %>일 넘게 수집이 멈추면
-      그 구간은 영구히 사라집니다. 데드맨이 26시간 기준으로 감시하는 이유입니다.
-    </div>
-  </section>
-
-  <section>
-    <h2>인프라 <span class="pill <%= deadman.stale.length ? 'bad' : 'ok' %>">
-      <%= deadman.stale.length ? deadman.stale.length + '개 정지' : '전부 정상' %></span></h2>
-    <p class="desc">데드맨 심박 감시 및 원장 백업. 감시 대상은 <em>살아 있어야 하는</em> 레인만입니다 —
-      일부러 멈춘 작업을 감시하면 영구 오알람이 되고, 늑대소년이 된 데드맨은 무시당합니다.</p>
-
-    <div class="tblwrap">
-      <table>
-        <thead><tr><th>감시 대상</th><th>상태</th><th>마지막 갱신</th><th>허용 지연</th></tr></thead>
-        <tbody>
-          <% deadman.healthy.forEach(function(h){ %>
-            <tr>
-              <td><%= h.name %></td>
-              <td class="pos">정상</td>
-              <td class="mut"><%= Math.round(h.age_ms/60000) %>분 전</td>
-              <td class="mut"><%= Math.round(h.max_age_ms/3600000) %>시간</td>
-            </tr>
-          <% }); %>
-          <% deadman.stale.forEach(function(h){ %>
-            <tr>
-              <td><%= h.name %></td>
-              <td class="neg">심박 정지</td>
-              <td class="neg"><%= Math.round(h.age_ms/60000) %>분 전</td>
-              <td class="mut"><%= Math.round(h.max_age_ms/3600000) %>시간</td>
-            </tr>
-          <% }); %>
-          <tr>
-            <td>원장 백업</td>
-            <td class="pos"><%= helpers.formatNumber(backup.count) %>개 보관</td>
-            <td class="mut"><%= helpers.formatAgo(backup.latestAt) %></td>
-            <td class="mut">일 1회</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="retired">
-    <h2><%= retired.label %> <span class="pill">은퇴 <%= retired.retiredOn %></span></h2>
-    <p class="desc">기록으로만 남깁니다. 아래 수치는 정지 시점에 고정된 값이며 더 이상 갱신되지 않습니다.</p>
-
-    <div class="tblwrap">
-      <table>
-        <thead><tr><th>최종 거래</th><th>승률</th><th>비용 전 기대값</th><th>비용 후 기대값</th><th>동결 시각</th></tr></thead>
-        <tbody>
-          <tr>
-            <td><%= helpers.formatNumber(retired.finalTrades) %></td>
-            <td><%= helpers.formatPercent(retired.finalWinRate) %></td>
-            <td class="pos"><%= helpers.formatNumber(retired.finalGrossExpectancyR, 4) %>R</td>
-            <td class="<%= retired.finalExpectancyR > 0 ? 'pos' : 'neg' %>">
-              <%= helpers.formatNumber(retired.finalExpectancyR, 4) %>R
-            </td>
-            <td class="mut"><%= helpers.formatDateTime(retired.lastUpdated) %></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="note">
-      <b>은퇴 사유.</b> <%= retired.reason %>
-      신호에 비용 전 우위는 실재했지만(<%= helpers.formatNumber(retired.finalGrossExpectancyR, 4) %>R/거래),
-      왕복 비용이 그 우위와 거의 같은 크기여서 순 기대값이 0으로 수렴했습니다.
-      실행 개선으로도 넘을 수 없음을 확인했습니다 — 모든 진입이 메이커로 체결되는 물리적 최선에서도
-      0.0488R로 게이트(0.05R)에 미달하고, 신뢰구간이 0을 포함합니다.
-    </div>
-  </section>
-
-  <footer>
-    실거래 노출 0 USDT · 전 레인 페이퍼 · 주문 경로 없음<br>
-    <%= helpers.formatDateTime(generatedAt) %> 생성 · <%= header.refreshNote %>
-  </footer>
-
+  <footer>실거래 0원 · 전 레인 페이퍼 · <%= header.refreshNote %></footer>
 </div>
 </body>
 </html>

@@ -26,15 +26,15 @@ const OPS_BACKUP_DIR = path.resolve(__dirname, "../../ops/backup");
 const PUBLIC_DIR = path.resolve(__dirname, "../../public");
 const VIEWS_DIR = path.resolve(__dirname, "../views");
 
+const OPS_RUNTIME_DIR = path.resolve(__dirname, "../../ops/runtime");
+
 const PATHS = {
+  v6: path.join(OPS_DAILY_DIR, "v6_paper_latest.json"),
+  v6Ledger: path.join(OPS_RUNTIME_DIR, "v6_paper_ledger.jsonl"),
   funding: path.join(OPS_DAILY_DIR, "v3_funding_monitor_latest.json"),
   v4perf: path.join(OPS_DAILY_DIR, "v4_paper_performance_latest.json"),
-  v4lane: path.join(OPS_DAILY_DIR, "v4_paper_latest.json"),
   flow: path.join(OPS_DAILY_DIR, "v5_flow_collector_latest.json"),
   deadman: path.join(OPS_DAILY_DIR, "v3_deadman_latest.json"),
-  // retired, rendered as history only
-  v3perf: path.join(OPS_DAILY_DIR, "v3_paper_performance_latest.json"),
-  v3validation: path.join(OPS_DAILY_DIR, "v3_paper_validation_latest.json"),
 };
 
 function readJsonSafe(filePath, fallback = null) {
@@ -43,6 +43,23 @@ function readJsonSafe(filePath, fallback = null) {
   } catch (_error) {
     return fallback;
   }
+}
+
+// The v6 ledger is append-only: a position is written OPEN, then written again
+// CLOSED under the SAME id. Reading it naively double-counts every settled
+// trade — once as open, once as closed. Latest row per id wins.
+function readJsonLines(filePath) {
+  let raw;
+  try { raw = fs.readFileSync(filePath, "utf8"); } catch (_error) { return []; }
+  const latest = new Map();
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      if (row && row.id) latest.set(row.id, row);
+    } catch (_error) { /* a torn final line must not blank the page */ }
+  }
+  return [...latest.values()];
 }
 
 function asNumber(value) {
@@ -222,121 +239,93 @@ function buildFlowLane(flow) {
   };
 }
 
+// The page had six sections and long explanatory prose. That is fine for an
+// audit trail and wrong for a thing you glance at. This build puts the ONE
+// lane under active test at the top at full size, compresses everything else
+// to a single line each, and drops the retired-v3 history entirely — it is in
+// git and in the commit messages, not something to re-read daily.
+function buildV6Lane(v6, ledgerRows) {
+  const r = (v6 && v6.realised) || null;
+  const cfg = (v6 && v6.config) || {};
+  const bt = (v6 && v6.backtest_expectation) || {};
+  const minN = Number(v6 && v6.min_closed_for_verdict) || 100;
+  const closed = Number(v6 && v6.closed_n) || 0;
+
+  const open = ledgerRows.filter((x) => x.status === "OPEN")
+    .sort((a, b) => Date.parse(b.opened_at) - Date.parse(a.opened_at))
+    .slice(0, 8);
+  const recent = ledgerRows.filter((x) => x.status === "CLOSED")
+    .sort((a, b) => Date.parse(b.closed_at) - Date.parse(a.closed_at))
+    .slice(0, 8);
+
+  const verdict = String((v6 && v6.verdict) || "NO_DATA");
+  const label = verdict === "ACCUMULATING" ? "표본 쌓는 중"
+    : verdict === "POSITIVE_SIGNIFICANT" ? "유의하게 플러스"
+      : verdict === "POSITIVE_NOT_SIGNIFICANT" ? "플러스지만 유의하지 않음"
+        : verdict === "NEGATIVE" ? "마이너스" : verdict;
+
+  return {
+    generatedAt: (v6 && v6.generated_at) || null,
+    config: cfg,
+    daysRunning: Number(v6 && v6.days_running) || 0,
+    openN: Number(v6 && v6.open_n) || 0,
+    closedN: closed,
+    minN,
+    progressPct: Math.min(100, Math.round((closed / minN) * 100)),
+    verdict,
+    verdictLabel: label,
+    tone: verdict === "POSITIVE_SIGNIFICANT" ? "up" : verdict === "NEGATIVE" ? "down" : "neutral",
+    realised: r,
+    // the backtest number is carried so drift shows in BOTH directions
+    expectedAnnPct: asNumber(bt.out_of_sample_ann_pct),
+    // t, not the return: see the template comment. The return reads as a
+    // forecast; the t-stat is what actually bounds the claim.
+    expectedT: asNumber(bt.out_of_sample_t),
+    expectedNote: bt.note || null,
+    open,
+    recent,
+    errors: Array.isArray(v6 && v6.errors) ? v6.errors : [],
+  };
+}
+
 function buildLocalDashboardView() {
+  const v6 = readJsonSafe(PATHS.v6, {});
   const funding = readJsonSafe(PATHS.funding, {});
   const v4perf = readJsonSafe(PATHS.v4perf, {});
   const flow = readJsonSafe(PATHS.flow, {});
   const deadman = readJsonSafe(PATHS.deadman, {});
-  const v3perf = readJsonSafe(PATHS.v3perf, {});
-  const v3validation = readJsonSafe(PATHS.v3validation, {});
 
   const health = computeHealth(deadman);
   const carry = buildCarryLane(funding);
   const v4 = buildV4Lane(v4perf);
   const flowLane = buildFlowLane(flow);
   const backup = backupSummary();
+  const v6Lane = buildV6Lane(v6, readJsonLines(PATHS.v6Ledger));
 
-  const overviewCards = [
-    {
-      label: "시스템 상태",
-      value: health.label,
-      note: health.detail,
-      tone: health.tone,
-    },
-    {
-      label: "캐리 판정",
-      value: carry.verdictLabel,
-      note: carry.best
-        ? `최고 ${carry.best.symbol} ${formatPercent(carry.best.annualized_net_pct)} (무위험 대비 ${formatSigned(carry.best.excess_pct)})`
-        : "캐리 데이터 없음",
-      tone: carry.isDormant ? "neutral" : "up",
-    },
-    {
-      label: "실거래 노출",
-      value: "0 USDT",
-      note: "전 레인 페이퍼 · 주문 경로 없음",
-      tone: "ok",
-    },
-    {
-      label: "flow 데이터 확보",
-      value: `${formatNumber(flowLane.bankedSpanDays, 0)}일`,
-      note: `API는 ${flowLane.apiHorizonDays}일까지만 제공 · ${formatNumber(flowLane.rowsTotal)}행`,
-      tone: (flowLane.bankedSpanDays || 0) > flowLane.apiHorizonDays ? "up" : "neutral",
-    },
+  // One status strip, four facts, no prose.
+  const strip = [
+    { label: "시스템", value: health.label, tone: health.tone },
+    { label: "실거래", value: "0원", tone: "ok" },
+    { label: "캐리", value: carry.isDormant ? "대기" : "수확 가능", tone: carry.isDormant ? "neutral" : "up" },
+    { label: "데이터", value: `${formatNumber(flowLane.bankedSpanDays, 0)}일`, tone: "neutral" },
   ];
 
-  const lanes = [
-    {
-      key: "carry",
-      label: "펀딩 캐리",
-      role: "주력",
-      state: carry.isDormant ? "대기 중" : "수확 가능",
-      updatedAt: carry.generatedAt,
-      note: "계약상 수령 — 예측 불필요",
-      tone: carry.isDormant ? "neutral" : "up",
-    },
-    {
-      key: "v4",
-      label: "v4 크로스섹셔널",
-      role: "관찰",
-      state: `${formatNumber(v4.days)}일 / ${formatNumber(v4.minDays)}일`,
-      updatedAt: v4.generatedAt,
-      note: "시장중립 · 90일 기준 누적 중",
-      tone: "neutral",
-    },
-    {
-      key: "flow",
-      label: "v5 flow 수집기",
-      role: "데이터",
-      state: `${formatNumber(flowLane.bankedSpanDays, 0)}일 확보`,
-      updatedAt: flowLane.generatedAt,
-      note: "백필 불가 — 멈추면 영구 손실",
-      tone: flowLane.failures.length ? "warn" : "ok",
-    },
-    {
-      key: "infra",
-      label: "인프라",
-      role: "보호",
-      state: `백업 ${formatNumber(backup.count)}개`,
-      updatedAt: backup.latestAt,
-      note: `데드맨 ${(deadman.healthy || []).length}개 감시`,
-      tone: "ok",
-    },
+  // Everything that is not the lane under test gets one line.
+  const others = [
+    { name: "v4 크로스섹셔널", state: `${formatNumber(v4.days)}일 / ${formatNumber(v4.minDays)}일`, note: "시장중립 · 누적 중", at: v4.generatedAt },
+    { name: "펀딩 캐리", state: carry.best ? `최고 ${formatSigned(carry.best.excess_pct)}` : "-", note: carry.isDormant ? "무위험 대비 미달 → 대기" : "수확 조건 충족", at: carry.generatedAt },
+    { name: "flow 수집기", state: `${formatNumber(flowLane.bankedSpanDays, 0)}일 확보`, note: "백필 불가 · 하루 2회", at: flowLane.generatedAt },
+    { name: "백업 · 데드맨", state: `${formatNumber(backup.count)}개 · ${(deadman.healthy || []).length}개 감시`, note: (deadman.stale || []).length ? "심박 정지 있음" : "이상 없음", at: backup.latestAt },
   ];
-
-  const v3paperGate = (v3validation && v3validation.paper_gate) || {};
-  const retired = {
-    label: "v3 방향성 레인",
-    retiredOn: "2026-08-07",
-    reason: "주간 승률의 71%를 BTC 방향이 설명 (R2=0.705). 우위가 아니라 시장 베타였음.",
-    finalTrades: asNumber(v3paperGate.closed_trade_n),
-    finalWinRate: asNumber(v3paperGate.win_rate_pct),
-    finalExpectancyR: asNumber(v3paperGate.expectancy_r),
-    finalGrossExpectancyR: asNumber(v3paperGate.gross_expectancy_r),
-    lastUpdated: (v3perf && v3perf.generated_at) || null,
-  };
 
   return {
     generatedAt: new Date().toISOString(),
-    header: {
-      title: "DONBEOLJA",
-      subtitle: "현재 가동 중인 레인만 표시합니다.",
-      refreshNote: "60초 자동 새로고침",
-    },
+    header: { title: "DONBEOLJA", refreshNote: "60초 자동 새로고침" },
     health,
-    overviewCards,
-    lanes,
-    carry,
-    v4,
-    flow: flowLane,
-    deadman: {
-      generatedAt: (deadman && deadman.generated_at) || null,
-      healthy: Array.isArray(deadman.healthy) ? deadman.healthy : [],
-      stale: Array.isArray(deadman.stale) ? deadman.stale : [],
-    },
-    backup,
-    retired,
-    helpers: { formatDateTime, formatAgo, formatNumber, formatPercent, formatSigned, toneByNumber },
+    strip,
+    v6: v6Lane,
+    others,
+    helpers: { formatDateTime, formatAgo, formatNumber, formatPercent, formatSigned },
   };
 }
 
@@ -366,5 +355,6 @@ module.exports = {
     buildCarryLane,
     buildV4Lane,
     buildFlowLane,
+    buildV6Lane,
   },
 };

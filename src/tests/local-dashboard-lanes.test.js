@@ -63,14 +63,38 @@ const { __test, buildLocalDashboardView } = require("../server/localDashboardApp
 }
 
 // The whole view must build against the real artifacts on disk without
-// throwing, including when a lane's file is missing entirely.
+// throwing, and the simplified page must keep the two facts that stop a reader
+// drawing the wrong conclusion: exposure is zero, and the backtest behind the
+// v6 lane did not clear significance.
 {
   const view = buildLocalDashboardView();
-  assert.ok(view.overviewCards.length === 4, "(D1) four overview cards");
-  assert.ok(view.lanes.length === 4, "(D2) four live lanes");
-  const exposure = view.overviewCards.find((c) => c.label === "실거래 노출");
-  assert.strictEqual(exposure.value, "0 USDT", "(D3) live exposure must read zero while every lane is paper");
-  assert.ok(view.retired && view.retired.retiredOn === "2026-08-07", "(D4) v3 shown as retired, not as live");
+  assert.strictEqual(view.strip.length, 4, "(D1) four status facts");
+  assert.strictEqual(view.others.length, 4, "(D2) every non-tested lane compressed to one line");
+  const exposure = view.strip.find((s) => s.label === "\uc2e4\uac70\ub798");
+  assert.strictEqual(exposure.value, "0\uc6d0", "(D3) live exposure must read zero while every lane is paper");
+  assert.ok(view.v6, "(D4) the lane under test is present");
+  assert.ok(Number.isFinite(view.v6.progressPct), "(D5) progress toward a verdict is computable");
+
+  // The backtest's RETURN would read as a forecast; its t-stat bounds the
+  // claim. The page must carry the t, or a reader sees only the upside.
+  assert.ok("expectedT" in view.v6, "(D6) backtest t-stat surfaced, not just the return");
+}
+
+// The ledger writes a position OPEN and later CLOSED under the SAME id.
+// Counting both rows double-counts every settled trade.
+{
+  const { buildV6Lane } = __test;
+  if (buildV6Lane) {
+    const rows = [
+      { id: "A", status: "OPEN", opened_at: "2026-08-08T00:00:00Z" },
+      { id: "A", status: "CLOSED", opened_at: "2026-08-08T00:00:00Z", closed_at: "2026-08-08T01:00:00Z", net_pct: 1 },
+    ];
+    const latest = new Map();
+    for (const r of rows) latest.set(r.id, r);
+    const lane = buildV6Lane({ closed_n: 1, open_n: 0, config: {}, backtest_expectation: {} }, [...latest.values()]);
+    assert.strictEqual(lane.open.length, 0, "(E1) a settled trade must not still count as open");
+    assert.strictEqual(lane.recent.length, 1, "(E2) and must appear once as closed");
+  }
 }
 
 console.log("LOCAL_DASHBOARD_LANES_TESTS_PASS");
