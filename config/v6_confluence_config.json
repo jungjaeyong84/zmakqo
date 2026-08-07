@@ -1,32 +1,39 @@
 {
-  "generated_at": "2026-08-07T23:32:52.659Z",
-  "source": "optimize-v6-confluence.js",
-  "architecture": "v1 boolean confluence, weights re-derived from in-sample IC",
+  "generated_at": "2026-08-07T23:38:03.146Z",
+  "source": "search-v6-exhaustive.js (3780 configs, empirical-null corrected)",
+  "architecture": "v1 boolean confluence, subset td+vol, inverted",
   "weights": {
-    "trend": -0.05925952835201098,
-    "htf": -0.06365854092872975,
-    "td": -0.005059583663149901,
-    "stoch": 0.0034965077947588766,
-    "vol": -0.03305643191571766,
-    "regime": -0.012122308146343333
+    "trend": 0,
+    "htf": 0,
+    "td": -1,
+    "stoch": 0,
+    "vol": -1,
+    "regime": 0
   },
-  "threshold": 45,
-  "hold_hours": 72,
+  "threshold": 55,
+  "hold_hours": 24,
   "cost_pct": 0.14,
   "entry": "event (threshold crossing) + cooldown = hold",
   "in_sample": {
-    "ann_pct": 18.477510311066837,
-    "sharpe": 0.396809645902178,
-    "t": 0.27865833704928755,
-    "periods": 60
+    "ann_pct": 219.95236940487325,
+    "sharpe": 4.170591608852058,
+    "t": 2.619584903312609,
+    "periods": 144
+  },
+  "validation": {
+    "ann_pct": 108.85748624525483,
+    "sharpe": 2.2046798611849927,
+    "t": 1.2103067220604442,
+    "periods": 110
   },
   "out_of_sample": {
-    "ann_pct": 1.9900297596847567,
-    "sharpe": 0.08474704611706088,
-    "t": 0.06049710735880031,
-    "periods": 62,
-    "vol_pct": 23.481995548681823
+    "ann_pct": 82.54872785699568,
+    "sharpe": 2.00949089979265,
+    "t": 1.1031535175502107,
+    "periods": 110
   },
-  "cells_searched": 30,
-  "expected_false_positives": 1.5
+  "cells_searched": 3780,
+  "empirical_null_max_t_p95": 3.388814731646265,
+  "best_train_t": 3.3021909607143027,
+  "caveat": "best real t (3.30) is BELOW the shuffled-null ceiling (3.39). Not validated. Paper is the test."
 }
