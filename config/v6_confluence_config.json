@@ -1,0 +1,32 @@
+{
+  "generated_at": "2026-08-07T23:32:52.659Z",
+  "source": "optimize-v6-confluence.js",
+  "architecture": "v1 boolean confluence, weights re-derived from in-sample IC",
+  "weights": {
+    "trend": -0.05925952835201098,
+    "htf": -0.06365854092872975,
+    "td": -0.005059583663149901,
+    "stoch": 0.0034965077947588766,
+    "vol": -0.03305643191571766,
+    "regime": -0.012122308146343333
+  },
+  "threshold": 45,
+  "hold_hours": 72,
+  "cost_pct": 0.14,
+  "entry": "event (threshold crossing) + cooldown = hold",
+  "in_sample": {
+    "ann_pct": 18.477510311066837,
+    "sharpe": 0.396809645902178,
+    "t": 0.27865833704928755,
+    "periods": 60
+  },
+  "out_of_sample": {
+    "ann_pct": 1.9900297596847567,
+    "sharpe": 0.08474704611706088,
+    "t": 0.06049710735880031,
+    "periods": 62,
+    "vol_pct": 23.481995548681823
+  },
+  "cells_searched": 30,
+  "expected_false_positives": 1.5
+}

@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-08-07T22:20:21.963Z",
+  "rows_appended": 288,
+  "rows_total": 18144,
+  "rows_before": 17856,
+  "symbols": 24,
+  "period": "4h",
+  "banked_span_days": 31.5,
+  "earliest": "2026-07-07T08:00:00.000Z",
+  "latest": "2026-08-07T20:00:00.000Z",
+  "failures": [],
+  "ledger": "/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/v5_flow_history.jsonl",
+  "note": "API serves ~30d; this ledger is the only way that horizon grows."
+}

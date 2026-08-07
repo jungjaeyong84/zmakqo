@@ -315,4 +315,6 @@ function main() {
   console.log("Not ported: posterior / wave / EV / percentile gates / session decay / 15m confirm.");
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { buildStates, scoreAt, spearman, mean, sd, ema, sma, rma, HOLD, COST_PCT, W };
