@@ -21,13 +21,18 @@ const ROOT = path.resolve(__dirname, "..");
 const ALERT_STATE = path.join(ROOT, "ops/runtime/v3_ops_alert_state.json");
 const OUT = path.join(ROOT, "ops/daily/v3_deadman_latest.json");
 
+// 2026-08-07 — the v3 directional lane was retired. Its edge did not survive
+// the controls: the book ran 64% short and a regression of weekly win rate on
+// BTC's weekly return gives R2 = 0.705, so the "win rate" was market beta, and
+// every profitable subset traced back to one -14% BTC week in June. The
+// v3paper / v3live / v3readywatch jobs are booted out, so their heartbeats are
+// gone BY DESIGN and must not be watched — a descriptor for a job that is
+// supposed to be stopped is a permanent false alarm, which is how deadmen get
+// muted and then ignored.
+//
+// What remains is the infrastructure that outlived the strategy it was built
+// for: the funding monitor (now the primary lane) and the v4 paper lane.
 const DESCRIPTORS = [
-  // paper cycle regenerates this every 180s tick regardless of trades
-  { name: "v3paper_cycle", path: path.join(ROOT, "ops/daily/v3_paper_performance_latest.json"), max_age_ms: 15 * 60 * 1000 },
-  // live cycle's report step always runs (even fully inert)
-  { name: "v3live_cycle", path: path.join(ROOT, "ops/daily/v3_live_vs_paper_latest.json"), max_age_ms: 15 * 60 * 1000 },
-  // readiness watcher runs 2x daily + on load
-  { name: "v3ready_watch", path: path.join(ROOT, "ops/runtime/v3_readiness_watch_state.json"), max_age_ms: 26 * 60 * 60 * 1000 },
   // funding monitor runs hourly (2h10m allowance for one missed tick)
   { name: "v3funding_monitor", path: path.join(ROOT, "ops/daily/v3_funding_monitor_latest.json"), max_age_ms: 130 * 60 * 1000 },
   // v4 cross-sectional lane rebalances daily (26h allowance for one miss)
