@@ -1,0 +1,759 @@
+{
+  "generated_at": "2026-08-08T00:34:31.986Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0,
+  "open_n": 0,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T01:34:36.487Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0,
+  "open_n": 1,
+  "closed_n": 0,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T02:34:41.021Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0,
+  "open_n": 2,
+  "closed_n": 0,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T03:34:45.535Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.1,
+  "open_n": 2,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T04:34:50.238Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.1,
+  "open_n": 3,
+  "closed_n": 0,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T05:34:54.762Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.2,
+  "open_n": 3,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T06:34:59.302Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.2,
+  "open_n": 3,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T07:35:04.025Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.3,
+  "open_n": 3,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T08:35:08.488Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.3,
+  "open_n": 3,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T09:35:12.962Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.3,
+  "open_n": 4,
+  "closed_n": 0,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T10:35:17.569Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.4,
+  "open_n": 11,
+  "closed_n": 0,
+  "opened_this_cycle": 7,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T11:35:22.109Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.4,
+  "open_n": 13,
+  "closed_n": 0,
+  "opened_this_cycle": 2,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T12:35:26.584Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.5,
+  "open_n": 15,
+  "closed_n": 0,
+  "opened_this_cycle": 2,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T13:35:31.446Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.5,
+  "open_n": 17,
+  "closed_n": 0,
+  "opened_this_cycle": 2,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T14:35:35.893Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.5,
+  "open_n": 18,
+  "closed_n": 0,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T15:35:40.291Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.6,
+  "open_n": 22,
+  "closed_n": 0,
+  "opened_this_cycle": 4,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T16:35:44.914Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.6,
+  "open_n": 22,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T17:35:47.330Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.7,
+  "open_n": 24,
+  "closed_n": 0,
+  "opened_this_cycle": 2,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T18:35:53.867Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.7,
+  "open_n": 24,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T19:35:58.215Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.8,
+  "open_n": 24,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T20:36:02.985Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.8,
+  "open_n": 24,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T21:36:07.589Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.8,
+  "open_n": 24,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-08T22:36:11.998Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "cost_pct": 0.14,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    }
+  },
+  "days_running": 0.9,
+  "open_n": 24,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}

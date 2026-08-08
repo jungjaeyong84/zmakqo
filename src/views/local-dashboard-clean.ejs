@@ -101,7 +101,9 @@
       <span class="badge <%= v6.tone %>"><%= v6.verdictLabel %></span>
     </h2>
     <p class="cfg">
-      td+vol 조합 · 임계값 <%= v6.config.threshold %> · <%= v6.config.hold_hours %>시간 보유 · 비용 <%= v6.config.cost_pct %>% 반영
+      td+vol 조합 · 임계값 <%= v6.config.threshold %> · 선물 <%= v6.leverage %>배
+      · 익절 <%= helpers.formatSigned(v6.tpPct, 1, '%') %> / 손절 <%= helpers.formatSigned(v6.slPct, 1, '%') %>
+      · 최대 <%= v6.config.hold_hours %>시간 · 비용 <%= v6.config.cost_pct %>% 반영
     </p>
 
     <div class="big">
@@ -114,7 +116,7 @@
         <div>
           <div class="k">승률</div>
           <div class="v"><%= helpers.formatNumber(v6.realised.win_rate_pct, 1) %>%</div>
-          <div class="s">롱 <%= v6.realised.long_n %> · 숏 <%= v6.realised.short_n %></div>
+          <div class="s">익절 <%= v6.realised.exit_target_n %> · 손절 <%= v6.realised.exit_stop_n %> · 만기 <%= v6.realised.exit_expiry_n %></div>
         </div>
         <div>
           <div class="k">누적 순손익</div>
@@ -155,14 +157,15 @@
     <% if (v6.open.length) { %>
       <div class="sub">보유 중</div>
       <div class="tblwrap"><table>
-        <thead><tr><th>심볼</th><th>방향</th><th>점수</th><th>진입가</th><th>청산 예정</th></tr></thead>
+        <thead><tr><th>심볼</th><th>방향</th><th>진입가</th><th>익절가</th><th>손절가</th><th>만기</th></tr></thead>
         <tbody>
           <% v6.open.forEach(function(p){ %>
             <tr>
               <td><%= p.symbol.replace('USDT','') %></td>
               <td class="<%= p.side === 'LONG' ? 'up' : 'down' %>"><%= p.side %></td>
-              <td class="mut"><%= helpers.formatNumber(p.score, 1) %></td>
               <td class="mut"><%= p.entry_price %></td>
+              <td class="up"><%= helpers.formatNumber(p.tp_price, 4) %></td>
+              <td class="down"><%= helpers.formatNumber(p.sl_price, 4) %></td>
               <td class="mut"><%= helpers.formatDateTime(p.close_due_at) %></td>
             </tr>
           <% }); %>
@@ -173,15 +176,16 @@
     <% if (v6.recent.length) { %>
       <div class="sub">최근 종료</div>
       <div class="tblwrap"><table>
-        <thead><tr><th>심볼</th><th>방향</th><th>총%</th><th>순%</th><th>종료</th></tr></thead>
+        <thead><tr><th>심볼</th><th>방향</th><th>가격%</th><th>레버후%</th><th>순%</th><th>사유</th></tr></thead>
         <tbody>
           <% v6.recent.forEach(function(p){ %>
             <tr>
               <td><%= p.symbol.replace('USDT','') %></td>
               <td class="<%= p.side === 'LONG' ? 'up' : 'down' %>"><%= p.side %></td>
+              <td class="mut"><%= helpers.formatSigned(p.price_move_pct, 2, '%') %></td>
               <td class="mut"><%= helpers.formatSigned(p.gross_pct, 2, '%') %></td>
               <td class="<%= p.net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(p.net_pct, 2, '%') %></td>
-              <td class="mut"><%= helpers.formatAgo(p.closed_at) %></td>
+              <td class="mut"><%= p.exit_reason === 'TARGET' ? '익절' : p.exit_reason === 'STOP' ? '손절' : '만기' %></td>
             </tr>
           <% }); %>
         </tbody>

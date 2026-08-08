@@ -276,6 +276,9 @@ function buildV6Lane(v6, ledgerRows) {
     verdictLabel: label,
     tone: verdict === "POSITIVE_SIGNIFICANT" ? "up" : verdict === "NEGATIVE" ? "down" : "neutral",
     realised: r,
+    leverage: asNumber(cfg.leverage),
+    tpPct: asNumber(cfg.tp_equity_pct),
+    slPct: asNumber(cfg.sl_equity_pct),
     // the backtest number is carried so drift shows in BOTH directions
     expectedAnnPct: asNumber(bt.out_of_sample_ann_pct),
     // t, not the return: see the template comment. The return reads as a
