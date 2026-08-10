@@ -757,3 +757,2300 @@
   "live_exposure_usdt": 0,
   "errors": []
 }
+{
+  "generated_at": "2026-08-08T23:36:16.415Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0,
+  "open_n": 1,
+  "closed_n": 0,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T00:36:19.653Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0,
+  "open_n": 2,
+  "closed_n": 0,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T01:36:26.472Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.1,
+  "open_n": 4,
+  "closed_n": 0,
+  "opened_this_cycle": 2,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T02:36:31.131Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.1,
+  "open_n": 4,
+  "closed_n": 0,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T03:36:35.907Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.2,
+  "open_n": 5,
+  "closed_n": 0,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": null,
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T04:36:40.838Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.2,
+  "open_n": 4,
+  "closed_n": 1,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 0,
+    "mean_net_pct": -2.78,
+    "total_net_pct": -2.78,
+    "ann_pct": -1014.7,
+    "t_stat": null,
+    "long_n": 0,
+    "short_n": 1,
+    "exit_target_n": 0,
+    "exit_stop_n": 1,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T05:36:45.541Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.3,
+  "open_n": 5,
+  "closed_n": 1,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 0,
+    "mean_net_pct": -2.78,
+    "total_net_pct": -2.78,
+    "ann_pct": -1014.7,
+    "t_stat": null,
+    "long_n": 0,
+    "short_n": 1,
+    "exit_target_n": 0,
+    "exit_stop_n": 1,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T06:36:50.254Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.3,
+  "open_n": 6,
+  "closed_n": 1,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 0,
+    "mean_net_pct": -2.78,
+    "total_net_pct": -2.78,
+    "ann_pct": -1014.7,
+    "t_stat": null,
+    "long_n": 0,
+    "short_n": 1,
+    "exit_target_n": 0,
+    "exit_stop_n": 1,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T07:36:55.153Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.3,
+  "open_n": 6,
+  "closed_n": 1,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 0,
+    "mean_net_pct": -2.78,
+    "total_net_pct": -2.78,
+    "ann_pct": -1014.7,
+    "t_stat": null,
+    "long_n": 0,
+    "short_n": 1,
+    "exit_target_n": 0,
+    "exit_stop_n": 1,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T08:37:00.032Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.4,
+  "open_n": 7,
+  "closed_n": 1,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 0,
+    "mean_net_pct": -2.78,
+    "total_net_pct": -2.78,
+    "ann_pct": -1014.7,
+    "t_stat": null,
+    "long_n": 0,
+    "short_n": 1,
+    "exit_target_n": 0,
+    "exit_stop_n": 1,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T09:37:02.984Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.4,
+  "open_n": 10,
+  "closed_n": 2,
+  "opened_this_cycle": 4,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 0,
+    "mean_net_pct": -2.78,
+    "total_net_pct": -5.56,
+    "ann_pct": -1014.7,
+    "t_stat": null,
+    "long_n": 1,
+    "short_n": 1,
+    "exit_target_n": 0,
+    "exit_stop_n": 2,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T10:37:10.301Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.5,
+  "open_n": 10,
+  "closed_n": 2,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 0,
+    "mean_net_pct": -2.78,
+    "total_net_pct": -5.56,
+    "ann_pct": -1014.7,
+    "t_stat": null,
+    "long_n": 1,
+    "short_n": 1,
+    "exit_target_n": 0,
+    "exit_stop_n": 2,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T11:37:15.321Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.5,
+  "open_n": 10,
+  "closed_n": 2,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 0,
+    "mean_net_pct": -2.78,
+    "total_net_pct": -5.56,
+    "ann_pct": -1014.7,
+    "t_stat": null,
+    "long_n": 1,
+    "short_n": 1,
+    "exit_target_n": 0,
+    "exit_stop_n": 2,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T12:37:22.679Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.5,
+  "open_n": 9,
+  "closed_n": 3,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 33.3,
+    "mean_net_pct": -0.28,
+    "total_net_pct": -0.84,
+    "ann_pct": -102.2,
+    "t_stat": -0.14,
+    "long_n": 1,
+    "short_n": 2,
+    "exit_target_n": 1,
+    "exit_stop_n": 2,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T13:37:27.598Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.6,
+  "open_n": 9,
+  "closed_n": 3,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 33.3,
+    "mean_net_pct": -0.28,
+    "total_net_pct": -0.84,
+    "ann_pct": -102.2,
+    "t_stat": -0.14,
+    "long_n": 1,
+    "short_n": 2,
+    "exit_target_n": 1,
+    "exit_stop_n": 2,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T14:37:33.234Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.6,
+  "open_n": 12,
+  "closed_n": 3,
+  "opened_this_cycle": 3,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 33.3,
+    "mean_net_pct": -0.28,
+    "total_net_pct": -0.84,
+    "ann_pct": -102.2,
+    "t_stat": -0.14,
+    "long_n": 1,
+    "short_n": 2,
+    "exit_target_n": 1,
+    "exit_stop_n": 2,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T15:37:38.270Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.7,
+  "open_n": 13,
+  "closed_n": 3,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 33.3,
+    "mean_net_pct": -0.28,
+    "total_net_pct": -0.84,
+    "ann_pct": -102.2,
+    "t_stat": -0.14,
+    "long_n": 1,
+    "short_n": 2,
+    "exit_target_n": 1,
+    "exit_stop_n": 2,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T16:37:43.397Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.7,
+  "open_n": 13,
+  "closed_n": 3,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 33.3,
+    "mean_net_pct": -0.28,
+    "total_net_pct": -0.84,
+    "ann_pct": -102.2,
+    "t_stat": -0.14,
+    "long_n": 1,
+    "short_n": 2,
+    "exit_target_n": 1,
+    "exit_stop_n": 2,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T17:37:48.842Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.8,
+  "open_n": 12,
+  "closed_n": 5,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 2,
+  "realised": {
+    "win_rate_pct": 20,
+    "mean_net_pct": -1.28,
+    "total_net_pct": -6.4,
+    "ann_pct": -467.2,
+    "t_stat": -0.95,
+    "long_n": 1,
+    "short_n": 4,
+    "exit_target_n": 1,
+    "exit_stop_n": 4,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T18:37:54.218Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.8,
+  "open_n": 13,
+  "closed_n": 5,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 20,
+    "mean_net_pct": -1.28,
+    "total_net_pct": -6.4,
+    "ann_pct": -467.2,
+    "t_stat": -0.95,
+    "long_n": 1,
+    "short_n": 4,
+    "exit_target_n": 1,
+    "exit_stop_n": 4,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T19:37:59.538Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.8,
+  "open_n": 13,
+  "closed_n": 5,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 20,
+    "mean_net_pct": -1.28,
+    "total_net_pct": -6.4,
+    "ann_pct": -467.2,
+    "t_stat": -0.95,
+    "long_n": 1,
+    "short_n": 4,
+    "exit_target_n": 1,
+    "exit_stop_n": 4,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T20:38:04.552Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.9,
+  "open_n": 13,
+  "closed_n": 5,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 20,
+    "mean_net_pct": -1.28,
+    "total_net_pct": -6.4,
+    "ann_pct": -467.2,
+    "t_stat": -0.95,
+    "long_n": 1,
+    "short_n": 4,
+    "exit_target_n": 1,
+    "exit_stop_n": 4,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T21:38:09.681Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 0.9,
+  "open_n": 13,
+  "closed_n": 5,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 20,
+    "mean_net_pct": -1.28,
+    "total_net_pct": -6.4,
+    "ann_pct": -467.2,
+    "t_stat": -0.95,
+    "long_n": 1,
+    "short_n": 4,
+    "exit_target_n": 1,
+    "exit_stop_n": 4,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T22:38:14.807Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1,
+  "open_n": 12,
+  "closed_n": 6,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 16.7,
+    "mean_net_pct": -1.53,
+    "total_net_pct": -9.18,
+    "ann_pct": -558.4,
+    "t_stat": -1.34,
+    "long_n": 1,
+    "short_n": 5,
+    "exit_target_n": 1,
+    "exit_stop_n": 5,
+    "exit_expiry_n": 0
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-09T23:38:20.364Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1,
+  "open_n": 12,
+  "closed_n": 9,
+  "opened_this_cycle": 3,
+  "closed_this_cycle": 3,
+  "realised": {
+    "win_rate_pct": 22.2,
+    "mean_net_pct": -1.583,
+    "total_net_pct": -14.2468,
+    "ann_pct": -577.8,
+    "t_stat": -1.94,
+    "long_n": 3,
+    "short_n": 6,
+    "exit_target_n": 1,
+    "exit_stop_n": 7,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T00:38:26.229Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1,
+  "open_n": 7,
+  "closed_n": 15,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 6,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": -0.0618,
+    "total_net_pct": -0.9268,
+    "ann_pct": -22.6,
+    "t_stat": -0.07,
+    "long_n": 5,
+    "short_n": 10,
+    "exit_target_n": 5,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T01:38:31.087Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.1,
+  "open_n": 7,
+  "closed_n": 15,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": -0.0618,
+    "total_net_pct": -0.9268,
+    "ann_pct": -22.6,
+    "t_stat": -0.07,
+    "long_n": 5,
+    "short_n": 10,
+    "exit_target_n": 5,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T02:38:36.023Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.1,
+  "open_n": 8,
+  "closed_n": 15,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": -0.0618,
+    "total_net_pct": -0.9268,
+    "ann_pct": -22.6,
+    "t_stat": -0.07,
+    "long_n": 5,
+    "short_n": 10,
+    "exit_target_n": 5,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T03:38:40.935Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.2,
+  "open_n": 9,
+  "closed_n": 15,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": -0.0618,
+    "total_net_pct": -0.9268,
+    "ann_pct": -22.6,
+    "t_stat": -0.07,
+    "long_n": 5,
+    "short_n": 10,
+    "exit_target_n": 5,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T04:38:45.789Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.2,
+  "open_n": 9,
+  "closed_n": 15,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": -0.0618,
+    "total_net_pct": -0.9268,
+    "ann_pct": -22.6,
+    "t_stat": -0.07,
+    "long_n": 5,
+    "short_n": 10,
+    "exit_target_n": 5,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T05:38:50.695Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.3,
+  "open_n": 9,
+  "closed_n": 15,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": -0.0618,
+    "total_net_pct": -0.9268,
+    "ann_pct": -22.6,
+    "t_stat": -0.07,
+    "long_n": 5,
+    "short_n": 10,
+    "exit_target_n": 5,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T06:38:56.108Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.3,
+  "open_n": 9,
+  "closed_n": 16,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 43.8,
+    "mean_net_pct": 0.2371,
+    "total_net_pct": 3.7932,
+    "ann_pct": 86.5,
+    "t_stat": 0.27,
+    "long_n": 6,
+    "short_n": 10,
+    "exit_target_n": 6,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T07:39:01.012Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.3,
+  "open_n": 9,
+  "closed_n": 16,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 43.8,
+    "mean_net_pct": 0.2371,
+    "total_net_pct": 3.7932,
+    "ann_pct": 86.5,
+    "t_stat": 0.27,
+    "long_n": 6,
+    "short_n": 10,
+    "exit_target_n": 6,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T08:39:06.059Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.4,
+  "open_n": 10,
+  "closed_n": 16,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 43.8,
+    "mean_net_pct": 0.2371,
+    "total_net_pct": 3.7932,
+    "ann_pct": 86.5,
+    "t_stat": 0.27,
+    "long_n": 6,
+    "short_n": 10,
+    "exit_target_n": 6,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 1
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T09:39:11.548Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.4,
+  "open_n": 7,
+  "closed_n": 20,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 4,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": 0.1899,
+    "total_net_pct": 3.797,
+    "ann_pct": 69.3,
+    "t_stat": 0.26,
+    "long_n": 7,
+    "short_n": 13,
+    "exit_target_n": 6,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 5
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T10:39:16.419Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.5,
+  "open_n": 7,
+  "closed_n": 20,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": 0.1899,
+    "total_net_pct": 3.797,
+    "ann_pct": 69.3,
+    "t_stat": 0.26,
+    "long_n": 7,
+    "short_n": 13,
+    "exit_target_n": 6,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 5
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T11:39:21.357Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.5,
+  "open_n": 8,
+  "closed_n": 20,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 40,
+    "mean_net_pct": 0.1899,
+    "total_net_pct": 3.797,
+    "ann_pct": 69.3,
+    "t_stat": 0.26,
+    "long_n": 7,
+    "short_n": 13,
+    "exit_target_n": 6,
+    "exit_stop_n": 9,
+    "exit_expiry_n": 5
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T12:39:26.320Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.5,
+  "open_n": 8,
+  "closed_n": 21,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 38.1,
+    "mean_net_pct": 0.0484,
+    "total_net_pct": 1.017,
+    "ann_pct": 17.7,
+    "t_stat": 0.07,
+    "long_n": 7,
+    "short_n": 14,
+    "exit_target_n": 6,
+    "exit_stop_n": 10,
+    "exit_expiry_n": 5
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T13:39:31.161Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.6,
+  "open_n": 8,
+  "closed_n": 21,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 38.1,
+    "mean_net_pct": 0.0484,
+    "total_net_pct": 1.017,
+    "ann_pct": 17.7,
+    "t_stat": 0.07,
+    "long_n": 7,
+    "short_n": 14,
+    "exit_target_n": 6,
+    "exit_stop_n": 10,
+    "exit_expiry_n": 5
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T14:39:36.511Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.6,
+  "open_n": 10,
+  "closed_n": 23,
+  "opened_this_cycle": 4,
+  "closed_this_cycle": 2,
+  "realised": {
+    "win_rate_pct": 39.1,
+    "mean_net_pct": 0.0136,
+    "total_net_pct": 0.3132,
+    "ann_pct": 5,
+    "t_stat": 0.02,
+    "long_n": 7,
+    "short_n": 16,
+    "exit_target_n": 6,
+    "exit_stop_n": 11,
+    "exit_expiry_n": 6
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T15:39:41.525Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.7,
+  "open_n": 9,
+  "closed_n": 24,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 37.5,
+    "mean_net_pct": 0.0034,
+    "total_net_pct": 0.0814,
+    "ann_pct": 1.2,
+    "t_stat": 0.01,
+    "long_n": 7,
+    "short_n": 17,
+    "exit_target_n": 6,
+    "exit_stop_n": 11,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T16:39:46.756Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.7,
+  "open_n": 7,
+  "closed_n": 27,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 3,
+  "realised": {
+    "win_rate_pct": 37,
+    "mean_net_pct": -0.0281,
+    "total_net_pct": -0.7586,
+    "ann_pct": -10.3,
+    "t_stat": -0.05,
+    "long_n": 8,
+    "short_n": 19,
+    "exit_target_n": 7,
+    "exit_stop_n": 13,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T17:39:51.631Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.8,
+  "open_n": 7,
+  "closed_n": 27,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37,
+    "mean_net_pct": -0.0281,
+    "total_net_pct": -0.7586,
+    "ann_pct": -10.3,
+    "t_stat": -0.05,
+    "long_n": 8,
+    "short_n": 19,
+    "exit_target_n": 7,
+    "exit_stop_n": 13,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T18:39:56.416Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.8,
+  "open_n": 8,
+  "closed_n": 27,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37,
+    "mean_net_pct": -0.0281,
+    "total_net_pct": -0.7586,
+    "ann_pct": -10.3,
+    "t_stat": -0.05,
+    "long_n": 8,
+    "short_n": 19,
+    "exit_target_n": 7,
+    "exit_stop_n": 13,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T19:40:01.776Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.8,
+  "open_n": 7,
+  "closed_n": 28,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 35.7,
+    "mean_net_pct": -0.1264,
+    "total_net_pct": -3.5386,
+    "ann_pct": -46.1,
+    "t_stat": -0.21,
+    "long_n": 8,
+    "short_n": 20,
+    "exit_target_n": 7,
+    "exit_stop_n": 14,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T20:40:07.252Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.9,
+  "open_n": 7,
+  "closed_n": 28,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.7,
+    "mean_net_pct": -0.1264,
+    "total_net_pct": -3.5386,
+    "ann_pct": -46.1,
+    "t_stat": -0.21,
+    "long_n": 8,
+    "short_n": 20,
+    "exit_target_n": 7,
+    "exit_stop_n": 14,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T21:40:12.156Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 1.9,
+  "open_n": 7,
+  "closed_n": 28,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.7,
+    "mean_net_pct": -0.1264,
+    "total_net_pct": -3.5386,
+    "ann_pct": -46.1,
+    "t_stat": -0.21,
+    "long_n": 8,
+    "short_n": 20,
+    "exit_target_n": 7,
+    "exit_stop_n": 14,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-10T22:40:17.053Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2,
+  "open_n": 8,
+  "closed_n": 28,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.7,
+    "mean_net_pct": -0.1264,
+    "total_net_pct": -3.5386,
+    "ann_pct": -46.1,
+    "t_stat": -0.21,
+    "long_n": 8,
+    "short_n": 20,
+    "exit_target_n": 7,
+    "exit_stop_n": 14,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}

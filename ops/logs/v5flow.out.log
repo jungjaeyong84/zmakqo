@@ -40,3 +40,59 @@
   "ledger": "/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/v5_flow_history.jsonl",
   "note": "API serves ~30d; this ledger is the only way that horizon grows."
 }
+{
+  "generated_at": "2026-08-09T10:20:24.811Z",
+  "rows_appended": 288,
+  "rows_total": 19008,
+  "rows_before": 18720,
+  "symbols": 24,
+  "period": "4h",
+  "banked_span_days": 33,
+  "earliest": "2026-07-07T08:00:00.000Z",
+  "latest": "2026-08-09T08:00:00.000Z",
+  "failures": [],
+  "ledger": "/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/v5_flow_history.jsonl",
+  "note": "API serves ~30d; this ledger is the only way that horizon grows."
+}
+{
+  "generated_at": "2026-08-09T22:20:23.113Z",
+  "rows_appended": 288,
+  "rows_total": 19296,
+  "rows_before": 19008,
+  "symbols": 24,
+  "period": "4h",
+  "banked_span_days": 33.5,
+  "earliest": "2026-07-07T08:00:00.000Z",
+  "latest": "2026-08-09T20:00:00.000Z",
+  "failures": [],
+  "ledger": "/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/v5_flow_history.jsonl",
+  "note": "API serves ~30d; this ledger is the only way that horizon grows."
+}
+{
+  "generated_at": "2026-08-10T10:20:26.709Z",
+  "rows_appended": 288,
+  "rows_total": 19584,
+  "rows_before": 19296,
+  "symbols": 24,
+  "period": "4h",
+  "banked_span_days": 34,
+  "earliest": "2026-07-07T08:00:00.000Z",
+  "latest": "2026-08-10T08:00:00.000Z",
+  "failures": [],
+  "ledger": "/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/v5_flow_history.jsonl",
+  "note": "API serves ~30d; this ledger is the only way that horizon grows."
+}
+{
+  "generated_at": "2026-08-10T22:20:24.765Z",
+  "rows_appended": 288,
+  "rows_total": 19872,
+  "rows_before": 19584,
+  "symbols": 24,
+  "period": "4h",
+  "banked_span_days": 34.5,
+  "earliest": "2026-07-07T08:00:00.000Z",
+  "latest": "2026-08-10T20:00:00.000Z",
+  "failures": [],
+  "ledger": "/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/v5_flow_history.jsonl",
+  "note": "API serves ~30d; this ledger is the only way that horizon grows."
+}

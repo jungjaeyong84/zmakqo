@@ -55,6 +55,35 @@ const STATE = path.join(ROOT, "ops/runtime/v6_paper_state.json");
 //   3. COST SCALES WITH LEVERAGE. Fees are charged on notional, so 0.14% round
 //      trip on 2x notional is 0.28% against equity.
 
+// 2026-08-11 — risk caps and cooldown correction, after 2 days of live paper.
+//
+// CAPS. Two days produced 15 concurrent positions and a net 9-short tilt, with
+// four entries firing inside a single hour twice. At an average pairwise
+// correlation of 0.69, four simultaneous shorts is not four bets — it is one
+// bet at 4x. This is the defect that took v3's max drawdown to -42.7R before
+// caps and -5R after them. Adding them NOW matters: a sample gathered without
+// caps cannot be reused once caps exist.
+//
+// COOLDOWN. The old gate blocked a symbol for the full 24h hold measured from
+// ENTRY. Stops averaged 5.7h, so each idled its symbol another 18.3h. Moving
+// the clock to the CLOSE would be worse (29.7h total). The timer is removed
+// outright: entry already requires a fresh threshold CROSSING, so after a stop
+// the score is usually still past the threshold and prev >= thr blocks
+// re-entry until it falls back and crosses again. The timer only ever added
+// idle time. What remains is position uniqueness — never two open on one
+// symbol.
+//
+// POLICY VERSION. The 28 trades already closed were selected under no caps.
+// They were opened and settled correctly under the rules then in force, so
+// they are kept rather than discarded, but the SELECTION policy differs and
+// pooling would blur the verdict. Rows carry policy_version; the report
+// segments on it.
+
+const POLICY_VERSION = 2;
+const MAX_CONCURRENT = 6;
+const MAX_PER_SIDE = 4;
+const MAX_NEW_PER_CYCLE = 2;
+
 const LEVERAGE = 2;
 const TP_EQUITY_PCT = 5.0;
 const SL_EQUITY_PCT = 2.5;
@@ -112,11 +141,30 @@ async function fetchBarsSince(sym, sinceMs) {
 async function main() {
   const cfg = readJson(CONFIG, null);
   if (!cfg) { console.error("config missing — run optimize-v6-confluence.js first"); process.exit(1); }
-  const state = readJson(STATE, { prevScore: {}, cooldownUntil: {} });
+  const state = readJson(STATE, { prevScore: {} });
   const now = Date.now();
+  const errors = [];
+
+  // Occupancy is read BEFORE entries so the caps see reality. Settlement runs
+  // after, which means a slot freed this cycle is only usable next cycle —
+  // conservative, and it avoids opening against a position that has not been
+  // confirmed closed yet.
+  const existing = fs.existsSync(LEDGER)
+    ? fs.readFileSync(LEDGER, "utf8").split("\n").filter(Boolean)
+      .map((l) => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean)
+    : [];
+  const priorLatest = new Map();
+  for (const r of existing) priorLatest.set(r.id, r);
+  const stillOpen = [...priorLatest.values()].filter((r) => r.status === "OPEN");
+  const openSymbols = new Set(stillOpen.map((r) => r.symbol));
+  let openTotal = stillOpen.length;
+  let openLong = stillOpen.filter((r) => r.side === "LONG").length;
+  let openShort = openTotal - openLong;
 
   const opened = [];
-  const errors = [];
+  const blocked = {};
+  const note = (k) => { blocked[k] = (blocked[k] || 0) + 1; };
+
   for (const sym of SYMBOLS) {
     try {
       const bars = await fetchBars(sym);
@@ -128,18 +176,28 @@ async function main() {
       for (const n of NAMES) { sc += cfg.weights[n] * v[n]; tw += Math.abs(cfg.weights[n]); }
       sc = tw ? (sc / tw) * 100 : 0;
 
+      // prevScore is updated for EVERY symbol on EVERY cycle, including ones a
+      // cap rejects. Skipping the update would leave a stale prev and fire a
+      // phantom crossing later.
       const prev = Number(state.prevScore[sym]);
-      const cd = Number(state.cooldownUntil[sym]) || 0;
       let dir = 0;
-      if (Number.isFinite(prev) && now > cd) {
+      if (Number.isFinite(prev)) {
         if (prev < cfg.threshold && sc >= cfg.threshold) dir = 1;
         else if (prev > -cfg.threshold && sc <= -cfg.threshold) dir = -1;
       }
       state.prevScore[sym] = sc;
 
       if (dir) {
-        state.cooldownUntil[sym] = now + cfg.hold_hours * 3600e3;
+        if (opened.length >= MAX_NEW_PER_CYCLE) { note("MAX_NEW_PER_CYCLE"); continue; }
+        if (openSymbols.has(sym)) { note("SYMBOL_ALREADY_OPEN"); continue; }
+        if (openTotal >= MAX_CONCURRENT) { note("MAX_CONCURRENT"); continue; }
+        if ((dir > 0 ? openLong : openShort) >= MAX_PER_SIDE) { note("MAX_PER_SIDE"); continue; }
+
+        openSymbols.add(sym);
+        openTotal += 1;
+        if (dir > 0) openLong += 1; else openShort += 1;
         const row = {
+          policy_version: POLICY_VERSION,
           id: `V6__${sym}__${bars[i].t}__${dir > 0 ? "LONG" : "SHORT"}`,
           opened_at: new Date().toISOString(),
           bar_time: new Date(bars[i].t).toISOString(),
@@ -249,6 +307,9 @@ async function main() {
       cost_pct: cfg.cost_pct * LEVERAGE,   // charged on notional, so 2x
     },
     days_running: Math.round((now - firstAt) / 864e5 * 10) / 10,
+    policy_version: POLICY_VERSION,
+    caps: { max_concurrent: MAX_CONCURRENT, max_per_side: MAX_PER_SIDE, max_new_per_cycle: MAX_NEW_PER_CYCLE },
+    blocked_this_cycle: blocked,
     open_n: all.filter((r) => r.status === "OPEN").length,
     closed_n: closed.length,
     opened_this_cycle: opened.length,
@@ -272,6 +333,20 @@ async function main() {
       out_of_sample_t: cfg.out_of_sample.t,
       note: "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm",
     },
+    // Segmented so the pre-cap sample cannot silently drive the verdict.
+    by_policy: [1, 2].map((pv) => {
+      const g = closed.filter((r) => (Number(r.policy_version) || 1) === pv);
+      if (!g.length) return { policy_version: pv, closed_n: 0 };
+      const n2 = g.map((r) => r.net_pct);
+      const m2 = mean(n2), s2 = sd(n2);
+      return {
+        policy_version: pv, closed_n: g.length,
+        win_rate_pct: Math.round(n2.filter((v) => v > 0).length / n2.length * 1000) / 10,
+        mean_net_pct: Math.round(m2 * 1e4) / 1e4,
+        total_net_pct: Math.round(n2.reduce((a, b) => a + b, 0) * 1e4) / 1e4,
+        t_stat: s2 ? Math.round(m2 / (s2 / Math.sqrt(n2.length)) * 100) / 100 : null,
+      };
+    }),
     min_closed_for_verdict: 100,
     verdict: closed.length < 100 ? "ACCUMULATING" : (m > 0 && s && m / (s / Math.sqrt(nets.length)) > 1.96 ? "POSITIVE_SIGNIFICANT" : m > 0 ? "POSITIVE_NOT_SIGNIFICANT" : "NEGATIVE"),
     live_exposure_usdt: 0,

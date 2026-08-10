@@ -104,7 +104,27 @@
       td+vol 조합 · 임계값 <%= v6.config.threshold %> · 선물 <%= v6.leverage %>배
       · 익절 <%= helpers.formatSigned(v6.tpPct, 1, '%') %> / 손절 <%= helpers.formatSigned(v6.slPct, 1, '%') %>
       · 최대 <%= v6.config.hold_hours %>시간 · 비용 <%= v6.config.cost_pct %>% 반영
+      <% if (v6.caps) { %>
+        <br>동시 <%= v6.caps.max_concurrent %>건 · 한쪽 <%= v6.caps.max_per_side %>건 · 회당 신규 <%= v6.caps.max_new_per_cycle %>건 상한
+      <% } %>
     </p>
+
+    <% if (v6.byPolicy.length > 1) { %>
+      <div class="tblwrap" style="margin-bottom:14px"><table>
+        <thead><tr><th>선정 정책</th><th>거래</th><th>승률</th><th>누적 순%</th><th>t</th></tr></thead>
+        <tbody>
+          <% v6.byPolicy.forEach(function(p){ %>
+            <tr>
+              <td><%= p.policy_version === 1 ? 'v1 (상한 없음)' : 'v2 (상한 적용)' %></td>
+              <td class="mut"><%= p.closed_n %></td>
+              <td class="mut"><%= helpers.formatNumber(p.win_rate_pct, 1) %>%</td>
+              <td class="<%= p.total_net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(p.total_net_pct, 2, '%') %></td>
+              <td class="mut"><%= p.t_stat === null ? '-' : helpers.formatNumber(p.t_stat, 2) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table></div>
+    <% } %>
 
     <div class="big">
       <div>

@@ -277,6 +277,11 @@ function buildV6Lane(v6, ledgerRows) {
     tone: verdict === "POSITIVE_SIGNIFICANT" ? "up" : verdict === "NEGATIVE" ? "down" : "neutral",
     realised: r,
     leverage: asNumber(cfg.leverage),
+    caps: (v6 && v6.caps) || null,
+    // Segmented by selection policy: the pre-cap sample must not silently
+    // drive the verdict once caps exist.
+    byPolicy: Array.isArray(v6 && v6.by_policy) ? v6.by_policy.filter((p) => p.closed_n > 0) : [],
+    policyVersion: asNumber(v6 && v6.policy_version),
     tpPct: asNumber(cfg.tp_equity_pct),
     slPct: asNumber(cfg.sl_equity_pct),
     // the backtest number is carried so drift shows in BOTH directions
