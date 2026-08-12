@@ -85,6 +85,21 @@ function formatSigned(value, digits = 2, suffix = "%p") {
   return `${num > 0 ? "+" : ""}${formatNumber(num, digits)}${suffix}`;
 }
 
+// Prices span six orders of magnitude across this universe (BTC ~64000,
+// GALA ~0.0017). A fixed decimal count collapses the low end: GALA's take
+// profit 0.001725 and stop 0.001662 BOTH render as "0.0017" at four places,
+// so the two brackets look identical on screen. Scale the precision to the
+// magnitude instead — enough significant digits that a 1.25% move is always
+// visible.
+function formatPrice(value) {
+  const num = asNumber(value);
+  if (num === null) return "-";
+  const abs = Math.abs(num);
+  if (abs === 0) return "0";
+  const decimals = abs >= 1000 ? 2 : abs >= 1 ? 4 : Math.min(12, Math.ceil(-Math.log10(abs)) + 4);
+  return num.toLocaleString("ko-KR", { minimumFractionDigits: 0, maximumFractionDigits: decimals });
+}
+
 function formatDateTime(value) {
   if (!value) return "-";
   const ms = Date.parse(String(value));
@@ -333,7 +348,7 @@ function buildLocalDashboardView() {
     strip,
     v6: v6Lane,
     others,
-    helpers: { formatDateTime, formatAgo, formatNumber, formatPercent, formatSigned },
+    helpers: { formatDateTime, formatAgo, formatNumber, formatPercent, formatSigned, formatPrice },
   };
 }
 

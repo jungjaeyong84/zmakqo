@@ -183,9 +183,9 @@
             <tr>
               <td><%= p.symbol.replace('USDT','') %></td>
               <td class="<%= p.side === 'LONG' ? 'up' : 'down' %>"><%= p.side %></td>
-              <td class="mut"><%= p.entry_price %></td>
-              <td class="up"><%= helpers.formatNumber(p.tp_price, 4) %></td>
-              <td class="down"><%= helpers.formatNumber(p.sl_price, 4) %></td>
+              <td class="mut"><%= helpers.formatPrice(p.entry_price) %></td>
+              <td class="up"><%= helpers.formatPrice(p.tp_price) %></td>
+              <td class="down"><%= helpers.formatPrice(p.sl_price) %></td>
               <td class="mut"><%= helpers.formatDateTime(p.close_due_at) %></td>
             </tr>
           <% }); %>

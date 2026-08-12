@@ -3054,3 +3054,3412 @@
   "live_exposure_usdt": 0,
   "errors": []
 }
+{
+  "generated_at": "2026-08-10T23:40:21.792Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1
+  },
+  "open_n": 7,
+  "closed_n": 29,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 34.5,
+    "mean_net_pct": -0.2179,
+    "total_net_pct": -6.3186,
+    "ann_pct": -79.5,
+    "t_stat": -0.37,
+    "long_n": 9,
+    "short_n": 20,
+    "exit_target_n": 7,
+    "exit_stop_n": 15,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 29,
+      "win_rate_pct": 34.5,
+      "mean_net_pct": -0.2179,
+      "total_net_pct": -6.3186,
+      "t_stat": -0.37
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T00:40:26.683Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 30,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 36.7,
+    "mean_net_pct": -0.0533,
+    "total_net_pct": -1.5986,
+    "ann_pct": -19.4,
+    "t_stat": -0.09,
+    "long_n": 9,
+    "short_n": 21,
+    "exit_target_n": 8,
+    "exit_stop_n": 15,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 30,
+      "win_rate_pct": 36.7,
+      "mean_net_pct": -0.0533,
+      "total_net_pct": -1.5986,
+      "t_stat": -0.09
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T01:40:31.347Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.1,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 1
+  },
+  "open_n": 6,
+  "closed_n": 30,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 36.7,
+    "mean_net_pct": -0.0533,
+    "total_net_pct": -1.5986,
+    "ann_pct": -19.4,
+    "t_stat": -0.09,
+    "long_n": 9,
+    "short_n": 21,
+    "exit_target_n": 8,
+    "exit_stop_n": 15,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 30,
+      "win_rate_pct": 36.7,
+      "mean_net_pct": -0.0533,
+      "total_net_pct": -1.5986,
+      "t_stat": -0.09
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T02:40:36.086Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.1,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 1
+  },
+  "open_n": 6,
+  "closed_n": 30,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 36.7,
+    "mean_net_pct": -0.0533,
+    "total_net_pct": -1.5986,
+    "ann_pct": -19.4,
+    "t_stat": -0.09,
+    "long_n": 9,
+    "short_n": 21,
+    "exit_target_n": 8,
+    "exit_stop_n": 15,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 30,
+      "win_rate_pct": 36.7,
+      "mean_net_pct": -0.0533,
+      "total_net_pct": -1.5986,
+      "t_stat": -0.09
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T03:40:40.883Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.2,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 30,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 36.7,
+    "mean_net_pct": -0.0533,
+    "total_net_pct": -1.5986,
+    "ann_pct": -19.4,
+    "t_stat": -0.09,
+    "long_n": 9,
+    "short_n": 21,
+    "exit_target_n": 8,
+    "exit_stop_n": 15,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 30,
+      "win_rate_pct": 36.7,
+      "mean_net_pct": -0.0533,
+      "total_net_pct": -1.5986,
+      "t_stat": -0.09
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T04:40:45.751Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.2,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 30,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 36.7,
+    "mean_net_pct": -0.0533,
+    "total_net_pct": -1.5986,
+    "ann_pct": -19.4,
+    "t_stat": -0.09,
+    "long_n": 9,
+    "short_n": 21,
+    "exit_target_n": 8,
+    "exit_stop_n": 15,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 30,
+      "win_rate_pct": 36.7,
+      "mean_net_pct": -0.0533,
+      "total_net_pct": -1.5986,
+      "t_stat": -0.09
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T05:40:50.532Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1
+  },
+  "open_n": 5,
+  "closed_n": 31,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 35.5,
+    "mean_net_pct": -0.1412,
+    "total_net_pct": -4.3786,
+    "ann_pct": -51.6,
+    "t_stat": -0.24,
+    "long_n": 10,
+    "short_n": 21,
+    "exit_target_n": 8,
+    "exit_stop_n": 16,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 31,
+      "win_rate_pct": 35.5,
+      "mean_net_pct": -0.1412,
+      "total_net_pct": -4.3786,
+      "t_stat": -0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T06:40:55.377Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 31,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.5,
+    "mean_net_pct": -0.1412,
+    "total_net_pct": -4.3786,
+    "ann_pct": -51.6,
+    "t_stat": -0.24,
+    "long_n": 10,
+    "short_n": 21,
+    "exit_target_n": 8,
+    "exit_stop_n": 16,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 31,
+      "win_rate_pct": 35.5,
+      "mean_net_pct": -0.1412,
+      "total_net_pct": -4.3786,
+      "t_stat": -0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T07:40:59.686Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 3,
+    "SYMBOL_ALREADY_OPEN": 1
+  },
+  "open_n": 5,
+  "closed_n": 32,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 37.5,
+    "mean_net_pct": 0.0107,
+    "total_net_pct": 0.3414,
+    "ann_pct": 3.9,
+    "t_stat": 0.02,
+    "long_n": 10,
+    "short_n": 22,
+    "exit_target_n": 9,
+    "exit_stop_n": 16,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 32,
+      "win_rate_pct": 37.5,
+      "mean_net_pct": 0.0107,
+      "total_net_pct": 0.3414,
+      "t_stat": 0.02
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T08:41:04.518Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.4,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 32,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37.5,
+    "mean_net_pct": 0.0107,
+    "total_net_pct": 0.3414,
+    "ann_pct": 3.9,
+    "t_stat": 0.02,
+    "long_n": 10,
+    "short_n": 22,
+    "exit_target_n": 9,
+    "exit_stop_n": 16,
+    "exit_expiry_n": 7
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 32,
+      "win_rate_pct": 37.5,
+      "mean_net_pct": 0.0107,
+      "total_net_pct": 0.3414,
+      "t_stat": 0.02
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T09:41:09.513Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.4,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 2
+  },
+  "open_n": 5,
+  "closed_n": 33,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 36.4,
+    "mean_net_pct": -0.0232,
+    "total_net_pct": -0.7668,
+    "ann_pct": -8.5,
+    "t_stat": -0.04,
+    "long_n": 10,
+    "short_n": 23,
+    "exit_target_n": 9,
+    "exit_stop_n": 16,
+    "exit_expiry_n": 8
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 33,
+      "win_rate_pct": 36.4,
+      "mean_net_pct": -0.0232,
+      "total_net_pct": -0.7668,
+      "t_stat": -0.04
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T10:41:13.998Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.5,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 2
+  },
+  "open_n": 6,
+  "closed_n": 33,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 36.4,
+    "mean_net_pct": -0.0232,
+    "total_net_pct": -0.7668,
+    "ann_pct": -8.5,
+    "t_stat": -0.04,
+    "long_n": 10,
+    "short_n": 23,
+    "exit_target_n": 9,
+    "exit_stop_n": 16,
+    "exit_expiry_n": 8
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 33,
+      "win_rate_pct": 36.4,
+      "mean_net_pct": -0.0232,
+      "total_net_pct": -0.7668,
+      "t_stat": -0.04
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T11:41:19.095Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.5,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1,
+    "MAX_CONCURRENT": 1
+  },
+  "open_n": 5,
+  "closed_n": 34,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 38.2,
+    "mean_net_pct": 0.1163,
+    "total_net_pct": 3.9532,
+    "ann_pct": 42.4,
+    "t_stat": 0.21,
+    "long_n": 10,
+    "short_n": 24,
+    "exit_target_n": 10,
+    "exit_stop_n": 16,
+    "exit_expiry_n": 8
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 34,
+      "win_rate_pct": 38.2,
+      "mean_net_pct": 0.1163,
+      "total_net_pct": 3.9532,
+      "t_stat": 0.21
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T12:41:23.626Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.5,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1,
+    "MAX_CONCURRENT": 1
+  },
+  "open_n": 6,
+  "closed_n": 34,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 38.2,
+    "mean_net_pct": 0.1163,
+    "total_net_pct": 3.9532,
+    "ann_pct": 42.4,
+    "t_stat": 0.21,
+    "long_n": 10,
+    "short_n": 24,
+    "exit_target_n": 10,
+    "exit_stop_n": 16,
+    "exit_expiry_n": 8
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 34,
+      "win_rate_pct": 38.2,
+      "mean_net_pct": 0.1163,
+      "total_net_pct": 3.9532,
+      "t_stat": 0.21
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 0
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T13:41:28.158Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.6,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 3
+  },
+  "open_n": 5,
+  "closed_n": 35,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 37.1,
+    "mean_net_pct": 0.0335,
+    "total_net_pct": 1.1732,
+    "ann_pct": 12.2,
+    "t_stat": 0.06,
+    "long_n": 10,
+    "short_n": 25,
+    "exit_target_n": 10,
+    "exit_stop_n": 17,
+    "exit_expiry_n": 8
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 34,
+      "win_rate_pct": 38.2,
+      "mean_net_pct": 0.1163,
+      "total_net_pct": 3.9532,
+      "t_stat": 0.21
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 1,
+      "win_rate_pct": 0,
+      "mean_net_pct": -2.78,
+      "total_net_pct": -2.78,
+      "t_stat": null
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T14:41:32.642Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.6,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 2,
+    "MAX_CONCURRENT": 2
+  },
+  "open_n": 5,
+  "closed_n": 36,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 38.9,
+    "mean_net_pct": 0.0817,
+    "total_net_pct": 2.9405,
+    "ann_pct": 29.8,
+    "t_stat": 0.15,
+    "long_n": 10,
+    "short_n": 26,
+    "exit_target_n": 10,
+    "exit_stop_n": 17,
+    "exit_expiry_n": 9
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 35,
+      "win_rate_pct": 40,
+      "mean_net_pct": 0.1634,
+      "total_net_pct": 5.7205,
+      "t_stat": 0.3
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 1,
+      "win_rate_pct": 0,
+      "mean_net_pct": -2.78,
+      "total_net_pct": -2.78,
+      "t_stat": null
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T15:41:35.937Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.7,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 3,
+    "MAX_CONCURRENT": 11
+  },
+  "open_n": 4,
+  "closed_n": 38,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 2,
+  "realised": {
+    "win_rate_pct": 36.8,
+    "mean_net_pct": -0.0689,
+    "total_net_pct": -2.6195,
+    "ann_pct": -25.2,
+    "t_stat": -0.13,
+    "long_n": 12,
+    "short_n": 26,
+    "exit_target_n": 10,
+    "exit_stop_n": 19,
+    "exit_expiry_n": 9
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 35,
+      "win_rate_pct": 40,
+      "mean_net_pct": 0.1634,
+      "total_net_pct": 5.7205,
+      "t_stat": 0.3
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 3,
+      "win_rate_pct": 0,
+      "mean_net_pct": -2.78,
+      "total_net_pct": -8.34,
+      "t_stat": null
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T16:41:40.623Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.7,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1
+  },
+  "open_n": 4,
+  "closed_n": 39,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 35.9,
+    "mean_net_pct": -0.0959,
+    "total_net_pct": -3.7402,
+    "ann_pct": -35,
+    "t_stat": -0.19,
+    "long_n": 13,
+    "short_n": 26,
+    "exit_target_n": 10,
+    "exit_stop_n": 19,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 3,
+      "win_rate_pct": 0,
+      "mean_net_pct": -2.78,
+      "total_net_pct": -8.34,
+      "t_stat": null
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T17:41:45.311Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.8,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 39,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.9,
+    "mean_net_pct": -0.0959,
+    "total_net_pct": -3.7402,
+    "ann_pct": -35,
+    "t_stat": -0.19,
+    "long_n": 13,
+    "short_n": 26,
+    "exit_target_n": 10,
+    "exit_stop_n": 19,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 3,
+      "win_rate_pct": 0,
+      "mean_net_pct": -2.78,
+      "total_net_pct": -8.34,
+      "t_stat": null
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T18:41:49.930Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.8,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1
+  },
+  "open_n": 6,
+  "closed_n": 39,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.9,
+    "mean_net_pct": -0.0959,
+    "total_net_pct": -3.7402,
+    "ann_pct": -35,
+    "t_stat": -0.19,
+    "long_n": 13,
+    "short_n": 26,
+    "exit_target_n": 10,
+    "exit_stop_n": 19,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 3,
+      "win_rate_pct": 0,
+      "mean_net_pct": -2.78,
+      "total_net_pct": -8.34,
+      "t_stat": null
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T19:41:54.744Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.8,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1
+  },
+  "open_n": 6,
+  "closed_n": 39,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.9,
+    "mean_net_pct": -0.0959,
+    "total_net_pct": -3.7402,
+    "ann_pct": -35,
+    "t_stat": -0.19,
+    "long_n": 13,
+    "short_n": 26,
+    "exit_target_n": 10,
+    "exit_stop_n": 19,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 3,
+      "win_rate_pct": 0,
+      "mean_net_pct": -2.78,
+      "total_net_pct": -8.34,
+      "t_stat": null
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T20:41:59.499Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.9,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 39,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.9,
+    "mean_net_pct": -0.0959,
+    "total_net_pct": -3.7402,
+    "ann_pct": -35,
+    "t_stat": -0.19,
+    "long_n": 13,
+    "short_n": 26,
+    "exit_target_n": 10,
+    "exit_stop_n": 19,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 3,
+      "win_rate_pct": 0,
+      "mean_net_pct": -2.78,
+      "total_net_pct": -8.34,
+      "t_stat": null
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T21:42:03.986Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 2.9,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 3,
+    "SYMBOL_ALREADY_OPEN": 2
+  },
+  "open_n": 4,
+  "closed_n": 41,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 2,
+  "realised": {
+    "win_rate_pct": 36.6,
+    "mean_net_pct": -0.0439,
+    "total_net_pct": -1.8002,
+    "ann_pct": -16,
+    "t_stat": -0.09,
+    "long_n": 14,
+    "short_n": 27,
+    "exit_target_n": 11,
+    "exit_stop_n": 20,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 5,
+      "win_rate_pct": 20,
+      "mean_net_pct": -1.28,
+      "total_net_pct": -6.4,
+      "t_stat": -0.95
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T22:42:08.657Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 41,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 36.6,
+    "mean_net_pct": -0.0439,
+    "total_net_pct": -1.8002,
+    "ann_pct": -16,
+    "t_stat": -0.09,
+    "long_n": 14,
+    "short_n": 27,
+    "exit_target_n": 11,
+    "exit_stop_n": 20,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 5,
+      "win_rate_pct": 20,
+      "mean_net_pct": -1.28,
+      "total_net_pct": -6.4,
+      "t_stat": -0.95
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-11T23:42:13.468Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 41,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 36.6,
+    "mean_net_pct": -0.0439,
+    "total_net_pct": -1.8002,
+    "ann_pct": -16,
+    "t_stat": -0.09,
+    "long_n": 14,
+    "short_n": 27,
+    "exit_target_n": 11,
+    "exit_stop_n": 20,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 5,
+      "win_rate_pct": 20,
+      "mean_net_pct": -1.28,
+      "total_net_pct": -6.4,
+      "t_stat": -0.95
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T00:42:18.353Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 4,
+  "closed_n": 42,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 35.7,
+    "mean_net_pct": -0.1091,
+    "total_net_pct": -4.5802,
+    "ann_pct": -39.8,
+    "t_stat": -0.22,
+    "long_n": 14,
+    "short_n": 28,
+    "exit_target_n": 11,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 6,
+      "win_rate_pct": 16.7,
+      "mean_net_pct": -1.53,
+      "total_net_pct": -9.18,
+      "t_stat": -1.34
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T01:42:23.131Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.1,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_PER_SIDE": 1
+  },
+  "open_n": 5,
+  "closed_n": 42,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.7,
+    "mean_net_pct": -0.1091,
+    "total_net_pct": -4.5802,
+    "ann_pct": -39.8,
+    "t_stat": -0.22,
+    "long_n": 14,
+    "short_n": 28,
+    "exit_target_n": 11,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 6,
+      "win_rate_pct": 16.7,
+      "mean_net_pct": -1.53,
+      "total_net_pct": -9.18,
+      "t_stat": -1.34
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T02:42:27.724Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.1,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_PER_SIDE": 2
+  },
+  "open_n": 6,
+  "closed_n": 42,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 35.7,
+    "mean_net_pct": -0.1091,
+    "total_net_pct": -4.5802,
+    "ann_pct": -39.8,
+    "t_stat": -0.22,
+    "long_n": 14,
+    "short_n": 28,
+    "exit_target_n": 11,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 6,
+      "win_rate_pct": 16.7,
+      "mean_net_pct": -1.53,
+      "total_net_pct": -9.18,
+      "t_stat": -1.34
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T03:42:32.614Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.2,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1
+  },
+  "open_n": 5,
+  "closed_n": 43,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 37.2,
+    "mean_net_pct": 0.0033,
+    "total_net_pct": 0.1398,
+    "ann_pct": 1.2,
+    "t_stat": 0.01,
+    "long_n": 15,
+    "short_n": 28,
+    "exit_target_n": 12,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 7,
+      "win_rate_pct": 28.6,
+      "mean_net_pct": -0.6371,
+      "total_net_pct": -4.46,
+      "t_stat": -0.5
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T04:42:37.371Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.2,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 43,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37.2,
+    "mean_net_pct": 0.0033,
+    "total_net_pct": 0.1398,
+    "ann_pct": 1.2,
+    "t_stat": 0.01,
+    "long_n": 15,
+    "short_n": 28,
+    "exit_target_n": 12,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 7,
+      "win_rate_pct": 28.6,
+      "mean_net_pct": -0.6371,
+      "total_net_pct": -4.46,
+      "t_stat": -0.5
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T05:42:42.205Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 43,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37.2,
+    "mean_net_pct": 0.0033,
+    "total_net_pct": 0.1398,
+    "ann_pct": 1.2,
+    "t_stat": 0.01,
+    "long_n": 15,
+    "short_n": 28,
+    "exit_target_n": 12,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 7,
+      "win_rate_pct": 28.6,
+      "mean_net_pct": -0.6371,
+      "total_net_pct": -4.46,
+      "t_stat": -0.5
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T06:42:46.930Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 43,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37.2,
+    "mean_net_pct": 0.0033,
+    "total_net_pct": 0.1398,
+    "ann_pct": 1.2,
+    "t_stat": 0.01,
+    "long_n": 15,
+    "short_n": 28,
+    "exit_target_n": 12,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 7,
+      "win_rate_pct": 28.6,
+      "mean_net_pct": -0.6371,
+      "total_net_pct": -4.46,
+      "t_stat": -0.5
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T07:42:51.743Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.3,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 43,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37.2,
+    "mean_net_pct": 0.0033,
+    "total_net_pct": 0.1398,
+    "ann_pct": 1.2,
+    "t_stat": 0.01,
+    "long_n": 15,
+    "short_n": 28,
+    "exit_target_n": 12,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 7,
+      "win_rate_pct": 28.6,
+      "mean_net_pct": -0.6371,
+      "total_net_pct": -4.46,
+      "t_stat": -0.5
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T08:42:56.526Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.4,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 43,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37.2,
+    "mean_net_pct": 0.0033,
+    "total_net_pct": 0.1398,
+    "ann_pct": 1.2,
+    "t_stat": 0.01,
+    "long_n": 15,
+    "short_n": 28,
+    "exit_target_n": 12,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 7,
+      "win_rate_pct": 28.6,
+      "mean_net_pct": -0.6371,
+      "total_net_pct": -4.46,
+      "t_stat": -0.5
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T09:43:01.448Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.4,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 1
+  },
+  "open_n": 5,
+  "closed_n": 44,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 38.6,
+    "mean_net_pct": 0.1105,
+    "total_net_pct": 4.8598,
+    "ann_pct": 40.3,
+    "t_stat": 0.22,
+    "long_n": 15,
+    "short_n": 29,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 8,
+      "win_rate_pct": 37.5,
+      "mean_net_pct": 0.0325,
+      "total_net_pct": 0.26,
+      "t_stat": 0.03
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T10:43:06.565Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.5,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 2
+  },
+  "open_n": 5,
+  "closed_n": 44,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 38.6,
+    "mean_net_pct": 0.1105,
+    "total_net_pct": 4.8598,
+    "ann_pct": 40.3,
+    "t_stat": 0.22,
+    "long_n": 15,
+    "short_n": 29,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 8,
+      "win_rate_pct": 37.5,
+      "mean_net_pct": 0.0325,
+      "total_net_pct": 0.26,
+      "t_stat": 0.03
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T11:43:11.399Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.5,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 44,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 38.6,
+    "mean_net_pct": 0.1105,
+    "total_net_pct": 4.8598,
+    "ann_pct": 40.3,
+    "t_stat": 0.22,
+    "long_n": 15,
+    "short_n": 29,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 10
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 8,
+      "win_rate_pct": 37.5,
+      "mean_net_pct": 0.0325,
+      "total_net_pct": 0.26,
+      "t_stat": 0.03
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T12:43:17.221Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.5,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 45,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 37.8,
+    "mean_net_pct": 0.0483,
+    "total_net_pct": 2.1751,
+    "ann_pct": 17.6,
+    "t_stat": 0.1,
+    "long_n": 15,
+    "short_n": 30,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 11
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 9,
+      "win_rate_pct": 33.3,
+      "mean_net_pct": -0.2694,
+      "total_net_pct": -2.4247,
+      "t_stat": -0.23
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T13:43:20.033Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.6,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 3,
+    "MAX_CONCURRENT": 13
+  },
+  "open_n": 6,
+  "closed_n": 45,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37.8,
+    "mean_net_pct": 0.0483,
+    "total_net_pct": 2.1751,
+    "ann_pct": 17.6,
+    "t_stat": 0.1,
+    "long_n": 15,
+    "short_n": 30,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 11
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 9,
+      "win_rate_pct": 33.3,
+      "mean_net_pct": -0.2694,
+      "total_net_pct": -2.4247,
+      "t_stat": -0.23
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T14:43:24.705Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.6,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 1,
+    "MAX_CONCURRENT": 1
+  },
+  "open_n": 6,
+  "closed_n": 45,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37.8,
+    "mean_net_pct": 0.0483,
+    "total_net_pct": 2.1751,
+    "ann_pct": 17.6,
+    "t_stat": 0.1,
+    "long_n": 15,
+    "short_n": 30,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 11
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 9,
+      "win_rate_pct": 33.3,
+      "mean_net_pct": -0.2694,
+      "total_net_pct": -2.4247,
+      "t_stat": -0.23
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T15:43:28.321Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.7,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "SYMBOL_ALREADY_OPEN": 2,
+    "MAX_CONCURRENT": 8
+  },
+  "open_n": 5,
+  "closed_n": 46,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 37,
+    "mean_net_pct": 0.0137,
+    "total_net_pct": 0.632,
+    "ann_pct": 5,
+    "t_stat": 0.03,
+    "long_n": 16,
+    "short_n": 30,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 12
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 10,
+      "win_rate_pct": 30,
+      "mean_net_pct": -0.3968,
+      "total_net_pct": -3.9678,
+      "t_stat": -0.37
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T16:43:33.054Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.7,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 46,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37,
+    "mean_net_pct": 0.0137,
+    "total_net_pct": 0.632,
+    "ann_pct": 5,
+    "t_stat": 0.03,
+    "long_n": 16,
+    "short_n": 30,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 12
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 10,
+      "win_rate_pct": 30,
+      "mean_net_pct": -0.3968,
+      "total_net_pct": -3.9678,
+      "t_stat": -0.37
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T17:43:37.742Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.8,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 6,
+  "closed_n": 46,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 37,
+    "mean_net_pct": 0.0137,
+    "total_net_pct": 0.632,
+    "ann_pct": 5,
+    "t_stat": 0.03,
+    "long_n": 16,
+    "short_n": 30,
+    "exit_target_n": 13,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 12
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 10,
+      "win_rate_pct": 30,
+      "mean_net_pct": -0.3968,
+      "total_net_pct": -3.9678,
+      "t_stat": -0.37
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T18:43:42.487Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.8,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {},
+  "open_n": 5,
+  "closed_n": 47,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 1,
+  "realised": {
+    "win_rate_pct": 38.3,
+    "mean_net_pct": 0.1139,
+    "total_net_pct": 5.352,
+    "ann_pct": 41.6,
+    "t_stat": 0.24,
+    "long_n": 16,
+    "short_n": 31,
+    "exit_target_n": 14,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 12
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 11,
+      "win_rate_pct": 36.4,
+      "mean_net_pct": 0.0684,
+      "total_net_pct": 0.7522,
+      "t_stat": 0.06
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T19:43:47.205Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.8,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 1
+  },
+  "open_n": 6,
+  "closed_n": 47,
+  "opened_this_cycle": 1,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 38.3,
+    "mean_net_pct": 0.1139,
+    "total_net_pct": 5.352,
+    "ann_pct": 41.6,
+    "t_stat": 0.24,
+    "long_n": 16,
+    "short_n": 31,
+    "exit_target_n": 14,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 12
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 11,
+      "win_rate_pct": 36.4,
+      "mean_net_pct": 0.0684,
+      "total_net_pct": 0.7522,
+      "t_stat": 0.06
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-12T20:43:51.523Z",
+  "lane": "v6_confluence_paper",
+  "config": {
+    "threshold": 55,
+    "hold_hours": 24,
+    "weights": {
+      "trend": 0,
+      "htf": 0,
+      "td": -1,
+      "stoch": 0,
+      "vol": -1,
+      "regime": 0
+    },
+    "leverage": 2,
+    "tp_equity_pct": 5,
+    "sl_equity_pct": -2.5,
+    "tp_price_pct": 2.5,
+    "sl_price_pct": -1.25,
+    "cost_pct": 0.28
+  },
+  "days_running": 3.9,
+  "policy_version": 2,
+  "caps": {
+    "max_concurrent": 6,
+    "max_per_side": 4,
+    "max_new_per_cycle": 2
+  },
+  "blocked_this_cycle": {
+    "MAX_CONCURRENT": 3
+  },
+  "open_n": 6,
+  "closed_n": 47,
+  "opened_this_cycle": 0,
+  "closed_this_cycle": 0,
+  "realised": {
+    "win_rate_pct": 38.3,
+    "mean_net_pct": 0.1139,
+    "total_net_pct": 5.352,
+    "ann_pct": 41.6,
+    "t_stat": 0.24,
+    "long_n": 16,
+    "short_n": 31,
+    "exit_target_n": 14,
+    "exit_stop_n": 21,
+    "exit_expiry_n": 12
+  },
+  "backtest_expectation": {
+    "out_of_sample_ann_pct": 82.54872785699568,
+    "out_of_sample_sharpe": 2.00949089979265,
+    "out_of_sample_t": 1.1031535175502107,
+    "note": "best of 30 in-sample cells reached only t=0.28; this lane tests, it does not confirm"
+  },
+  "by_policy": [
+    {
+      "policy_version": 1,
+      "closed_n": 36,
+      "win_rate_pct": 38.9,
+      "mean_net_pct": 0.1278,
+      "total_net_pct": 4.5998,
+      "t_stat": 0.24
+    },
+    {
+      "policy_version": 2,
+      "closed_n": 11,
+      "win_rate_pct": 36.4,
+      "mean_net_pct": 0.0684,
+      "total_net_pct": 0.7522,
+      "t_stat": 0.06
+    }
+  ],
+  "min_closed_for_verdict": 100,
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "errors": []
+}
