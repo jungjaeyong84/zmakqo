@@ -84,6 +84,38 @@ const MAX_CONCURRENT = 6;
 const MAX_PER_SIDE = 4;
 const MAX_NEW_PER_CYCLE = 2;
 
+// 2026-08-11 — maker-entry cost model.
+//
+// Cost is the only lever available right now that raises the margin without
+// fitting anything. Win rate 38.3% sits 1.23pp above the 37.07% that a 2:1
+// bracket needs at taker cost; cutting the entry leg to maker widens that
+// materially, and it requires guessing nothing about the market.
+//
+// ONLY THE ENTRY CAN BE MAKER. Both bracket legs are STOP_MARKET /
+// TAKE_PROFIT_MARKET — Binance's closePosition flag accepts nothing else
+// (binanceFuturesPrivate.js:1112) — so the exit always pays taker. Modelling
+// the exit as maker would be the same error caught on 08-07, which flattered
+// the v3 execution ceiling until the order types were actually checked.
+//
+// p, the passive fill rate, CANNOT BE MEASURED IN PAPER: no order is placed,
+// so nothing fills or fails to fill. It is therefore not baked into the
+// ledger. The ledger records facts — prices and gross return, both independent
+// of how the entry filled — and the report applies cost SCENARIOS on top,
+// including the fill rate at which the strategy breaks even. That keeps the
+// stored data honest if the assumption later turns out wrong.
+const TAKER_FEE_PCT = 0.05;      // per side
+const MAKER_FEE_PCT = 0.02;      // per side
+const TAKER_SLIP_PCT = 0.01;     // half-spread crossed on a market entry
+const EXIT_SLIP_PCT = 0.02;      // bracket fires into a moving market
+const FILL_RATES = [0, 0.25, 0.5, 0.75, 1];
+
+// Round-trip cost on EQUITY at leverage L and passive fill rate p.
+function roundTripCostPct(p, L) {
+  const entry = p * MAKER_FEE_PCT + (1 - p) * (TAKER_FEE_PCT + TAKER_SLIP_PCT);
+  const exit = TAKER_FEE_PCT + EXIT_SLIP_PCT;   // always market
+  return (entry + exit) * L;
+}
+
 const LEVERAGE = 2;
 const TP_EQUITY_PCT = 5.0;
 const SL_EQUITY_PCT = 2.5;
@@ -347,6 +379,32 @@ async function main() {
         t_stat: s2 ? Math.round(m2 / (s2 / Math.sqrt(n2.length)) * 100) / 100 : null,
       };
     }),
+    // Cost scenarios. net_pct in the ledger stays at the conservative
+    // all-taker figure; these show what maker entry would change.
+    cost_scenarios: closed.length ? FILL_RATES.map((p) => {
+      const c = roundTripCostPct(p, LEVERAGE);
+      const nets2 = closed.map((r) => r.gross_pct - c);
+      const m2 = mean(nets2), s2 = sd(nets2);
+      return {
+        maker_fill_rate: p,
+        cost_pct: Math.round(c * 1e4) / 1e4,
+        breakeven_win_rate_pct: Math.round((SL_EQUITY_PCT + c) / (TP_EQUITY_PCT + SL_EQUITY_PCT) * 1000) / 10,
+        mean_net_pct: Math.round(m2 * 1e4) / 1e4,
+        total_net_pct: Math.round(nets2.reduce((a, b) => a + b, 0) * 1e4) / 1e4,
+        t_stat: s2 ? Math.round(m2 / (s2 / Math.sqrt(nets2.length)) * 100) / 100 : null,
+      };
+    }) : null,
+    // The fill rate at which realised win rate exactly covers cost. Above it
+    // the strategy pays; below it, it does not.
+    breakeven_fill_rate: (() => {
+      if (!closed.length) return null;
+      const w = closed.filter((r) => r.net_pct > 0).length / closed.length;
+      const cNeeded = w * (TP_EQUITY_PCT + SL_EQUITY_PCT) - SL_EQUITY_PCT;
+      const c0 = roundTripCostPct(0, LEVERAGE), c1 = roundTripCostPct(1, LEVERAGE);
+      if (cNeeded >= c0) return 0;          // already covered at pure taker
+      if (cNeeded <= c1) return null;       // unreachable even at 100% passive
+      return Math.round((c0 - cNeeded) / (c0 - c1) * 1000) / 1000;
+    })(),
     min_closed_for_verdict: 100,
     verdict: closed.length < 100 ? "ACCUMULATING" : (m > 0 && s && m / (s / Math.sqrt(nets.length)) > 1.96 ? "POSITIVE_SIGNIFICANT" : m > 0 ? "POSITIVE_NOT_SIGNIFICANT" : "NEGATIVE"),
     live_exposure_usdt: 0,

@@ -138,3 +138,17 @@
   "ledger": "/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/v5_flow_history.jsonl",
   "note": "API serves ~30d; this ledger is the only way that horizon grows."
 }
+{
+  "generated_at": "2026-08-12T22:20:24.556Z",
+  "rows_appended": 288,
+  "rows_total": 21024,
+  "rows_before": 20736,
+  "symbols": 24,
+  "period": "4h",
+  "banked_span_days": 36.5,
+  "earliest": "2026-07-07T08:00:00.000Z",
+  "latest": "2026-08-12T20:00:00.000Z",
+  "failures": [],
+  "ledger": "/Users/jeongjaeyong/Projects/donbeolja/ops/runtime/v5_flow_history.jsonl",
+  "note": "API serves ~30d; this ledger is the only way that horizon grows."
+}

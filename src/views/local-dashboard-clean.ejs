@@ -174,6 +174,35 @@
       <% } %>
     </div>
 
+    <% if (v6.costScenarios.length) { %>
+      <div class="sub">비용 시나리오 — 진입 메이커 체결률별</div>
+      <div class="tblwrap"><table>
+        <thead><tr><th>체결률</th><th>왕복 비용</th><th>손익분기 승률</th><th>거래당 순%</th><th>누적 순%</th><th>t</th></tr></thead>
+        <tbody>
+          <% v6.costScenarios.forEach(function(c){ %>
+            <tr>
+              <td><%= Math.round(c.maker_fill_rate * 100) %>%</td>
+              <td class="mut"><%= helpers.formatNumber(c.cost_pct, 2) %>%</td>
+              <td class="mut"><%= helpers.formatNumber(c.breakeven_win_rate_pct, 1) %>%</td>
+              <td class="<%= c.mean_net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(c.mean_net_pct, 3, '%') %></td>
+              <td class="<%= c.total_net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(c.total_net_pct, 2, '%') %></td>
+              <td class="mut"><%= c.t_stat === null ? '-' : helpers.formatNumber(c.t_stat, 2) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table></div>
+      <div class="barnote" style="margin-top:6px">
+        청산 브래킷은 시장가라 항상 테이커입니다 — 진입 다리만 메이커 가능.
+        <% if (v6.breakevenFillRate === 0) { %>
+          손익분기 체결률 <b style="color:var(--fg)">0%</b> — 전부 테이커로도 비용은 이미 덮입니다.
+        <% } else if (v6.breakevenFillRate === null) { %>
+          손익분기 체결률 <b style="color:var(--down)">도달 불가</b> — 100% 메이커여도 비용 미달.
+        <% } else { %>
+          손익분기 체결률 <b style="color:var(--fg)"><%= Math.round(v6.breakevenFillRate * 100) %>%</b> 이상 필요.
+        <% } %>
+      </div>
+    <% } %>
+
     <% if (v6.open.length) { %>
       <div class="sub">보유 중</div>
       <div class="tblwrap"><table>
