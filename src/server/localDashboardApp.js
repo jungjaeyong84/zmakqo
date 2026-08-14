@@ -299,6 +299,7 @@ function buildV6Lane(v6, ledgerRows) {
     policyVersion: asNumber(v6 && v6.policy_version),
     costScenarios: Array.isArray(v6 && v6.cost_scenarios) ? v6.cost_scenarios : [],
     breakevenFillRate: v6 && v6.breakeven_fill_rate !== undefined ? v6.breakeven_fill_rate : undefined,
+    sampleReq: (v6 && v6.sample_requirement) || null,
     tpPct: asNumber(cfg.tp_equity_pct),
     slPct: asNumber(cfg.sl_equity_pct),
     // the backtest number is carried so drift shows in BOTH directions

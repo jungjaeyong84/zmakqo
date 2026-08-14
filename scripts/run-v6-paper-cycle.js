@@ -405,7 +405,49 @@ async function main() {
       if (cNeeded <= c1) return null;       // unreachable even at 100% passive
       return Math.round((c0 - cNeeded) / (c0 - c1) * 1000) / 1000;
     })(),
-    min_closed_for_verdict: 100,
+    // 2026-08-11 — the 100-trade line was wrong and had to go.
+    //
+    // It was picked as a round number, not derived. At the observed dispersion
+    // it is not a decision point at all: reaching 100 would put t at roughly
+    // 0.64, indistinguishable from the 0.52 already in hand. A progress bar
+    // filling toward a number that cannot settle anything is worse than no bar,
+    // because it implies an answer is imminent.
+    //
+    // The target is derived from the SD instead, which is what actually sets
+    // the sample requirement. Two lines are reported and they mean different
+    // things:
+    //   n50  the point at which, IF the true edge equals what is observed, the
+    //        t-stat reaches 1.96 — but only about half the time. This is the
+    //        number most people quote and it is the optimistic one.
+    //   n80  the point at which that detection happens 80% of the time. This is
+    //        the honest planning number.
+    // Both are recomputed from the SD, not the edge, so the goalpost does not
+    // chase noise. The edge enters only through what size of effect is being
+    // looked for.
+    sample_requirement: (() => {
+      if (closed.length < 10 || !s) return null;
+      const edge = Math.abs(m) || 1e-9;
+      const n50 = Math.ceil(Math.pow(1.96 * s / edge, 2));
+      const n80 = Math.ceil(Math.pow((1.96 + 0.84) * s / edge, 2));
+      const perDay = firstAt < now ? closed.length / Math.max((now - firstAt) / 864e5, 0.1) : null;
+      return {
+        observed_sd_pct: Math.round(s * 1e4) / 1e4,
+        observed_edge_pct: Math.round(m * 1e4) / 1e4,
+        n_for_t196_50pct_power: n50,
+        n_for_t196_80pct_power: n80,
+        trades_per_day: perDay ? Math.round(perDay * 10) / 10 : null,
+        days_to_n50: perDay ? Math.round((n50 - closed.length) / perDay) : null,
+        days_to_n80: perDay ? Math.round((n80 - closed.length) / perDay) : null,
+        note: "derived from dispersion, not chosen. The old 100-trade line could not have settled anything.",
+      };
+    })(),
+    min_closed_for_verdict: (() => {
+      if (closed.length < 10 || !s) return 100;
+      const edge = Math.abs(m) || 1e-9;
+      // plan against 80% power, floored so an early lucky streak cannot make
+      // the target look trivially close
+      return Math.max(200, Math.ceil(Math.pow((1.96 + 0.84) * s / edge, 2)));
+    })(),
     verdict: closed.length < 100 ? "ACCUMULATING" : (m > 0 && s && m / (s / Math.sqrt(nets.length)) > 1.96 ? "POSITIVE_SIGNIFICANT" : m > 0 ? "POSITIVE_NOT_SIGNIFICANT" : "NEGATIVE"),
     live_exposure_usdt: 0,
     errors,

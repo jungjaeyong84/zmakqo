@@ -163,6 +163,12 @@
     <div class="barnote">
       판정까지 <%= helpers.formatNumber(v6.closedN) %> / <%= helpers.formatNumber(v6.minN) %> 거래
       · <%= helpers.formatNumber(v6.daysRunning, 1) %>일 경과
+      <% if (v6.sampleReq) { %>
+        <br>표본 기준은 관측 분산에서 유도했습니다 (임의로 고른 100건은 도달해도 아무것도 못 가립니다).
+        검정력 50% <%= helpers.formatNumber(v6.sampleReq.n_for_t196_50pct_power) %>건(약 <%= v6.sampleReq.days_to_n50 %>일)
+        · 검정력 80% <%= helpers.formatNumber(v6.sampleReq.n_for_t196_80pct_power) %>건(약 <%= v6.sampleReq.days_to_n80 %>일)
+        · 현재 <%= v6.sampleReq.trades_per_day %>건/일
+      <% } %>
       <%
         /* The backtest's RETURN is the seductive number and it would be read as
            a forecast. Its t-stat is the honest one: this config reached t 1.10,
