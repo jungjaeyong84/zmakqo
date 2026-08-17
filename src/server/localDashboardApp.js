@@ -29,6 +29,8 @@ const VIEWS_DIR = path.resolve(__dirname, "../views");
 const OPS_RUNTIME_DIR = path.resolve(__dirname, "../../ops/runtime");
 
 const PATHS = {
+  v7: path.join(OPS_DAILY_DIR, "v7_positioning_latest.json"),
+  v7Ledger: path.join(OPS_RUNTIME_DIR, "v7_positioning_ledger.jsonl"),
   v6: path.join(OPS_DAILY_DIR, "v6_paper_latest.json"),
   v6Ledger: path.join(OPS_RUNTIME_DIR, "v6_paper_ledger.jsonl"),
   funding: path.join(OPS_DAILY_DIR, "v3_funding_monitor_latest.json"),
@@ -314,7 +316,87 @@ function buildV6Lane(v6, ledgerRows) {
   };
 }
 
+// 2026-08-17 — v7 takes the top slot from v6.
+//
+// The rule this page runs on is "the ONE lane under active test at full size,
+// everything else one line". v6 stopped being that lane: 84 closed trades at
+// t = -0.06, and its own report derived that settling the question needs 49,083
+// trades — about 13 years at its trade rate. It is not accumulating toward an
+// answer, it is accumulating toward nothing, and a page that keeps it at full
+// size implies a verdict is coming.
+//
+// v7 is the lane under test now. Its ledger is one row per REBALANCE, not per
+// position, so it needs its own reader: v7 has no id field and nothing to
+// deduplicate — every row is a distinct 4h period.
+function readV7Ledger(filePath) {
+  let raw;
+  try { raw = fs.readFileSync(filePath, "utf8"); } catch (_error) { return []; }
+  const rows = [];
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try { rows.push(JSON.parse(line)); } catch (_error) { /* torn line must not blank the page */ }
+  }
+  return rows;
+}
+
+function symbolsOf(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((x) => (typeof x === "string" ? x : (x && x.symbol) || null)).filter(Boolean);
+}
+
+function buildV7Lane(v7, ledgerRows) {
+  const r = (v7 && v7.realised) || null;
+  const bt = (v7 && v7.backtest_expectation) || {};
+  const req = (v7 && v7.sample_requirement) || null;
+  const periods = Number(v7 && v7.periods_booked) || 0;
+
+  // 200 periods is ~33 days of forward data. It is not a significance
+  // threshold — it is the point at which the forward sample is comparable to
+  // the 242-period backtest, so the two can be argued against each other.
+  const minN = 200;
+
+  const latest = ledgerRows.length ? ledgerRows[ledgerRows.length - 1] : null;
+  const recent = ledgerRows.slice(-8).reverse();
+
+  const verdict = String((v7 && v7.verdict) || "NO_DATA");
+  const label = verdict === "ACCUMULATING" ? "표본 쌓는 중"
+    : verdict === "HOLDING" ? "유의성 유지 중"
+      : verdict === "NOT_CONFIRMED" ? "확인되지 않음" : verdict;
+
+  return {
+    generatedAt: (v7 && v7.generated_at) || null,
+    signal: (v7 && v7.signal) || null,
+    k: Number(v7 && v7.k) || 0,
+    symbols: Number(v7 && v7.symbols) || 0,
+    periods,
+    minN,
+    progressPct: Math.min(100, Math.round((periods / minN) * 100)),
+    equity: asNumber(v7 && v7.equity),
+    verdict,
+    verdictLabel: label,
+    tone: verdict === "HOLDING" ? "up" : verdict === "NOT_CONFIRMED" ? "down" : "neutral",
+    realised: r,
+    sampleReq: req,
+    // The backtest's return is the seductive number; its t is the honest one.
+    // Both are carried because the whole point of this lane is watching the
+    // forward t move away from the backtest t in one direction or the other.
+    expectedAnnPct: asNumber(bt.ann_pct),
+    expectedT: asNumber(bt.t_stat),
+    expectedIcT: asNumber(bt.cross_sectional_ic_t),
+    expectedCaveat: bt.caveat || null,
+    // The LEDGER stores {symbol, spread} objects; the REPORT stores bare symbol
+    // strings. Both reach here depending on which artifact is read, so normalise
+    // rather than assuming — the template only ever wants the symbol.
+    longs: symbolsOf(latest && latest.longs),
+    shorts: symbolsOf(latest && latest.shorts),
+    latestAt: latest ? latest.bar_time : null,
+    recent,
+    errors: Array.isArray(v7 && v7.errors) ? v7.errors : [],
+  };
+}
+
 function buildLocalDashboardView() {
+  const v7 = readJsonSafe(PATHS.v7, {});
   const v6 = readJsonSafe(PATHS.v6, {});
   const funding = readJsonSafe(PATHS.funding, {});
   const v4perf = readJsonSafe(PATHS.v4perf, {});
@@ -327,6 +409,7 @@ function buildLocalDashboardView() {
   const flowLane = buildFlowLane(flow);
   const backup = backupSummary();
   const v6Lane = buildV6Lane(v6, readJsonLines(PATHS.v6Ledger));
+  const v7Lane = buildV7Lane(v7, readV7Ledger(PATHS.v7Ledger));
 
   // One status strip, four facts, no prose.
   const strip = [
@@ -336,8 +419,16 @@ function buildLocalDashboardView() {
     { label: "데이터", value: `${formatNumber(flowLane.bankedSpanDays, 0)}일`, tone: "neutral" },
   ];
 
-  // Everything that is not the lane under test gets one line.
+  // Everything that is not the lane under test gets one line. v6 is here now,
+  // not at the top: its own report puts the sample needed for a verdict at
+  // 49,083 trades (~13 years), so there is no answer coming to wait for.
   const others = [
+    {
+      name: "v6 컨플루언스",
+      state: v6Lane.realised ? `${formatNumber(v6Lane.closedN)}건 · t ${formatNumber(v6Lane.realised.t_stat, 2)}` : `${formatNumber(v6Lane.closedN)}건`,
+      note: v6Lane.sampleReq ? `판정에 ${formatNumber(v6Lane.sampleReq.n_for_t196_80pct_power)}건 필요 — 사실상 판정 불가` : "가격 기반 · 방향성",
+      at: v6Lane.generatedAt,
+    },
     { name: "v4 크로스섹셔널", state: `${formatNumber(v4.days)}일 / ${formatNumber(v4.minDays)}일`, note: "시장중립 · 누적 중", at: v4.generatedAt },
     { name: "펀딩 캐리", state: carry.best ? `최고 ${formatSigned(carry.best.excess_pct)}` : "-", note: carry.isDormant ? "무위험 대비 미달 → 대기" : "수확 조건 충족", at: carry.generatedAt },
     { name: "flow 수집기", state: `${formatNumber(flowLane.bankedSpanDays, 0)}일 확보`, note: "백필 불가 · 하루 2회", at: flowLane.generatedAt },
@@ -349,6 +440,7 @@ function buildLocalDashboardView() {
     header: { title: "DONBEOLJA", refreshNote: "60초 자동 새로고침" },
     health,
     strip,
+    v7: v7Lane,
     v6: v6Lane,
     others,
     helpers: { formatDateTime, formatAgo, formatNumber, formatPercent, formatSigned, formatPrice },
@@ -382,5 +474,7 @@ module.exports = {
     buildV4Lane,
     buildFlowLane,
     buildV6Lane,
+    buildV7Lane,
+    readV7Ledger,
   },
 };

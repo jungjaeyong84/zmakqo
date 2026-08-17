@@ -97,158 +97,117 @@
 
   <div class="main">
     <h2>
-      v6 페이퍼
-      <span class="badge <%= v6.tone %>"><%= v6.verdictLabel %></span>
+      v7 포지셔닝
+      <span class="badge <%= v7.tone %>"><%= v7.verdictLabel %></span>
     </h2>
     <p class="cfg">
-      td+vol 조합 · 임계값 <%= v6.config.threshold %> · 선물 <%= v6.leverage %>배
-      · 익절 <%= helpers.formatSigned(v6.tpPct, 1, '%') %> / 손절 <%= helpers.formatSigned(v6.slPct, 1, '%') %>
-      · 최대 <%= v6.config.hold_hours %>시간 · 비용 <%= v6.config.cost_pct %>% 반영
-      <% if (v6.caps) { %>
-        <br>동시 <%= v6.caps.max_concurrent %>건 · 한쪽 <%= v6.caps.max_per_side %>건 · 회당 신규 <%= v6.caps.max_new_per_cycle %>건 상한
-      <% } %>
+      고래-개미 포지션 격차 · 횡단면 랭킹 · 달러뉴트럴
+      · 롱 하위 <%= v7.k %>개 / 숏 상위 <%= v7.k %>개 (<%= v7.symbols %>개 중)
+      · 4시간 리밸런싱 · 회전량당 0.07% 비용
+      <br>가격에서 유도되지 않는 유일한 신호입니다 — 대형 계정과 개인 계정의 실제 보유 방향 차이.
     </p>
-
-    <% if (v6.byPolicy.length > 1) { %>
-      <div class="tblwrap" style="margin-bottom:14px"><table>
-        <thead><tr><th>선정 정책</th><th>거래</th><th>승률</th><th>누적 순%</th><th>t</th></tr></thead>
-        <tbody>
-          <% v6.byPolicy.forEach(function(p){ %>
-            <tr>
-              <td><%= p.policy_version === 1 ? 'v1 (상한 없음)' : 'v2 (상한 적용)' %></td>
-              <td class="mut"><%= p.closed_n %></td>
-              <td class="mut"><%= helpers.formatNumber(p.win_rate_pct, 1) %>%</td>
-              <td class="<%= p.total_net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(p.total_net_pct, 2, '%') %></td>
-              <td class="mut"><%= p.t_stat === null ? '-' : helpers.formatNumber(p.t_stat, 2) %></td>
-            </tr>
-          <% }); %>
-        </tbody>
-      </table></div>
-    <% } %>
 
     <div class="big">
       <div>
-        <div class="k">종료 거래</div>
-        <div class="v"><%= helpers.formatNumber(v6.closedN) %></div>
-        <div class="s">보유 중 <%= helpers.formatNumber(v6.openN) %>건</div>
+        <div class="k">리밸런싱</div>
+        <div class="v"><%= helpers.formatNumber(v7.periods) %></div>
+        <div class="s">4시간마다 1회</div>
       </div>
-      <% if (v6.realised) { %>
-        <div>
-          <div class="k">승률</div>
-          <div class="v"><%= helpers.formatNumber(v6.realised.win_rate_pct, 1) %>%</div>
-          <div class="s">익절 <%= v6.realised.exit_target_n %> · 손절 <%= v6.realised.exit_stop_n %> · 만기 <%= v6.realised.exit_expiry_n %></div>
-        </div>
+      <% if (v7.realised && v7.realised.t_stat !== null) { %>
         <div>
           <div class="k">누적 순손익</div>
-          <div class="v <%= v6.realised.total_net_pct >= 0 ? 'up' : 'down' %>">
-            <%= helpers.formatSigned(v6.realised.total_net_pct, 2, '%') %>
+          <div class="v <%= v7.realised.total_net_pct >= 0 ? 'up' : 'down' %>">
+            <%= helpers.formatSigned(v7.realised.total_net_pct, 2, '%') %>
           </div>
-          <div class="s">거래당 <%= helpers.formatSigned(v6.realised.mean_net_pct, 3, '%') %></div>
+          <div class="s">회당 <%= helpers.formatSigned(v7.realised.mean_net_pct, 3, '%') %></div>
+        </div>
+        <div>
+          <div class="k">연환산</div>
+          <div class="v <%= v7.realised.ann_pct >= 0 ? 'up' : 'down' %>">
+            <%= helpers.formatSigned(v7.realised.ann_pct, 1, '%') %>
+          </div>
+          <div class="s">변동성 <%= helpers.formatNumber(v7.realised.vol_pct, 1) %>%</div>
         </div>
         <div>
           <div class="k">t 값</div>
-          <div class="v <%= v6.realised.t_stat > 1.96 ? 'up' : '' %>">
-            <%= v6.realised.t_stat === null ? '-' : helpers.formatNumber(v6.realised.t_stat, 2) %>
+          <div class="v <%= v7.realised.t_stat > 1.96 ? 'up' : '' %>">
+            <%= helpers.formatNumber(v7.realised.t_stat, 2) %>
           </div>
           <div class="s">1.96 넘어야 유의</div>
         </div>
       <% } else { %>
         <div>
-          <div class="k">승률</div><div class="v mut">-</div><div class="s">종료 거래 없음</div>
+          <div class="k">누적 순손익</div><div class="v mut">-</div><div class="s">첫 수익 확정 대기</div>
+        </div>
+        <div>
+          <div class="k">연환산</div><div class="v mut">-</div><div class="s">-</div>
+        </div>
+        <div>
+          <div class="k">t 값</div><div class="v mut">-</div><div class="s">1.96 넘어야 유의</div>
         </div>
       <% } %>
     </div>
 
-    <div class="bar"><i style="width:<%= v6.progressPct %>%"></i></div>
+    <div class="bar"><i style="width:<%= v7.progressPct %>%"></i></div>
     <div class="barnote">
-      판정까지 <%= helpers.formatNumber(v6.closedN) %> / <%= helpers.formatNumber(v6.minN) %> 거래
-      · <%= helpers.formatNumber(v6.daysRunning, 1) %>일 경과
-      <% if (v6.sampleReq) { %>
-        <br>표본 기준은 관측 분산에서 유도했습니다 (임의로 고른 100건은 도달해도 아무것도 못 가립니다).
-        검정력 50% <%= helpers.formatNumber(v6.sampleReq.n_for_t196_50pct_power) %>건(약 <%= v6.sampleReq.days_to_n50 %>일)
-        · 검정력 80% <%= helpers.formatNumber(v6.sampleReq.n_for_t196_80pct_power) %>건(약 <%= v6.sampleReq.days_to_n80 %>일)
-        · 현재 <%= v6.sampleReq.trades_per_day %>건/일
-      <% } %>
+      <%= helpers.formatNumber(v7.periods) %> / <%= helpers.formatNumber(v7.minN) %> 회
+      — 백테스트가 쓴 242기간과 견줄 수 있는 지점입니다 (유의 기준이 아니라 비교 기준).
       <%
-        /* The backtest's RETURN is the seductive number and it would be read as
-           a forecast. Its t-stat is the honest one: this config reached t 1.10,
-           below the 3.39 that a shuffled null reaches in the same search. Show
-           the number that limits the claim, not the one that inflates it. */
+        /* This lane's entire purpose is watching the forward t move away from
+           the backtest t. Showing the backtest RETURN alone would read as a
+           forecast; the caveat is what bounds the claim, so both ship together
+           and neither is optional. */
       %>
-      <% if (v6.expectedT !== null) { %>
-        · 백테스트 t <%= helpers.formatNumber(v6.expectedT, 2) %> (유의 기준 1.96 미달 — 검증 아님)
+      <% if (v7.expectedT !== null) { %>
+        <br>백테스트 40.5일: 연 <%= helpers.formatSigned(v7.expectedAnnPct, 1, '%') %> · <b>북의 t <%= helpers.formatNumber(v7.expectedT, 2) %></b>
+        <% if (v7.expectedIcT !== null) { %> · 원시 횡단면 IC의 t <%= helpers.formatNumber(v7.expectedIcT, 2) %><% } %>
+        <br>북의 t는 1.96에 <b style="color:var(--down)">미달</b>합니다. 명목 유의한 것은 원시 IC뿐이고,
+        그마저 8개 특징 중 최고를 고른 것이라 본페로니 기준(2.73)은 통과하지 못합니다.
+        표본이 늘 때 t가 오르는지 내리는지가 이 레인이 답하려는 유일한 질문입니다.
+      <% } %>
+      <% if (v7.sampleReq) { %>
+        <br>현재 분산 기준 유의까지 <%= helpers.formatNumber(v7.sampleReq.n_for_t196) %>회(약 <%= v7.sampleReq.days_to_n %>일) 필요.
       <% } %>
     </div>
 
-    <% if (v6.costScenarios.length) { %>
-      <div class="sub">비용 시나리오 — 진입 메이커 체결률별</div>
+    <% if (v7.longs.length || v7.shorts.length) { %>
+      <div class="sub">현재 북 · <%= helpers.formatDateTime(v7.latestAt) %> 기준</div>
       <div class="tblwrap"><table>
-        <thead><tr><th>체결률</th><th>왕복 비용</th><th>손익분기 승률</th><th>거래당 순%</th><th>누적 순%</th><th>t</th></tr></thead>
+        <thead><tr><th>방향</th><th>심볼</th></tr></thead>
         <tbody>
-          <% v6.costScenarios.forEach(function(c){ %>
-            <tr>
-              <td><%= Math.round(c.maker_fill_rate * 100) %>%</td>
-              <td class="mut"><%= helpers.formatNumber(c.cost_pct, 2) %>%</td>
-              <td class="mut"><%= helpers.formatNumber(c.breakeven_win_rate_pct, 1) %>%</td>
-              <td class="<%= c.mean_net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(c.mean_net_pct, 3, '%') %></td>
-              <td class="<%= c.total_net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(c.total_net_pct, 2, '%') %></td>
-              <td class="mut"><%= c.t_stat === null ? '-' : helpers.formatNumber(c.t_stat, 2) %></td>
-            </tr>
-          <% }); %>
+          <tr>
+            <td class="up">롱</td>
+            <td class="mut"><%= v7.longs.map(function(s){ return s.replace('USDT',''); }).join(' · ') %></td>
+          </tr>
+          <tr>
+            <td class="down">숏</td>
+            <td class="mut"><%= v7.shorts.map(function(s){ return s.replace('USDT',''); }).join(' · ') %></td>
+          </tr>
         </tbody>
       </table></div>
-      <div class="barnote" style="margin-top:6px">
-        청산 브래킷은 시장가라 항상 테이커입니다 — 진입 다리만 메이커 가능.
-        <% if (v6.breakevenFillRate === 0) { %>
-          손익분기 체결률 <b style="color:var(--fg)">0%</b> — 전부 테이커로도 비용은 이미 덮입니다.
-        <% } else if (v6.breakevenFillRate === null) { %>
-          손익분기 체결률 <b style="color:var(--down)">도달 불가</b> — 100% 메이커여도 비용 미달.
-        <% } else { %>
-          손익분기 체결률 <b style="color:var(--fg)"><%= Math.round(v6.breakevenFillRate * 100) %>%</b> 이상 필요.
-        <% } %>
-      </div>
     <% } %>
 
-    <% if (v6.open.length) { %>
-      <div class="sub">보유 중</div>
+    <% if (v7.recent.length) { %>
+      <div class="sub">최근 리밸런싱</div>
       <div class="tblwrap"><table>
-        <thead><tr><th>심볼</th><th>방향</th><th>진입가</th><th>익절가</th><th>손절가</th><th>만기</th></tr></thead>
+        <thead><tr><th>시각</th><th>총수익%</th><th>회전량</th><th>비용%</th><th>순%</th><th>누적배수</th></tr></thead>
         <tbody>
-          <% v6.open.forEach(function(p){ %>
+          <% v7.recent.forEach(function(p){ %>
             <tr>
-              <td><%= p.symbol.replace('USDT','') %></td>
-              <td class="<%= p.side === 'LONG' ? 'up' : 'down' %>"><%= p.side %></td>
-              <td class="mut"><%= helpers.formatPrice(p.entry_price) %></td>
-              <td class="up"><%= helpers.formatPrice(p.tp_price) %></td>
-              <td class="down"><%= helpers.formatPrice(p.sl_price) %></td>
-              <td class="mut"><%= helpers.formatDateTime(p.close_due_at) %></td>
+              <td class="mut"><%= helpers.formatDateTime(p.bar_time) %></td>
+              <td class="mut"><%= p.prior_gross_pct === null || p.prior_gross_pct === undefined ? '-' : helpers.formatSigned(p.prior_gross_pct, 3, '%') %></td>
+              <td class="mut"><%= helpers.formatNumber(p.turnover, 2) %></td>
+              <td class="mut"><%= helpers.formatNumber(p.cost_pct, 3) %></td>
+              <td class="<%= p.net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(p.net_pct, 3, '%') %></td>
+              <td class="mut"><%= helpers.formatNumber(p.equity, 4) %></td>
             </tr>
           <% }); %>
         </tbody>
       </table></div>
     <% } %>
 
-    <% if (v6.recent.length) { %>
-      <div class="sub">최근 종료</div>
-      <div class="tblwrap"><table>
-        <thead><tr><th>심볼</th><th>방향</th><th>가격%</th><th>레버후%</th><th>순%</th><th>사유</th></tr></thead>
-        <tbody>
-          <% v6.recent.forEach(function(p){ %>
-            <tr>
-              <td><%= p.symbol.replace('USDT','') %></td>
-              <td class="<%= p.side === 'LONG' ? 'up' : 'down' %>"><%= p.side %></td>
-              <td class="mut"><%= helpers.formatSigned(p.price_move_pct, 2, '%') %></td>
-              <td class="mut"><%= helpers.formatSigned(p.gross_pct, 2, '%') %></td>
-              <td class="<%= p.net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(p.net_pct, 2, '%') %></td>
-              <td class="mut"><%= p.exit_reason === 'TARGET' ? '익절' : p.exit_reason === 'STOP' ? '손절' : '만기' %></td>
-            </tr>
-          <% }); %>
-        </tbody>
-      </table></div>
-    <% } %>
-
-    <% if (!v6.open.length && !v6.recent.length) { %>
-      <div class="empty">아직 신호가 발생하지 않았습니다. 매시간 24개 심볼을 확인합니다.</div>
+    <% if (!v7.recent.length) { %>
+      <div class="empty">아직 리밸런싱이 없습니다. v5 수집기가 새 4시간 구간을 확보하면 시작합니다.</div>
     <% } %>
   </div>
 

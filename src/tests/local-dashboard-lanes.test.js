@@ -63,21 +63,61 @@ const { __test, buildLocalDashboardView } = require("../server/localDashboardApp
 }
 
 // The whole view must build against the real artifacts on disk without
-// throwing, and the simplified page must keep the two facts that stop a reader
+// throwing, and the simplified page must keep the facts that stop a reader
 // drawing the wrong conclusion: exposure is zero, and the backtest behind the
-// v6 lane did not clear significance.
+// lane under test did not clear significance.
+//
+// 2026-08-17: the top slot moved from v6 to v7. v6's own report puts a verdict
+// at 49,083 trades (~13 years at its rate), so it is not accumulating toward an
+// answer and must not occupy the slot that implies one is coming.
 {
   const view = buildLocalDashboardView();
   assert.strictEqual(view.strip.length, 4, "(D1) four status facts");
-  assert.strictEqual(view.others.length, 4, "(D2) every non-tested lane compressed to one line");
+  assert.strictEqual(view.others.length, 5, "(D2) every non-tested lane compressed to one line, v6 now among them");
   const exposure = view.strip.find((s) => s.label === "\uc2e4\uac70\ub798");
   assert.strictEqual(exposure.value, "0\uc6d0", "(D3) live exposure must read zero while every lane is paper");
-  assert.ok(view.v6, "(D4) the lane under test is present");
-  assert.ok(Number.isFinite(view.v6.progressPct), "(D5) progress toward a verdict is computable");
+  assert.ok(view.v7, "(D4) the lane under test is present");
+  assert.ok(Number.isFinite(view.v7.progressPct), "(D5) progress toward a comparable sample is computable");
 
   // The backtest's RETURN would read as a forecast; its t-stat bounds the
   // claim. The page must carry the t, or a reader sees only the upside.
-  assert.ok("expectedT" in view.v6, "(D6) backtest t-stat surfaced, not just the return");
+  assert.ok("expectedT" in view.v7, "(D6) backtest t-stat surfaced, not just the return");
+
+  // v7's headline number is 85.3%/yr against a book t of 1.77. Shipping the
+  // return without the t that fails significance is the exact misread this
+  // dashboard exists to prevent.
+  assert.ok("expectedCaveat" in view.v7, "(D7) the caveat travels with the backtest number");
+
+  // v6 must still be reachable as a one-liner rather than deleted: a retired
+  // lane that vanishes silently invites re-deriving it from scratch later.
+  const v6Row = view.others.find((o) => o.name.includes("v6"));
+  assert.ok(v6Row, "(D8) v6 demoted to a single line, not dropped");
+}
+
+// v7's ledger is one row per REBALANCE and carries no id. The v6 reader
+// deduplicates by id and would return nothing here; using it by mistake would
+// silently render an empty lane as if no rebalance had happened.
+{
+  const { readV7Ledger, buildV7Lane } = __test;
+  const lane = buildV7Lane(
+    { periods_booked: 2, realised: { t_stat: 0.4 }, backtest_expectation: { ann_pct: 85.3, t_stat: 1.77 } },
+    [
+      // shape as the LEDGER actually writes it: objects, not bare strings
+      { ts: 1, bar_time: "2026-08-16T12:00:00Z", longs: [{ symbol: "AUSDT", spread: -0.4 }], shorts: [{ symbol: "BUSDT", spread: 0.4 }], net_pct: -0.07, equity: 0.9993 },
+      { ts: 2, bar_time: "2026-08-16T16:00:00Z", longs: [{ symbol: "CUSDT", spread: -0.5 }], shorts: [{ symbol: "DUSDT", spread: 0.5 }], net_pct: 0.12, equity: 1.0005 },
+    ],
+  );
+  assert.strictEqual(lane.recent.length, 2, "(F1) every rebalance row counts \u2014 no id dedupe");
+  assert.deepStrictEqual(lane.longs, ["CUSDT"], "(F2) the live book is the LATEST row, not the first");
+  assert.strictEqual(typeof readV7Ledger, "function", "(F3) v7 needs its own reader, not the id-keyed one");
+
+  // The report writes bare strings for the same field. Rendering crashed on
+  // this exact mismatch: the template called .replace() on an object.
+  const fromReport = buildV7Lane(
+    { periods_booked: 0, backtest_expectation: {} },
+    [{ ts: 1, bar_time: "2026-08-16T16:00:00Z", longs: ["EUSDT"], shorts: ["FUSDT"] }],
+  );
+  assert.deepStrictEqual(fromReport.longs, ["EUSDT"], "(F4) bare-string shape normalises to the same output");
 }
 
 // The ledger writes a position OPEN and later CLOSED under the SAME id.
