@@ -42,8 +42,9 @@ const DESCRIPTORS = [
   // outage longer than that punches a hole in the history that can NEVER be
   // backfilled. 26h catches it while recovery is still free.
   { name: "v5flow_collector", path: path.join(ROOT, "ops/daily/v5_flow_collector_latest.json"), max_age_ms: 26 * 60 * 60 * 1000 },
-  // v6 confluence paper lane ticks hourly (2h10m allows one missed tick)
-  { name: "v6paper_lane", path: path.join(ROOT, "ops/daily/v6_paper_latest.json"), max_age_ms: 130 * 60 * 1000 },
+  // v6 retired 2026-08-21 at 138 trades / -40.4% / verdict NEGATIVE. Its
+  // heartbeat is gone BY DESIGN, so watching it would be a permanent false
+  // alarm — the same reasoning that dropped the v3 descriptors.
   // v7 ticks hourly and is the lane actually under test — it was missing from
   // this list, which is the worst one to omit. 2h10m allows one missed tick.
   { name: "v7positioning_lane", path: path.join(ROOT, "ops/daily/v7_positioning_latest.json"), max_age_ms: 130 * 60 * 1000 },

@@ -423,11 +423,18 @@ function buildLocalDashboardView() {
   // not at the top: its own report puts the sample needed for a verdict at
   // 49,083 trades (~13 years), so there is no answer coming to wait for.
   const others = [
+    // v6 retired 2026-08-21. It stays on the page as a one-liner with its
+    // final numbers rather than disappearing: a lane that vanishes silently
+    // invites someone re-deriving it from scratch a year later. The row shows
+    // the result that ended it, and `at` is frozen at the last report.
     {
       name: "v6 컨플루언스",
-      state: v6Lane.realised ? `${formatNumber(v6Lane.closedN)}건 · t ${formatNumber(v6Lane.realised.t_stat, 2)}` : `${formatNumber(v6Lane.closedN)}건`,
-      note: v6Lane.sampleReq ? `판정에 ${formatNumber(v6Lane.sampleReq.n_for_t196_80pct_power)}건 필요 — 사실상 판정 불가` : "가격 기반 · 방향성",
+      state: v6Lane.realised
+        ? `은퇴 · ${formatNumber(v6Lane.closedN)}건 ${formatSigned(v6Lane.realised.total_net_pct, 1, "%")}`
+        : "은퇴",
+      note: "2026-08-21 정지 · 판정 NEGATIVE · 익절:손절 32:73",
       at: v6Lane.generatedAt,
+      retired: true,
     },
     { name: "v4 크로스섹셔널", state: `${formatNumber(v4.days)}일 / ${formatNumber(v4.minDays)}일`, note: "시장중립 · 누적 중", at: v4.generatedAt },
     { name: "펀딩 캐리", state: carry.best ? `최고 ${formatSigned(carry.best.excess_pct)}` : "-", note: carry.isDormant ? "무위험 대비 미달 → 대기" : "수확 조건 충족", at: carry.generatedAt },
