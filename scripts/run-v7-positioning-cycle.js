@@ -134,6 +134,78 @@ async function fetchCloses(sym) {
 function mean(a) { return a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0; }
 function sd(a) { const m = mean(a); return a.length > 1 ? Math.sqrt(mean(a.map((v) => (v - m) ** 2))) : 0; }
 
+// Build one rebalance row for `ts`, chained off `prev`. Extracted from main()
+// so the cycle can process EVERY unbooked period rather than only the newest.
+function buildRebalanceRow(ts, prev, flow, symbols, closes, errors) {
+  const ranked = [];
+  for (const s of symbols) {
+    const rec = flow.get(`${s}|${ts}`);
+    const sp = spread(rec);
+    const px = closes.get(s)?.get(ts);
+    if (sp === null || !Number.isFinite(px)) continue;
+    ranked.push({ symbol: s, spread: sp, price: px });
+  }
+  ranked.sort((a, b) => a.spread - b.spread);
+  if (ranked.length < MIN_SYMBOLS) {
+    errors.push(`${new Date(ts).toISOString()}: only ${ranked.length} symbols ranked (need ${MIN_SYMBOLS})`);
+    return null;
+  }
+
+  // IC is negative: the LOW end of the spread (large accounts relatively
+  // short vs retail) is the long side.
+  const longs = ranked.slice(0, K);
+  const shorts = ranked.slice(-K);
+  const w = new Map();
+  for (const r of longs) w.set(r.symbol, (GROSS / 2) / K);
+  for (const r of shorts) w.set(r.symbol, -(GROSS / 2) / K);
+
+  // Book the previous period's return before rebuilding: the old weights held
+  // from the previous signal bar to this one.
+  let grossPct = 0;
+  let realised = null;
+  if (prev && prev.weights) {
+    let ok = true;
+    let acc = 0;
+    for (const [s, pw] of Object.entries(prev.weights)) {
+      const p0 = prev.prices?.[s];
+      const p1 = closes.get(s)?.get(ts);
+      if (!Number.isFinite(p0) || !Number.isFinite(p1)) { ok = false; break; }
+      acc += pw * (p1 / p0 - 1);
+    }
+    if (ok) { grossPct = acc * 100; realised = true; }
+    else errors.push(`${new Date(ts).toISOString()}: prior weights unpriceable — return not booked`);
+  }
+
+  const keys = new Set([...w.keys(), ...Object.keys(prev?.weights || {})]);
+  let turnover = 0;
+  for (const s of keys) turnover += Math.abs((w.get(s) || 0) - ((prev?.weights || {})[s] || 0));
+  const costPct = turnover * COST_PER_TURNOVER_PCT;
+  const netPct = (realised ? grossPct : 0) - costPct;
+  const equity = (prev?.equity ?? 1) * (1 + netPct / 100);
+
+  const prices = {};
+  for (const r of [...longs, ...shorts]) prices[r.symbol] = r.price;
+
+  return {
+    lane: "v7_positioning_paper",
+    ts,
+    bar_time: new Date(ts).toISOString(),
+    rebalanced_at: new Date().toISOString(),
+    k: K,
+    ranked_n: ranked.length,
+    longs: longs.map((r) => ({ symbol: r.symbol, spread: Math.round(r.spread * 1e4) / 1e4 })),
+    shorts: shorts.map((r) => ({ symbol: r.symbol, spread: Math.round(r.spread * 1e4) / 1e4 })),
+    weights: Object.fromEntries(w),
+    prices,
+    prior_gross_pct: realised ? Math.round(grossPct * 1e4) / 1e4 : null,
+    turnover: Math.round(turnover * 1e4) / 1e4,
+    cost_pct: Math.round(costPct * 1e4) / 1e4,
+    net_pct: Math.round(netPct * 1e4) / 1e4,
+    equity: Math.round(equity * 1e6) / 1e6,
+    status: "REBALANCED",
+  };
+}
+
 async function main() {
   const errors = [];
   const flow = loadFlow();
@@ -146,7 +218,6 @@ async function main() {
   // would be look-ahead (see header).
   const usable = stamps.slice(0, -1);
   if (!usable.length) { console.error("no closed periods yet"); process.exit(1); }
-  const signalTs = usable[usable.length - 1];
 
   // Prices, keyed by the 4h bar open time.
   const closes = new Map();
@@ -157,87 +228,40 @@ async function main() {
     } catch (e) { errors.push(`${s}: ${e.message}`); }
   }
 
-  // ---- rank on the spread ------------------------------------------------
-  // Entry price is the close of the bar the signal timestamps, i.e. the first
-  // price observable after the signal is knowable.
-  const ranked = [];
-  for (const s of symbols) {
-    const rec = flow.get(`${s}|${signalTs}`);
-    const sp = spread(rec);
-    const px = closes.get(s)?.get(signalTs);
-    if (sp === null || !Number.isFinite(px)) continue;
-    ranked.push({ symbol: s, spread: sp, price: px });
-  }
-  ranked.sort((a, b) => a.spread - b.spread);
+  // 2026-08-21 — process EVERY unbooked closed period, not just the newest.
+  //
+  // The v5 collector runs twice a day and banks ~3 new 4h stamps each time.
+  // The old code took `usable[usable.length - 1]` and discarded the rest, so
+  // the lane booked 2 periods a day against the 6 that were available — 64% of
+  // the sample thrown away, and a 12h effective holding period against the 4h
+  // the backtest measured. It was not testing the strategy that was backtested.
+  //
+  // The knock-on was worse than the lost rate: days_to_n is computed from
+  // PERIOD_MS (4h), so the report promised a verdict in 163 days while the real
+  // pace implied 483. The dashboard was three times optimistic about when an
+  // answer would arrive.
+  const existing = readLedger(LEDGER);
+  const done = new Set(existing.map((r) => r.ts));
+  // A cold start opens ONE position at the newest closed period and books
+  // nothing; replaying the whole banked history instead would launder the
+  // backtest sample into the live ledger. Once the lane has a history, every
+  // stamp from its own first period onward is fair game.
+  const todo = existing.length
+    ? usable.filter((ts) => !done.has(ts) && ts >= existing[0].ts)
+    : usable.slice(-1);
 
-  const rows = readLedger(LEDGER);
-  const prev = rows.length ? rows[rows.length - 1] : null;
-  const alreadyDone = prev && prev.ts === signalTs;
-
-  if (ranked.length < MIN_SYMBOLS) {
-    errors.push(`only ${ranked.length} symbols ranked (need ${MIN_SYMBOLS})`);
-  }
-
-  let row = null;
-  if (!alreadyDone && ranked.length >= MIN_SYMBOLS) {
-    // IC is negative: the LOW end of the spread (large accounts relatively
-    // short vs retail) is the long side.
-    const longs = ranked.slice(0, K);
-    const shorts = ranked.slice(-K);
-    const w = new Map();
-    for (const r of longs) w.set(r.symbol, (GROSS / 2) / K);
-    for (const r of shorts) w.set(r.symbol, -(GROSS / 2) / K);
-
-    // Book the previous cycle's return before rebuilding: the old weights held
-    // from the previous signal bar to this one.
-    let grossPct = 0;
-    let realised = null;
-    if (prev && prev.weights) {
-      let ok = true;
-      let acc = 0;
-      for (const [s, pw] of Object.entries(prev.weights)) {
-        const p0 = prev.prices?.[s];
-        const p1 = closes.get(s)?.get(signalTs);
-        if (!Number.isFinite(p0) || !Number.isFinite(p1)) { ok = false; break; }
-        acc += pw * (p1 / p0 - 1);
-      }
-      if (ok) { grossPct = acc * 100; realised = true; }
-      else errors.push("prior weights unpriceable — return not booked this cycle");
-    }
-
-    // Turnover is the L1 distance between the old and new weight vectors.
-    const keys = new Set([...w.keys(), ...Object.keys(prev?.weights || {})]);
-    let turnover = 0;
-    for (const s of keys) turnover += Math.abs((w.get(s) || 0) - ((prev?.weights || {})[s] || 0));
-    const costPct = turnover * COST_PER_TURNOVER_PCT;
-    const netPct = (realised ? grossPct : 0) - costPct;
-    const equity = (prev?.equity ?? 1) * (1 + netPct / 100);
-
-    const prices = {};
-    for (const r of [...longs, ...shorts]) prices[r.symbol] = r.price;
-
-    row = {
-      lane: "v7_positioning_paper",
-      ts: signalTs,
-      bar_time: new Date(signalTs).toISOString(),
-      rebalanced_at: new Date().toISOString(),
-      k: K,
-      ranked_n: ranked.length,
-      longs: longs.map((r) => ({ symbol: r.symbol, spread: Math.round(r.spread * 1e4) / 1e4 })),
-      shorts: shorts.map((r) => ({ symbol: r.symbol, spread: Math.round(r.spread * 1e4) / 1e4 })),
-      weights: Object.fromEntries(w),
-      prices,
-      prior_gross_pct: realised ? Math.round(grossPct * 1e4) / 1e4 : null,
-      turnover: Math.round(turnover * 1e4) / 1e4,
-      cost_pct: Math.round(costPct * 1e4) / 1e4,
-      net_pct: Math.round(netPct * 1e4) / 1e4,
-      equity: Math.round(equity * 1e6) / 1e6,
-      status: "REBALANCED",
-    };
+  let prev = existing.length ? existing[existing.length - 1] : null;
+  const written = [];
+  for (const ts of todo) {
+    const row = buildRebalanceRow(ts, prev, flow, symbols, closes, errors);
+    if (!row) continue;
     fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
     fs.appendFileSync(LEDGER, JSON.stringify(row) + "\n", "utf8");
+    written.push(row);
+    prev = row;
   }
-
+  const row = written.length ? written[written.length - 1] : null;
+  const alreadyDone = !todo.length;
   // ---- report ------------------------------------------------------------
   const all = readLedger(LEDGER);
   const booked = all.filter((r) => r.prior_gross_pct !== null && r.prior_gross_pct !== undefined);
@@ -304,7 +328,10 @@ async function main() {
     verdict: periods < 200 ? "ACCUMULATING" : (tStat !== null && tStat > 1.96 ? "HOLDING" : "NOT_CONFIRMED"),
     live_exposure_usdt: 0,
     latest: row ? { ts: row.bar_time, longs: row.longs.map((l) => l.symbol), shorts: row.shorts.map((s) => s.symbol), net_pct: row.net_pct } : null,
-    skipped: alreadyDone ? `already rebalanced at ${new Date(signalTs).toISOString()}` : null,
+    rebalanced_this_cycle: written.length,
+    skipped: alreadyDone
+      ? `no unbooked closed periods (latest booked ${existing.length || written.length ? new Date((prev || {}).ts || 0).toISOString() : "n/a"})`
+      : null,
     errors,
   };
 
@@ -313,4 +340,9 @@ async function main() {
   console.log(JSON.stringify(report, null, 2));
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
+
+module.exports = {
+  buildRebalanceRow, loadFlow, readLedger, fetchCloses, spread,
+  LEDGER, FLOW, PERIOD_MS, K, GROSS, MIN_SYMBOLS, COST_PER_TURNOVER_PCT,
+};

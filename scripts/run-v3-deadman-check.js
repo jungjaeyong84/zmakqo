@@ -44,6 +44,9 @@ const DESCRIPTORS = [
   { name: "v5flow_collector", path: path.join(ROOT, "ops/daily/v5_flow_collector_latest.json"), max_age_ms: 26 * 60 * 60 * 1000 },
   // v6 confluence paper lane ticks hourly (2h10m allows one missed tick)
   { name: "v6paper_lane", path: path.join(ROOT, "ops/daily/v6_paper_latest.json"), max_age_ms: 130 * 60 * 1000 },
+  // v7 ticks hourly and is the lane actually under test — it was missing from
+  // this list, which is the worst one to omit. 2h10m allows one missed tick.
+  { name: "v7positioning_lane", path: path.join(ROOT, "ops/daily/v7_positioning_latest.json"), max_age_ms: 130 * 60 * 1000 },
 ];
 
 async function main() {
