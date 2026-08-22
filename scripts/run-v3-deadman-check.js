@@ -37,11 +37,14 @@ const DESCRIPTORS = [
   { name: "v3funding_monitor", path: path.join(ROOT, "ops/daily/v3_funding_monitor_latest.json"), max_age_ms: 130 * 60 * 1000 },
   // v4 cross-sectional lane rebalances daily (26h allowance for one miss)
   { name: "v4paper_lane", path: path.join(ROOT, "ops/daily/v4_paper_latest.json"), max_age_ms: 26 * 60 * 60 * 1000 },
-  // Flow collector runs 2x daily. This one is watched harder than its cadence
-  // suggests: the /futures/data window is only ~30 days deep, so a silent
-  // outage longer than that punches a hole in the history that can NEVER be
-  // backfilled. 26h catches it while recovery is still free.
-  { name: "v5flow_collector", path: path.join(ROOT, "ops/daily/v5_flow_collector_latest.json"), max_age_ms: 26 * 60 * 60 * 1000 },
+  // Flow collector moved to a 4h cadence on 2026-08-21 so v7 can act on a
+  // period within one bar of it closing instead of waiting up to 12h for the
+  // next of two daily runs. The 26h allowance was calibrated to that old
+  // cadence and would now let six ticks pass unnoticed; 13h still tolerates
+  // three misses and a sleeping machine while catching a real outage the same
+  // day. The 30-day API horizon is still the thing being protected — a gap
+  // longer than that can NEVER be backfilled.
+  { name: "v5flow_collector", path: path.join(ROOT, "ops/daily/v5_flow_collector_latest.json"), max_age_ms: 13 * 60 * 60 * 1000 },
   // v6 retired 2026-08-21 at 138 trades / -40.4% / verdict NEGATIVE. Its
   // heartbeat is gone BY DESIGN, so watching it would be a permanent false
   // alarm — the same reasoning that dropped the v3 descriptors.
