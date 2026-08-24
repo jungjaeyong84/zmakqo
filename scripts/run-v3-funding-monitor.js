@@ -37,8 +37,18 @@ const ALERT_STATE = path.join(ROOT, "ops/runtime/v3_ops_alert_state.json");
 
 // benchmark: what the capital earns doing nothing (stablecoin yield)
 const RISK_FREE_PCT = Number.isFinite(Number(process.env.V4_RISK_FREE_PCT)) ? Number(process.env.V4_RISK_FREE_PCT) : 5;
-// how much richer a source must be before running a live delta-neutral book
-const MIN_EXCESS_PCT = Number.isFinite(Number(process.env.V4_CARRY_MIN_EXCESS_PCT)) ? Number(process.env.V4_CARRY_MIN_EXCESS_PCT) : 5;
+// 2026-08-24 — entry thresholds now come from the funding study rather than a
+// round number. It measured 2.7 years with per-symbol funding intervals and
+// switching costs charged: entry above 11%/yr raw returns 8.35%/yr, above
+// 22%/yr returns 8.61%/yr, against 5% for doing nothing. The old
+// MIN_EXCESS_PCT=5 corresponded to roughly 10.4% raw — just under the floor —
+// which is why the 2026-08-24 alert fired on BNB at 10.62%.
+const FLOOR_APY_PCT = Number.isFinite(Number(process.env.V4_CARRY_FLOOR_APY_PCT)) ? Number(process.env.V4_CARRY_FLOOR_APY_PCT) : 11;
+const RICH_APY_PCT = Number.isFinite(Number(process.env.V4_CARRY_RICH_APY_PCT)) ? Number(process.env.V4_CARRY_RICH_APY_PCT) : 22;
+// Capital committed per unit of notional. A delta-neutral book funds spot AND
+// perp margin, so the funding is earned on the notional while the capital tied
+// up is larger. Ignoring this overstated every excess figure.
+const CAPITAL_MULTIPLIER = Number.isFinite(Number(process.env.V4_CARRY_CAPITAL_MULTIPLIER)) ? Number(process.env.V4_CARRY_CAPITAL_MULTIPLIER) : 1.3;
 // round-trip cost across both legs of a basis trade, percent
 const BASIS_COST_PCT = Number.isFinite(Number(process.env.V4_BASIS_COST_PCT)) ? Number(process.env.V4_BASIS_COST_PCT) : 0.20;
 // funding harvesting also pays fees on entry/exit of both legs; charged as an
@@ -114,7 +124,10 @@ async function main() {
   const carry = rankCarrySources({
     sources: [...fundingSources, ...basisSources],
     riskFreePct: RISK_FREE_PCT,
-    minExcessPct: MIN_EXCESS_PCT,
+    floorApyPct: FLOOR_APY_PCT,
+    richApyPct: RICH_APY_PCT,
+    fundingCostPct: FUNDING_COST_PCT,
+    capitalMultiplier: CAPITAL_MULTIPLIER,
   });
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
@@ -137,8 +150,12 @@ async function main() {
     recoveryTitle: "캐리 냉각: 무위험 보유로 복귀",
     rearmMs: 24 * 60 * 60 * 1000,
     body: carry.deploy_worthy.length
-      ? carry.deploy_worthy.map((s) => `${s.kind} ${s.symbol}: 순 ${s.annualized_net_pct}%/yr (무위험 ${RISK_FREE_PCT}% 대비 +${s.excess_pct}%p)`).join("\n")
-        + `\n\n실행 레이어는 아직 없음 — 이 알림이 설계 트리거.`
+      ? carry.deploy_worthy.map((s) =>
+          `${s.kind} ${s.symbol}: 원시 대비 순 ${s.annualized_net_pct}%/yr, `
+          + `자본 ${CAPITAL_MULTIPLIER}배 반영 시 ${s.annualized_on_capital_pct}%/yr `
+          + `(무위험 ${RISK_FREE_PCT}% 대비 +${s.excess_pct}%p)`).join("\n")
+        + `\n\n기준: 연구 검증 최적 진입 원시 ${RICH_APY_PCT}%/yr 이상.`
+        + `\n실행 레이어는 아직 없음 — 이 알림이 설계 트리거.`
       : "",
   });
 

@@ -14,9 +14,13 @@
 
 function num(v) { if (v === null || v === undefined || v === "") return null; const n = Number(v); return Number.isFinite(n) ? n : null; }
 
+// 2026-08-24 — was 15, chosen independently of the carry verdict, so the same
+// artifact could report "deploy" while listing nothing as hot. Both now use
+// the funding study's validated entry floor: below 11% raw APY the selective
+// harvest stops beating the risk-free asset by enough to matter.
 function resolveAlertApyPct() {
   const raw = num(process.env.V3_FUNDING_ALERT_APY_PCT);
-  return raw !== null && raw > 0 ? raw : 15;
+  return raw !== null && raw > 0 ? raw : 11;
 }
 function resolveWindowDays() {
   const raw = num(process.env.V3_FUNDING_WINDOW_DAYS);
