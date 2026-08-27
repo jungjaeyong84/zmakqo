@@ -6606,3 +6606,4049 @@
   "skipped": "no unbooked closed periods (latest booked 2026-08-23T20:00:00.000Z)",
   "errors": []
 }
+{
+  "generated_at": "2026-08-24T02:40:46.610Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 43,
+  "equity": 1.013742,
+  "realised": {
+    "total_net_pct": 1.3742,
+    "mean_net_pct": 0.0342,
+    "mean_gross_pct": 0.0429,
+    "mean_cost_pct": 0.0087,
+    "ann_pct": 100.4,
+    "vol_pct": 19.3,
+    "sharpe": 5.21,
+    "t_stat": 0.54
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4118,
+    "observed_edge_pct": 0.0342,
+    "n_for_t196": 557,
+    "days_to_n": 93
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-23T20:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T03:40:50.024Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 43,
+  "equity": 1.013742,
+  "realised": {
+    "total_net_pct": 1.3742,
+    "mean_net_pct": 0.0342,
+    "mean_gross_pct": 0.0429,
+    "mean_cost_pct": 0.0087,
+    "ann_pct": 100.4,
+    "vol_pct": 19.3,
+    "sharpe": 5.21,
+    "t_stat": 0.54
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4118,
+    "observed_edge_pct": 0.0342,
+    "n_for_t196": 557,
+    "days_to_n": 93
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-23T20:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T04:40:53.397Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 44,
+  "equity": 1.015847,
+  "realised": {
+    "total_net_pct": 1.5847,
+    "mean_net_pct": 0.0382,
+    "mean_gross_pct": 0.0466,
+    "mean_cost_pct": 0.0085,
+    "ann_pct": 118.7,
+    "vol_pct": 19.1,
+    "sharpe": 6.22,
+    "t_stat": 0.62
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4079,
+    "observed_edge_pct": 0.0382,
+    "n_for_t196": 439,
+    "days_to_n": 73
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-24T00:00:00.000Z",
+    "longs": [
+      "ETHUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "ARBUSDT",
+      "SANDUSDT",
+      "AAVEUSDT"
+    ],
+    "shorts": [
+      "INJUSDT",
+      "TIAUSDT",
+      "DOGEUSDT",
+      "FILUSDT",
+      "NEARUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": 0.2076
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T05:40:58.661Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 44,
+  "equity": 1.015847,
+  "realised": {
+    "total_net_pct": 1.5847,
+    "mean_net_pct": 0.0382,
+    "mean_gross_pct": 0.0466,
+    "mean_cost_pct": 0.0085,
+    "ann_pct": 118.7,
+    "vol_pct": 19.1,
+    "sharpe": 6.22,
+    "t_stat": 0.62
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4079,
+    "observed_edge_pct": 0.0382,
+    "n_for_t196": 439,
+    "days_to_n": 73
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T00:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T06:41:02.282Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 44,
+  "equity": 1.015847,
+  "realised": {
+    "total_net_pct": 1.5847,
+    "mean_net_pct": 0.0382,
+    "mean_gross_pct": 0.0466,
+    "mean_cost_pct": 0.0085,
+    "ann_pct": 118.7,
+    "vol_pct": 19.1,
+    "sharpe": 6.22,
+    "t_stat": 0.62
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4079,
+    "observed_edge_pct": 0.0382,
+    "n_for_t196": 439,
+    "days_to_n": 73
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T00:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T07:41:07.568Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 44,
+  "equity": 1.015847,
+  "realised": {
+    "total_net_pct": 1.5847,
+    "mean_net_pct": 0.0382,
+    "mean_gross_pct": 0.0466,
+    "mean_cost_pct": 0.0085,
+    "ann_pct": 118.7,
+    "vol_pct": 19.1,
+    "sharpe": 6.22,
+    "t_stat": 0.62
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4079,
+    "observed_edge_pct": 0.0382,
+    "n_for_t196": 439,
+    "days_to_n": 73
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T00:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T08:41:11.026Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 45,
+  "equity": 1.010958,
+  "realised": {
+    "total_net_pct": 1.0958,
+    "mean_net_pct": 0.0266,
+    "mean_gross_pct": 0.0352,
+    "mean_cost_pct": 0.0086,
+    "ann_pct": 70,
+    "vol_pct": 19.2,
+    "sharpe": 3.64,
+    "t_stat": 0.43
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4105,
+    "observed_edge_pct": 0.0266,
+    "n_for_t196": 915,
+    "days_to_n": 153
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-24T04:00:00.000Z",
+    "longs": [
+      "ETHUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "ARBUSDT",
+      "SANDUSDT",
+      "AAVEUSDT"
+    ],
+    "shorts": [
+      "TIAUSDT",
+      "ATOMUSDT",
+      "DOGEUSDT",
+      "FILUSDT",
+      "APTUSDT",
+      "NEARUSDT"
+    ],
+    "net_pct": -0.4813
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T09:41:10.543Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 45,
+  "equity": 1.010958,
+  "realised": {
+    "total_net_pct": 1.0958,
+    "mean_net_pct": 0.0266,
+    "mean_gross_pct": 0.0352,
+    "mean_cost_pct": 0.0086,
+    "ann_pct": 70,
+    "vol_pct": 19.2,
+    "sharpe": 3.64,
+    "t_stat": 0.43
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4105,
+    "observed_edge_pct": 0.0266,
+    "n_for_t196": 915,
+    "days_to_n": 153
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T04:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T10:41:15.741Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 45,
+  "equity": 1.010958,
+  "realised": {
+    "total_net_pct": 1.0958,
+    "mean_net_pct": 0.0266,
+    "mean_gross_pct": 0.0352,
+    "mean_cost_pct": 0.0086,
+    "ann_pct": 70,
+    "vol_pct": 19.2,
+    "sharpe": 3.64,
+    "t_stat": 0.43
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4105,
+    "observed_edge_pct": 0.0266,
+    "n_for_t196": 915,
+    "days_to_n": 153
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T04:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T11:41:25.209Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 45,
+  "equity": 1.010958,
+  "realised": {
+    "total_net_pct": 1.0958,
+    "mean_net_pct": 0.0266,
+    "mean_gross_pct": 0.0352,
+    "mean_cost_pct": 0.0086,
+    "ann_pct": 70,
+    "vol_pct": 19.2,
+    "sharpe": 3.64,
+    "t_stat": 0.43
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4105,
+    "observed_edge_pct": 0.0266,
+    "n_for_t196": 915,
+    "days_to_n": 153
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T04:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T12:41:28.711Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 46,
+  "equity": 1.009722,
+  "realised": {
+    "total_net_pct": 0.9722,
+    "mean_net_pct": 0.0234,
+    "mean_gross_pct": 0.0318,
+    "mean_cost_pct": 0.0084,
+    "ann_pct": 58.5,
+    "vol_pct": 19,
+    "sharpe": 3.07,
+    "t_stat": 0.39
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4066,
+    "observed_edge_pct": 0.0234,
+    "n_for_t196": 1163,
+    "days_to_n": 194
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-24T08:00:00.000Z",
+    "longs": [
+      "ETHUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "SANDUSDT",
+      "ARBUSDT",
+      "AAVEUSDT"
+    ],
+    "shorts": [
+      "TIAUSDT",
+      "ATOMUSDT",
+      "DOGEUSDT",
+      "FILUSDT",
+      "NEARUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": -0.1223
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T13:41:32.105Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 46,
+  "equity": 1.009722,
+  "realised": {
+    "total_net_pct": 0.9722,
+    "mean_net_pct": 0.0234,
+    "mean_gross_pct": 0.0318,
+    "mean_cost_pct": 0.0084,
+    "ann_pct": 58.5,
+    "vol_pct": 19,
+    "sharpe": 3.07,
+    "t_stat": 0.39
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4066,
+    "observed_edge_pct": 0.0234,
+    "n_for_t196": 1163,
+    "days_to_n": 194
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T08:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T14:41:35.798Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 46,
+  "equity": 1.009722,
+  "realised": {
+    "total_net_pct": 0.9722,
+    "mean_net_pct": 0.0234,
+    "mean_gross_pct": 0.0318,
+    "mean_cost_pct": 0.0084,
+    "ann_pct": 58.5,
+    "vol_pct": 19,
+    "sharpe": 3.07,
+    "t_stat": 0.39
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4066,
+    "observed_edge_pct": 0.0234,
+    "n_for_t196": 1163,
+    "days_to_n": 194
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T08:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T15:41:37.236Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 46,
+  "equity": 1.009722,
+  "realised": {
+    "total_net_pct": 0.9722,
+    "mean_net_pct": 0.0234,
+    "mean_gross_pct": 0.0318,
+    "mean_cost_pct": 0.0084,
+    "ann_pct": 58.5,
+    "vol_pct": 19,
+    "sharpe": 3.07,
+    "t_stat": 0.39
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4066,
+    "observed_edge_pct": 0.0234,
+    "n_for_t196": 1163,
+    "days_to_n": 194
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T08:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T16:41:42.650Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 47,
+  "equity": 1.012314,
+  "realised": {
+    "total_net_pct": 1.2314,
+    "mean_net_pct": 0.0283,
+    "mean_gross_pct": 0.0368,
+    "mean_cost_pct": 0.0084,
+    "ann_pct": 76.9,
+    "vol_pct": 18.9,
+    "sharpe": 4.07,
+    "t_stat": 0.48
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4037,
+    "observed_edge_pct": 0.0283,
+    "n_for_t196": 780,
+    "days_to_n": 130
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-24T12:00:00.000Z",
+    "longs": [
+      "BNBUSDT",
+      "ETHUSDT",
+      "XRPUSDT",
+      "SANDUSDT",
+      "ARBUSDT",
+      "LTCUSDT"
+    ],
+    "shorts": [
+      "TIAUSDT",
+      "ATOMUSDT",
+      "DOGEUSDT",
+      "FILUSDT",
+      "NEARUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": 0.2567
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T17:41:43.950Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 47,
+  "equity": 1.012314,
+  "realised": {
+    "total_net_pct": 1.2314,
+    "mean_net_pct": 0.0283,
+    "mean_gross_pct": 0.0368,
+    "mean_cost_pct": 0.0084,
+    "ann_pct": 76.9,
+    "vol_pct": 18.9,
+    "sharpe": 4.07,
+    "t_stat": 0.48
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4037,
+    "observed_edge_pct": 0.0283,
+    "n_for_t196": 780,
+    "days_to_n": 130
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T12:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T18:41:49.435Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 47,
+  "equity": 1.012314,
+  "realised": {
+    "total_net_pct": 1.2314,
+    "mean_net_pct": 0.0283,
+    "mean_gross_pct": 0.0368,
+    "mean_cost_pct": 0.0084,
+    "ann_pct": 76.9,
+    "vol_pct": 18.9,
+    "sharpe": 4.07,
+    "t_stat": 0.48
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4037,
+    "observed_edge_pct": 0.0283,
+    "n_for_t196": 780,
+    "days_to_n": 130
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T12:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T19:41:53.104Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 47,
+  "equity": 1.012314,
+  "realised": {
+    "total_net_pct": 1.2314,
+    "mean_net_pct": 0.0283,
+    "mean_gross_pct": 0.0368,
+    "mean_cost_pct": 0.0084,
+    "ann_pct": 76.9,
+    "vol_pct": 18.9,
+    "sharpe": 4.07,
+    "t_stat": 0.48
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4037,
+    "observed_edge_pct": 0.0283,
+    "n_for_t196": 780,
+    "days_to_n": 130
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T12:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T20:41:56.552Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 48,
+  "equity": 1.01467,
+  "realised": {
+    "total_net_pct": 1.467,
+    "mean_net_pct": 0.0326,
+    "mean_gross_pct": 0.0411,
+    "mean_cost_pct": 0.0085,
+    "ann_pct": 94.3,
+    "vol_pct": 18.7,
+    "sharpe": 5.03,
+    "t_stat": 0.56
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4005,
+    "observed_edge_pct": 0.0326,
+    "n_for_t196": 580,
+    "days_to_n": 97
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-24T16:00:00.000Z",
+    "longs": [
+      "BNBUSDT",
+      "ETHUSDT",
+      "XRPUSDT",
+      "LTCUSDT",
+      "SOLUSDT",
+      "SANDUSDT"
+    ],
+    "shorts": [
+      "TIAUSDT",
+      "NEARUSDT",
+      "ATOMUSDT",
+      "DOGEUSDT",
+      "FILUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": 0.2327
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T21:41:59.924Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 48,
+  "equity": 1.01467,
+  "realised": {
+    "total_net_pct": 1.467,
+    "mean_net_pct": 0.0326,
+    "mean_gross_pct": 0.0411,
+    "mean_cost_pct": 0.0085,
+    "ann_pct": 94.3,
+    "vol_pct": 18.7,
+    "sharpe": 5.03,
+    "t_stat": 0.56
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4005,
+    "observed_edge_pct": 0.0326,
+    "n_for_t196": 580,
+    "days_to_n": 97
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T16:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T22:42:03.340Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 48,
+  "equity": 1.01467,
+  "realised": {
+    "total_net_pct": 1.467,
+    "mean_net_pct": 0.0326,
+    "mean_gross_pct": 0.0411,
+    "mean_cost_pct": 0.0085,
+    "ann_pct": 94.3,
+    "vol_pct": 18.7,
+    "sharpe": 5.03,
+    "t_stat": 0.56
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4005,
+    "observed_edge_pct": 0.0326,
+    "n_for_t196": 580,
+    "days_to_n": 97
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T16:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-24T23:42:06.895Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 48,
+  "equity": 1.01467,
+  "realised": {
+    "total_net_pct": 1.467,
+    "mean_net_pct": 0.0326,
+    "mean_gross_pct": 0.0411,
+    "mean_cost_pct": 0.0085,
+    "ann_pct": 94.3,
+    "vol_pct": 18.7,
+    "sharpe": 5.03,
+    "t_stat": 0.56
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.4005,
+    "observed_edge_pct": 0.0326,
+    "n_for_t196": 580,
+    "days_to_n": 97
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T16:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T00:42:10.462Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 49,
+  "equity": 1.015019,
+  "realised": {
+    "total_net_pct": 1.5019,
+    "mean_net_pct": 0.0326,
+    "mean_gross_pct": 0.041,
+    "mean_cost_pct": 0.0083,
+    "ann_pct": 94.7,
+    "vol_pct": 18.6,
+    "sharpe": 5.1,
+    "t_stat": 0.58
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3964,
+    "observed_edge_pct": 0.0326,
+    "n_for_t196": 567,
+    "days_to_n": 95
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-24T20:00:00.000Z",
+    "longs": [
+      "BNBUSDT",
+      "ETHUSDT",
+      "XRPUSDT",
+      "LTCUSDT",
+      "SOLUSDT",
+      "SANDUSDT"
+    ],
+    "shorts": [
+      "TIAUSDT",
+      "NEARUSDT",
+      "ATOMUSDT",
+      "DOGEUSDT",
+      "FILUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": 0.0344
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T01:42:14.243Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 49,
+  "equity": 1.015019,
+  "realised": {
+    "total_net_pct": 1.5019,
+    "mean_net_pct": 0.0326,
+    "mean_gross_pct": 0.041,
+    "mean_cost_pct": 0.0083,
+    "ann_pct": 94.7,
+    "vol_pct": 18.6,
+    "sharpe": 5.1,
+    "t_stat": 0.58
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3964,
+    "observed_edge_pct": 0.0326,
+    "n_for_t196": 567,
+    "days_to_n": 95
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T20:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T02:42:17.726Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 49,
+  "equity": 1.015019,
+  "realised": {
+    "total_net_pct": 1.5019,
+    "mean_net_pct": 0.0326,
+    "mean_gross_pct": 0.041,
+    "mean_cost_pct": 0.0083,
+    "ann_pct": 94.7,
+    "vol_pct": 18.6,
+    "sharpe": 5.1,
+    "t_stat": 0.58
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3964,
+    "observed_edge_pct": 0.0326,
+    "n_for_t196": 567,
+    "days_to_n": 95
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T20:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T03:42:21.195Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 49,
+  "equity": 1.015019,
+  "realised": {
+    "total_net_pct": 1.5019,
+    "mean_net_pct": 0.0326,
+    "mean_gross_pct": 0.041,
+    "mean_cost_pct": 0.0083,
+    "ann_pct": 94.7,
+    "vol_pct": 18.6,
+    "sharpe": 5.1,
+    "t_stat": 0.58
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3964,
+    "observed_edge_pct": 0.0326,
+    "n_for_t196": 567,
+    "days_to_n": 95
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-24T20:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T04:42:24.590Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 50,
+  "equity": 1.015619,
+  "realised": {
+    "total_net_pct": 1.5619,
+    "mean_net_pct": 0.0332,
+    "mean_gross_pct": 0.0413,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 97.2,
+    "vol_pct": 18.4,
+    "sharpe": 5.29,
+    "t_stat": 0.6
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3925,
+    "observed_edge_pct": 0.0332,
+    "n_for_t196": 538,
+    "days_to_n": 90
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-25T00:00:00.000Z",
+    "longs": [
+      "ETHUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "LTCUSDT",
+      "SANDUSDT",
+      "SOLUSDT"
+    ],
+    "shorts": [
+      "TIAUSDT",
+      "NEARUSDT",
+      "DOGEUSDT",
+      "ATOMUSDT",
+      "FILUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": 0.0591
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T05:42:28.108Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 50,
+  "equity": 1.015619,
+  "realised": {
+    "total_net_pct": 1.5619,
+    "mean_net_pct": 0.0332,
+    "mean_gross_pct": 0.0413,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 97.2,
+    "vol_pct": 18.4,
+    "sharpe": 5.29,
+    "t_stat": 0.6
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3925,
+    "observed_edge_pct": 0.0332,
+    "n_for_t196": 538,
+    "days_to_n": 90
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T00:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T06:42:31.366Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 50,
+  "equity": 1.015619,
+  "realised": {
+    "total_net_pct": 1.5619,
+    "mean_net_pct": 0.0332,
+    "mean_gross_pct": 0.0413,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 97.2,
+    "vol_pct": 18.4,
+    "sharpe": 5.29,
+    "t_stat": 0.6
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3925,
+    "observed_edge_pct": 0.0332,
+    "n_for_t196": 538,
+    "days_to_n": 90
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T00:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T07:42:35.026Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 50,
+  "equity": 1.015619,
+  "realised": {
+    "total_net_pct": 1.5619,
+    "mean_net_pct": 0.0332,
+    "mean_gross_pct": 0.0413,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 97.2,
+    "vol_pct": 18.4,
+    "sharpe": 5.29,
+    "t_stat": 0.6
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3925,
+    "observed_edge_pct": 0.0332,
+    "n_for_t196": 538,
+    "days_to_n": 90
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T00:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T08:42:38.448Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 51,
+  "equity": 1.018839,
+  "realised": {
+    "total_net_pct": 1.8839,
+    "mean_net_pct": 0.0387,
+    "mean_gross_pct": 0.047,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 122.9,
+    "vol_pct": 18.3,
+    "sharpe": 6.72,
+    "t_stat": 0.71
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3906,
+    "observed_edge_pct": 0.0387,
+    "n_for_t196": 391,
+    "days_to_n": 65
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-25T04:00:00.000Z",
+    "longs": [
+      "BNBUSDT",
+      "ETHUSDT",
+      "SANDUSDT",
+      "XRPUSDT",
+      "AAVEUSDT",
+      "LTCUSDT"
+    ],
+    "shorts": [
+      "TIAUSDT",
+      "NEARUSDT",
+      "DOGEUSDT",
+      "ATOMUSDT",
+      "FILUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": 0.317
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T09:42:42.032Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 51,
+  "equity": 1.018839,
+  "realised": {
+    "total_net_pct": 1.8839,
+    "mean_net_pct": 0.0387,
+    "mean_gross_pct": 0.047,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 122.9,
+    "vol_pct": 18.3,
+    "sharpe": 6.72,
+    "t_stat": 0.71
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3906,
+    "observed_edge_pct": 0.0387,
+    "n_for_t196": 391,
+    "days_to_n": 65
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T04:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T10:42:45.883Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 51,
+  "equity": 1.018839,
+  "realised": {
+    "total_net_pct": 1.8839,
+    "mean_net_pct": 0.0387,
+    "mean_gross_pct": 0.047,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 122.9,
+    "vol_pct": 18.3,
+    "sharpe": 6.72,
+    "t_stat": 0.71
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3906,
+    "observed_edge_pct": 0.0387,
+    "n_for_t196": 391,
+    "days_to_n": 65
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T04:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T11:42:49.697Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 51,
+  "equity": 1.018839,
+  "realised": {
+    "total_net_pct": 1.8839,
+    "mean_net_pct": 0.0387,
+    "mean_gross_pct": 0.047,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 122.9,
+    "vol_pct": 18.3,
+    "sharpe": 6.72,
+    "t_stat": 0.71
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3906,
+    "observed_edge_pct": 0.0387,
+    "n_for_t196": 391,
+    "days_to_n": 65
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T04:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T12:42:53.162Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 52,
+  "equity": 1.017196,
+  "realised": {
+    "total_net_pct": 1.7196,
+    "mean_net_pct": 0.0349,
+    "mean_gross_pct": 0.043,
+    "mean_cost_pct": 0.0081,
+    "ann_pct": 105,
+    "vol_pct": 18.1,
+    "sharpe": 5.79,
+    "t_stat": 0.65
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3878,
+    "observed_edge_pct": 0.0349,
+    "n_for_t196": 475,
+    "days_to_n": 79
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-25T08:00:00.000Z",
+    "longs": [
+      "ETHUSDT",
+      "BNBUSDT",
+      "SANDUSDT",
+      "XRPUSDT",
+      "LTCUSDT",
+      "AAVEUSDT"
+    ],
+    "shorts": [
+      "TIAUSDT",
+      "NEARUSDT",
+      "DOGEUSDT",
+      "ATOMUSDT",
+      "FILUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": -0.1612
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T13:47:05.795Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 52,
+  "equity": 1.017196,
+  "realised": {
+    "total_net_pct": 1.7196,
+    "mean_net_pct": 0.0349,
+    "mean_gross_pct": 0.043,
+    "mean_cost_pct": 0.0081,
+    "ann_pct": 105,
+    "vol_pct": 18.1,
+    "sharpe": 5.79,
+    "t_stat": 0.65
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3878,
+    "observed_edge_pct": 0.0349,
+    "n_for_t196": 475,
+    "days_to_n": 79
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-25T14:53:16.501Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 52,
+  "equity": 1.017196,
+  "realised": {
+    "total_net_pct": 1.7196,
+    "mean_net_pct": 0.0349,
+    "mean_gross_pct": 0.043,
+    "mean_cost_pct": 0.0081,
+    "ann_pct": 105,
+    "vol_pct": 18.1,
+    "sharpe": 5.79,
+    "t_stat": 0.65
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3878,
+    "observed_edge_pct": 0.0349,
+    "n_for_t196": 475,
+    "days_to_n": 79
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-25T15:55:40.153Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 52,
+  "equity": 1.017196,
+  "realised": {
+    "total_net_pct": 1.7196,
+    "mean_net_pct": 0.0349,
+    "mean_gross_pct": 0.043,
+    "mean_cost_pct": 0.0081,
+    "ann_pct": 105,
+    "vol_pct": 18.1,
+    "sharpe": 5.79,
+    "t_stat": 0.65
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3878,
+    "observed_edge_pct": 0.0349,
+    "n_for_t196": 475,
+    "days_to_n": 79
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-25T16:55:41.618Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.021667,
+  "realised": {
+    "total_net_pct": 2.1667,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 142.5,
+    "vol_pct": 18.2,
+    "sharpe": 7.85,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-25T12:00:00.000Z",
+    "longs": [
+      "ETHUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "SANDUSDT",
+      "LTCUSDT",
+      "AAVEUSDT"
+    ],
+    "shorts": [
+      "BTCUSDT",
+      "NEARUSDT",
+      "DOGEUSDT",
+      "ATOMUSDT",
+      "FILUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": 0.4396
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T17:55:47.010Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.021667,
+  "realised": {
+    "total_net_pct": 2.1667,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 142.5,
+    "vol_pct": 18.2,
+    "sharpe": 7.85,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T12:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T18:55:48.642Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.021667,
+  "realised": {
+    "total_net_pct": 2.1667,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 142.5,
+    "vol_pct": 18.2,
+    "sharpe": 7.85,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T12:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-25T20:00:01.334Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.021667,
+  "realised": {
+    "total_net_pct": 2.1667,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 142.5,
+    "vol_pct": 18.2,
+    "sharpe": 7.85,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T12:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-25T21:06:11.999Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.021667,
+  "realised": {
+    "total_net_pct": 2.1667,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 142.5,
+    "vol_pct": 18.2,
+    "sharpe": 7.85,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": null,
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed",
+    "2026-08-25T16:00:00.000Z: only 0 symbols ranked (need 12)"
+  ]
+}
+{
+  "generated_at": "2026-08-25T22:12:24.795Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.021667,
+  "realised": {
+    "total_net_pct": 2.1667,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 142.5,
+    "vol_pct": 18.2,
+    "sharpe": 7.85,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": null,
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed",
+    "2026-08-25T16:00:00.000Z: only 0 symbols ranked (need 12)"
+  ]
+}
+{
+  "generated_at": "2026-08-25T23:16:26.944Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.020833,
+  "realised": {
+    "total_net_pct": 2.0833,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 134.4,
+    "vol_pct": 18.2,
+    "sharpe": 7.4,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-25T16:00:00.000Z",
+    "longs": [
+      "XRPUSDT",
+      "SANDUSDT",
+      "SOLUSDT",
+      "LTCUSDT",
+      "LINKUSDT",
+      "SEIUSDT"
+    ],
+    "shorts": [
+      "OPUSDT",
+      "GALAUSDT",
+      "TIAUSDT",
+      "INJUSDT",
+      "NEARUSDT",
+      "FILUSDT"
+    ],
+    "net_pct": -0.0817
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "2026-08-25T16:00:00.000Z: prior weights unpriceable — return not booked"
+  ]
+}
+{
+  "generated_at": "2026-08-26T00:19:10.118Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.020833,
+  "realised": {
+    "total_net_pct": 2.0833,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 134.4,
+    "vol_pct": 18.2,
+    "sharpe": 7.4,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T16:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T01:23:22.865Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 53,
+  "equity": 1.020833,
+  "realised": {
+    "total_net_pct": 2.0833,
+    "mean_net_pct": 0.0425,
+    "mean_gross_pct": 0.0507,
+    "mean_cost_pct": 0.0082,
+    "ann_pct": 134.4,
+    "vol_pct": 18.2,
+    "sharpe": 7.4,
+    "t_stat": 0.8
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.388,
+    "observed_edge_pct": 0.0425,
+    "n_for_t196": 320,
+    "days_to_n": 53
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": null,
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed",
+    "2026-08-25T20:00:00.000Z: only 0 symbols ranked (need 12)"
+  ]
+}
+{
+  "generated_at": "2026-08-26T02:26:12.939Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 54,
+  "equity": 1.020505,
+  "realised": {
+    "total_net_pct": 2.0505,
+    "mean_net_pct": 0.0411,
+    "mean_gross_pct": 0.0502,
+    "mean_cost_pct": 0.0091,
+    "ann_pct": 127.8,
+    "vol_pct": 18,
+    "sharpe": 7.1,
+    "t_stat": 0.79
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3846,
+    "observed_edge_pct": 0.0411,
+    "n_for_t196": 336,
+    "days_to_n": 56
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-25T20:00:00.000Z",
+    "longs": [
+      "BNBUSDT",
+      "ETHUSDT",
+      "XRPUSDT",
+      "SANDUSDT",
+      "SOLUSDT",
+      "LTCUSDT"
+    ],
+    "shorts": [
+      "DOGEUSDT",
+      "TIAUSDT",
+      "BTCUSDT",
+      "DOTUSDT",
+      "INJUSDT",
+      "FILUSDT"
+    ],
+    "net_pct": -0.0321
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T03:26:17.059Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 54,
+  "equity": 1.020505,
+  "realised": {
+    "total_net_pct": 2.0505,
+    "mean_net_pct": 0.0411,
+    "mean_gross_pct": 0.0502,
+    "mean_cost_pct": 0.0091,
+    "ann_pct": 127.8,
+    "vol_pct": 18,
+    "sharpe": 7.1,
+    "t_stat": 0.79
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3846,
+    "observed_edge_pct": 0.0411,
+    "n_for_t196": 336,
+    "days_to_n": 56
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T20:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-26T04:30:29.709Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 54,
+  "equity": 1.020505,
+  "realised": {
+    "total_net_pct": 2.0505,
+    "mean_net_pct": 0.0411,
+    "mean_gross_pct": 0.0502,
+    "mean_cost_pct": 0.0091,
+    "ann_pct": 127.8,
+    "vol_pct": 18,
+    "sharpe": 7.1,
+    "t_stat": 0.79
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3846,
+    "observed_edge_pct": 0.0411,
+    "n_for_t196": 336,
+    "days_to_n": 56
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T20:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T05:36:40.438Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 54,
+  "equity": 1.020505,
+  "realised": {
+    "total_net_pct": 2.0505,
+    "mean_net_pct": 0.0411,
+    "mean_gross_pct": 0.0502,
+    "mean_cost_pct": 0.0091,
+    "ann_pct": 127.8,
+    "vol_pct": 18,
+    "sharpe": 7.1,
+    "t_stat": 0.79
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3846,
+    "observed_edge_pct": 0.0411,
+    "n_for_t196": 336,
+    "days_to_n": 56
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T20:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T06:42:51.180Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 54,
+  "equity": 1.020505,
+  "realised": {
+    "total_net_pct": 2.0505,
+    "mean_net_pct": 0.0411,
+    "mean_gross_pct": 0.0502,
+    "mean_cost_pct": 0.0091,
+    "ann_pct": 127.8,
+    "vol_pct": 18,
+    "sharpe": 7.1,
+    "t_stat": 0.79
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3846,
+    "observed_edge_pct": 0.0411,
+    "n_for_t196": 336,
+    "days_to_n": 56
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T20:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T07:44:53.148Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 54,
+  "equity": 1.020505,
+  "realised": {
+    "total_net_pct": 2.0505,
+    "mean_net_pct": 0.0411,
+    "mean_gross_pct": 0.0502,
+    "mean_cost_pct": 0.0091,
+    "ann_pct": 127.8,
+    "vol_pct": 18,
+    "sharpe": 7.1,
+    "t_stat": 0.79
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3846,
+    "observed_edge_pct": 0.0411,
+    "n_for_t196": 336,
+    "days_to_n": 56
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-25T20:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-26T08:44:57.946Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 56,
+  "equity": 1.02129,
+  "realised": {
+    "total_net_pct": 2.129,
+    "mean_net_pct": 0.041,
+    "mean_gross_pct": 0.0504,
+    "mean_cost_pct": 0.0094,
+    "ann_pct": 127.9,
+    "vol_pct": 17.7,
+    "sharpe": 7.24,
+    "t_stat": 0.81
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3777,
+    "observed_edge_pct": 0.041,
+    "n_for_t196": 326,
+    "days_to_n": 54
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-26T04:00:00.000Z",
+    "longs": [
+      "BNBUSDT",
+      "ETHUSDT",
+      "SANDUSDT",
+      "XRPUSDT",
+      "SOLUSDT",
+      "LTCUSDT"
+    ],
+    "shorts": [
+      "DOTUSDT",
+      "TIAUSDT",
+      "INJUSDT",
+      "ATOMUSDT",
+      "FILUSDT",
+      "APTUSDT"
+    ],
+    "net_pct": 0.0647
+  },
+  "rebalanced_this_cycle": 2,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-26T09:45:02.661Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 56,
+  "equity": 1.02129,
+  "realised": {
+    "total_net_pct": 2.129,
+    "mean_net_pct": 0.041,
+    "mean_gross_pct": 0.0504,
+    "mean_cost_pct": 0.0094,
+    "ann_pct": 127.9,
+    "vol_pct": 17.7,
+    "sharpe": 7.24,
+    "t_stat": 0.81
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3777,
+    "observed_edge_pct": 0.041,
+    "n_for_t196": 326,
+    "days_to_n": 54
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T04:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-26T10:49:15.288Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 56,
+  "equity": 1.02129,
+  "realised": {
+    "total_net_pct": 2.129,
+    "mean_net_pct": 0.041,
+    "mean_gross_pct": 0.0504,
+    "mean_cost_pct": 0.0094,
+    "ann_pct": 127.9,
+    "vol_pct": 17.7,
+    "sharpe": 7.24,
+    "t_stat": 0.81
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3777,
+    "observed_edge_pct": 0.041,
+    "n_for_t196": 326,
+    "days_to_n": 54
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T04:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T11:51:17.217Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 56,
+  "equity": 1.02129,
+  "realised": {
+    "total_net_pct": 2.129,
+    "mean_net_pct": 0.041,
+    "mean_gross_pct": 0.0504,
+    "mean_cost_pct": 0.0094,
+    "ann_pct": 127.9,
+    "vol_pct": 17.7,
+    "sharpe": 7.24,
+    "t_stat": 0.81
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3777,
+    "observed_edge_pct": 0.041,
+    "n_for_t196": 326,
+    "days_to_n": 54
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T04:00:00.000Z)",
+  "errors": []
+}
+{
+  "generated_at": "2026-08-26T12:51:20.759Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": {
+    "ts": "2026-08-26T08:00:00.000Z",
+    "longs": [
+      "BNBUSDT",
+      "ETHUSDT",
+      "XRPUSDT",
+      "SANDUSDT",
+      "SOLUSDT",
+      "LTCUSDT"
+    ],
+    "shorts": [
+      "DOTUSDT",
+      "TIAUSDT",
+      "ATOMUSDT",
+      "INJUSDT",
+      "APTUSDT",
+      "FILUSDT"
+    ],
+    "net_pct": 0.1171
+  },
+  "rebalanced_this_cycle": 1,
+  "skipped": null,
+  "errors": []
+}
+{
+  "generated_at": "2026-08-26T13:55:33.461Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T15:01:44.209Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T16:07:54.953Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T17:14:05.660Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T18:20:16.455Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T19:26:27.234Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T20:32:37.964Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T21:38:48.727Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T22:44:59.447Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-26T23:51:10.219Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-27T00:57:20.960Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-27T02:03:31.725Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-27T03:09:42.441Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-27T04:15:53.190Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-27T05:22:03.965Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-27T06:28:14.693Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-27T07:34:25.421Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}
+{
+  "generated_at": "2026-08-27T08:40:36.157Z",
+  "lane": "v7_positioning_paper",
+  "signal": "top_ratio - retail_ratio, cross-sectional rank, dollar-neutral",
+  "k": 6,
+  "symbols": 24,
+  "periods_booked": 57,
+  "equity": 1.022486,
+  "realised": {
+    "total_net_pct": 2.2486,
+    "mean_net_pct": 0.0424,
+    "mean_gross_pct": 0.0516,
+    "mean_cost_pct": 0.0092,
+    "ann_pct": 135,
+    "vol_pct": 17.5,
+    "sharpe": 7.7,
+    "t_stat": 0.85
+  },
+  "backtest_expectation": {
+    "source": "banked v5 ledger, 24 symbols x 242 periods (40.5 days)",
+    "ann_pct": 85.3,
+    "vol_pct": 11.8,
+    "t_stat": 1.77,
+    "cross_sectional_ic": -0.0345,
+    "cross_sectional_ic_t": -2.63,
+    "caveat": "The BOOK's t is 1.77 — it does not reach 1.96, let alone the 2.73 that Bonferroni over 8 examined features would want. Only the raw cross-sectional IC (t=-2.63) is nominally significant; discretising it into a 6-a-side book and charging turnover costs gives most of that back. Sharpe 7.24 is an annualisation artefact of a 40-day window, not a property of the strategy."
+  },
+  "sample_requirement": {
+    "observed_sd_pct": 0.3745,
+    "observed_edge_pct": 0.0424,
+    "n_for_t196": 300,
+    "days_to_n": 50
+  },
+  "verdict": "ACCUMULATING",
+  "live_exposure_usdt": 0,
+  "latest": null,
+  "rebalanced_this_cycle": 0,
+  "skipped": "no unbooked closed periods (latest booked 2026-08-26T08:00:00.000Z)",
+  "errors": [
+    "AAVEUSDT: fetch failed",
+    "APTUSDT: fetch failed",
+    "ARBUSDT: fetch failed",
+    "ATOMUSDT: fetch failed",
+    "AVAXUSDT: fetch failed",
+    "AXSUSDT: fetch failed",
+    "BNBUSDT: fetch failed",
+    "BTCUSDT: fetch failed",
+    "DOGEUSDT: fetch failed",
+    "DOTUSDT: fetch failed",
+    "ETHUSDT: fetch failed",
+    "FILUSDT: fetch failed",
+    "GALAUSDT: fetch failed",
+    "INJUSDT: fetch failed",
+    "LINKUSDT: fetch failed",
+    "LTCUSDT: fetch failed",
+    "NEARUSDT: fetch failed",
+    "OPUSDT: fetch failed",
+    "SANDUSDT: fetch failed",
+    "SEIUSDT: fetch failed",
+    "SOLUSDT: fetch failed",
+    "SUIUSDT: fetch failed",
+    "TIAUSDT: fetch failed",
+    "XRPUSDT: fetch failed"
+  ]
+}

@@ -44,13 +44,40 @@ const DESCRIPTORS = [
   // three misses and a sleeping machine while catching a real outage the same
   // day. The 30-day API horizon is still the thing being protected — a gap
   // longer than that can NEVER be backfilled.
-  { name: "v5flow_collector", path: path.join(ROOT, "ops/daily/v5_flow_collector_latest.json"), max_age_ms: 13 * 60 * 60 * 1000 },
+  {
+    name: "v5flow_collector",
+    path: path.join(ROOT, "ops/daily/v5_flow_collector_latest.json"),
+    max_age_ms: 13 * 60 * 60 * 1000,
+    // A run where EVERY symbol failed still wrote this file on schedule, so
+    // age alone reported healthy through a 25-hour outage. Partial failures
+    // are tolerated — one symbol timing out is normal — but a run that banked
+    // nothing while failing everything did no work at all.
+    degraded: (doc) => {
+      const failed = Array.isArray(doc.failures) ? doc.failures.length : 0;
+      const symbols = Number(doc.symbols) || 0;
+      if (symbols && failed >= symbols * 4) return `every fetch failed (${failed})`;
+      return null;
+    },
+  },
   // v6 retired 2026-08-21 at 138 trades / -40.4% / verdict NEGATIVE. Its
   // heartbeat is gone BY DESIGN, so watching it would be a permanent false
   // alarm — the same reasoning that dropped the v3 descriptors.
   // v7 ticks hourly and is the lane actually under test — it was missing from
   // this list, which is the worst one to omit. 2h10m allows one missed tick.
-  { name: "v7positioning_lane", path: path.join(ROOT, "ops/daily/v7_positioning_latest.json"), max_age_ms: 130 * 60 * 1000 },
+  {
+    name: "v7positioning_lane",
+    path: path.join(ROOT, "ops/daily/v7_positioning_latest.json"),
+    max_age_ms: 130 * 60 * 1000,
+    // Same failure mode: 24 price fetches failed, the cycle exited 0, and the
+    // report looked current. Booking nothing is NORMAL here (most ticks have
+    // no closed period to act on), so the signal is failure count, not idleness.
+    degraded: (doc) => {
+      const failed = Array.isArray(doc.errors) ? doc.errors.length : 0;
+      const symbols = Number(doc.symbols) || 0;
+      if (symbols && failed >= symbols) return `every price fetch failed (${failed})`;
+      return null;
+    },
+  },
 ];
 
 async function main() {
@@ -65,14 +92,21 @@ async function main() {
       stateFile: ALERT_STATE,
       key: `deadman_${d.name}`,
       active: !!staleEntry,
-      title: `🚨 v3 데드맨: ${d.name} 심박 정지`,
+      title: staleEntry && staleEntry.degraded_reason
+        ? `🚨 데드맨: ${d.name} 실행되지만 작동 안 함`
+        : `🚨 v3 데드맨: ${d.name} 심박 정지`,
       severity: "error",
       recoveryTitle: `✅ v3 데드맨: ${d.name} 심박 회복`,
       rearmMs: 6 * 60 * 60 * 1000,
+      // Name the actual cause. A "heartbeat stopped" message for a job that is
+      // running fine but failing every call sends the reader looking for a
+      // dead process, which is the wrong place.
       body: staleEntry
         ? (staleEntry.missing
           ? `${d.name} 아티팩트가 존재하지 않음 (${d.path})`
-          : `${d.name} 아티팩트가 ${Math.round(staleEntry.age_ms / 60000)}분째 갱신 안 됨 (허용 ${Math.round(d.max_age_ms / 60000)}분)`)
+          : staleEntry.degraded_reason
+            ? `${d.name} 은 정시에 실행되고 파일도 갱신했지만 실제 작업은 실패: ${staleEntry.degraded_reason}`
+            : `${d.name} 아티팩트가 ${Math.round(staleEntry.age_ms / 60000)}분째 갱신 안 됨 (허용 ${Math.round(d.max_age_ms / 60000)}분)`)
         : `${d.name} 정상`,
     });
   }

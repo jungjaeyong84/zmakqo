@@ -35,6 +35,22 @@ function artifactAgeMs(filePath, nowMs = Date.now()) {
 }
 
 // descriptors: [{ name, path, max_age_ms }]
+// 2026-08-27 — freshness alone is not liveness.
+//
+// A 25-hour v7 outage went completely unnoticed. Both the collector and the
+// lane ran on schedule, every one of their network calls failed, and both
+// still exited 0 and wrote a fresh artifact reporting the failures in a field
+// nothing read. Age-only checking saw a recent mtime and called it healthy —
+// so total failure was indistinguishable from normal operation, which is the
+// one thing a deadman exists to prevent.
+//
+// A descriptor may now name a `degraded` predicate over the artifact's parsed
+// contents. Age still decides liveness; this decides whether the work the
+// heartbeat claims to represent actually happened.
+function readArtifact(filePath) {
+  try { return JSON.parse(fs.readFileSync(filePath, "utf8")); } catch (_) { return null; }
+}
+
 function checkArtifacts(descriptors = [], nowMs = Date.now(), ageFn = artifactAgeMs) {
   const stale = [];
   const healthy = [];
@@ -48,7 +64,15 @@ function checkArtifacts(descriptors = [], nowMs = Date.now(), ageFn = artifactAg
       max_age_ms: d.max_age_ms,
       missing: age === null,
     };
-    if (age === null || age > d.max_age_ms) stale.push(entry);
+    let degradedReason = null;
+    if (age !== null && typeof d.degraded === "function") {
+      const doc = readArtifact(d.path);
+      // An artifact that cannot be parsed is itself a failure, not a pass.
+      try { degradedReason = doc === null ? "artifact unreadable" : (d.degraded(doc) || null); }
+      catch (e) { degradedReason = `degraded check threw: ${e.message}`; }
+    }
+    if (degradedReason) entry.degraded_reason = degradedReason;
+    if (age === null || age > d.max_age_ms || degradedReason) stale.push(entry);
     else healthy.push(entry);
   }
   return Object.freeze({
