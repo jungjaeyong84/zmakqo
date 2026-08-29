@@ -170,6 +170,31 @@
       <% } %>
     </div>
 
+    <% if (v7.leverageView.length) { %>
+      <div class="sub">레버리지 환산 — 장부는 <%= v7.bookedAtLeverage %>배로 기록</div>
+      <div class="tblwrap"><table>
+        <thead><tr><th>배수</th><th>누적%</th><th>연환산%</th><th>변동성%</th><th>최대낙폭%</th><th>최악 1기간%</th><th>t</th></tr></thead>
+        <tbody>
+          <% v7.leverageView.forEach(function(v){ %>
+            <tr>
+              <td><%= v.leverage %>배</td>
+              <td class="<%= v.total_net_pct >= 0 ? 'up' : 'down' %>"><%= helpers.formatSigned(v.total_net_pct, 2, '%') %></td>
+              <td class="mut"><%= helpers.formatSigned(v.ann_pct, 1, '%') %></td>
+              <td class="mut"><%= helpers.formatNumber(v.vol_pct, 1) %>%</td>
+              <td class="down"><%= helpers.formatNumber(v.max_drawdown_pct, 1) %>%</td>
+              <td class="down"><%= helpers.formatNumber(v.worst_period_pct, 1) %>%</td>
+              <td class="mut"><%= helpers.formatNumber(v.t_stat, 2) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table></div>
+      <div class="barnote" style="margin-top:6px">
+        달러중립 북에서 레버리지는 순수한 선형 배율입니다 — 수익·변동성·비용이 같은 배수로 커지므로
+        <b style="color:var(--fg)">t는 어느 배수에서도 동일</b>합니다. 2배로 다시 테스트해도 통계적으로 얻는 것이 없고,
+        쌓인 기간만 버리게 됩니다. 배수에 따라 실제로 달라지는 것은 낙폭과 최악 손실뿐입니다.
+      </div>
+    <% } %>
+
     <% if (v7.longs.length || v7.shorts.length) { %>
       <div class="sub">현재 북 · <%= helpers.formatDateTime(v7.latestAt) %> 기준</div>
       <div class="tblwrap"><table>

@@ -305,6 +305,41 @@ async function main() {
     };
   }
 
+  // 2026-08-27 — leverage view, added because the plan is to deploy at 2x.
+  //
+  // The lane still BOOKS at 1x and that is deliberate. For a dollar-neutral
+  // book with no stop, leverage is a pure linear scale: returns, volatility and
+  // costs all multiply by the same factor, so the t-statistic is IDENTICAL at
+  // every multiple — measured, not assumed: 1.05 at 1x, 2x and 3x on this
+  // sample. Re-running the test at 2x would discard the accumulated periods and
+  // buy exactly nothing in return.
+  //
+  // What DOES change is what the operator experiences: drawdown and worst-period
+  // loss scale too, and those are the numbers that decide whether a position is
+  // holdable. So they are computed here rather than left for someone to
+  // multiply in their head.
+  const leverageView = nets.length > 1 ? [1, 2, 3].map((L) => {
+    let eq = 1, peak = 1, mdd = 0, worst = 0;
+    for (const x of nets) {
+      const r = x * L;
+      eq *= 1 + r; peak = Math.max(peak, eq);
+      mdd = Math.max(mdd, (peak - eq) / peak);
+      worst = Math.min(worst, r);
+    }
+    const yrs = nets.length * PERIOD_MS / (365 * 24 * 3600e3);
+    return {
+      leverage: L,
+      equity: Math.round(eq * 1e6) / 1e6,
+      total_net_pct: Math.round((eq - 1) * 1e4) / 100,
+      ann_pct: Math.round((Math.pow(eq, 1 / yrs) - 1) * 1e3) / 10,
+      vol_pct: Math.round(sd(nets) * L * Math.sqrt((365 * 24 * 3600e3) / PERIOD_MS) * 1e3) / 10,
+      max_drawdown_pct: Math.round(mdd * 1e3) / 10,
+      worst_period_pct: Math.round(worst * 1e3) / 10,
+      // unchanged by construction; carried so the invariance is visible
+      t_stat: tStat,
+    };
+  }) : null;
+
   const report = {
     generated_at: new Date().toISOString(),
     lane: "v7_positioning_paper",
@@ -325,6 +360,8 @@ async function main() {
     },
     backtest_expectation: expectation,
     sample_requirement: sampleReq,
+    booked_at_leverage: 1,
+    leverage_view: leverageView,
     verdict: periods < 200 ? "ACCUMULATING" : (tStat !== null && tStat > 1.96 ? "HOLDING" : "NOT_CONFIRMED"),
     live_exposure_usdt: 0,
     latest: row ? { ts: row.bar_time, longs: row.longs.map((l) => l.symbol), shorts: row.shorts.map((s) => s.symbol), net_pct: row.net_pct } : null,

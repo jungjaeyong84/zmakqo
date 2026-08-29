@@ -377,6 +377,11 @@ function buildV7Lane(v7, ledgerRows) {
     tone: verdict === "HOLDING" ? "up" : verdict === "NOT_CONFIRMED" ? "down" : "neutral",
     realised: r,
     sampleReq: req,
+    // The lane books at 1x; this is the same sample scaled. Shown because the
+    // stated plan is to deploy at 2x, and drawdown scales with leverage while
+    // the t-statistic does not.
+    bookedAtLeverage: asNumber(v7 && v7.booked_at_leverage) || 1,
+    leverageView: Array.isArray(v7 && v7.leverage_view) ? v7.leverage_view : [],
     // The backtest's return is the seductive number; its t is the honest one.
     // Both are carried because the whole point of this lane is watching the
     // forward t move away from the backtest t in one direction or the other.
