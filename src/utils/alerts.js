@@ -167,6 +167,26 @@ function resolveV2TelegramRuntimeContext(env = process.env) {
   const riskSymbol = String(source.DONBEOLJA_V2_RISK_MAX_SYMBOL_NOTIONAL_QUOTE || "").trim();
   const riskGroup = String(source.DONBEOLJA_V2_RISK_MAX_CORRELATED_GROUP_NOTIONAL_QUOTE || "").trim();
 
+  // 2026-09-05 — the banner reported the V2 environment flags, and V2 no longer
+  // exists in this repo. On 2026-08-24 a carry alert therefore carried
+  // "dry_run=0 | live_endpoint=1 | risk_total=1300", which reads as 1,300 USDT
+  // of live trading authorised. Nothing was authorised: those flags describe a
+  // runtime that was purged, and tracing the live import graph found no
+  // reachable order path at all.
+  //
+  // What actually gates a live order is now one thing — the kill switch in
+  // binanceFuturesPrivate — so that is what the banner reports. The V2 flags
+  // are kept below only when orders are genuinely armed, where they describe
+  // real limits instead of ghosts.
+  const ordersArmed = String(source.BINANCE_LIVE_ORDERS_ARMED || "").trim() === "1";
+  if (!ordersArmed) {
+    return Object.freeze({
+      label: "PAPER",
+      line: "runtime=PAPER | live_orders=DISARMED | 실거래 노출 0 "
+        + "(주문 경로가 BINANCE_LIVE_ORDERS_ARMED 로 차단됨)",
+    });
+  }
+
   const mode = discovery
     ? "DISCOVERY_CANARY"
     : (canaryOnly ? "CANARY_ONLY" : "LIVE");

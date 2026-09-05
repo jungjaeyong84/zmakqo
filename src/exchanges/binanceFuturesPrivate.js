@@ -797,6 +797,40 @@ async function fetchFuturesExchangeInfo(symbol) {
   return data;
 }
 
+
+// ---------------------------------------------------------------------------
+// 2026-09-05 — explicit live-order kill switch.
+//
+// Until now nothing could place an order, but only by accident: the sole
+// call site (paperBinanceRunner.js:11447) fails to load because the v2 purge
+// deleted a module it still requires. Protection that depends on a broken
+// import is protection that disappears the moment someone repairs the import
+// or writes a new caller — and by then the failure is a real order, not an
+// exception.
+//
+// So refusal is now the default and stated. Every state-changing endpoint
+// checks this first. Read access — balances, positions, fills, exchange info —
+// is untouched, because reading is what the dashboard and the monitors do.
+//
+// To actually trade, set BINANCE_LIVE_ORDERS_ARMED=1 in the process
+// environment. That is deliberately not in any env file: arming it has to be
+// an act someone performs, not a default someone inherits.
+const LIVE_ORDER_ENV = "BINANCE_LIVE_ORDERS_ARMED";
+
+function assertLiveOrdersArmed(operation) {
+  if (String(process.env[LIVE_ORDER_ENV] || "").trim() === "1") return;
+  const err = new Error(
+    `LIVE_ORDERS_DISARMED: ${operation} refused. `
+    + `No order path is armed on this host. Set ${LIVE_ORDER_ENV}=1 to enable live trading.`,
+  );
+  err.code = "LIVE_ORDERS_DISARMED";
+  err.operation = operation;
+  // Log loudly: a refusal that happens silently teaches nobody that the call
+  // was attempted, and an attempted order is exactly what someone needs to see.
+  console.error(`[LIVE_ORDERS_DISARMED] ${operation} refused (${LIVE_ORDER_ENV} not set)`);
+  throw err;
+}
+
 async function placeFuturesMarketOrder({
   apiKey,
   apiSecret,
@@ -809,6 +843,7 @@ async function placeFuturesMarketOrder({
   idempotencyKey,
   newOrderRespType = "RESULT",
 } = {}) {
+  assertLiveOrdersArmed("placeFuturesMarketOrder");
   const resolvedClientOrderId = resolveClientOrderId({ clientOrderId, idempotencyKey });
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
@@ -884,6 +919,7 @@ async function placeFuturesLimitOrder({
   clientOrderId,
   idempotencyKey,
 } = {}) {
+  assertLiveOrdersArmed("placeFuturesLimitOrder");
   const resolvedClientOrderId = resolveClientOrderId({ clientOrderId, idempotencyKey });
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
@@ -959,6 +995,7 @@ async function cancelFuturesOrder({
   origClientOrderId,
   recvWindow = 5000,
 } = {}) {
+  assertLiveOrdersArmed("cancelFuturesOrder");
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
       provider: "binancefut",
@@ -1198,6 +1235,7 @@ async function cancelFuturesAlgoOrder({
   recvWindow = 5000,
   signal = null,
 } = {}) {
+  assertLiveOrdersArmed("cancelFuturesAlgoOrder");
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
       provider: "binancefut",
@@ -1259,6 +1297,7 @@ async function placeFuturesStopMarketOrder({
   idempotencyKey,
   signal = null,
 } = {}) {
+  assertLiveOrdersArmed("placeFuturesStopMarketOrder");
   const sym = String(symbol || "").trim().toUpperCase();
   const s = String(side || "").toUpperCase();
   const stopPx = await normalizeFuturesTriggerPrice(sym, stopPrice, {
@@ -1362,6 +1401,7 @@ async function placeFuturesTakeProfitMarketOrder({
   idempotencyKey,
   signal = null,
 } = {}) {
+  assertLiveOrdersArmed("placeFuturesTakeProfitMarketOrder");
   const sym = String(symbol || "").trim().toUpperCase();
   const s = String(side || "").toUpperCase();
   const stopPx = await normalizeFuturesTriggerPrice(sym, stopPrice);
@@ -1458,6 +1498,7 @@ async function placeFuturesTakeProfitMarketOrder({
 }
 
 async function cancelFuturesOpenOrders({ apiKey, apiSecret, symbol, recvWindow = 5000, signal = null } = {}) {
+  assertLiveOrdersArmed("cancelFuturesOpenOrders");
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
       provider: "binancefut",
@@ -1668,6 +1709,7 @@ async function fetchFuturesIncomeHistory({
 }
 
 async function setFuturesLeverage({ apiKey, apiSecret, symbol, leverage, recvWindow = 5000 } = {}) {
+  assertLiveOrdersArmed("setFuturesLeverage");
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
       provider: "binancefut",
@@ -1696,6 +1738,7 @@ async function setFuturesLeverage({ apiKey, apiSecret, symbol, leverage, recvWin
 }
 
 async function setFuturesMarginType({ apiKey, apiSecret, symbol, marginType, recvWindow = 5000 } = {}) {
+  assertLiveOrdersArmed("setFuturesMarginType");
   if (shouldUseEgressProxy()) {
     return callEgressProxy({
       provider: "binancefut",
