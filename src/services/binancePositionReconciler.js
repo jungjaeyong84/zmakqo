@@ -226,6 +226,63 @@ function finiteOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseTimestampMs(value) {
+  if (value == null || value === "") return null;
+  if (Number.isFinite(Number(value)) && Number(value) > 0) return Number(value);
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// shouldDispatchTp1RecoveryAlert — 2026-04-19 SOL regression fix.
+//
+// Problem:
+//   The Fix #1 (2026-04-18) guard for TP1 late-alert used a truthy check on
+//   `meta.tp_p1_recovery_alert_sent_at`. But that field survives the
+//   FLAT → re-OPEN position lifecycle (meta fields are not cleared on
+//   entry), so **yesterday's** alert marker silenced **today's** TP1
+//   recovery alert.  Observed live on 2026-04-19 SOLUSDT (alert stamp
+//   from 2026-04-18 11:40Z, recovery observed at 2026-04-19 07:23Z —
+//   no Telegram).
+//
+// Fix:
+//   Compare the persisted alert-sent timestamp to THIS recovery event's
+//   `tp_p1_recovery_observed_at` timestamp:
+//     • alerted_at missing          → fire (never alerted)
+//     • alerted_at < observed_at    → fire (prior alert was for an older
+//                                    lifecycle / different recovery event)
+//     • alerted_at >= observed_at   → skip (already alerted for this one)
+//     • observed_at missing         → skip (conservative: avoid spam on
+//                                    malformed meta)
+//
+// Same-class family with PR #8 / #10 / #11 / #12: set-once idempotency
+// markers that do not get cleared across position lifecycles produce
+// false-positive "already done" signals.  The fix here is the alert-path
+// analogue to those watermark / schema fixes.
+// ─────────────────────────────────────────────────────────────────────────────
+function shouldDispatchTp1RecoveryAlert({ prevMeta = null, meta = null } = {}) {
+  const prev = prevMeta && typeof prevMeta === "object" ? prevMeta : {};
+  const cur = meta && typeof meta === "object" ? meta : {};
+
+  // Gate 1: transition false → true on THIS write.  Without this, a runner
+  // that's been in tp_p1_done state for hours would re-fire the alert on
+  // every reconcile.
+  const prevTpP1Done = prev.tp_p1_done === true;
+  const newTpP1Done = cur.tp_p1_done === true;
+  if (!newTpP1Done || prevTpP1Done) return false;
+
+  // Gate 2: must be the recovery path (not the normal fills-sync path,
+  // which has its own alert).
+  if (!cur.tp_p1_recovery_trigger) return false;
+
+  // Gate 3: per-recovery-event idempotency by timestamp comparison.
+  const alertedAtMs = parseTimestampMs(cur.tp_p1_recovery_alert_sent_at);
+  if (alertedAtMs == null) return true; // never alerted → fire
+  const observedAtMs = parseTimestampMs(cur.tp_p1_recovery_observed_at);
+  if (observedAtMs == null) return false; // malformed → skip (conservative)
+  return alertedAtMs < observedAtMs;
+}
+
 function buildLedgerMetaPatchFromLedger(ledger = {}) {
   return {
     entry_qty_base: Number.isFinite(Number(ledger.entry_qty_abs)) ? Number(ledger.entry_qty_abs) : null,
@@ -541,6 +598,17 @@ const FLAT_META_NULL_FIELDS = [
   "contract_trail_consumed_abs",
   "contract_observed_qty_abs",
   "contract_latest",
+  // Recovery-path markers (2026-04-19 quality-audit follow-up to PR #15).
+  // These were set-once-never-cleared and would persist across the
+  // FLAT → re-OPEN lifecycle. PR #15's timestamp-guard makes the alert
+  // dispatch robust to that staleness, but clearing the markers on FLAT
+  // is the closer-to-the-root fix that also protects any other reader of
+  // `tp_p1_recovery_trigger` from false-positive "this was a recovery
+  // fill" signals on subsequent lifecycles.
+  "tp_p1_recovery_trigger",
+  "tp_p1_recovery_observed_at",
+  "tp_p1_recovery_seeded_price",
+  "tp_p1_recovery_alert_sent_at",
 ];
 
 function classifyTakeProfitOrders({ orders = [], positionSide, qtyBase, meta = {} } = {}) {
@@ -935,6 +1003,7 @@ function reconcileBinancePositionMetaWithExchange({
 module.exports = {
   reconcileBinancePositionMetaWithExchange,
   inferTakeProfitKindFromQtyRatio,
+  shouldDispatchTp1RecoveryAlert,
   __test: {
     normalizeAlgoOrderFetchResult,
     inferTakeProfitKindFromQtyRatio,
@@ -947,5 +1016,7 @@ module.exports = {
     emitFlatProjectionTrailContextLostAlert,
     emitFlatStaleThresholdBreachAlert,
     FLAT_META_FROZEN_TRAIL_FIELDS,
+    shouldDispatchTp1RecoveryAlert,
+    parseTimestampMs,
   },
 };
