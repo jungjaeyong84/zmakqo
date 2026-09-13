@@ -78,6 +78,28 @@ const DESCRIPTORS = [
       return null;
     },
   },
+  // The wide-universe flow collector runs on the same 4h cadence as v5flow and
+  // is watched for the same reason: /futures/data serves ~30 days, so a silent
+  // outage costs history that cannot be recovered afterwards. 13h tolerates
+  // three misses and a sleeping machine.
+  //
+  // Every unwatched job in this project has eventually died quietly — v6 ran
+  // 30 days past its own retirement because nothing was looking. This one is
+  // registered on day one.
+  {
+    name: "wide_flow_collector",
+    path: path.join(ROOT, "ops/daily/wide_flow_collector_latest.json"),
+    max_age_ms: 13 * 60 * 60 * 1000,
+    degraded: (doc) => {
+      // A rate-limit block is the dangerous case: this shares an IP with
+      // v5flow, and v5flow is the only input v7 has.
+      if (doc.rate_limited) return `rate limited (${doc.rate_limited}) — shares an IP with v5flow`;
+      const failed = Number(doc.failure_count) || 0;
+      const expected = (Number(doc.symbols) || 0) * (Number(doc.endpoints) || 0);
+      if (expected && failed >= expected / 2) return `half the sweep failed (${failed}/${expected})`;
+      return null;
+    },
+  },
 ];
 
 async function main() {
