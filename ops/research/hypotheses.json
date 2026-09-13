@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "hypotheses": [
+    {
+      "id": "xs-reversal-classic-ta",
+      "title": "고전지표 횡단면 역추세",
+      "rationale": "27종 4시간봉 2,168시점(1년)에서 시점별 signed IC + Newey-West로 19개 지표 중 8개 유의, 전부 음수 (bb_width -6.36, stoch_kd -4.90, bb_pctb -4.18, dmi_diff -4.05). 동종 대비 강한 종목이 이후 부진. v4(횡단면 모멘텀)와 v7(포지셔닝 스프레드) 어느 쪽도 거래한 적 없는 방향. 한계: 인샘플 발견이고 IC 0.02~0.05로 작아 기본법칙상 비용 통과 여부 불확실.",
+      "discovered_on": "2026-09-13T00:00:00.000Z",
+      "registered_at": "2026-09-13T04:06:23.444Z",
+      "confirmation_starts_at": "2027-03-13T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": true,
+        "min_periods": 180,
+        "note": "확인창 이후 데이터만 사용"
+      },
+      "outcome": null,
+      "hash": "b0defb2418471c03"
+    },
+    {
+      "id": "reaction-fade-btc",
+      "title": "v3 반응 신호 페이드",
+      "rationale": "v3 익스포저가 BTC 움직임을 3~6시간 후행(반응 NW-t 4.98, 예측 NW-t 0.78). 탐색적 1회 실행에서 규칙 A(-sign 직전 6h BTC 수익) -13.79%, 규칙 B(-clip 베타가중 익스포저) -9.12%로 음수. 관계는 실재하나 단순 페이드는 수익화 실패. 사전확률 하향 상태로 등록.",
+      "discovered_on": "2026-09-13T00:00:00.000Z",
+      "registered_at": "2026-09-13T04:06:23.444Z",
+      "confirmation_starts_at": "2027-03-13T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": true,
+        "min_periods": 180,
+        "prior": "lowered by negative exploration"
+      },
+      "outcome": null,
+      "hash": "c065e5dbabe1331f"
+    },
+    {
+      "id": "v8-signed-exposure-compression",
+      "title": "v8 단순 순익스포저 압축",
+      "rationale": "v8 BTC Factor Compression. 사전 합의 사양으로 1회 검증 후 종료.",
+      "discovered_on": "2026-09-13T00:00:00.000Z",
+      "registered_at": "2026-09-13T04:06:23.444Z",
+      "confirmation_starts_at": "2026-09-13T04:06:23.444Z",
+      "gate": {
+        "requires_static_benchmark": true
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "비용후 -5.67%, NW-t -0.24, 연간 양수확률 23.7~25.7%. 발견 표본에서 기각.",
+        "recorded_at": "2026-09-13T04:06:23.444Z"
+      },
+      "hash": "466727583fa0916a"
+    },
+    {
+      "id": "v8-beta-weighted-compression",
+      "title": "v8 BTC 베타 가중 압축",
+      "rationale": "v8 BTC Factor Compression. 사전 합의 사양으로 1회 검증 후 종료.",
+      "discovered_on": "2026-09-13T00:00:00.000Z",
+      "registered_at": "2026-09-13T04:06:23.444Z",
+      "confirmation_starts_at": "2026-09-13T04:06:23.444Z",
+      "gate": {
+        "requires_static_benchmark": true
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "비용후 +1.32%/+5.89%이나 동일 노출 고정 숏 대조군에 -2.22pp/-0.06pp 미달. 타이밍 NW-t 0.20/0.50. 수익의 59.7~65.8%가 방향 편향. 발견 표본에서 기각.",
+        "recorded_at": "2026-09-13T04:06:23.444Z"
+      },
+      "hash": "c17435c7524044c8"
+    }
+  ],
+  "updated_at": "2026-09-13T04:06:23.444Z",
+  "hash_payload_version": "v2",
+  "rehashed_at": "2026-09-13T05:57:14.434Z",
+  "rehash_reason": "entryHash payload encoding v1(NUL-joined) -> v2(JSON array). Immutable fields unchanged; checksum only."
+}
