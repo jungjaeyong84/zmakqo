@@ -17,6 +17,47 @@
 // is the width of the universe itself. 27 names is small; there are 528 USDT
 // perpetuals trading.
 //
+// WHAT WIDENING ACTUALLY BUYS, MEASURED
+// -------------------------------------
+// Effective dimensionality of the demeaned cross-section, all at one common
+// 160-day window (T=959 4h bars) so the estimation bias is comparable, with the
+// noise ceiling a structureless matrix of the same shape would show:
+//
+//     N     min turnover   demeaned PR   noise ceiling   real/noise
+//     27    $77.9M/day        10.99          26.29          0.42
+//     50         -            25.07          47.57          0.53
+//    100    $11.5M/day        51.08          90.64          0.56
+//    200     $3.5M/day        90.23         165.63          0.55
+//    505     $0.4M/day       168.45         331.03          0.51
+//
+// Real PR grows with N while the ratio to the noise ceiling stays flat, which
+// is the signature of genuinely added independent variation rather than an
+// estimator inflating as the matrix goes singular. Holding T/N fixed at 5
+// instead gives the same direction: 4.89 at N=27 to 56.20 at N=120.
+//
+// Translated into the number that matters — IR = IC x sqrt(PR x rebalances),
+// daily rebalancing, target IR 1.0:
+//
+//     N=27   requires IC 0.0158
+//     N=100  requires IC 0.0073
+//     N=200  requires IC 0.0055
+//
+// Widening from 27 to 200 tradable names cuts the required IC by roughly two
+// thirds. That is the whole case for collecting wide.
+//
+// Three things this does NOT say. PR is statistical dimensionality and bounds
+// breadth from above; the fundamental law wants independent SIGNALS, which is a
+// stronger requirement. The tail is expensive — N=200 reaches down to $3.5M a
+// day, so the required IC falls while per-name execution cost rises. And the
+// N=505 row sits at T/N=1.9, too near singular to trust; N<=200 is the
+// defensible range.
+//
+// The noise ceiling is N/(1+(N-1)/T), verified against Box-Muller normals at
+// five (N,T) points to within 0.6%. An earlier pass used a hand-rolled LCG
+// whose multiply overflowed 2^53, degenerating into correlated output that
+// pinned the ceiling near 10.4 regardless of N — which made widening look
+// far better than it is. Closed form, checked against a real generator.
+//
 // WHAT MUST BE BANKED, AND WHAT MUST NOT
 // --------------------------------------
 // Klines and funding rates page back years on demand, so collecting them is
