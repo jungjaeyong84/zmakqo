@@ -66,6 +66,16 @@ node scripts/run-research-gate.js gate --positions p.json --returns r.json --cos
 
 `in_sample` 각인이 있어야 표본내 기각과 확인창을 실제로 통과한 뒤의 기각을 구별할 수 있다.
 
+### 근거도 불변이다 (해시 v3)
+
+처음엔 `id`·`title`·날짜만 해시로 보호했다. **근거(`rationale`)는 열려 있었다** — 가설을 왜 열었는지 기록한 유일한 필드이자, 나중에 읽는 사람이 등록이 정당했는지 판단하는 근거인데, 조용히 재작성할 수 있었다.
+
+2026-09-14 에 그 구멍이 실제로 필요해졌다. `v7-turnover-gate-020` 의 등록 수치가 나중에 동결한 평가기의 것이 아님이 드러났고(쌍체 차이 +1.076%p 로 기록됐으나 동결 평가기는 −0.559%p), 모듈은 그걸 조용히 고치는 것을 막지 못했을 것이다.
+
+지금은 `rationale` 이 `IMMUTABLE_FIELDS` 에 있고 해시 payload 버전이 v3 다. **결과적으로 근거는 제자리에서 수정할 수 없다** — 정당화가 바뀐 가설은 다른 가설이므로 새 id 가 필요하고, 원래 항목은 자기 판정을 달고 그대로 남는다. 그래서 위 사례는 `WITHDRAWN` + `v7-turnover-gate-020-frozen` 신규 등록으로 처리했다.
+
+해시 버전을 올리면 기존 항목이 전부 `tampered` 로 뜬다. 이는 의도된 것이며, 재해시할 때는 불변 필드를 전부 출력해 **체크섬만 움직였음을 눈으로 확인**한 뒤에 써야 한다.
+
 ```bash
 node scripts/run-research-gate.js registry list
 node scripts/run-research-gate.js registry validate

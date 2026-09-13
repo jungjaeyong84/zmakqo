@@ -193,12 +193,49 @@ const NOW = new Date("2026-09-13T00:00:00.000Z");
   assert.notStrictEqual(empty, entryHash({ ...base, id: "x", title: "" }), "(G3) a real value still differs");
 
   // Changing any single immutable field must move the hash.
-  const ref = entryHash({ id: "i", title: "t", discovered_on: "d", registered_at: "r", confirmation_starts_at: "c" });
-  for (const f of ["id", "title", "discovered_on", "registered_at", "confirmation_starts_at"]) {
-    const mutated = { id: "i", title: "t", discovered_on: "d", registered_at: "r", confirmation_starts_at: "c" };
+  const full = { id: "i", title: "t", rationale: "why", discovered_on: "d", registered_at: "r", confirmation_starts_at: "c" };
+  const ref = entryHash(full);
+  for (const f of ["id", "title", "rationale", "discovered_on", "registered_at", "confirmation_starts_at"]) {
+    const mutated = { ...full };
     mutated[f] = `${mutated[f]}X`;
     assert.notStrictEqual(entryHash(mutated), ref, `(G4:${f}) editing ${f} must change the hash`);
   }
+}
+
+// The evidence that justified a hypothesis must be as protected as its dates.
+// Leaving rationale mutable meant the one field recording WHY a hypothesis was
+// opened could be rewritten silently — which is exactly what a registry exists
+// to prevent, and exactly what was needed on 2026-09-14 when registered figures
+// turned out to come from a construction that was not the one frozen.
+{
+  const registryPath = tmpRegistry();
+  const args = {
+    registryPath,
+    id: "evidence",
+    title: "t",
+    rationale: "in-sample paired difference +1.076pp",
+    confirmationStartsAt: "2027-01-01T00:00:00.000Z",
+    now: NOW,
+  };
+  registerHypothesis(args);
+
+  // Same rationale re-registers as a no-op.
+  assert.strictEqual(registerHypothesis(args).unchanged, true, "(I1) identical rationale is idempotent");
+
+  // A revised rationale is a different hypothesis and must be refused.
+  assert.throws(
+    () => registerHypothesis({ ...args, rationale: "in-sample paired difference -0.559pp" }),
+    /IMMUTABLE_FIELD_CHANGED/,
+    "(I2) revising the evidence in place must throw — it needs a new id"
+  );
+
+  // Hand-editing it in the file must fail validation.
+  const doc = readRegistry(registryPath);
+  doc.hypotheses[0].rationale = "quietly corrected";
+  fs.writeFileSync(registryPath, JSON.stringify(doc, null, 2));
+  const v = validateRegistry({ registryPath });
+  assert.strictEqual(v.ok, false, "(I3) an edited rationale fails validation");
+  assert.deepStrictEqual(v.tampered, ["evidence"], "(I4) and names the entry");
 }
 
 // Both these modules and this test must stay plain text. A control byte in

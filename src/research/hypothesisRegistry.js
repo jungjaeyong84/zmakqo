@@ -35,11 +35,23 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const IMMUTABLE_FIELDS = ["id", "title", "discovered_on", "registered_at", "confirmation_starts_at"];
+// `rationale` is immutable for the same reason the dates are. It carries the
+// evidence that justified registration, and it is the field a later reader uses
+// to judge whether the hypothesis should ever have been opened. Leaving it
+// mutable meant the one field that records WHY could be rewritten without
+// detection — found on 2026-09-14 when a registered entry turned out to carry
+// figures from a construction that was not the one later frozen, and nothing in
+// the module would have stopped that being quietly corrected.
+//
+// Consequence, and it is the intended one: evidence cannot be revised in place.
+// A hypothesis whose justification changes is a different hypothesis and needs a
+// new id, leaving the original visible with its own outcome.
+const IMMUTABLE_FIELDS = ["id", "title", "rationale", "discovered_on", "registered_at", "confirmation_starts_at"];
 
-// Bumped when the payload encoding changes, so old hashes fail loudly as
-// "tampered" rather than being silently compared across formats.
-const HASH_PAYLOAD_VERSION = "v2";
+// Bumped when the payload encoding or the field set changes, so old hashes fail
+// loudly as "tampered" rather than being silently compared across formats.
+//   v2 -> v3 : rationale brought under the hash
+const HASH_PAYLOAD_VERSION = "v3";
 
 function entryHash(entry) {
   // JSON-encode the values as an array. Field boundaries have to be

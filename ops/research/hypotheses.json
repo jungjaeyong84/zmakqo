@@ -19,7 +19,7 @@
         "recorded_at": "2026-09-13T08:46:43.841Z",
         "in_sample": true
       },
-      "hash": "b0defb2418471c03"
+      "hash": "9d34015e008a0be6"
     },
     {
       "id": "reaction-fade-btc",
@@ -34,7 +34,7 @@
         "prior": "lowered by negative exploration"
       },
       "outcome": null,
-      "hash": "c065e5dbabe1331f"
+      "hash": "f16027b56ebbe7e4"
     },
     {
       "id": "v8-signed-exposure-compression",
@@ -51,7 +51,7 @@
         "evidence": "비용후 -5.67%, NW-t -0.24, 연간 양수확률 23.7~25.7%. 발견 표본에서 기각.",
         "recorded_at": "2026-09-13T04:06:23.444Z"
       },
-      "hash": "466727583fa0916a"
+      "hash": "1b514310b143d777"
     },
     {
       "id": "v8-beta-weighted-compression",
@@ -68,11 +68,58 @@
         "evidence": "비용후 +1.32%/+5.89%이나 동일 노출 고정 숏 대조군에 -2.22pp/-0.06pp 미달. 타이밍 NW-t 0.20/0.50. 수익의 59.7~65.8%가 방향 편향. 발견 표본에서 기각.",
         "recorded_at": "2026-09-13T04:06:23.444Z"
       },
-      "hash": "c17435c7524044c8"
+      "hash": "c1ddf8d8faa2d799"
+    },
+    {
+      "id": "v7-turnover-gate-020",
+      "title": "v7 회전 게이트 0.20",
+      "rationale": "v7 은 책이 거의 안 바뀌는 시점에도 4시간마다 리밸런스한다. 이 변형은 회전이 0.20 미만이면 리밸런스를 건너뛴다. 등가중 책에서 가능한 가장 덜 침습적인 개입이다 — v7 은 모든 종목에 ±0.5/K 를 싣기 때문에 줄일 미세 비중 조정이 없고, 건너뛸 수 있는 것은 리밸런스 전체뿐이다. 등록 근거(표본내, 탐색): 기준선 168기간 net -2.725% / 비용 1.843%. 게이트 0.20 적용 시 net -1.649% / 비용 1.470%, 쌍체 차이 +1.076%p. 그러나 차이 sd 0.1475, t 0.56, 80% 검정력 MDE 5.357%p 로, 관측된 효과는 이 표본 검출 한계의 1/7 이다. 확증이 아니라 탐색 결과다. 기준선은 실거래 원장과 gross 기준 0.062%p 로 일치함을 확인했다(원장 재생은 167/167행, -0.0004%p). 확인창 2028-08-21 은 임의 선택이 아니라 검정력 계산에서 나왔다: 관측 효과 기간당 0.0064%, sd 0.1475 → 80% 검정력에 4,240기간 필요, 4시간 주기로 707일. 평가 데이터는 2026-09-15 부터. 평가기는 scripts/evaluate-v7-turnover-gate.js 에 동결돼 있고 파라미터를 조정하면 안 된다. 별도 레인을 만들지 않는다 — 변형은 v7 이 이미 쓰는 플로우 원장의 결정론적 함수이므로 나중에 재구성 가능하고, 새 프로세스는 v5 플로우(=v7 의 유일한 입력)를 위협할 수 있다.",
+      "discovered_on": "2026-09-14T00:00:00.000Z",
+      "registered_at": "2026-09-13T23:29:35.128Z",
+      "confirmation_starts_at": "2028-08-21T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "달러중립 책이라 평균 노출이 구조적으로 0 — 고정 대조군이 현금이 되어 시험이 무의미",
+        "requires_paired_test": true,
+        "min_periods": 4240,
+        "power": 0.8,
+        "alpha": 0.05,
+        "evaluator": "scripts/evaluate-v7-turnover-gate.js",
+        "evaluation_from": "2026-09-15"
+      },
+      "outcome": {
+        "verdict": "WITHDRAWN",
+        "evidence": "등록된 수치가 동결 평가기의 것이 아니다. 등록문은 기준선 168기간 net -2.725% / 게이트 net -1.649% / 쌍체 차이 +1.076%p 로 적혀 있으나, 동결 평가기(scripts/evaluate-v7-turnover-gate.js)는 같은 창에서 173기간 / net -2.630% / -3.189% / 차이 -0.559%p 를 낸다. 원인은 반복 대상이다 — 등록 당시 스크립트는 v7 원장의 ts 를 돌았고 동결 평가기는 플로우 원장의 ts 를 돈다. 겹치지 않는 5기간(08-16 네 개, 09-13T20:00)이 부호를 뒤집었다. 차이 sd 0.1165 에 비해 효과가 워낙 작아 표본 구성 3% 변화로 부호가 바뀐다. 코드를 수치에 맞추지 않고 철회한다. 정정본은 v7-turnover-gate-020-frozen 으로 별도 등록.",
+        "recorded_at": "2026-09-13T23:35:00.361Z",
+        "in_sample": true
+      },
+      "hash": "513e311c39957ebb"
+    },
+    {
+      "id": "v7-turnover-gate-020-frozen",
+      "title": "v7 회전 게이트 0.20 (동결 평가기)",
+      "rationale": "v7 은 책이 거의 안 바뀌는 시점에도 4시간마다 리밸런스한다. 회전이 0.20 미만이면 리밸런스를 건너뛴다. 등가중 책에서 가능한 가장 덜 침습적인 개입 — ±0.5/K 고정이라 줄일 미세 비중이 없고 건너뛸 수 있는 것은 리밸런스 전체뿐이다. 동결 평가기 scripts/evaluate-v7-turnover-gate.js 의 표본내 출력(from 2026-08-16, 173기간): 기준선 net -2.630% 비용 1.878% / 게이트 net -3.189% 비용 1.493% / 건너뜀 115 / 쌍체 차이 -0.559%p, sd 0.1165, t -0.37, 80% 검정력 MDE 4.292%p. 즉 관측된 차이는 음수이고 검출 한계의 1/8 이다. 확증이 아니라 탐색 결과이며 방향조차 불확실하다. 기준선은 실거래 원장과 gross 기준 0.062%p 로 일치(원장 재생은 167/167행, -0.0004%p). 검정력 현실: 관측 효과를 잡으려면 10,183기간(4.6년), 비용 절감분만 실현돼도 21,500기간(9.8년)이 필요하다. 차이 sd 는 기간당 비용 절감분의 52배다. 확인창은 가장 유리한 가정(비용 44% 절감, 4,666기간 = 2.1년)으로 잡았을 뿐, 현실적 효과 크기에서는 v7 규모로 사실상 검정 불가라고 기록한다. v7-turnover-gate-020 을 대체한다. 그 항목은 동결되지 않은 구성의 수치를 담고 있어 WITHDRAWN 처리했다.",
+      "discovered_on": "2026-09-14T00:00:00.000Z",
+      "registered_at": "2026-09-13T23:35:00.362Z",
+      "confirmation_starts_at": "2028-10-31T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "달러중립이라 평균 노출이 구조적으로 0 — 고정 대조군이 현금이 되어 무의미",
+        "requires_paired_test": true,
+        "min_periods": 4666,
+        "power": 0.8,
+        "alpha": 0.05,
+        "evaluator": "scripts/evaluate-v7-turnover-gate.js",
+        "evaluation_from": "2026-09-15",
+        "supersedes": "v7-turnover-gate-020",
+        "caveat": "현실적 효과 크기에서는 4.6~9.8년 필요. 사실상 검정 불가 가능성 높음."
+      },
+      "outcome": null,
+      "hash": "16fd39b94028c923"
     }
   ],
-  "updated_at": "2026-09-13T08:46:43.841Z",
-  "hash_payload_version": "v2",
-  "rehashed_at": "2026-09-13T05:57:14.434Z",
-  "rehash_reason": "entryHash payload encoding v1(NUL-joined) -> v2(JSON array). Immutable fields unchanged; checksum only."
+  "updated_at": "2026-09-13T23:35:00.362Z",
+  "hash_payload_version": "v3",
+  "rehashed_at": "2026-09-13T23:35:00.360Z",
+  "rehash_reason": "entryHash payload v2 -> v3: rationale brought under the hash. Immutable fields unchanged; checksum only."
 }
