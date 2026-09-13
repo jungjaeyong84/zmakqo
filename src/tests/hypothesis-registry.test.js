@@ -218,7 +218,7 @@ const NOW = new Date("2026-09-13T00:00:00.000Z");
     }
     return -1;
   };
-  for (const rel of ["../research/hypothesisRegistry", "../research/staticBenchmarkGate"]) {
+  for (const rel of ["../research/hypothesisRegistry", "../research/staticBenchmarkGate", "../research/monotonicityGate"]) {
     const text = fsMod.readFileSync(require.resolve(rel), "utf8");
     assert.strictEqual(firstControl(text), -1, `(H1:${rel}) control character in source`);
   }
