@@ -56,6 +56,16 @@ node scripts/run-research-gate.js gate --positions p.json --returns r.json --cos
 
 **기각과 확증은 대칭이 아니다.** 발견 표본에서 실패한 가설은 그 표본에서 기각해도 된다(인샘플에서 안 되면 아웃오브샘플에서도 안 된다). 확증만 무효다. v8 두 변형이 등록 즉시 `REJECTED`로 기록된 이유다.
 
+이 비대칭은 처음엔 문서에만 있었고 코드는 기각과 확증을 똑같이 막았다. 2026-09-13에 `xs-reversal-classic-ta`를 표본내에서 기각하려다 제 가드에 걸려 발견했다. 지금은 `recordOutcome`이 이렇게 동작한다.
+
+| 판정 | 확인창 이전 | 비고 |
+|---|---|---|
+| `CONFIRMED` | 차단 | 발견 데이터로 성공 선언 금지 |
+| `INCONCLUSIVE` | 차단 | 돌지 않은 창에 대한 주장 |
+| `REJECTED` · `WITHDRAWN` | **허용** | `evidence` 필수, `in_sample: true` 로 각인 |
+
+`in_sample` 각인이 있어야 표본내 기각과 확인창을 실제로 통과한 뒤의 기각을 구별할 수 있다.
+
 ```bash
 node scripts/run-research-gate.js registry list
 node scripts/run-research-gate.js registry validate

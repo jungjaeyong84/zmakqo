@@ -95,6 +95,32 @@ const NOW = new Date("2026-09-13T00:00:00.000Z");
     /WINDOW_NOT_OPEN/,
     "(D1) declaring success before the window opens must throw"
   );
+  assert.throws(
+    () => recordOutcome({ registryPath, id: "future", outcome: "INCONCLUSIVE", now: NOW }),
+    /WINDOW_NOT_OPEN/,
+    "(D1b) so must an early INCONCLUSIVE — it is a claim about a window that has not run"
+  );
+
+  // Rejection is the asymmetric case: a hypothesis that already fails on its
+  // own discovery data will not start working out of sample. The README stated
+  // this asymmetry from the start; the first version of the module did not
+  // implement it and blocked rejection too.
+  {
+    const early = recordOutcome({
+      registryPath,
+      id: "future",
+      outcome: "REJECTED",
+      evidence: "quintile profile non-monotonic; tail spread sign opposes the IC",
+      now: NOW,
+    });
+    assert.strictEqual(early.outcome.verdict, "REJECTED", "(D1c) early rejection is allowed");
+    assert.strictEqual(early.outcome.in_sample, true, "(D1d) and is stamped as an in-sample rejection");
+  }
+  assert.throws(
+    () => recordOutcome({ registryPath, id: "future", outcome: "REJECTED", evidence: "  ", now: NOW }),
+    /EARLY_REJECTION_NEEDS_EVIDENCE/,
+    "(D1e) an early rejection without evidence is refused"
+  );
 
   const later = new Date("2026-12-02T00:00:00.000Z");
   const entry = recordOutcome({ registryPath, id: "future", outcome: "REJECTED", evidence: "gate FAIL_BENCHMARK", now: later });

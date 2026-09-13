@@ -13,7 +13,12 @@
         "min_periods": 180,
         "note": "확인창 이후 데이터만 사용"
       },
-      "outcome": null,
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "표본내 구조적 기각. 롱숏 책으로 거래 불가. (1) 5분위 프로파일이 비단조 — 드리프트 제거 후에도 OSC 8h: Q1 -0.0141 Q2 +0.0025 Q3 -0.0153 Q4 -0.0090 Q5 +0.0257, 요인 최상위가 최선. (2) IC 와 꼬리 스프레드의 부호가 반대 — 평균 횡단면 IC -0.0333 인데 하위롱/상위숏 스프레드 -0.0703%. (3) Q1-Q5 스프레드가 어느 방향으로도 무의미 — NW-t -0.95(8h), -1.76(24h). (4) 비용 시험에서 OSC/VOL/결합 x 보유 3종 x K 2종 전 조합이 비용 전 gross 까지 음수. 스피어만 IC 는 분포 중앙의 순위 구조를 잡는데 롱숏 책은 극단만 거래한다. 그 극단에서 관계가 뒤집힌다.",
+        "recorded_at": "2026-09-13T08:46:43.841Z",
+        "in_sample": true
+      },
       "hash": "b0defb2418471c03"
     },
     {
@@ -66,7 +71,7 @@
       "hash": "c17435c7524044c8"
     }
   ],
-  "updated_at": "2026-09-13T04:06:23.444Z",
+  "updated_at": "2026-09-13T08:46:43.841Z",
   "hash_payload_version": "v2",
   "rehashed_at": "2026-09-13T05:57:14.434Z",
   "rehash_reason": "entryHash payload encoding v1(NUL-joined) -> v2(JSON array). Immutable fields unchanged; checksum only."

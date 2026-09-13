@@ -143,18 +143,36 @@ function recordOutcome({ registryPath, id, outcome, evidence = "", now = new Dat
   const entry = doc.hypotheses.find((h) => h.id === id);
   if (!entry) throw new Error(`HYPOTHESIS_REGISTRY_UNKNOWN_ID: ${id}`);
 
-  const startMs = parseTs(entry.confirmation_starts_at, "confirmation_starts_at");
-  if (nowMs < startMs) {
-    throw new Error(
-      `HYPOTHESIS_REGISTRY_WINDOW_NOT_OPEN: ${id} confirmation opens ${entry.confirmation_starts_at}, now ${new Date(nowMs).toISOString()}`
-    );
-  }
   const allowed = ["CONFIRMED", "REJECTED", "INCONCLUSIVE", "WITHDRAWN"];
   if (!allowed.includes(outcome)) {
     throw new Error(`HYPOTHESIS_REGISTRY_BAD_OUTCOME: ${outcome} (expected ${allowed.join("|")})`);
   }
 
-  entry.outcome = { verdict: outcome, evidence: String(evidence), recorded_at: new Date(nowMs).toISOString() };
+  // Rejection and confirmation are NOT symmetric, and the first version of this
+  // file did not implement that. A hypothesis that already fails on the data
+  // that produced it will not start working out of sample, so rejecting early
+  // is sound. Claiming success early is the thing that has to be barred.
+  //
+  // Early rejections are stamped in_sample so a reader can tell them from a
+  // rejection that actually survived to the confirmation window.
+  const startMs = parseTs(entry.confirmation_starts_at, "confirmation_starts_at");
+  const windowOpen = nowMs >= startMs;
+  const REJECTION_LIKE = ["REJECTED", "WITHDRAWN"];
+  if (!windowOpen && !REJECTION_LIKE.includes(outcome)) {
+    throw new Error(
+      `HYPOTHESIS_REGISTRY_WINDOW_NOT_OPEN: ${id} cannot record ${outcome} before ${entry.confirmation_starts_at} (now ${new Date(nowMs).toISOString()}); only ${REJECTION_LIKE.join("/")} may be recorded early`
+    );
+  }
+  if (!windowOpen && !String(evidence).trim()) {
+    throw new Error(`HYPOTHESIS_REGISTRY_EARLY_REJECTION_NEEDS_EVIDENCE: ${id}`);
+  }
+
+  entry.outcome = {
+    verdict: outcome,
+    evidence: String(evidence),
+    recorded_at: new Date(nowMs).toISOString(),
+    in_sample: !windowOpen,
+  };
   doc.updated_at = new Date(nowMs).toISOString();
   writeRegistry(registryPath, doc);
   return entry;
