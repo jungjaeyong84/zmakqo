@@ -116,9 +116,56 @@
       },
       "outcome": null,
       "hash": "16fd39b94028c923"
+    },
+    {
+      "id": "v7-forward-futility-look1",
+      "title": "v7 순방향 무용성 검정 1차 (400기간)",
+      "rationale": "v7 백테스트 우위가 순방향 원장으로 배제되는지의 1차 검사. 규칙(동결): 기준값 mu_bt = 백테스트 순수익 연 85.3%(aee0dd5c, 전 회전 테이커 비용 차감 후)를 연 2190기간으로 기하 환산한 0.02817%/기간. 검정 대상은 v7 원장에서 prior_gross_pct 가 있는 행의 net_pct, 원장 순서로 처음 n개만 사용(이후 행 무시). 통계량은 (net - mu_bt) 의 Newey-West t, 지연 6. 1차 n=400: z < -1.96 이면 REJECTED(백테스트 우위가 순방향 데이터로 기각, v7 은퇴), 아니면 INCONCLUSIVE(2차로 진행), 1차에서는 확증 없음. 2차 n=800: z < -1.96 이면 REJECTED, 아니면 net 의 0 대비 NW t > 1.96 이면 CONFIRMED, 아니면 INCONCLUSIVE — 미입증이지 부재가 아니며 규칙은 여기서 끝난다. 그 이후 v7 을 계속 돌리려면 새 사유로 새로 등록해야 한다. 두 번 검사를 각 단측 0.025 로 두어 백테스트 우위가 진짜인데 은퇴시킬 확률을 5% 이하로 묶는다(Bonferroni). 초안은 검사당 -1.65 였으나 두 번이면 약 8% 라 등록 전에 -1.96 으로 조였다 — 기각을 어렵게 하는 방향. 동결 평가기 scripts/evaluate-v7-forward-futility.js sha256 9b7fa7a5f5465468373bec34b8e0d69700d1d6cf1c6efb5b9a30d7f8c8048527. 평가기는 n 에 도달하기 전에는 통계량을 출력하지 않는다. 등록 시점에 보인 것(169기간, 2026-09-14T00:00 까지): 평균 net -0.0146%/기간, sd 0.418%, mu_bt 대비 z iid -1.33 / NW -1.44, 0 대비 NW t -0.49. 관측 sd 기준 기각선(iid 근사)은 n=400 에서 평균 < -0.0128%, n=800 에서 < -0.0008% 이고 확증선은 n=800 에서 평균 > 0.0290%. 즉 현재 평균은 이미 1차 기각선 아래에 있다. 검사 시점 400/800 과 임계값은 이 경계를 계산하기 전에 제안됐지만, z -1.33 은 제안 시점에 보였다. 1차 판정에는 등록 후 새로 쌓일 231기간이 포함된다. 배경: v7 리포트의 판정은 200기간에서 라벨만 NOT_CONFIRMED 로 바꿀 뿐 아무것도 멈추지 않고, 언제 끝내는지가 어디에도 없었다. v6 는 같은 구조로 은퇴 판정 후 30일을 더 돌았다. 0 대비 우위를 80% 검정력으로 검출하려면 약 1,700기간이 필요해 기다리기만으로는 결론이 늦다. 그래서 질문을 '입증했나'가 아니라 '백테스트가 약속한 우위가 순방향 데이터로 배제됐나'로 뒤집었다. 순방향 원장의 모든 행은 백테스트가 고정된 2026-08-17 이후 기록돼 이 질문에 대해 표본 밖이다. 확인창 시작은 400번째 예약 행이 존재할 수 있는 가장 이른 시각(마지막 예약 ts + 231x4h)이다. 수집 중단이 있으면 실제로는 더 늦어지며, 평가기가 n 을 따로 강제한다. 2차는 v7-forward-futility-look2.",
+      "discovered_on": "2026-09-14T00:00:00.000Z",
+      "registered_at": "2026-09-14T05:49:29.686Z",
+      "confirmation_starts_at": "2026-10-22T12:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "달러중립이라 평균 노출이 구조적으로 0 — 고정 대조군이 현금이 되어 무의미. 0 대비 검정이 그 역할을 한다",
+        "evaluator": "scripts/evaluate-v7-forward-futility.js",
+        "evaluator_sha256": "9b7fa7a5f5465468373bec34b8e0d69700d1d6cf1c6efb5b9a30d7f8c8048527",
+        "statistic": "Newey-West t of (net - mu_bt), lag 6",
+        "mu_bt_pct_per_period": 0.02817,
+        "alpha_per_look_one_sided": 0.025,
+        "look": 1,
+        "n": 400,
+        "z_reject": -1.96,
+        "confirmation_allowed": false
+      },
+      "outcome": null,
+      "hash": "ba111f16b7644b55"
+    },
+    {
+      "id": "v7-forward-futility-look2",
+      "title": "v7 순방향 무용성 검정 2차 (800기간)",
+      "rationale": "v7 백테스트 우위 배제 검사의 2차이자 마지막 검사. 1차(v7-forward-futility-look1)가 REJECTED 면 이 항목은 WITHDRAWN 처리한다. 규칙(동결): 기준값 mu_bt = 백테스트 순수익 연 85.3%(aee0dd5c, 전 회전 테이커 비용 차감 후)를 연 2190기간으로 기하 환산한 0.02817%/기간. 검정 대상은 v7 원장에서 prior_gross_pct 가 있는 행의 net_pct, 원장 순서로 처음 n개만 사용(이후 행 무시). 통계량은 (net - mu_bt) 의 Newey-West t, 지연 6. 1차 n=400: z < -1.96 이면 REJECTED(백테스트 우위가 순방향 데이터로 기각, v7 은퇴), 아니면 INCONCLUSIVE(2차로 진행), 1차에서는 확증 없음. 2차 n=800: z < -1.96 이면 REJECTED, 아니면 net 의 0 대비 NW t > 1.96 이면 CONFIRMED, 아니면 INCONCLUSIVE — 미입증이지 부재가 아니며 규칙은 여기서 끝난다. 그 이후 v7 을 계속 돌리려면 새 사유로 새로 등록해야 한다. 두 번 검사를 각 단측 0.025 로 두어 백테스트 우위가 진짜인데 은퇴시킬 확률을 5% 이하로 묶는다(Bonferroni). 초안은 검사당 -1.65 였으나 두 번이면 약 8% 라 등록 전에 -1.96 으로 조였다 — 기각을 어렵게 하는 방향. 동결 평가기 scripts/evaluate-v7-forward-futility.js sha256 9b7fa7a5f5465468373bec34b8e0d69700d1d6cf1c6efb5b9a30d7f8c8048527. 평가기는 n 에 도달하기 전에는 통계량을 출력하지 않는다. 등록 시점에 보인 것(169기간, 2026-09-14T00:00 까지): 평균 net -0.0146%/기간, sd 0.418%, mu_bt 대비 z iid -1.33 / NW -1.44, 0 대비 NW t -0.49. 관측 sd 기준 기각선(iid 근사)은 n=400 에서 평균 < -0.0128%, n=800 에서 < -0.0008% 이고 확증선은 n=800 에서 평균 > 0.0290%. 즉 현재 평균은 이미 1차 기각선 아래에 있다. 검사 시점 400/800 과 임계값은 이 경계를 계산하기 전에 제안됐지만, z -1.33 은 제안 시점에 보였다. 1차 판정에는 등록 후 새로 쌓일 231기간이 포함된다. 배경: v7 리포트의 판정은 200기간에서 라벨만 NOT_CONFIRMED 로 바꿀 뿐 아무것도 멈추지 않고, 언제 끝내는지가 어디에도 없었다. v6 는 같은 구조로 은퇴 판정 후 30일을 더 돌았다. 0 대비 우위를 80% 검정력으로 검출하려면 약 1,700기간이 필요해 기다리기만으로는 결론이 늦다. 그래서 질문을 '입증했나'가 아니라 '백테스트가 약속한 우위가 순방향 데이터로 배제됐나'로 뒤집었다. 순방향 원장의 모든 행은 백테스트가 고정된 2026-08-17 이후 기록돼 이 질문에 대해 표본 밖이다. 확인창 시작은 800번째 예약 행이 존재할 수 있는 가장 이른 시각(마지막 예약 ts + 631x4h)이다.",
+      "discovered_on": "2026-09-14T00:00:00.000Z",
+      "registered_at": "2026-09-14T05:49:29.690Z",
+      "confirmation_starts_at": "2026-12-28T04:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "달러중립이라 평균 노출이 구조적으로 0 — 고정 대조군이 현금이 되어 무의미. 0 대비 검정이 그 역할을 한다",
+        "evaluator": "scripts/evaluate-v7-forward-futility.js",
+        "evaluator_sha256": "9b7fa7a5f5465468373bec34b8e0d69700d1d6cf1c6efb5b9a30d7f8c8048527",
+        "statistic": "Newey-West t of (net - mu_bt), lag 6",
+        "mu_bt_pct_per_period": 0.02817,
+        "alpha_per_look_one_sided": 0.025,
+        "look": 2,
+        "n": 800,
+        "z_reject": -1.96,
+        "t_confirm": 1.96,
+        "confirmation_allowed": true
+      },
+      "outcome": null,
+      "hash": "602d9afd57e38455"
     }
   ],
-  "updated_at": "2026-09-13T23:35:00.362Z",
+  "updated_at": "2026-09-14T05:49:29.690Z",
   "hash_payload_version": "v3",
   "rehashed_at": "2026-09-13T23:35:00.360Z",
   "rehash_reason": "entryHash payload v2 -> v3: rationale brought under the hash. Immutable fields unchanged; checksum only."
