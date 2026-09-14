@@ -163,9 +163,31 @@
       },
       "outcome": null,
       "hash": "602d9afd57e38455"
+    },
+    {
+      "id": "wide-v7-positioning-extension",
+      "title": "v7 포지셔닝 신호의 넓은 유니버스 확장 (미결제약정 상위 200)",
+      "rationale": "v7 은 24종목에서 top_ratio - retail_ratio 로 순위를 매긴다. breadth 측정상 27종목은 독립 베팅 약 2개라 넓은 유니버스가 후보로 올랐다. 다만 PR 은 수익률에서 잰 것이지 이 신호에서 잰 것이 아니므로, 확장이 신호를 더한다는 가정은 하지 않았다. 동결 사양(scripts/evaluate-wide-positioning-monotonicity.js sha256 730549c3896d0ffca0c3a2809f15e553a2e536a01acd8c0f3bd4dced640d997a, 첫 실행 전에 헤더에 고정): 점수는 v7 정의 그대로, 전방수익 close[ts+4h 봉]/close[ts 봉]-1(v7 시점), 각 ts 의 oi_value 로 상위 200 선정(캐시의 24h 거래량은 현재 스냅숏이라 미사용), ts >= 2026-08-18(v7 정의 커밋 aee0dd5c 이후), 단조성 게이트 5분위 NW lag 5, 예상 부호 IC<0. 본 검사는 상위200 h4 만 판정하고 나머지는 서술용. 정렬 선결조건: 넓은 원장과 새 종가로 v7 원장을 재구성 — prior_gross_pct 169/169 일치, 롱숏 구성 169/171 일치(불일치 2건 모두 2026-08-25). 불일치 시 게이트를 돌리지 않도록 되어 있었다. 종가는 2026-09-14T06:03:33Z 에 528종목 새로 받았고 닫힌 봉만 사용. 이 확인창 날짜는 명목상이다 — 이 항목은 등록 즉시 표본내 결과로 판정된다.",
+      "discovered_on": "2026-09-14T00:00:00.000Z",
+      "registered_at": "2026-09-14T06:12:59.403Z",
+      "confirmation_starts_at": "2026-11-24T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "달러중립 횡단면 — 고정 대조군이 현금",
+        "requires_monotonicity": true,
+        "evaluator": "scripts/evaluate-wide-positioning-monotonicity.js",
+        "evaluator_sha256": "730549c3896d0ffca0c3a2809f15e553a2e536a01acd8c0f3bd4dced640d997a"
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "동결 판정 FAIL_NONMONOTONE, 게다가 부호가 반대. 본 검사(상위200 h4, 162시점, 08-18~09-13T20:00): 분위 [-0.0015, +0.0005, +0.0002, +0.0005, +0.0002], IC +0.0315 (NW-t 3.29), 꼬리 Q1-Q5 -0.0017 (NW-t -2.56). v7 은 낮은 점수를 롱하는데 넓은 유니버스에서는 그 Q1 이 가장 나빴다. 서술용: 상위200 중 v7 제외 IC +0.0362 (3.73) / 상위100 IC +0.0046 (0.50) / v7 24종목 IC -0.0140 (-0.73), 꼬리 0.0000 (0.01) — 같은 기간 v7 자기 종목에서도 신호가 사라짐 / 상위200 h12 IC +0.0491 (2.49) 꼬리 NW-t -1.49 / 상위200 전체 ts(08-13~) IC +0.0276 (3.23). Q1 단측 효과는 이 기각 과정에서 보고 나서 이름 붙인 것이라 근거가 아니다. 별도 가설 wide-retail-crowding-q1 로 순방향 데이터에서만 확인한다.",
+        "recorded_at": "2026-09-14T06:12:59.404Z",
+        "in_sample": true
+      },
+      "hash": "211a0dacb8cf6124"
     }
   ],
-  "updated_at": "2026-09-14T05:49:29.690Z",
+  "updated_at": "2026-09-14T06:12:59.404Z",
   "hash_payload_version": "v3",
   "rehashed_at": "2026-09-13T23:35:00.360Z",
   "rehash_reason": "entryHash payload v2 -> v3: rationale brought under the hash. Immutable fields unchanged; checksum only."
