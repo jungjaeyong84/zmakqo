@@ -209,9 +209,31 @@
       },
       "outcome": null,
       "hash": "2641f5dea58c0e1b"
+    },
+    {
+      "id": "funding-crowding-xs",
+      "title": "펀딩 쏠림 횡단면 (높은 펀딩 종목의 가격 약세)",
+      "rationale": "펀딩은 레버리지 수요의 가격이다. 롱이 많이 내는 종목은 쏠려 있고 횡단면에서 약해야 한다 — wide-retail-crowding-q1 과 같은 메커니즘을 수년 이력의 독립 데이터로 시험. 예상 부호 IC<0. 동결 사양(scripts/evaluate-funding-crowding-xs.js sha256 ca6106184ae099925ee436e77170b2cfca75e0a208ace46767e28da27e746a3b, 첫 실행 전 고정): 점수는 직전 UTC 하루 펀딩 합(1h/4h/8h 간격을 합으로 비교), 전방은 d 00:00~d+1 00:00 일봉 종가 수익, 형성 중 봉 제외. 유니버스는 직전일 펀딩·두 종가·상장 14일 이상·직전 7일 중 5일 이상 거래대금이 있는 종목 중 거래대금 상위 200, 적격 100 미만 날은 건너뜀. 단조성 게이트 5분위 NW lag 5 |t| 1.96. 분할: 탐색 2023-01-15~2025-09-18, 홀드아웃 2025-09-19~ 는 탐색이 예상 부호로 통과할 때만 한 번 읽는다. 탐색 실패면 REJECTED 이고 살리지 않는다(기간·유니버스·지평 변경 금지, 사전 합의). 통과해도 책 없음. 사양 메모: 스케치 단계에서는 8h·24h 를 적었으나 4h봉 수년치 추가 수집 비용 때문에 첫 실행 전에 24h 단일 지평으로 확정. 데이터: 2026-09-19 08:56Z 에 528개 USDT 무기한 전체의 2023-01-01 이후 펀딩 1,881,391건과 일봉을 수집, 제한 걸림 0. 알려진 편향: 수집일 상장 종목만 이력이 있어 상장폐지 종목 부재. 확인창은 명목상이다 — 표본내 판정으로 즉시 종결된다.",
+      "discovered_on": "2026-09-19T00:00:00.000Z",
+      "registered_at": "2026-09-19T09:43:34.415Z",
+      "confirmation_starts_at": "2027-03-19T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "달러중립 횡단면",
+        "requires_monotonicity": true,
+        "evaluator": "scripts/evaluate-funding-crowding-xs.js",
+        "evaluator_sha256": "ca6106184ae099925ee436e77170b2cfca75e0a208ace46767e28da27e746a3b"
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "동결 판정 FAIL_MULTIPLE, 홀드아웃 미열람. 탐색 978일, 일평균 174종목: 분위 [-0.0007, +0.0005, +0.0001, -0.0002, +0.0002], IC -0.0005 (NW-t -0.12), 꼬리 Q1-Q5 -0.0009 (NW-t -1.60), IC 와 꼬리 부호 불일치. 2.7년 동안 펀딩 수준은 다음 날 가격의 횡단면 순위에 대해 사실상 정보가 없다. 서술용: 펀딩 차감 총수익 IC -0.0111 (NW-t -2.74) 이나 꼬리 +0.0003 (0.61)이고, 이 IC 는 높은 펀딩 종목이 펀딩을 더 내서 생기는 기계적 효과다 / 상위100 IC -0.0012 (-0.24). 함의: 쏠림→약세 메커니즘이 펀딩 기준으로는 수년 표본에서 보이지 않았다. wide-retail-crowding-q1 의 사전확률을 낮추는 근거이며, 그 가설의 규칙이나 확인창은 바꾸지 않는다.",
+        "recorded_at": "2026-09-19T09:43:34.416Z",
+        "in_sample": true
+      },
+      "hash": "abf450ffeba0207d"
     }
   ],
-  "updated_at": "2026-09-14T06:13:46.252Z",
+  "updated_at": "2026-09-19T09:43:34.416Z",
   "hash_payload_version": "v3",
   "rehashed_at": "2026-09-13T23:35:00.360Z",
   "rehash_reason": "entryHash payload v2 -> v3: rationale brought under the hash. Immutable fields unchanged; checksum only."
