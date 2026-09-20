@@ -405,9 +405,30 @@
       },
       "outcome": null,
       "hash": "2d6dee9429f8c8fc"
+    },
+    {
+      "id": "upbit-premium-fade",
+      "title": "업비트 국지 과열 페이드 (바이낸스 무기한 숏)",
+      "rationale": "GPT-5.5 9차 상의 후보 2, 확률 10~14%. 메커니즘: 한국에서만 프리미엄과 거래대금이 동시에 터진 구간은 자본 이동 마찰 때문에 즉시 차익거래되지 않는다. 원화 레그를 건드리지 않고 바이낸스 무기한만 숏해 되돌림을 취한다. 오늘 기각된 kimchi-inventory-arb(상시 재고 차익, 월 0.27%)와 달리 극단 구간만 거래한다. 동결 평가기 scripts/evaluate-upbit-premium-fade.js sha256 a03c2855770dabaf9ce52e97ff2fa8df3c8beb699eb0282db7c82862f7876677, 이벤트 P&L 계산 전 고정. 규칙(GPT 원안): 프리미엄 7% 이상 + 업비트 24시간 거래대금이 30일 중앙값 3배 이상 + 무기한 12시간 수익 12% 이상이면 다음 1시간봉 종가에 숏, 프리미엄 2% 이하 또는 72시간 청산, +18% 손절, -15% 목표, 건당 5%·총 60%, 토큰당 14일 쿨다운, 편도 0.15%. 유니버스는 업비트 원화마켓과 바이낸스 USDT 무기한이 모두 있는 237쌍, 2021-01 이후.",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T01:10:07.019Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "이벤트 숏",
+        "requires_monotonicity": false,
+        "requires_placebo": true
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "불합격. 후보일 1,377건(144종목, 2021 376·2022 85·2023 100·2024 311·2025 382·2026 123)에서 시간봉 조건까지 충족한 이벤트 176건: 승률 54.5%, 건당 평균 -0.39%, 27개월 중 손실월 59.3%, 최악월 -0.835, 월별 부트스트랩 5% 분위 -0.119. 청산 사유 손절 51 / 목표 49 / 프리미엄 해소 7 / 시간 52. 위약(무작위 다른 종목, 같은 날짜) 122건 건당 -1.05%: 그 시기엔 무엇을 숏해도 손해였고 진짜 이벤트는 덜 잃었을 뿐이다. 평가기 한계(정직하게 기록): +7일 이동 위약은 0건으로 실행되지 못했다. 수집한 구간이 이벤트 -1일~+5일이라 +7일 지점에 데이터가 없었다. 다음 후보부터 구간을 넓힌다.",
+        "recorded_at": "2026-09-20T01:10:07.020Z",
+        "in_sample": true
+      },
+      "hash": "bf36bf5694ffc74a"
     }
   ],
-  "updated_at": "2026-09-20T00:21:32.955Z",
+  "updated_at": "2026-09-20T01:10:07.020Z",
   "hash_payload_version": "v3",
   "rehashed_at": "2026-09-13T23:35:00.360Z",
   "rehash_reason": "entryHash payload v2 -> v3: rationale brought under the hash. Immutable fields unchanged; checksum only."
