@@ -231,9 +231,183 @@
         "in_sample": true
       },
       "hash": "abf450ffeba0207d"
+    },
+    {
+      "id": "residual-reversal-3d-xs",
+      "title": "시장중립 잔차 3일 반전 (528종목 일봉)",
+      "rationale": "Claude 와 GPT-5.5 가 2026-09-19 두 차례 상의에서 각자 고른 마지막 예측 검정. 수년 이력과 넓은 폭이 이미 있고 실패한 것들과 가장 덜 겹친다. 둘 다 생존 확률 약 10%, 성공해도 월 0.3~1% 로 봤다. 메커니즘: 즉시 체결이 필요한 쪽이 요인 대비 가격을 밀고, 유동성 공급자가 반전으로 보상받는다. 예상 IC<0. 동결 사양(scripts/evaluate-residual-reversal-xs.js sha256 9d43cd2811f50f4d2c32070323e1f6281d7ca35ab0246cfbefe18d2536f07a31, 첫 실행 전 고정): 일봉 수익, 종목별 직전 60일(45 이상) R 을 [1, R_BTC, R_ETH] 에 OLS, 점수는 d-3..d-1 잔차 합, 전방은 R(d). 상장 60일 이상, 직전 7일 거래대금 상위 200, BTC/ETH 제외. 단조성 게이트 5분위 NW lag 5. 책은 최하위 분위 롱/최상위 숏 각 0.5, 매일 리밸런스, 회전당 0.07% 와 펀딩 차감. 분할 탐색 2023-03-05~2025-08-26(70%), 확인 2025-08-27~(30%). 판정: 탐색 게이트 실패면 REJECTED 이고 확인 구간은 열지 않는다. 통과·IC<0 이어도 비용 후 순평균 <=0 이면 REJECTED_COST. 확인은 IC<0, 순 NW-t>1.645, BTC 대비 알파>0. 통과해도 책 없음. 정렬 검사: SOL 2024-06-10 점수를 독립 정규방정식 풀이로 재계산해 소수 10자리 일치. 알려진 편향: 수집일 상장 종목만. 확인창은 명목상이다 — 표본내 판정으로 즉시 종결된다.",
+      "discovered_on": "2026-09-19T00:00:00.000Z",
+      "registered_at": "2026-09-19T12:21:55.190Z",
+      "confirmation_starts_at": "2027-03-19T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "달러중립 횡단면, BTC 대비 알파로 대체",
+        "requires_monotonicity": true,
+        "evaluator": "scripts/evaluate-residual-reversal-xs.js",
+        "evaluator_sha256": "9d43cd2811f50f4d2c32070323e1f6281d7ca35ab0246cfbefe18d2536f07a31"
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "동결 판정 FAIL_MULTIPLE, 확인 구간 미열람. 탐색 906일, 200종목: 분위 [+0.0002, -0.0000, +0.0001, -0.0001, -0.0002] 로 Q2/Q3 에서 순서가 깨짐(프로파일 IC -0.90), 꼬리 +0.0005/일 (NW-t 0.77). 횡단면 IC 는 -0.0421 (NW-t -8.86) 로 매우 유의 — 반전은 통계적으로 실재하지만 책이 잡는 양 끝에서는 하루 2bp 수준이다. 책(일): 총 +0.0229% (t 0.77), 펀딩 -0.0165%, 비용 -0.0608% (회전 0.87) → 순 -0.0545% (NW-t -1.82), 연 -19.3%, BTC 베타 0.053, 알파 -0.0654% (t -2.18). 비용이 총수익의 약 2.7배. 구조 메모: 메이커 수수료 0.02% 로 가정해도 회전 0.87 이면 비용 0.017%/일, 순 약 -0.011%/일로 여전히 음수. 회전을 줄이는 변형은 다른 가설이며 사전 합의에 따라 이 결과를 살리는 데 쓰지 않는다.",
+        "recorded_at": "2026-09-19T12:21:55.191Z",
+        "in_sample": true
+      },
+      "hash": "3ad9806c8ecb5585"
+    },
+    {
+      "id": "kimchi-inventory-arb",
+      "title": "김치 프리미엄 재고형 차익 (업비트-바이낸스)",
+      "rationale": "GPT-5.5 3차 상의 1순위. 양쪽 거래소에 코인과 현금을 두고 송금 없이 김프 4% 이상에서 업비트 매도·바이낸스 매수, 1% 이하에서 반대. 동결 평가기 scripts/evaluate-kimchi-inventory-arb.js sha256 c2ec0ce0ddecff7c055381fc2d33bc50d2dfb2b2925a1ee920efe702490089fb, 레그당 0.25%, 자본 2.3배, GPT 합격기준 월평균 3%·손실월 20% 이하.",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T00:21:32.955Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "이벤트/횡단면 구성, 규모 불변 조건으로 판정",
+        "requires_monotonicity": false
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "불합격. BTC·ETH·XRP·SOL 2021-01~2026-08 68개월: 월평균 0.27%(자본 대비), 손실월 19%, 왕복 132회. 프리미엄 중간값 2021 3.3% → 2026 0.13%(4% 이상 시간 비중 0.2%). 기회 자체가 사라졌다. 정렬 검사: 2021-04 +16.6%, 2024-12-03 계엄 당시 -11.2%로 알려진 사건과 일치.",
+        "recorded_at": "2026-09-20T00:21:32.955Z",
+        "in_sample": true
+      },
+      "hash": "906ca492a3093621"
+    },
+    {
+      "id": "crypto-dual-momentum",
+      "title": "코인 현물 듀얼 모멘텀 (745쌍, 상장폐지 포함)",
+      "rationale": "GPT-5.5 4차 상의 1순위, 확률 10~20%. 주간 90일 수익/변동성 상위 5개 매수, BTC 200일선 아래면 현금. 동결 평가기 scripts/evaluate-crypto-dual-momentum.js sha256 85065caa61956797bb919acbcb2682f83e1a3e3db7247456a92641b5efa8d5ff. 상장폐지 252쌍 포함, 심볼 재사용은 3일 이상 공백으로 분리(LUNA 붕괴 반영).",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T00:21:32.955Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "이벤트/횡단면 구성, 규모 불변 조건으로 판정",
+        "requires_monotonicity": false
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "불합격. 2019-01~2026-08 92개월: 월 산술평균 +2.14%이나 중간값 0%, 손실월 34.8%, 최악월 -46.8%, 최대낙폭 -95.8%, 복리로는 원금 약 절반 손실. 연도별 2020 +122% 2021 +108% 2023 -35% 2024 -57% 2025 -38%. 산술평균과 자본성장률의 괴리를 보여주는 사례.",
+        "recorded_at": "2026-09-20T00:21:32.955Z",
+        "in_sample": true
+      },
+      "hash": "1bc9cb5f22421a78"
+    },
+    {
+      "id": "new-listing-perp-short",
+      "title": "신규 상장 무기한 선물 공매도 (30일)",
+      "rationale": "구조적 마찰 후보. 신규 토큰은 유통량이 적고 이후 물량이 풀린다. 동결 평가기 scripts/evaluate-new-listing-short.js sha256 ea0597051339012aa0060373d4f4d31a588304b1de44a3a32f46f90b0ae4f0e2, 상장 둘째 날 종가 숏, 30일, 1배 담보, 고가 2배 청산, 편도 0.15%, 펀딩 반영. 2023년 이후 상장 517건(상장폐지 100건 포함).",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T00:21:32.955Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "이벤트/횡단면 구성, 규모 불변 조건으로 판정",
+        "requires_monotonicity": false
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "불합격. 건당 중간값 +17.1%, 승률 67.7%로 대부분 흘러내리지만 청산 85건(16%)이 건당 -100%로 평균을 +2.6%까지 깎았다. 월 손실 38.6%, 평균/|최악월| 0.058. 손절 변형은 결과를 본 뒤 떠올린 것이라 같은 데이터로 확인하지 않았다.",
+        "recorded_at": "2026-09-20T00:21:32.955Z",
+        "in_sample": true
+      },
+      "hash": "8d4c16fe2d891e1b"
+    },
+    {
+      "id": "extreme-funding-carry",
+      "title": "극단 펀딩 구간 현물-무기한 캐리",
+      "rationale": "GPT-5.5 6차 상의 1순위, 확률 15~25%. 24h 펀딩합 0.24% 이상 진입, 0.06% 미만 또는 7일 청산. 동결 평가기 scripts/evaluate-extreme-funding-carry.js sha256 5223c34740b9b57b105490bb427f492f68944fe307a64f214ddbc26a1f5d0b42, 자본 1.3배, 왕복 0.3%, 베이시스 무시(수집 안 함).",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T00:21:32.955Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "이벤트/횡단면 구성, 규모 불변 조건으로 판정",
+        "requires_monotonicity": false
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "불합격. 1,040 에피소드/294종목(상장폐지 포함): 에피소드 단위 손실월 18%, 평균/|최악| 9.4, 상위5 5%, 연도별 모두 양수로 꾸준함은 좋았으나 규모 조건 미달. 사후 진단(판정 미사용): 활성 에피소드 균등배분·종목당 20% 상한이면 NAV 월평균 0.69%, 월 3% 이상 0개월. 앞서 잰 캐리 상한(월 0.78%)과 일치.",
+        "recorded_at": "2026-09-20T00:21:32.955Z",
+        "in_sample": true
+      },
+      "hash": "fad059aebfbc007d"
+    },
+    {
+      "id": "shock-reversal-xs",
+      "title": "급락·급등 후 3일 반전 (BTC 헤지)",
+      "rationale": "GPT-5.5 3차 상의 후보 3. 강제 청산으로 밀린 가격을 유동성 공급 측이 되받는다는 가설. 동결 평가기 scripts/evaluate-shock-reversal.js sha256 2676cce4400df5b3f3f849718b78468513939d309deafd942bf39e7670efc8d5. 일간 |수익| 20% 이상 + 거래량 3배 이벤트에서 반대편 진입, 3일 보유, BTC 수익 차감, 편도 0.15%.",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T00:21:32.955Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "이벤트/횡단면 구성, 규모 불변 조건으로 판정",
+        "requires_monotonicity": false
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "불합격이며 방향이 반대. 2,515건/443종목: 급락 후 매수 346건 평균 -5.03%(승률 38.7%), 급등 후 숏 2,169건 평균 -0.88%(승률 61.6%). 반전이 아니라 추세 지속. 월 손실 48.9%, 평균/최악 -0.027. 이 결과가 '약한 코인은 계속 약하다'는 방향을 가리켜 weak-alt-short 로 이어졌다.",
+        "recorded_at": "2026-09-20T00:21:32.955Z",
+        "in_sample": true
+      },
+      "hash": "b1de20cc572d4909"
+    },
+    {
+      "id": "weak-alt-short-btc-hedged",
+      "title": "최약 알트 10종목 공매도 + BTC 헤지",
+      "rationale": "shock-reversal 과 강제 이탈 이벤트 결과에서 유도된 가설이다(착상이 데이터에서 나왔음을 명시). 동결 평가기 scripts/evaluate-weak-alt-short.js sha256 ffd6785be4dbfcef590a2c6e1cfc07a8467e3bc753b65c4e19fe1f5acf87fd28. 주간 90일 수익 최하위 10종목 숏 100% + BTC 롱 100%, 편도 0.15%, 상장폐지 포함.",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T00:21:32.955Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "이벤트/횡단면 구성, 규모 불변 조건으로 판정",
+        "requires_monotonicity": false
+      },
+      "outcome": {
+        "verdict": "REJECTED",
+        "evidence": "불합격. 2019-01~2026-08 92개월: 월평균 +4.66%, 중간값 +4.04%로 목표 구간이지만 손실월 39.1%, 최악월 -49.9%(2021-04), 최대낙폭 -95.7%. 앞 절반 월 -0.58% / 뒤 절반 +9.89%로 수익이 2024년 이후에 몰려 있다. 평균은 높고 꾸준함은 없다 — 사실상 알트 대 BTC 레짐 베팅.",
+        "recorded_at": "2026-09-20T00:21:32.955Z",
+        "in_sample": true
+      },
+      "hash": "a7c043f0c04c64cf"
+    },
+    {
+      "id": "forced-exit-short-paper",
+      "title": "바이낸스 강제 이탈 공지 후 무기한 공매도 (모의 레인)",
+      "rationale": "메커니즘: 바이낸스가 토큰 상장폐지·선물 상장폐지·모니터링 태그 지정을 공지하면 그 거래소 보유자는 기한 내 이탈해야 한다. 마켓메이커는 물러나고 자연 매수는 줄어든다. 탐색 결과(판정 아님): 토큰 상폐 61건 승률 73.8%·중간값 +24.4%, 선물 단독 상폐 56건 69.6%·+10.1%(동결 평가기 무수정 적용, 표본 밖), 마진 거래쌍 제거 278건 57.6%·+1.9%(메커니즘 약함), 업비트 거래지원 종료 17건 47%(바이낸스 보유자를 강제하지 않음). +50% 손절 변형(scripts/evaluate-forced-exit-short-stop50.js sha256 17df48d1c3cd1b4a7f24536f5d2dfc0d975b61fc582865dd56c84167fec758b3)을 데이터 수집 전에 고정한 뒤 한 번도 보지 않은 모니터링 태그 58건에 1회 적용: 승률 69%, 중간값 +8.4%, 손실월 18.2%(통과), 평균/|최악| 0.321(통과), 반기 모두 양수(통과), 상위5 51%(1%p 미달), 월 3%에 필요 자본 148%(미달). 세 가족 합산 175건 탐색(두 가족은 손절 설계 전에 본 데이터이므로 판정 아님): 승률 68.6%, 중간값 +10.3%, 손실월 24.2%, 평균/|최악| 0.828, 상위5 24.5%, 건당 6.1%·최대 동시 11건으로 월 3% 시 필요 자본 67%, 그 규모에서 최악월 -3.6%. 동결 규칙(모의 레인 scripts/run-forced-exit-paper-lane.js sha256 4fecce6586f3e85d82ea1af9283ba2b8159e42a103650f65bf85524f34769e39): 세 가족 공지, 공지 포함 1시간봉 종가 숏, 168시간 또는 계약 종료 시 청산, 진입가 1.5배 고가에서 손절, 건당 자산 6%, 총 노출 100% 이내, 편도 0.15%, 펀딩 반영, 동일 심볼 30일 재진입 금지. 모의 전용 — 키·주문 경로 없음, 노출 0. 판정: 중간 2027-03-20 또는 30건 중 늦은 쪽, 최종 2027-09-20 또는 60건 중 늦은 쪽. 합격은 월평균 3% 이상, 손실월 20% 이하, 평균/|최악월| 0.25 이상, 상위5 50% 이하 전부 충족. 최종 판정 전 규칙 변경은 검정 무효. 정직한 사전확률: Claude 25~35%, GPT-5.5 30~45%. 실거래 마찰(공지 후 1시간 지연, 소형 알트 슬리피지, 신규 포지션 제한, 숏 펀딩, 손절 미끄러짐)은 모의로 측정되지 않는다.",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T00:21:32.955Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "이벤트 숏 — 고정 노출 대조군이 없다",
+        "requires_monotonicity": false,
+        "reason_no_monotonicity": "단일 방향 이벤트 전략",
+        "lane": "scripts/run-forced-exit-paper-lane.js",
+        "lane_sha256": "4fecce6586f3e85d82ea1af9283ba2b8159e42a103650f65bf85524f34769e39",
+        "interim": {
+          "date": "2027-03-20",
+          "events": 30
+        },
+        "final": {
+          "date": "2027-09-20",
+          "events": 60
+        },
+        "pass": {
+          "mean_monthly_pct": 3,
+          "max_losing_share": 0.2,
+          "min_mean_over_worst": 0.25,
+          "max_top5_share": 0.5
+        }
+      },
+      "outcome": null,
+      "hash": "2d6dee9429f8c8fc"
     }
   ],
-  "updated_at": "2026-09-19T09:43:34.416Z",
+  "updated_at": "2026-09-20T00:21:32.955Z",
   "hash_payload_version": "v3",
   "rehashed_at": "2026-09-13T23:35:00.360Z",
   "rehash_reason": "entryHash payload v2 -> v3: rationale brought under the hash. Immutable fields unchanged; checksum only."

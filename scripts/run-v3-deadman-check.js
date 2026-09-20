@@ -86,6 +86,21 @@ const DESCRIPTORS = [
   // Every unwatched job in this project has eventually died quietly — v6 ran
   // 30 days past its own retirement because nothing was looking. This one is
   // registered on day one.
+  // The forced-exit short paper lane ticks hourly and its whole purpose is to
+  // catch announcements within 72h of publication. A lane that is quietly dead
+  // for a week does not lose money here — it loses the only events that can
+  // settle the hypothesis, and they never come back. 2h10m allows one miss.
+  {
+    name: "forced_exit_paper",
+    path: path.join(ROOT, "ops/daily/forced_exit_paper_latest.json"),
+    max_age_ms: 130 * 60 * 1000,
+    degraded: (doc) => {
+      if (doc.rate_limited) return `rate limited (${doc.rate_limited}) — shares an IP with v5flow`;
+      const errs = Array.isArray(doc.errors) ? doc.errors.length : 0;
+      if (errs >= 5) return `${errs} errors in the last cycle`;
+      return null;
+    },
+  },
   {
     name: "wide_flow_collector",
     path: path.join(ROOT, "ops/daily/wide_flow_collector_latest.json"),
