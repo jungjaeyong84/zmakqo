@@ -101,6 +101,24 @@ const DESCRIPTORS = [
       return null;
     },
   },
+  // The carry paper lane books one row per UTC day; 26h allows one miss. Its
+  // series is what the forced-exit combination will be judged against, so a
+  // gap here is a gap in that comparison.
+  {
+    name: "carry_paper",
+    path: path.join(ROOT, "ops/daily/carry_paper_latest.json"),
+    max_age_ms: 26 * 60 * 60 * 1000,
+    degraded: (doc) => (doc.rate_limited ? `rate limited (${doc.rate_limited})` : null),
+  },
+  // The shadow lane only records; it cannot decide anything. It is still
+  // watched, because a shadow that silently stops leaves the variants
+  // unmeasured and the next decision has nothing to compare against.
+  {
+    name: "forced_exit_shadow",
+    path: path.join(ROOT, "ops/daily/forced_exit_shadow_latest.json"),
+    max_age_ms: 130 * 60 * 1000,
+    degraded: (doc) => (doc.rate_limited ? `rate limited (${doc.rate_limited})` : null),
+  },
   {
     name: "wide_flow_collector",
     path: path.join(ROOT, "ops/daily/wide_flow_collector_latest.json"),

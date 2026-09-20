@@ -426,9 +426,46 @@
         "in_sample": true
       },
       "hash": "bf36bf5694ffc74a"
+    },
+    {
+      "id": "carry-paper-forward",
+      "title": "펀딩 캐리 순방향 모의 확인 (상위 5, 11% 하한)",
+      "rationale": "캐리는 이 프로젝트에서 모든 통제를 통과한 유일한 수익원이지만 순방향으로 돌려본 적이 없다. 2.7년 연구는 연 7.4%(무위험 5%), 363종목 43개월 상한 측정은 연 9.7%·중간 월 0.43%였다. 둘 다 백테스트다. 레인 scripts/run-carry-paper-lane.js sha256 204c50a4d82f58ba07f8366740079b605351ca955552ee5bbb4ab2821bd46a46: 매일 00:00 UTC, 현물 페어가 있는 USDT 무기한 중 직전일 펀딩 연율 11% 이상 상위 5개 동일가중, 자본 1.3배, 사이클 0.08%, 유휴 자본 무위험 5%. 모의 전용. 두 번째 목적: GPT-5.5 10차 상의가 강제 이탈 숏의 손실월(24.2%)을 낮출 가장 큰 개선으로 \"캐리와 결합\"을 꼽았다. 그 결합을 재려면 캐리의 순방향 시계열이 필요하다. 판정: 강제 이탈 레인과 같은 날(2027-03-20 중간, 2027-09-20 최종). 합격은 비용 후 월평균이 무위험(월 0.41%)을 넘고 손실월 30% 이하. 사전확률: 백테스트가 맞다면 월 0.6~0.8% 부근, 목표 월 3%에는 단독으로 닿지 못한다.",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T02:58:11.635Z",
+      "confirmation_starts_at": "2027-03-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "reason_no_static_benchmark": "델타중립 캐리 — 무위험 수익률이 대조군",
+        "requires_monotonicity": false,
+        "lane": "scripts/run-carry-paper-lane.js",
+        "pass": {
+          "min_monthly_pct": 0.41,
+          "max_losing_share": 0.3
+        }
+      },
+      "outcome": null,
+      "hash": "e8f4921174cd2869"
+    },
+    {
+      "id": "forced-exit-shadow-variants",
+      "title": "강제 이탈 숏의 사전등록 변형 7종 (그림자, 판정 권한 없음)",
+      "rationale": "GPT-5.5 10차 상의가 효과 크기 순으로 제시한 개선을 그림자로만 기록한다. 1차 동결 규칙(scripts/run-forced-exit-paper-lane.js sha256 4fecce6586f3e85d82ea1af9283ba2b8159e42a103650f65bf85524f34769e39)은 파일째 건드리지 않았고, 2027-03-20/2027-09-20 판정 권한은 그대로 1차 규칙에 있다. 변형 목록은 2026-09-20에 고정하며 이후 추가하지 않는다(중간 추가는 실시간 과최적화다): S1 공지+1분 진입(추가 슬리피지 1.00%), S2 +5분(0.50%), S3 +15분(0.25%), S4 변동성 역가중 사이징(7일 실현변동성 기준 위험 1.5%, 상한 10%), S5 BTC 정적 헤지 0.30배, S6 BTC 추정 베타 헤지(30일 시간봉), S7 공지일당 신규 진입 3건 상한. 나머지(+50% 손절, 168시간, 편도 0.15%, 펀딩)는 1차와 동일. 빠른 진입에 슬리피지를 더 크게 물리는 이유: 공지 직후 얇은 호가가 백테스트가 거짓말하기 가장 쉬운 지점이다. 레인 scripts/run-forced-exit-shadow-lane.js sha256 e0286065683424d9039abf8c46f2c6baf52c2107e7019f00453663b4423fa911. 보고서에는 캐리와의 결합(70:30, 60:40)도 함께 기록한다. 규칙: 변형이 더 좋아 보이더라도 1차 판정을 바꾸지 않는다. 그 변형은 1차 판정 이후 새 순방향 검정의 후보가 될 뿐이다.",
+      "discovered_on": "2026-09-20T00:00:00.000Z",
+      "registered_at": "2026-09-20T02:58:11.646Z",
+      "confirmation_starts_at": "2027-09-20T00:00:00.000Z",
+      "gate": {
+        "requires_static_benchmark": false,
+        "requires_monotonicity": false,
+        "decision_authority": "none",
+        "lane": "scripts/run-forced-exit-shadow-lane.js",
+        "variants_frozen_on": "2026-09-20"
+      },
+      "outcome": null,
+      "hash": "cd10d123f336dd54"
     }
   ],
-  "updated_at": "2026-09-20T01:10:07.020Z",
+  "updated_at": "2026-09-20T02:58:11.646Z",
   "hash_payload_version": "v3",
   "rehashed_at": "2026-09-13T23:35:00.360Z",
   "rehash_reason": "entryHash payload v2 -> v3: rationale brought under the hash. Immutable fields unchanged; checksum only."
